@@ -122,50 +122,6 @@ import type {
 } from "./AtlasAppFoundation";
 
 
-
-type AtlasNavigationState = {
-  screen?: string;
-  selectedAssetId?: string;
-  selectedLocationId?: string;
-  selectedVendorId?: string;
-  selectedServiceId?: string;
-  scrollY?: number;
-  updatedAt?: string;
-};
-
-function atlasNavigationStorageKey(propertyId: string) {
-  return `atlas-navigation-state-v1-${propertyId || "2000"}`;
-}
-
-function readAtlasNavigationState(propertyId: string): AtlasNavigationState {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.sessionStorage.getItem(atlasNavigationStorageKey(propertyId));
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeAtlasNavigationState(
-  propertyId: string,
-  patch: Partial<AtlasNavigationState>,
-) {
-  if (typeof window === "undefined") return;
-  try {
-    const key = atlasNavigationStorageKey(propertyId);
-    const current = readAtlasNavigationState(propertyId);
-    window.sessionStorage.setItem(
-      key,
-      JSON.stringify({
-        ...current,
-        ...patch,
-        updatedAt: new Date().toISOString(),
-      }),
-    );
-  } catch {}
-}
-
 export default function AtlasApp() {
   const [ready, setReady] = useState(false);
   const [syncState, setSyncState] = useState<
@@ -209,23 +165,9 @@ export default function AtlasApp() {
   const [notesDraft, setNotesDraft] = useState("");
   const [notesSearch, setNotesSearch] = useState("");
   const [notesListening, setNotesListening] = useState(false);
-  const [mobileNotesMoreOpen, setMobileNotesMoreOpen] = useState(false);
   const [notesSection, setNotesSection] = useState<NoteSection>("General");
   const [notesSectionFilter, setNotesSectionFilter] = useState<NoteSection | "All">("All");
   const [selectedNoteId, setSelectedNoteId] = useState("");
-  type RestrictedNote = { id: string; propertyId: string; text: string; createdAt: string; updatedAt: string };
-  const [restrictedNotesUnlocked, setRestrictedNotesUnlocked] = useState(false);
-  const [restrictedNotesPin, setRestrictedNotesPin] = useState("");
-  const [restrictedNotesSessionPin, setRestrictedNotesSessionPin] = useState("");
-  const [restrictedPinInputKey, setRestrictedPinInputKey] = useState(0);
-  const [restrictedNotes, setRestrictedNotes] = useState<RestrictedNote[]>([]);
-  const [restrictedNotesDraft, setRestrictedNotesDraft] = useState("");
-  const [restrictedNotesBusy, setRestrictedNotesBusy] = useState(false);
-  const [restrictedNotesError, setRestrictedNotesError] = useState("");
-  const [restrictedPinConfigured, setRestrictedPinConfigured] = useState<boolean | null>(null);
-  const [restrictedPinConfirm, setRestrictedPinConfirm] = useState("");
-  const [restrictedNoteEditId, setRestrictedNoteEditId] = useState("");
-  const [restrictedNoteEditText, setRestrictedNoteEditText] = useState("");
   const [notesSectionById, setNotesSectionById] = useState<Record<string, NoteSection>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -288,7 +230,6 @@ export default function AtlasApp() {
     "open" | "completed" | "assets" | "requests" | "vendors" | "documents" | "procedures" | ""
   >("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [mobileFieldMoreOpen, setMobileFieldMoreOpen] = useState(false);
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
   const [planningToolsOpen, setPlanningToolsOpen] = useState(false);
 
@@ -418,7 +359,6 @@ export default function AtlasApp() {
     }
   }, [moreToolsOpen]);
   const [activePropertyId, setActivePropertyId] = useState("2000");
-
   const [allowedPropertyIds, setAllowedPropertyIds] = useState<string[]>([
     "2000",
     "6855",
@@ -914,7 +854,7 @@ export default function AtlasApp() {
   const [documentSearch, setDocumentSearch] = useState("");
   const [documentCategoryFilter, setDocumentCategoryFilter] = useState("All");
   const [documentLinkFilter, setDocumentLinkFilter] = useState("All");
-  const [hideDocumentLogos, setHideDocumentLogos] = useState(true);
+  const [hideDocumentLogos, setHideDocumentLogos] = useState(false);
   const [documentSort, setDocumentSort] = useState<"newest" | "title" | "category">("newest");
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [selectedDocumentFileIndex, setSelectedDocumentFileIndex] = useState(0);
@@ -1135,16 +1075,11 @@ export default function AtlasApp() {
           "vendor",
           "viewer",
         ];
-        let role: AtlasCurrentUser["role"] = validRoles.includes(
+        const role: AtlasCurrentUser["role"] = validRoles.includes(
           rawRole as AtlasCurrentUser["role"],
         )
           ? (rawRole as AtlasCurrentUser["role"])
           : "viewer";
-
-        // HARD FIELD ISOLATION: once this device is bound with ?field=addison,
-        // never allow the shared/master login to resolve back to Nick's UI.
-        const isAddisonFieldDevice = deviceFieldIdentity === "addison";
-        if (isAddisonFieldDevice) role = "employee";
 
         const memberPropertyIds = Array.isArray(matchedMember?.propertyIds)
           ? matchedMember.propertyIds.map((propertyId: unknown) => String(propertyId))
@@ -1179,25 +1114,21 @@ export default function AtlasApp() {
 
         setCurrentAtlasUser({
           id: String(matchedMember?.id || payload?.currentUser?.id || ""),
-          name: isAddisonFieldDevice
-            ? "Addison"
-            : String(
-                matchedMember?.name ||
-                  payload?.currentUser?.name ||
-                  currentEmail ||
-                  "Atlas User",
-              ),
+          name: String(
+            matchedMember?.name ||
+              payload?.currentUser?.name ||
+              currentEmail ||
+              "Atlas User",
+          ),
           email: currentEmail,
           role,
-          propertyIds: isAddisonFieldDevice ? ["2000"] : allowed,
-          permissions: isAddisonFieldDevice ? {} : (memberPermissions || sessionPermissions),
-          accessProfiles: isAddisonFieldDevice
-            ? ["addison", "daily-routines"]
-            : memberAccessProfiles.length
-              ? memberAccessProfiles
-              : sessionAccessProfiles,
+          propertyIds: allowed,
+          permissions: memberPermissions || sessionPermissions,
+          accessProfiles: memberAccessProfiles.length
+            ? memberAccessProfiles
+            : sessionAccessProfiles,
         });
-        setAllowedPropertyIds(isAddisonFieldDevice ? ["2000"] : allowed);
+        setAllowedPropertyIds(allowed);
 
         const isRestrictedRole = ["employee", "vendor", "viewer"].includes(role);
         if (isRestrictedRole) {
@@ -1368,92 +1299,6 @@ export default function AtlasApp() {
   const [excludedAssetCategories, setExcludedAssetCategories] = useState<string[]>([]);
   const [selectedVendorId, setSelectedVendorId] = useState("");
   const [selectedServiceId, setSelectedServiceId] = useState("");
-
-  const navigationRestoreRef = useRef(false);
-  const navigationScrollTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    navigationRestoreRef.current = false;
-    const saved = readAtlasNavigationState(activePropertyId);
-
-    if (saved.screen) setScreen(saved.screen as any);
-    if (saved.selectedAssetId) setSelectedAssetId(saved.selectedAssetId);
-    if (saved.selectedLocationId) setSelectedLocationId(saved.selectedLocationId);
-    if (saved.selectedVendorId) setSelectedVendorId(saved.selectedVendorId);
-    if (saved.selectedServiceId) setSelectedServiceId(saved.selectedServiceId);
-
-    const restoreY = Math.max(0, Number(saved.scrollY) || 0);
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        window.scrollTo({ top: restoreY, behavior: "auto" });
-        navigationRestoreRef.current = true;
-      });
-    });
-  }, [activePropertyId]);
-
-  useEffect(() => {
-    if (!navigationRestoreRef.current) return;
-    writeAtlasNavigationState(activePropertyId, {
-      screen: String(screen || ""),
-      selectedAssetId: selectedAssetId || "",
-      selectedLocationId: selectedLocationId || "",
-      selectedVendorId: selectedVendorId || "",
-      selectedServiceId: selectedServiceId || "",
-    });
-  }, [
-    activePropertyId,
-    screen,
-    selectedAssetId,
-    selectedLocationId,
-    selectedVendorId,
-    selectedServiceId,
-  ]);
-
-  useEffect(() => {
-    function rememberScroll() {
-      if (!navigationRestoreRef.current) return;
-      if (navigationScrollTimerRef.current) {
-        window.clearTimeout(navigationScrollTimerRef.current);
-      }
-      navigationScrollTimerRef.current = window.setTimeout(() => {
-        writeAtlasNavigationState(activePropertyId, {
-          screen: String(screen || ""),
-          scrollY: window.scrollY,
-        });
-      }, 120);
-    }
-
-    function rememberBeforeLeave() {
-      writeAtlasNavigationState(activePropertyId, {
-        screen: String(screen || ""),
-        selectedAssetId: selectedAssetId || "",
-        selectedLocationId: selectedLocationId || "",
-        selectedVendorId: selectedVendorId || "",
-        selectedServiceId: selectedServiceId || "",
-        scrollY: window.scrollY,
-      });
-    }
-
-    window.addEventListener("scroll", rememberScroll, { passive: true });
-    window.addEventListener("pagehide", rememberBeforeLeave);
-
-    return () => {
-      window.removeEventListener("scroll", rememberScroll);
-      window.removeEventListener("pagehide", rememberBeforeLeave);
-      if (navigationScrollTimerRef.current) {
-        window.clearTimeout(navigationScrollTimerRef.current);
-      }
-      rememberBeforeLeave();
-    };
-  }, [
-    activePropertyId,
-    screen,
-    selectedAssetId,
-    selectedLocationId,
-    selectedVendorId,
-    selectedServiceId,
-  ]);
-
   const [workOrdersOpenKey, setWorkOrdersOpenKey] = useState(0);
   const [selectedProcedureId, setSelectedProcedureId] = useState("");
   const [procedureDraftNotes, setProcedureDraftNotes] = useState("");
@@ -1816,38 +1661,6 @@ export default function AtlasApp() {
     window.localStorage.setItem(cleanupKey, "ready");
   }, [operationsHydrated, activePropertyId]);
 
-
-  useEffect(() => {
-    if (!operationsHydrated || typeof window === "undefined") return;
-
-    const cleaned = dedupeTaskState(workPlanTasks, taskMeta);
-    if (!cleaned.duplicateIds.size) return;
-
-    setWorkPlanTasks(cleaned.tasks);
-    setTaskMeta(cleaned.meta);
-    saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, cleaned.tasks);
-    if (activePropertyId === "2000") {
-      saveStoredArray("atlas-tasks-v1", cleaned.tasks);
-    }
-
-    try {
-      window.localStorage.setItem(
-        `atlas-task-meta-v1-${activePropertyId}`,
-        JSON.stringify(cleaned.meta),
-      );
-      if (activePropertyId === "2000") {
-        window.localStorage.setItem(
-          "atlas-task-meta-v1",
-          JSON.stringify(cleaned.meta),
-        );
-      }
-    } catch {}
-
-    cleaned.duplicateIds.forEach((id) => {
-      void deleteOperationalRecord("tasks" as AtlasTable, id);
-    });
-  }, [operationsHydrated, activePropertyId]);
-
   useEffect(() => { saveStoredArray("atlas-backlog-v1", backlogItems); }, [backlogItems]);
   useEffect(() => {
     saveStoredArray(`atlas-vehicle-care-v1-${activePropertyId}`, vehicleCare);
@@ -1909,20 +1722,15 @@ export default function AtlasApp() {
           : Array.isArray(operationsPayload.tasks)
             ? operationsPayload.tasks
             : [];
-        const taskTombstones = readTaskTombstones(activePropertyId);
         const remoteRoutineTasks = apiTasks.filter(
           (record: { id?: unknown }) =>
             String(record.id || "").startsWith(`routine-assignment-${activePropertyId}-`) &&
-            !pendingTaskDeleteIds.has(String(record.id || "")) &&
-            !taskTombstones.has(String(record.id || "")),
+            !pendingTaskDeleteIds.has(String(record.id || "")),
         );
         setWorkPlanTasks((current) => {
           const nonRoutine = current.filter((item) => !item.id.startsWith(`routine-assignment-${activePropertyId}-`));
           const remote = remoteRoutineTasks.map((record: Record<string, unknown>) => ({ id: String(record.id || ""), title: String(record.title || "Routine assignment"), minutes: Math.max(5, Number(record.minutes || 30)), priority: (record.priority || "Medium") as WorkPlanTask["priority"], category: String(record.category || "Routine"), locationId: String(record.locationId || "general"), preferredDay: (record.preferredDay || "Auto") as WorkPlanTask["preferredDay"], locked: Boolean(record.locked), recurring: Boolean(record.recurring), fixedTime: String(record.fixedTime || ""), notes: String(record.notes || "") }));
-          const next = dedupeTaskState(
-            [...remote, ...nonRoutine],
-            taskMeta,
-          ).tasks;
+          const next = [...remote, ...nonRoutine];
           return JSON.stringify(next) === JSON.stringify(current) ? current : next;
         });
         setTaskMeta((current) => {
@@ -1942,104 +1750,6 @@ export default function AtlasApp() {
     const timer = window.setInterval(() => { void refreshRoutineAssignments(); }, 12000);
     window.addEventListener("focus", handleFocus);
     return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener("focus", handleFocus); };
-  }, [ready, operationsHydrated, activePropertyId]);
-
-  useEffect(() => {
-    if (!ready || !operationsHydrated) return;
-    let cancelled = false;
-
-    const refreshSharedTasks = async () => {
-      try {
-        const response = await fetch(
-          `/api/atlas?sharedTasks=${Date.now()}&propertyId=${encodeURIComponent(activePropertyId)}`,
-          { cache: "no-store" },
-        );
-        if (!response.ok) return;
-        const payload = await response.json();
-        if (cancelled) return;
-        if (payload?.propertyId && String(payload.propertyId) !== activePropertyId) return;
-
-        const operationsPayload = payload?.operations && typeof payload.operations === "object"
-          ? payload.operations
-          : payload;
-        const remoteRecords = Array.isArray(operationsPayload.taskRecords)
-          ? operationsPayload.taskRecords
-          : Array.isArray(operationsPayload.tasks)
-            ? operationsPayload.tasks
-            : null;
-        if (!remoteRecords) return;
-
-        const pendingDeleteIds = new Set(
-          readStoredArray<{ table: string; id: string }>(
-            [`atlas-operations-deletes-v1-${activePropertyId}`],
-            [],
-          )
-            .filter((item) => item.table === "tasks")
-            .map((item) => String(item.id)),
-        );
-        const tombstones = readTaskTombstones(activePropertyId);
-        const remote = remoteRecords.filter(
-          (record: any) =>
-            !pendingDeleteIds.has(String(record.id || "")) &&
-            !tombstones.has(String(record.id || "")),
-        );
-        const remoteIds = new Set(remote.map((record: any) => String(record.id || "")));
-
-        setWorkPlanTasks((current) => {
-          const localOnly = current.filter((task) => {
-            if (remoteIds.has(task.id)) return false;
-            if (pendingDeleteIds.has(task.id) || tombstones.has(task.id)) return false;
-            // Once Addison work exists on shared Atlas, his server list is authoritative.
-            const meta = taskMeta[task.id];
-            if (String(meta?.assignee || "").trim().toLowerCase() === "addison") return false;
-            return true;
-          });
-          const remoteTasks = remote.map((record: any) => ({
-            id: String(record.id || ""),
-            title: String(record.title || "Task"),
-            minutes: Math.max(5, Number(record.minutes || 30)),
-            priority: record.priority || "Medium",
-            category: String(record.category || "General"),
-            locationId: String(record.locationId || "general"),
-            preferredDay: record.preferredDay || "Auto",
-            locked: Boolean(record.locked),
-            recurring: Boolean(record.recurring),
-            fixedTime: String(record.fixedTime || ""),
-            notes: String(record.notes || ""),
-          })) as WorkPlanTask[];
-          const next = dedupeTaskState([...remoteTasks, ...localOnly], taskMeta).tasks;
-          return JSON.stringify(next) === JSON.stringify(current) ? current : next;
-        });
-
-        setTaskMeta((current) => {
-          const next: Record<string, AtlasTaskMeta> = {};
-          for (const record of remote) {
-            const id = String(record.id || "");
-            next[id] = (record.taskMeta && typeof record.taskMeta === "object"
-              ? record.taskMeta
-              : record) as AtlasTaskMeta;
-          }
-          for (const [id, meta] of Object.entries(current)) {
-            if (remoteIds.has(id) || pendingDeleteIds.has(id) || tombstones.has(id)) continue;
-            if (String(meta?.assignee || "").trim().toLowerCase() === "addison") continue;
-            next[id] = meta;
-          }
-          return JSON.stringify(next) === JSON.stringify(current) ? current : next;
-        });
-      } catch {
-        // Existing local state remains available offline; refresh retries automatically.
-      }
-    };
-
-    const onFocus = () => { void refreshSharedTasks(); };
-    void refreshSharedTasks();
-    const timer = window.setInterval(() => { void refreshSharedTasks(); }, 5000);
-    window.addEventListener("focus", onFocus);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-    };
   }, [ready, operationsHydrated, activePropertyId]);
 
   useEffect(() => {
@@ -2635,11 +2345,8 @@ export default function AtlasApp() {
           : Array.isArray(operationsPayload.tasks)
             ? operationsPayload.tasks
             : [];
-        const taskTombstones = readTaskTombstones(activePropertyId);
         const apiTasks = rawApiTasks.filter(
-          (record) =>
-            !pendingTaskDeleteIds.has(String(record.id)) &&
-            !taskTombstones.has(String(record.id)),
+          (record) => !pendingTaskDeleteIds.has(String(record.id)),
         );
         const apiVehicles = Array.isArray(operationsPayload.vehicleCareRecords) ? operationsPayload.vehicleCareRecords : Array.isArray(operationsPayload.vehicleCare) ? operationsPayload.vehicleCare : [];
         const apiDaySessions = Array.isArray(operationsPayload.daySessions) ? operationsPayload.daySessions : [];
@@ -2710,14 +2417,16 @@ export default function AtlasApp() {
             );
             const remoteIds = new Set(apiTasks.map((record) => record.id));
             const mergedRemote = apiTasks.map((record) => {
-              const source = record;
+              const local = visibleLocalTasks.find((task) => task.id === record.id);
+              const localUpdated = taskMeta[record.id]?.updatedAt || "";
+              const remoteUpdated = record.updatedAt || record.taskMeta?.updatedAt || "";
+              const source = local && localUpdated > remoteUpdated ? local : record;
               return { id: source.id, title: source.title, minutes: source.minutes, priority: source.priority, category: source.category, locationId: source.locationId, preferredDay: source.preferredDay, locked: source.locked, recurring: source.recurring, fixedTime: source.fixedTime, notes: source.notes } as WorkPlanTask;
             });
-            const combined = [
+            return [
               ...mergedRemote,
               ...visibleLocalTasks.filter((task) => !remoteIds.has(task.id)),
             ];
-            return dedupeTaskState(combined, taskMeta).tasks;
           });
           setTaskMeta((localMeta) => {
             const visibleLocalMeta = Object.fromEntries(
@@ -2725,21 +2434,19 @@ export default function AtlasApp() {
                 ([id]) => !pendingTaskDeleteIds.has(id),
               ),
             ) as Record<string, AtlasTaskMeta>;
-            const mergedMeta = {
+            return {
               ...visibleLocalMeta,
               ...Object.fromEntries(apiTasks.map((record) => {
                 const remoteMeta = record.taskMeta || record;
                 const local = visibleLocalMeta[record.id];
                 return [
                   record.id,
-                  remoteMeta as AtlasTaskMeta,
+                  local?.updatedAt && local.updatedAt > String(remoteMeta.updatedAt || "")
+                    ? local
+                    : remoteMeta as AtlasTaskMeta,
                 ];
               })),
             };
-
-            const tombstones = readTaskTombstones(activePropertyId);
-            tombstones.forEach((id) => delete mergedMeta[id]);
-            return mergedMeta;
           });
         }
         if (apiVehicles.length) setVehicleCare((localVehicles) => { const remoteIds = new Set(apiVehicles.map((vehicle) => vehicle.id)); return [...apiVehicles.map((remote) => { const local = localVehicles.find((vehicle) => vehicle.id === remote.id); return local?.updatedAt && local.updatedAt > String(remote.updatedAt || "") ? local : remote; }), ...localVehicles.filter((vehicle) => !remoteIds.has(vehicle.id))]; });
@@ -4013,16 +3720,10 @@ export default function AtlasApp() {
 
         const property = sections.find((section) => section.label === "Property");
         if (property) {
-          const existingPropertyItems = property.items as AtlasScreen[];
-          property.items = Array.from(
-            new Set<AtlasScreen>([
-              ...existingPropertyItems.filter(
-                (item) => item !== "timeline" && item !== "portfolio",
-              ),
-              "timeline",
-              "portfolio",
-            ]),
-          ) as typeof property.items;
+          property.items = [
+            ...property.items,
+            "portfolio",
+          ] as typeof property.items;
         }
 
         return sections.filter((section) => section.items.length > 0);
@@ -5257,13 +4958,6 @@ export default function AtlasApp() {
   }, [q, searchResults.length]);
 
   useEffect(() => {
-    setSearchOpen(false);
-    setQuery("");
-    setSearchActiveIndex(0);
-  }, [screen]);
-
-
-  useEffect(() => {
     if (typeof window === "undefined") return;
     const openCommandCenter = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -5322,7 +5016,7 @@ export default function AtlasApp() {
         recognition.stop();
       }
     };
-    recognition.onerror = () => showSaveToast("Athena could not hear that request. Open Athena and try again.", "warning");
+    recognition.onerror = () => showSaveToast("Atlas could not hear that request. Tap Talk to Atlas and try again.", "warning");
     recognition.onend = () => {
       voiceRecognitionRef.current = null;
       setVoiceAssistantListening(false);
@@ -6201,238 +5895,6 @@ export default function AtlasApp() {
     recognition.start();
   }
 
-  useEffect(() => {
-    setRestrictedNotesUnlocked(false);
-    setRestrictedNotes([]);
-    setRestrictedNotesPin("");
-    setRestrictedNotesSessionPin("");
-    setRestrictedPinInputKey((current) => current + 1);
-    setRestrictedPinConfirm("");
-    setRestrictedNotesError("");
-    void refreshRestrictedPinStatus();
-  }, [activePropertyId]);
-
-  useEffect(() => {
-    if (!restrictedNotesUnlocked) return;
-    const timer = window.setTimeout(() => {
-      setRestrictedNotesUnlocked(false);
-      setRestrictedNotesPin("");
-      setRestrictedNotesSessionPin("");
-      setRestrictedPinInputKey((current) => current + 1);
-      setRestrictedNotes([]);
-      setRestrictedNoteEditId("");
-      setRestrictedNoteEditText("");
-      setRestrictedNotesError("");
-    }, 15 * 60 * 1000);
-    return () => window.clearTimeout(timer);
-  }, [restrictedNotesUnlocked]);
-
-  useEffect(() => {
-    if (screen === "notes") return;
-
-    setRestrictedNotesUnlocked(false);
-    setRestrictedNotesPin("");
-    setRestrictedNotesSessionPin("");
-    setRestrictedPinInputKey((current) => current + 1);
-    setRestrictedNotes([]);
-    setRestrictedNotesDraft("");
-    setRestrictedNoteEditId("");
-    setRestrictedNoteEditText("");
-    setRestrictedNotesError("");
-  }, [screen]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const lockWhenHidden = () => {
-      if (document.visibilityState !== "hidden") return;
-
-      setRestrictedNotesUnlocked(false);
-      setRestrictedNotesPin("");
-      setRestrictedNotesSessionPin("");
-      setRestrictedPinInputKey((current) => current + 1);
-      setRestrictedNotes([]);
-      setRestrictedNotesDraft("");
-      setRestrictedNoteEditId("");
-      setRestrictedNoteEditText("");
-      setRestrictedNotesError("");
-    };
-
-    const lockOnPageHide = () => {
-      setRestrictedNotesUnlocked(false);
-      setRestrictedNotesPin("");
-      setRestrictedNotesSessionPin("");
-      setRestrictedPinInputKey((current) => current + 1);
-      setRestrictedNotes([]);
-      setRestrictedNotesDraft("");
-      setRestrictedNoteEditId("");
-      setRestrictedNoteEditText("");
-      setRestrictedNotesError("");
-    };
-
-    document.addEventListener("visibilitychange", lockWhenHidden);
-    window.addEventListener("pagehide", lockOnPageHide);
-
-    return () => {
-      document.removeEventListener("visibilitychange", lockWhenHidden);
-      window.removeEventListener("pagehide", lockOnPageHide);
-    };
-  }, []);
-
-  async function restrictedNotesRequest(action: "status" | "setupPin" | "changePin" | "list" | "create" | "update" | "delete", extra: Record<string, unknown> = {}) {
-    const response = await fetch("/api/atlas-restricted-notes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({ action, propertyId: activePropertyId, pin: restrictedNotesSessionPin || restrictedNotesPin, ...extra }),
-    });
-    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; configured?: boolean; notes?: RestrictedNote[]; note?: RestrictedNote };
-    if (!response.ok || !payload.ok) throw new Error(payload.error || "Restricted Notes request failed.");
-    return payload;
-  }
-
-  async function refreshRestrictedPinStatus() {
-    try {
-      const payload = await restrictedNotesRequest("status");
-      setRestrictedPinConfigured(Boolean(payload.configured));
-    } catch (error) {
-      setRestrictedPinConfigured(null);
-      setRestrictedNotesError(
-        error instanceof Error
-          ? error.message
-          : "Could not check Restricted Notes PIN status.",
-      );
-    }
-  }
-
-  async function setupRestrictedPin() {
-    const pin = restrictedNotesPin.trim();
-    const confirmPin = restrictedPinConfirm.trim();
-
-    if (restrictedNotesBusy) return;
-
-    if (pin.length < 4) {
-      setRestrictedNotesError("PIN must be at least 4 characters.");
-      return;
-    }
-
-    if (pin !== confirmPin) {
-      setRestrictedNotesError("PIN entries do not match.");
-      return;
-    }
-
-    setRestrictedNotesBusy(true);
-    setRestrictedNotesError("");
-
-    try {
-      await restrictedNotesRequest("setupPin", { newPin: pin });
-      setRestrictedPinConfigured(true);
-      setRestrictedNotesSessionPin(pin);
-      setRestrictedNotesPin("");
-      setRestrictedPinConfirm("");
-
-      const payload = await restrictedNotesRequest("list");
-      setRestrictedNotes(
-        Array.isArray(payload.notes) ? payload.notes : [],
-      );
-      setRestrictedNotesUnlocked(true);
-      showSaveToast("Restricted Notes PIN created.");
-    } catch (error) {
-      setRestrictedNotesError(
-        error instanceof Error
-          ? error.message
-          : "Could not create Restricted Notes PIN.",
-      );
-    } finally {
-      setRestrictedNotesBusy(false);
-    }
-  }
-
-  async function unlockRestrictedNotes() {
-    if (!restrictedNotesPin.trim() || restrictedNotesBusy) return;
-    setRestrictedNotesBusy(true);
-    setRestrictedNotesError("");
-    try {
-      const payload = await restrictedNotesRequest("list");
-      setRestrictedNotes(Array.isArray(payload.notes) ? payload.notes : []);
-      setRestrictedNotesSessionPin(restrictedNotesPin);
-      setRestrictedNotesPin("");
-      setRestrictedNotesUnlocked(true);
-    } catch (error) {
-      setRestrictedNotesUnlocked(false);
-      setRestrictedNotes([]);
-      setRestrictedNotesError(error instanceof Error ? error.message : "Could not unlock Restricted Notes.");
-    } finally {
-      setRestrictedNotesBusy(false);
-    }
-  }
-
-  function lockRestrictedNotes() {
-    setRestrictedNotesUnlocked(false);
-    setRestrictedNotesPin("");
-    setRestrictedNotesSessionPin("");
-    setRestrictedPinInputKey((current) => current + 1);
-    setRestrictedNotes([]);
-    setRestrictedNotesDraft("");
-    setRestrictedNoteEditId("");
-    setRestrictedNoteEditText("");
-    setRestrictedNotesError("");
-  }
-
-  async function createRestrictedNote() {
-    const text = restrictedNotesDraft.trim();
-    if (!text || restrictedNotesBusy) return;
-    setRestrictedNotesBusy(true);
-    setRestrictedNotesError("");
-    try {
-      const payload = await restrictedNotesRequest("create", { text });
-      if (payload.note) setRestrictedNotes((current) => [payload.note!, ...current]);
-      setRestrictedNotesDraft("");
-      showSaveToast("Restricted note saved.");
-    } catch (error) {
-      setRestrictedNotesError(error instanceof Error ? error.message : "Could not save restricted note.");
-    } finally {
-      setRestrictedNotesBusy(false);
-    }
-  }
-
-  async function updateRestrictedNote(noteId: string) {
-    const text = restrictedNoteEditText.trim();
-    if (!text || restrictedNotesBusy) return;
-    setRestrictedNotesBusy(true);
-    setRestrictedNotesError("");
-    try {
-      const payload = await restrictedNotesRequest("update", { id: noteId, text });
-      if (payload.note) setRestrictedNotes((current) => current.map((note) => note.id === noteId ? payload.note! : note));
-      setRestrictedNoteEditId("");
-      setRestrictedNoteEditText("");
-      showSaveToast("Restricted note saved.");
-    } catch (error) {
-      setRestrictedNotesError(error instanceof Error ? error.message : "Could not update restricted note.");
-    } finally {
-      setRestrictedNotesBusy(false);
-    }
-  }
-
-  async function deleteRestrictedNote(noteId: string) {
-    if (!window.confirm("Delete this restricted note?")) return;
-    setRestrictedNotesBusy(true);
-    setRestrictedNotesError("");
-    try {
-      await restrictedNotesRequest("delete", { id: noteId });
-      setRestrictedNotes((current) => current.filter((note) => note.id !== noteId));
-      if (restrictedNoteEditId === noteId) {
-        setRestrictedNoteEditId("");
-        setRestrictedNoteEditText("");
-      }
-      showSaveToast("Restricted note deleted.");
-    } catch (error) {
-      setRestrictedNotesError(error instanceof Error ? error.message : "Could not delete restricted note.");
-    } finally {
-      setRestrictedNotesBusy(false);
-    }
-  }
-
   function renderNotes() {
     const query = notesSearch.trim().toLowerCase();
     const allPropertyNotes = todayLogEntries
@@ -6476,225 +5938,6 @@ export default function AtlasApp() {
           title="Notes"
           detail="A simple property notepad for things you want to remember."
         />
-
-        {isMobile ? (
-          <button
-            type="button"
-            onClick={() => setMobileNotesMoreOpen((current) => !current)}
-            aria-expanded={mobileNotesMoreOpen}
-            style={{
-              ...secondaryButtonStyle,
-              width: "100%",
-              minHeight: 42,
-              justifyContent: "space-between",
-              padding: "8px 11px",
-            }}
-          >
-            <span>Restricted Notes</span>
-            <span>{mobileNotesMoreOpen ? "Hide" : "Open"}</span>
-          </button>
-        ) : null}
-
-        {(!isMobile || mobileNotesMoreOpen) ? (
-        <section style={{ ...cardStyle, padding: isMobile ? 12 : 16, borderColor: restrictedNotesUnlocked ? "#D7B45D" : colors.line }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <div>
-              <div style={eyebrowStyle}>RESTRICTED</div>
-              <strong style={{ display: "block", color: colors.navy, fontSize: 16 }}>Restricted Notes</strong>
-              <small style={mutedSmallStyle}>{restrictedNotesUnlocked ? "Unlocked for this session. Auto-locks after 15 minutes." : "Protected by a separate access code. Contents stay hidden until unlocked."}</small>
-            </div>
-            {restrictedNotesUnlocked ? (
-              <button type="button" onClick={lockRestrictedNotes} style={secondaryButtonStyle}>Lock Now</button>
-            ) : null}
-          </div>
-
-          {!restrictedNotesUnlocked ? (
-            restrictedPinConfigured === false ? (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "1fr"
-                    : "minmax(0,240px) minmax(0,240px) auto",
-                  gap: 8,
-                  alignItems: "center",
-                  marginTop: 12,
-                }}
-              >
-                <input
-                  key={`restricted-pin-create-${restrictedPinInputKey}`}
-                  type="text"
-                  inputMode="numeric"
-                  name={`atlas-restricted-pin-create-${restrictedPinInputKey}`}
-                  value={restrictedNotesPin}
-                  onChange={(event) =>
-                    setRestrictedNotesPin(event.currentTarget.value)
-                  }
-                  placeholder="Create PIN"
-                  autoComplete="one-time-code"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  style={{
-                    ...inputStyle,
-                    minHeight: 40,
-                    WebkitTextSecurity: "disc",
-                  } as React.CSSProperties}
-                />
-                <input
-                  key={`restricted-pin-confirm-${restrictedPinInputKey}`}
-                  type="text"
-                  inputMode="numeric"
-                  name={`atlas-restricted-pin-confirm-${restrictedPinInputKey}`}
-                  value={restrictedPinConfirm}
-                  onChange={(event) =>
-                    setRestrictedPinConfirm(event.currentTarget.value)
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") void setupRestrictedPin();
-                  }}
-                  placeholder="Confirm PIN"
-                  autoComplete="one-time-code"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  style={{
-                    ...inputStyle,
-                    minHeight: 40,
-                    WebkitTextSecurity: "disc",
-                  } as React.CSSProperties}
-                />
-                <button
-                  type="button"
-                  onClick={() => void setupRestrictedPin()}
-                  disabled={
-                    restrictedNotesBusy ||
-                    restrictedNotesPin.trim().length < 4 ||
-                    restrictedNotesPin.trim() !==
-                      restrictedPinConfirm.trim()
-                  }
-                  style={{
-                    ...goldButtonStyle,
-                    opacity:
-                      restrictedNotesBusy ||
-                      restrictedNotesPin.trim().length < 4 ||
-                      restrictedNotesPin.trim() !==
-                        restrictedPinConfirm.trim()
-                        ? 0.55
-                        : 1,
-                  }}
-                >
-                  {restrictedNotesBusy ? "Creating…" : "Create PIN"}
-                </button>
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "1fr"
-                    : "minmax(0,280px) auto",
-                  gap: 8,
-                  alignItems: "center",
-                  marginTop: 12,
-                }}
-              >
-                <input
-                  key={`restricted-pin-${restrictedPinInputKey}`}
-                  type="text"
-                  inputMode="numeric"
-                  name={`atlas-restricted-pin-${restrictedPinInputKey}`}
-                  value={restrictedNotesPin}
-                  onChange={(event) =>
-                    setRestrictedNotesPin(event.currentTarget.value)
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") void unlockRestrictedNotes();
-                  }}
-                  placeholder={
-                    restrictedPinConfigured === null
-                      ? "Checking Restricted Notes…"
-                      : "Enter Restricted Notes PIN"
-                  }
-                  autoComplete="one-time-code"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  disabled={restrictedPinConfigured === null}
-                  style={{
-                    ...inputStyle,
-                    minHeight: 40,
-                    WebkitTextSecurity: "disc",
-                  } as React.CSSProperties}
-                />
-                <button
-                  type="button"
-                  onClick={() => void unlockRestrictedNotes()}
-                  disabled={
-                    restrictedPinConfigured !== true ||
-                    !restrictedNotesPin.trim() ||
-                    restrictedNotesBusy
-                  }
-                  style={{
-                    ...goldButtonStyle,
-                    opacity:
-                      restrictedPinConfigured !== true ||
-                      !restrictedNotesPin.trim() ||
-                      restrictedNotesBusy
-                        ? 0.55
-                        : 1,
-                  }}
-                >
-                  {restrictedNotesBusy ? "Unlocking…" : "Unlock"}
-                </button>
-              </div>
-            )
-          ) : (
-            <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8, alignItems: "end" }}>
-                <textarea
-                  value={restrictedNotesDraft}
-                  onChange={(event) => setRestrictedNotesDraft(event.currentTarget.value)}
-                  placeholder="Write a restricted note…"
-                  rows={3}
-                  style={{ ...inputStyle, resize: "vertical", minHeight: 76 }}
-                />
-                <button type="button" onClick={() => void createRestrictedNote()} disabled={!restrictedNotesDraft.trim() || restrictedNotesBusy} style={{ ...goldButtonStyle, opacity: !restrictedNotesDraft.trim() || restrictedNotesBusy ? .55 : 1 }}>
-                  Save Restricted Note
-                </button>
-              </div>
-
-              <div style={{ display: "grid", gap: 8 }}>
-                {restrictedNotes.map((note) => (
-                  <div key={note.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFDF7", padding: 11 }}>
-                    {restrictedNoteEditId === note.id ? (
-                      <textarea value={restrictedNoteEditText} onChange={(event) => setRestrictedNoteEditText(event.currentTarget.value)} rows={4} style={{ ...inputStyle, width: "100%", resize: "vertical" }} />
-                    ) : (
-                      <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.58, color: colors.text, fontSize: 14 }}>{note.text}</div>
-                    )}
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 9 }}>
-                      <small style={mutedSmallStyle}>{new Date(note.updatedAt || note.createdAt).toLocaleString()}</small>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {restrictedNoteEditId === note.id ? (
-                          <>
-                            <button type="button" onClick={() => { setRestrictedNoteEditId(""); setRestrictedNoteEditText(""); }} style={secondaryButtonStyle}>Cancel</button>
-                            <button type="button" onClick={() => void updateRestrictedNote(note.id)} disabled={!restrictedNoteEditText.trim() || restrictedNotesBusy} style={goldButtonStyle}>Save</button>
-                          </>
-                        ) : (
-                          <button type="button" onClick={() => { setRestrictedNoteEditId(note.id); setRestrictedNoteEditText(note.text); }} style={secondaryButtonStyle}>Edit</button>
-                        )}
-                        <button type="button" onClick={() => void deleteRestrictedNote(note.id)} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {!restrictedNotes.length ? <div style={noticeStyle}>No restricted notes for this property yet.</div> : null}
-              </div>
-            </div>
-          )}
-          {restrictedNotesError ? <div style={{ marginTop: 10, color: colors.red, fontSize: 12, fontWeight: 800 }}>{restrictedNotesError}</div> : null}
-        </section>
-        ) : null}
 
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 180px", gap: 10 }}>
@@ -6758,18 +6001,6 @@ export default function AtlasApp() {
           </div>
         </section>
 
-        {isMobile ? (
-          <button
-            type="button"
-            onClick={() => setMobileNotesMoreOpen((current) => !current)}
-            aria-expanded={mobileNotesMoreOpen}
-            style={{ ...secondaryButtonStyle, width: "100%", minHeight: 40 }}
-          >
-            {mobileNotesMoreOpen ? "Hide Search & Filters" : "Search / Filters / Restricted"}
-          </button>
-        ) : null}
-
-        {(!isMobile || mobileNotesMoreOpen) ? (
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "180px minmax(0,1fr)", gap: 8 }}>
             <select
@@ -6788,7 +6019,6 @@ export default function AtlasApp() {
             />
           </div>
         </section>
-        ) : null}
 
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 }}>
           {notes.map((note) => {
@@ -8717,15 +7947,10 @@ export default function AtlasApp() {
     if (operationsSyncRunningRef.current) return;
     operationsSyncRunningRef.current = true;
     const pendingKey = `atlas-operations-pending-v1-${activePropertyId}`;
-    const cleanedTaskState = dedupeTaskState(workPlanTasks, taskMeta);
-    const taskTombstones = readTaskTombstones(activePropertyId);
-
     const snapshot = {
       propertyId: activePropertyId,
       savedAt: new Date().toISOString(),
-      tasks: cleanedTaskState.tasks
-        .filter((task) => !taskTombstones.has(String(task.id)))
-        .map((task) => ({ ...task, ...(cleanedTaskState.meta[task.id] || taskDetails(task.id)), taskMeta: cleanedTaskState.meta[task.id] || taskDetails(task.id), propertyId: activePropertyId, updatedAt: (cleanedTaskState.meta[task.id] || taskDetails(task.id)).updatedAt || new Date().toISOString() })),
+      tasks: workPlanTasks.map((task) => ({ ...task, ...taskDetails(task.id), taskMeta: taskDetails(task.id), propertyId: activePropertyId, updatedAt: taskDetails(task.id).updatedAt || new Date().toISOString() })),
       vehicles: vehicleCare.map((vehicle) => ({ ...vehicle, propertyId: activePropertyId, updatedAt: vehicle.updatedAt || new Date().toISOString() })),
       daySessions: daySessions.map((session) => ({ ...session, propertyId: activePropertyId })),
     };
@@ -9306,78 +8531,35 @@ export default function AtlasApp() {
   }
 
   function syncRoutineAssignment(task: { id: string; title: string; assignedTo?: "Nick" | "Addison" | "Pat" | "Crew"; date: string }) {
-    const normalizedTitle = task.title.trim().toLowerCase().replace(/\s+/g, " ");
-    const linkedTaskId = `routine-assignment-${activePropertyId}-${task.date}-${slugify(task.title)}`;
-
-    const generatedMatches = workPlanTasks.filter((item) => {
-      const meta = taskDetails(item.id) as AtlasTaskMeta;
-      const generatedFromRoutine =
-        String(item.id).startsWith(`routine-assignment-${activePropertyId}-`) ||
-        Boolean(meta.routineTaskId) ||
-        String(meta.notes || item.notes || "").includes("Assigned from today’s Routine checklist.");
-      if (!generatedFromRoutine) return false;
-      if (String(meta.assignee || "") !== "Addison") return false;
-      if (String(meta.dueDate || meta.routineDate || "") !== task.date) return false;
-      return item.title.trim().toLowerCase().replace(/\s+/g, " ") === normalizedTitle;
-    });
-
-    const generatedMatchIds = new Set(generatedMatches.map((item) => String(item.id)));
-
+    const linkedTaskId = `routine-assignment-${activePropertyId}-${task.date}-${task.id}`;
     if (task.assignedTo !== "Addison") {
-      generatedMatchIds.add(`routine-assignment-${activePropertyId}-${task.date}-${task.id}`);
-      generatedMatchIds.add(linkedTaskId);
-
-      if (generatedMatchIds.size) {
-        setWorkPlanTasks((current) =>
-          current.filter((item) => !generatedMatchIds.has(String(item.id))),
-        );
-        setTaskMeta((current) => {
-          const next = { ...current };
-          generatedMatchIds.forEach((id) => delete next[id]);
-          return next;
-        });
-        generatedMatchIds.forEach((id) =>
-          void deleteOperationalRecord("tasks" as AtlasTable, id),
-        );
-      }
-
+      setWorkPlanTasks((current) => current.filter((item) => item.id !== linkedTaskId));
+      setTaskMeta((current) => {
+        if (!current[linkedTaskId]) return current;
+        const next = { ...current };
+        delete next[linkedTaskId];
+        return next;
+      });
+      void deleteOperationalRecord("tasks" as AtlasTable, linkedTaskId);
       showSaveToast(`${task.title} removed from Addison’s list.`);
       return;
     }
-
+    const existingTask = workPlanTasks.find((item) => item.id === linkedTaskId);
     const now = new Date().toISOString();
-    const bestExisting =
-      workPlanTasks.find((item) => item.id === linkedTaskId) ||
-      generatedMatches
-        .slice()
-        .sort((a, b) =>
-          String((taskDetails(b.id) as AtlasTaskMeta).updatedAt || "").localeCompare(
-            String((taskDetails(a.id) as AtlasTaskMeta).updatedAt || ""),
-          ),
-        )[0];
-
-    const existingMeta = bestExisting
-      ? (taskDetails(bestExisting.id) as AtlasTaskMeta)
-      : undefined;
-
-    const assignmentTask: WorkPlanTask = {
-      ...(bestExisting || {
-        id: linkedTaskId,
-        title: task.title,
-        minutes: 30,
-        priority: "Medium",
-        category: inferTaskCategory(task.title),
-        locationId: "general",
-        preferredDay: "Auto",
-        locked: false,
-        recurring: false,
-        fixedTime: "",
-        notes: "Assigned from today’s Routine checklist.",
-      }),
+    const assignmentTask: WorkPlanTask = existingTask ? { ...existingTask, title: task.title } : {
       id: linkedTaskId,
       title: task.title,
+      minutes: 30,
+      priority: "Medium",
+      category: inferTaskCategory(task.title),
+      locationId: "general",
+      preferredDay: "Auto",
+      locked: false,
+      recurring: false,
+      fixedTime: "",
+      notes: "Assigned from today’s Routine checklist.",
     };
-
+    const existingMeta = taskMeta[linkedTaskId];
     const assignmentMeta: AtlasTaskMeta = {
       ...(existingMeta || {}),
       status: existingMeta?.status === "Completed" ? "Completed" : "Open",
@@ -9398,48 +8580,10 @@ export default function AtlasApp() {
       flexibleTime: true,
       skippable: true,
     };
-
-    const duplicateIds = new Set(
-      generatedMatches
-        .map((item) => String(item.id))
-        .filter((id) => id !== linkedTaskId),
-    );
-
-    setWorkPlanTasks((current) => {
-      const withoutDuplicates = current.filter(
-        (item) => !duplicateIds.has(String(item.id)),
-      );
-      return withoutDuplicates.some((item) => item.id === linkedTaskId)
-        ? withoutDuplicates.map((item) =>
-            item.id === linkedTaskId ? assignmentTask : item,
-          )
-        : [assignmentTask, ...withoutDuplicates];
-    });
-
-    setTaskMeta((current) => {
-      const next = { ...current };
-      duplicateIds.forEach((id) => delete next[id]);
-      next[linkedTaskId] = assignmentMeta;
-      return next;
-    });
-
-    duplicateIds.forEach((id) =>
-      void deleteOperationalRecord("tasks" as AtlasTable, id),
-    );
-
-    void postAtlasRecord("tasks" as AtlasTable, {
-      ...assignmentTask,
-      ...assignmentMeta,
-      taskMeta: assignmentMeta,
-      propertyId: activePropertyId,
-      updatedAt: now,
-    });
-
-    showSaveToast(
-      duplicateIds.size
-        ? `${task.title} assigned to Addison and duplicate copies removed.`
-        : `${task.title} added to Addison’s list.`,
-    );
+    setWorkPlanTasks((current) => current.some((item) => item.id === linkedTaskId) ? current.map((item) => item.id === linkedTaskId ? assignmentTask : item) : [assignmentTask, ...current]);
+    setTaskMeta((current) => ({ ...current, [linkedTaskId]: assignmentMeta }));
+    void postAtlasRecord("tasks" as AtlasTable, { ...assignmentTask, ...assignmentMeta, taskMeta: assignmentMeta, propertyId: activePropertyId, updatedAt: now });
+    showSaveToast(`${task.title} added to Addison’s list.`);
   }
 
   function addWorkOrder(initial: Partial<AtlasServiceRecord> = {}) {
@@ -11239,7 +10383,7 @@ export default function AtlasApp() {
       setManualSaveMessage(
         `Saved ${record.title} to Atlas Documents${linkedAsset ? ` and linked it to ${linkedAsset.name}` : ""}.`,
       );
-      setDocumentSyncStatus(`Saved ${record.title} from Athena.`);
+      setDocumentSyncStatus(`Saved ${record.title} from Ask Atlas.`);
     } catch (error) {
       setManualSaveMessage(
         error instanceof Error
@@ -11487,7 +10631,7 @@ export default function AtlasApp() {
         );
         if (duplicate) {
           throw new Error(
-            `${duplicate.name} already exists. Atlas Assistant to update its quantity instead.`,
+            `${duplicate.name} already exists. Ask Atlas to update its quantity instead.`,
           );
         }
 
@@ -11505,7 +10649,7 @@ export default function AtlasApp() {
           quantity,
           minQuantity,
           status,
-          notes: `Created through Athena on ${todayISO()}.`,
+          notes: `Created through Ask Atlas on ${todayISO()}.`,
         });
 
         const saved = await postAtlasRecord("parts", record);
@@ -11978,8 +11122,8 @@ export default function AtlasApp() {
     setManualSaveMessage("");
     setAssistantAnswer(
       manualQuestion
-        ? "Atlas Assistant is checking the exact equipment details and searching official manufacturer sources..."
-        : "Atlas Assistant is reviewing your Atlas records...",
+        ? "Ask Atlas is checking the exact equipment details and searching official manufacturer sources..."
+        : "Ask Atlas is reviewing your Atlas records...",
     );
 
     try {
@@ -12025,7 +11169,7 @@ export default function AtlasApp() {
 
       if (!response.ok || !payloadOk) {
         throw new Error(
-          payloadError || "Atlas Assistant could not answer right now.",
+          payloadError || "Ask Atlas could not answer right now.",
         );
       }
 
@@ -12078,7 +11222,7 @@ export default function AtlasApp() {
       finishAssistantAnswer(
         error instanceof Error
           ? error.message
-          : "Atlas Assistant could not answer right now.",
+          : "Ask Atlas could not answer right now.",
       );
     } finally {
       setAssistantLoading(false);
@@ -12905,42 +12049,11 @@ export default function AtlasApp() {
   }
 
   function updateWorkPlanTask(taskId: string, patch: Partial<WorkPlanTask>) {
-    const updatedAt = new Date().toISOString();
-
-    setWorkPlanTasks((current) => {
-      const next = current.map((item) =>
+    setWorkPlanTasks((current) =>
+      current.map((item) =>
         item.id === taskId ? { ...item, ...patch } : item,
-      );
-      saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, next);
-      if (activePropertyId === "2000") {
-        saveStoredArray("atlas-tasks-v1", next);
-      }
-      return next;
-    });
-
-    setTaskMeta((current) => {
-      const base = current[taskId] || taskDetails(taskId);
-      const next = {
-        ...current,
-        [taskId]: {
-          ...base,
-          updatedAt,
-        },
-      };
-      try {
-        window.localStorage.setItem(
-          `atlas-task-meta-v1-${activePropertyId}`,
-          JSON.stringify(next),
-        );
-        if (activePropertyId === "2000") {
-          window.localStorage.setItem(
-            "atlas-task-meta-v1",
-            JSON.stringify(next),
-          );
-        }
-      } catch {}
-      return next;
-    });
+      ),
+    );
   }
 
   function cyclePlannerPriority(priority: WorkOrderPriority) {
@@ -12979,145 +12092,6 @@ export default function AtlasApp() {
     return (
       locations.find((location) => location.id === locationId)?.name ||
       "General"
-    );
-  }
-
-  function taskTombstoneKey(propertyId = activePropertyId) {
-    return `atlas-task-tombstones-v1-${propertyId}`;
-  }
-
-  function readTaskTombstones(propertyId = activePropertyId) {
-    return new Set(
-      readStoredArray<string>([taskTombstoneKey(propertyId)], []).map(String),
-    );
-  }
-
-  function addTaskTombstone(taskId: string) {
-    if (!taskId) return;
-    const current = readTaskTombstones();
-    current.add(String(taskId));
-    saveStoredArray(taskTombstoneKey(), Array.from(current));
-  }
-
-  function clearTaskTombstone(taskId: string) {
-    if (!taskId) return;
-    const current = readTaskTombstones();
-    if (!current.delete(String(taskId))) return;
-    saveStoredArray(taskTombstoneKey(), Array.from(current));
-  }
-
-  function normalizedTaskIdentity(
-    task: WorkPlanTask,
-    meta: AtlasTaskMeta = taskDetails(task.id),
-  ) {
-    const title = String(task.title || "")
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, " ");
-    const assignee = String(meta.assignee || "Unassigned")
-      .trim()
-      .toLowerCase();
-    const dueDate = String(meta.dueDate || "").slice(0, 10);
-    const listId = String(meta.listId || "").trim().toLowerCase();
-    const recurrence = task.recurring
-      ? `${Number(meta.recurrenceInterval || 1)}-${String(meta.recurrenceUnit || "Weeks").toLowerCase()}`
-      : "one-time";
-    return [title, assignee, dueDate, listId, recurrence].join("||");
-  }
-
-  function dedupeTaskState(
-    tasks: WorkPlanTask[],
-    metaMap: Record<string, AtlasTaskMeta>,
-  ) {
-    const tombstones = readTaskTombstones();
-    const groups = new Map<string, WorkPlanTask[]>();
-
-    tasks
-      .filter((task) => !tombstones.has(String(task.id)))
-      .forEach((task) => {
-        const meta = metaMap[task.id] || taskDetails(task.id);
-        const key = normalizedTaskIdentity(task, meta);
-        groups.set(key, [...(groups.get(key) || []), task]);
-      });
-
-    const duplicateIds = new Set<string>();
-    const kept: WorkPlanTask[] = [];
-
-    for (const group of groups.values()) {
-      if (group.length === 1) {
-        kept.push(group[0]);
-        continue;
-      }
-
-      const ranked = [...group].sort((a, b) => {
-        const am = metaMap[a.id] || taskDetails(a.id);
-        const bm = metaMap[b.id] || taskDetails(b.id);
-
-        const aUpdated = String(
-          am.updatedAt || am.completedAt || am.createdAt || "",
-        );
-        const bUpdated = String(
-          bm.updatedAt || bm.completedAt || bm.createdAt || "",
-        );
-
-        if (aUpdated !== bUpdated) return bUpdated.localeCompare(aUpdated);
-
-        const aCompleted = am.status === "Completed" ? 1 : 0;
-        const bCompleted = bm.status === "Completed" ? 1 : 0;
-        if (aCompleted !== bCompleted) return bCompleted - aCompleted;
-
-        return String(a.id).localeCompare(String(b.id));
-      });
-
-      kept.push(ranked[0]);
-      ranked.slice(1).forEach((task) => duplicateIds.add(String(task.id)));
-    }
-
-    const nextMeta = { ...metaMap };
-    duplicateIds.forEach((id) => {
-      delete nextMeta[id];
-      addTaskTombstone(id);
-    });
-
-    return {
-      tasks: kept,
-      meta: nextMeta,
-      duplicateIds,
-    };
-  }
-
-  function removeExactDuplicateTasks() {
-    const cleaned = dedupeTaskState(workPlanTasks, taskMeta);
-    if (!cleaned.duplicateIds.size) {
-      showSaveToast("No duplicate tasks found.");
-      return;
-    }
-
-    setWorkPlanTasks(cleaned.tasks);
-    setTaskMeta(cleaned.meta);
-    saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, cleaned.tasks);
-    if (activePropertyId === "2000") {
-      saveStoredArray("atlas-tasks-v1", cleaned.tasks);
-    }
-    try {
-      window.localStorage.setItem(
-        `atlas-task-meta-v1-${activePropertyId}`,
-        JSON.stringify(cleaned.meta),
-      );
-      if (activePropertyId === "2000") {
-        window.localStorage.setItem(
-          "atlas-task-meta-v1",
-          JSON.stringify(cleaned.meta),
-        );
-      }
-    } catch {}
-
-    cleaned.duplicateIds.forEach((id) => {
-      void deleteOperationalRecord("tasks" as AtlasTable, id);
-    });
-
-    showSaveToast(
-      `Removed ${cleaned.duplicateIds.size} duplicate task${cleaned.duplicateIds.size === 1 ? "" : "s"}.`,
     );
   }
 
@@ -13349,7 +12323,6 @@ export default function AtlasApp() {
       updatedAt: createdAt,
     };
 
-    clearTaskTombstone(task.id);
     setWorkPlanTasks((current) => [task, ...current]);
     setTaskMeta((current) => ({
       ...current,
@@ -13376,8 +12349,6 @@ export default function AtlasApp() {
   function deleteAtlasTask(taskId: string) {
     const task = workPlanTasks.find((item) => item.id === taskId);
     if (!task) return;
-
-    addTaskTombstone(taskId);
     const meta = taskDetails(taskId);
     setTaskUndo({ task, meta });
     if (taskUndoTimerRef.current !== null) window.clearTimeout(taskUndoTimerRef.current);
@@ -15129,15 +14100,62 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function ensureGraduationPartyChecklist() {
-    // Graduation Party is now fully user-controlled.
-    // Atlas must never recreate this list or its items during load, refresh,
-    // deployment, property switching, or opening the Lists screen.
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        `atlas-graduation-party-list-initialized-v2-${activePropertyId}`,
-        "ready",
-      );
+    const template = atlasOperationsTemplates.find((item) => item.id === "graduation-party");
+    if (!template) return;
+
+    const setupKey = `atlas-graduation-party-list-initialized-v2-${activePropertyId}`;
+    const existingPartyItems = workPlanTasks.filter(
+      (task) =>
+        task.category === "Graduation Party Checklist" ||
+        taskDetails(task.id).listId === "graduation-party",
+    );
+
+    // Once the list has existed, never silently recreate deleted or completed items.
+    // The explicit "Restore standard items" button can still add missing defaults.
+    if (window.localStorage.getItem(setupKey) === "ready" || existingPartyItems.length) {
+      window.localStorage.setItem(setupKey, "ready");
+      return;
     }
+
+    const createdAt = new Date().toISOString();
+    const tasks = template.items.map((item) => {
+      const id = `grad-party-${slugify(item.title)}`;
+      return {
+        id,
+        title: item.title,
+        minutes: item.minutes,
+        priority: item.priority,
+        category: "Graduation Party Checklist",
+        locationId: "general",
+        preferredDay: "Auto" as const,
+        locked: false,
+        recurring: false,
+        fixedTime: "",
+        notes: "Graduation Party Checklist",
+      } satisfies WorkPlanTask;
+    });
+
+    setWorkPlanTasks((current) => [...current, ...tasks]);
+    setTaskMeta((current) => {
+      const next = { ...current };
+      template.items.forEach((item, index) => {
+        const id = tasks[index].id;
+        next[id] = {
+          status: "Open",
+          dueDate: "",
+          assignee: item.assignedTo || (item.addisonReady ? "Addison" : "Nick"),
+          createdAt,
+          completionHistory: [],
+          flexibleTime: true,
+          skippable: true,
+          listId: "graduation-party",
+          listName: "Graduation Party",
+          dashboardListPinned: false,
+        };
+      });
+      return next;
+    });
+    window.localStorage.setItem(setupKey, "ready");
   }
 
   function restoreGraduationPartyStandardItems() {
@@ -15158,7 +14176,7 @@ ${notes.trim()}` : notes.trim(),
 
     const createdAt = new Date().toISOString();
     const tasks = missing.map((item) => ({
-      id: `grad-party-${slugify(item.title)}`,
+      id: uid("grad-party-restored"),
       title: item.title,
       minutes: item.minutes,
       priority: item.priority,
@@ -15171,26 +14189,7 @@ ${notes.trim()}` : notes.trim(),
       notes: "Graduation Party Checklist",
     } satisfies WorkPlanTask));
 
-    setWorkPlanTasks((current) => {
-      const existingIds = new Set(current.map((task) => String(task.id)));
-      const existingPartyTitles = new Set(
-        current
-          .filter(
-            (task) =>
-              task.category === "Graduation Party Checklist" ||
-              taskDetails(task.id).listId === "graduation-party",
-          )
-          .map((task) => task.title.trim().toLowerCase().replace(/\s+/g, " ")),
-      );
-      const safeToAdd = tasks.filter(
-        (task) =>
-          !existingIds.has(String(task.id)) &&
-          !existingPartyTitles.has(
-            task.title.trim().toLowerCase().replace(/\s+/g, " "),
-          ),
-      );
-      return safeToAdd.length ? [...current, ...safeToAdd] : current;
-    });
+    setWorkPlanTasks((current) => [...current, ...tasks]);
     setTaskMeta((current) => {
       const next = { ...current };
       tasks.forEach((task, index) => {
@@ -15214,12 +14213,11 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function openGraduationPartyChecklist() {
-    const partyExists = checklistDefinitions().some(
-      (definition) => definition.id === "graduation-party",
-    );
-    if (partyExists) {
-      setSelectedListId("graduation-party");
+    if (!checklistItems("graduation-party").length) {
+      setTasksView("lists");
+      return;
     }
+    setSelectedListId("graduation-party");
     setTasksView("lists");
   }
 
@@ -15483,18 +14481,7 @@ ${notes.trim()}` : notes.trim(),
       window.localStorage.setItem(`atlas-task-meta-v1-${activePropertyId}`, JSON.stringify(nextMeta));
       if (activePropertyId === "2000") window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(nextMeta));
       if (listId === "graduation-party") {
-        window.localStorage.setItem(
-          `atlas-graduation-party-list-initialized-v2-${activePropertyId}`,
-          "ready",
-        );
-        window.localStorage.setItem(
-          `atlas-graduation-party-user-deleted-v1-${activePropertyId}`,
-          "true",
-        );
-        window.localStorage.setItem(
-          `atlas-graduation-party-dedupe-v1-${activePropertyId}`,
-          "ready",
-        );
+        window.localStorage.setItem(`atlas-graduation-party-list-initialized-v2-${activePropertyId}`, "ready");
       }
     } catch {}
 
@@ -15521,61 +14508,6 @@ ${notes.trim()}` : notes.trim(),
       updatedAt,
     });
     showSaveToast("Checklist item updated.");
-  }
-
-  function keepChecklistItemAsWeeklyTask(task: WorkPlanTask) {
-    const meta = taskDetails(task.id) as any;
-    const updatedAt = new Date().toISOString();
-    const nextTask: WorkPlanTask = {
-      ...task,
-      category:
-        task.category === "Graduation Party Checklist" ||
-        task.category === "Atlas Checklist Item"
-          ? "General"
-          : task.category,
-      recurring: true,
-      notes:
-        task.notes === "Graduation Party Checklist" ||
-        / checklist$/i.test(String(task.notes || ""))
-          ? ""
-          : task.notes,
-    };
-
-    const nextMeta = {
-      ...meta,
-      status: "Open",
-      dueDate: meta.dueDate || todayISO(),
-      recurrenceInterval: 1,
-      recurrenceUnit: "Weeks",
-      recurrenceEndDate: "",
-      listId: undefined,
-      listName: undefined,
-      dashboardListPinned: false,
-      listNotes: undefined,
-      listLeadId: undefined,
-      listMemberIds: undefined,
-      listDepartmentIds: undefined,
-      completedAt: undefined,
-      updatedAt,
-    };
-
-    setWorkPlanTasks((current) =>
-      current.map((item) => (item.id === task.id ? nextTask : item)),
-    );
-    setTaskMeta((current) => ({
-      ...current,
-      [task.id]: nextMeta,
-    }));
-
-    void postAtlasRecord("tasks" as AtlasTable, {
-      ...nextTask,
-      ...nextMeta,
-      taskMeta: nextMeta,
-      propertyId: activePropertyId,
-      updatedAt,
-    });
-
-    showSaveToast(`${task.title} is now a weekly Task.`);
   }
 
   function removeChecklistDuplicates(listId: string) {
@@ -15725,22 +14657,7 @@ ${notes.trim()}` : notes.trim(),
       ? workPlanTasks.filter((task) => taskDetails(task.id).listId === selectedDefinition.id || (selectedDefinition.id === "graduation-party" && task.category === "Graduation Party Checklist"))
       : [];
     const pinned = listRecords.some((task) => taskDetails(task.id).dashboardListPinned);
-    const listDefinitionRecord = listRecords.find(
-      (task) => task.category === "Atlas List Definition",
-    );
-    const listNotes = listDefinitionRecord
-      ? String((taskDetails(listDefinitionRecord.id) as any).listNotes ?? "")
-      : String(
-          listRecords
-            .slice()
-            .sort((a, b) =>
-              String((taskDetails(b.id) as any).updatedAt || "").localeCompare(
-                String((taskDetails(a.id) as any).updatedAt || ""),
-              ),
-            )
-            .map((task) => (taskDetails(task.id) as any).listNotes)
-            .find((value) => value !== undefined) ?? "",
-        );
+    const listNotes = listRecords.map((task) => taskDetails(task.id).listNotes || "").find(Boolean) || "";
     const listLeadId = listMetaValue<string>(
       selectedDefinition.id,
       "listLeadId",
@@ -15877,78 +14794,7 @@ ${notes.trim()}` : notes.trim(),
             Shared members can see this checklist in My Work. Individual items can still be assigned to different people or departments.
           </small>
         </div>
-        <label style={{ display: "grid", gap: 5, marginTop: 12 }}>
-          <span style={fieldLabelStyle}>LIST NOTES</span>
-          <textarea
-            value={listNotes}
-            onChange={(event) => updateListNotes(event.currentTarget.value)}
-            placeholder="Add instructions, reminders, vendor details, or notes for this list…"
-            rows={3}
-            style={{ ...inputStyle, resize: "vertical", lineHeight: 1.45 }}
-          />
-        </label>
-        {listNotes ? (
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-            <button
-              type="button"
-              onClick={() => {
-                const updatedAt = new Date().toISOString();
-                const listIds = new Set(listRecords.map((task) => String(task.id)));
-
-                setTaskMeta((current) => {
-                  const next = { ...current };
-                  listIds.forEach((id) => {
-                    next[id] = {
-                      ...(current[id] || taskDetails(id)),
-                      listId: selectedDefinition.id,
-                      listName: selectedDefinition.name,
-                      listNotes: "",
-                      updatedAt,
-                    } as AtlasTaskMeta;
-                  });
-
-                  try {
-                    window.localStorage.setItem(
-                      `atlas-task-meta-v1-${activePropertyId}`,
-                      JSON.stringify(next),
-                    );
-                    if (activePropertyId === "2000") {
-                      window.localStorage.setItem(
-                        "atlas-task-meta-v1",
-                        JSON.stringify(next),
-                      );
-                    }
-                  } catch {}
-
-                  return next;
-                });
-
-                listRecords.forEach((record) => {
-                  const meta = taskDetails(record.id) as any;
-                  const nextMeta = {
-                    ...meta,
-                    listId: selectedDefinition.id,
-                    listName: selectedDefinition.name,
-                    listNotes: "",
-                    updatedAt,
-                  };
-                  void postAtlasRecord("tasks" as AtlasTable, {
-                    ...record,
-                    ...nextMeta,
-                    taskMeta: nextMeta,
-                    propertyId: activePropertyId,
-                    updatedAt,
-                  });
-                });
-
-                showSaveToast("List note deleted.");
-              }}
-              style={{ ...compactUtilityButtonStyle, color: colors.red }}
-            >
-              Delete Note
-            </button>
-          </div>
-        ) : null}
+        <label style={{ display: "grid", gap: 5, marginTop: 12 }}><span style={fieldLabelStyle}>LIST NOTES</span><textarea value={listNotes} onChange={(event) => updateListNotes(event.currentTarget.value)} placeholder="Add instructions, reminders, vendor details, or notes for this list…" rows={3} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.45 }}/></label>
       </section>
       <section style={{ ...cardStyle, padding: 10 }}>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, marginBottom: 9 }}><input value={newPartyChecklistItem} onChange={(event) => setNewPartyChecklistItem(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addGraduationPartyChecklistItem(); }} placeholder="Add checklist item" style={inputStyle}/><button type="button" onClick={addGraduationPartyChecklistItem} style={goldButtonStyle}>Add</button></div>
@@ -15977,13 +14823,6 @@ ${notes.trim()}` : notes.trim(),
                   <span style={{ display: "block", color: colors.navy, fontWeight: 800, textDecoration: done ? "line-through" : "none", opacity: done ? .68 : 1 }}>{task.title}</span>
                   <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>{assignmentSummary}</small>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => keepChecklistItemAsWeeklyTask(task)}
-                  style={compactUtilityButtonStyle}
-                >
-                  Keep Weekly
-                </button>
                 <button type="button" onClick={() => editChecklistItem(task)} style={compactUtilityButtonStyle}>Edit</button>
                 <button type="button" aria-label={`Delete ${task.title}`} onClick={() => deleteAtlasTask(task.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
               </div>
@@ -16460,18 +15299,12 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function renderWorkPlanner() {
-    const visibleWorkPlanTasks = isAddisonUser
-      ? workPlanTasks.filter((task) =>
-          String(taskDetails(task.id).assignee || "").trim().toLowerCase() === "addison"
-        )
-      : workPlanTasks;
-
     return (
       <AtlasTasks
         ctx={{
           todayISO,
           addDays,
-          workPlanTasks: visibleWorkPlanTasks,
+          workPlanTasks,
           taskDetails,
           isAddisonUser,
           taskSearch,
@@ -17010,75 +15843,13 @@ ${notes.trim()}` : notes.trim(),
     }} />;
   }
   function renderRoutines() {
-    const today = todayISO();
-    const routineOpenCount = dashboardRoutineItems.filter(
-      (item) => !completedDashboardRoutineIds.includes(item.id),
-    ).length;
-    const todayAssignedTasks = workPlanTasks.filter((task) => {
-      const meta = taskMeta[task.id];
-      return meta?.dueDate === today && meta?.status !== "Completed";
-    });
-    const addisonCount = todayAssignedTasks.filter(
-      (task) => taskMeta[task.id]?.assignee === "Addison",
-    ).length;
-    const patCount = todayAssignedTasks.filter(
-      (task) => taskMeta[task.id]?.assignee === "Pat",
-    ).length;
-    const overdueCount = workPlanTasks.filter((task) => {
-      const meta = taskMeta[task.id];
-      return Boolean(meta?.dueDate) && meta!.dueDate < today && meta?.status !== "Completed";
-    }).length;
-    const todayWorkOrders = serviceRecords.filter(
-      (record) => record.status !== "Completed" && String(record.date || "").slice(0, 10) === today,
-    ).length;
-
     return (
-      <div style={{ display: "grid", gap: 12 }}>
-        {!isAddisonUser ? (
-          <section style={{ ...cardStyle, padding: isMobile ? 12 : 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <div>
-                <div style={eyebrowStyle}>Daily Foreman</div>
-                <strong style={{ color: colors.navy, fontSize: 18 }}>Today’s operating picture</strong>
-                <div style={{ ...mutedSmallStyle, marginTop: 3 }}>
-                  Routine and assignment status only. Nothing here is added to the Dashboard.
-                </div>
-              </div>
-              <div style={{ ...mutedSmallStyle, fontWeight: 800 }}>{formatDate(today)}</div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(5,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
-              {[
-                ["Routine open", routineOpenCount],
-                ["Work orders due", todayWorkOrders],
-                ["Addison", addisonCount],
-                ["Pat", patCount],
-                ["Overdue", overdueCount],
-              ].map(([label, value]) => (
-                <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 9, background: "#FFFFFF" }}>
-                  <span style={fieldLabelStyle}>{label}</span>
-                  <strong style={{ display: "block", marginTop: 3, color: colors.navy, fontSize: 20 }}>{value}</strong>
-                </div>
-              ))}
-            </div>
-            {overdueCount > 0 ? (
-              <div style={{ ...noticeStyle, marginTop: 10 }}>
-                {overdueCount} overdue task{overdueCount === 1 ? "" : "s"} need review in Tasks. Routine remains focused on today.
-              </div>
-            ) : null}
-          </section>
-        ) : null}
-
-        <AtlasRoutines
-          mode={isAddisonUser ? "dashboard" : "manager"}
-          isMobile={isMobile}
-          activePropertyId={activePropertyId}
-          teamDirectory={teamDirectory}
-          assigneeFilter={isAddisonUser ? "Addison" : undefined}
-          defaultTodayAssignee={isAddisonUser ? "Addison" : undefined}
-          employeeView={isAddisonUser}
-          allowTodayEditing={false}
-        />
-      </div>
+      <AtlasRoutines
+        mode={isAddisonUser ? "dashboard" : "manager"}
+        isMobile={isMobile}
+        activePropertyId={activePropertyId}
+        teamDirectory={teamDirectory}
+      />
     );
   }
 
@@ -20927,7 +19698,7 @@ ${notes.trim()}` : notes.trim(),
                 </div>
 
                 <div style={cardStyle}>
-                  <div style={eyebrowStyle}>Atlas Review</div>
+                  <div style={eyebrowStyle}>Atlas AI Review</div>
                   <h3 style={detailTitleStyle}>
                     Analysis Opens in a Separate Review Drawer
                   </h3>
@@ -21082,7 +19853,7 @@ ${notes.trim()}` : notes.trim(),
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Atlas Review"
+            aria-label="Atlas AI Review"
             onMouseDown={(event) => {
               if (event.currentTarget === event.target)
                 setInboxReviewOpen(false);
@@ -21116,7 +19887,7 @@ ${notes.trim()}` : notes.trim(),
                 }}
               >
                 <div>
-                  <div style={eyebrowStyle}>Atlas Review</div>
+                  <div style={eyebrowStyle}>Atlas AI Review</div>
                   <h2 style={{ ...detailTitleStyle, margin: "4px 0" }}>
                     {selected.title}
                   </h2>
@@ -21712,7 +20483,7 @@ ${notes.trim()}` : notes.trim(),
                   <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Attached Files ({intakeFiles.length})</summary>
                   <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
                   {intakeFiles.map((file) => (
-                    <div key={file.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 6, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
+                    <div key={file.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center", gap: 6, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
                       <strong>{file.name}</strong>
                         <button
                           type="button"
@@ -24642,7 +23413,7 @@ ${notes.trim()}` : notes.trim(),
                   Approval required
                 </h3>
                 <p style={{ ...mutedSmallStyle, lineHeight: 1.55, margin: 0 }}>
-                  Ask Atlas can answer property questions and prepare work orders, calendar events, and
+                  Ask Atlas can now prepare work orders, calendar events, and
                   draft procedures. Nothing is saved until you press Approve and
                   Save.
                 </p>
@@ -25382,54 +24153,197 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function renderDepartmentCenter(kind: DepartmentKind) {
-    const departmentConfig: Record<DepartmentKind, { title: string; short: string; icon: string; matcher: RegExp; detail: string; people: string[] }> = {
-      house: { title: "House & Maintenance", short: "House", icon: "⌂", matcher: /house|interior|exterior|room|appliance|boiler|hvac|mechanical|pump|electrical|plumbing|lighting|door|gate|alarm/i, detail: "House systems, mechanical equipment, inspections, repairs, procedures, service history, and current work.", people: ["Nick", "Vendors"] },
-      garage: { title: "Garage", short: "Garage", icon: "🚗", matcher: /garage|vehicle|car|mercedes|rivian|porsche|lucid|ford|kia|honda|subaru|charging|tire|fuel/i, detail: "Cars, weekly cleaning, inspections, charging, service, documents, photos, and connected work.", people: ["Nick", "Addison"] },
-      pool: { title: "Pool & Spa", short: "Pool & Spa", icon: "💧", matcher: /pool|spa|hot tub|sundance|fountain|filter|backwash|oxy|phosphate|vacuum/i, detail: "Pool, Spa, Fountain, water treatment, cleaning rotation, filter readings, equipment, procedures, and service history.", people: ["Nick", "Addison", "Vendors"] },
-      landscaping: { title: "Landscaping & Irrigation", short: "Landscaping", icon: "🌿", matcher: /landscap|garden|lawn|weed|irrigation|tree|grounds|bed|courtyard|waterside|veggie/i, detail: "Landscaping, irrigation, crew visits, areas, progress photos, tasks, work orders, and follow-up.", people: ["Pat", "Lanken Landscaping", "Addison"] },
-      marine: { title: "Dock & Waterfront", short: "Dock", icon: "⚓", matcher: /marine|dock|boat|cobalt|sea.?doo|lift|water trampoline|pwc|shoreline|waterfront/i, detail: "Dock, waterfront, boats, lifts, recreation equipment, service, procedures, documents, and photos.", people: ["Nick", "Vendors"] },
+    const departmentConfig: Record<DepartmentKind, { title: string; short: string; icon: string; detail: string; people: string[] }> = {
+      house: { title: "House & Maintenance", short: "House", icon: "⌂", detail: "House systems, mechanical equipment, inspections, repairs, procedures, service history, and current work.", people: ["Nick", "Vendors"] },
+      garage: { title: "Garage", short: "Garage", icon: "🚗", detail: "Cars, weekly cleaning, inspections, charging, service, documents, photos, and connected work.", people: ["Nick", "Addison"] },
+      pool: { title: "Pool & Spa", short: "Pool & Spa", icon: "💧", detail: "Pool, Spa, Fountain, water treatment, cleaning rotation, filter readings, equipment, procedures, and service history.", people: ["Nick", "Addison", "Vendors"] },
+      landscaping: { title: "Landscaping & Irrigation", short: "Landscaping", icon: "🌿", detail: "Landscaping, irrigation, crew visits, areas, progress photos, tasks, work orders, and follow-up.", people: ["Pat", "Lanken Landscaping", "Addison"] },
+      marine: { title: "Dock & Waterfront", short: "Dock", icon: "⚓", detail: "Dock, waterfront, boats, lifts, recreation equipment, service, procedures, documents, and photos.", people: ["Nick", "Vendors"] },
     };
     const config = departmentConfig[kind];
     const isLandscape = kind === "landscaping";
     const isMarine = kind === "marine";
     const title = config.title;
     const icon = config.icon;
-    const matcher = config.matcher;
-    const matches = (value: unknown) => matcher.test(recordSearchText(value));
-    const conventionalAppliancePattern = /\b(appliance|refrigerator|freezer|dishwasher|washing machine|washer|clothes dryer|tumble dryer|range|oven|microwave|ice maker)\b/i;
-    const isConventionalApplianceRecord = (value: unknown) => {
-      const record = (value || {}) as Record<string, unknown>;
-      const classificationText = [record.category, record.type, record.assetType, record.workCategory]
-        .filter(Boolean)
-        .join(" ");
-      const identityText = [record.title, record.name, record.description, record.notes]
-        .filter(Boolean)
-        .join(" ");
-      return /\bappliances?\b/i.test(classificationText) || conventionalAppliancePattern.test(identityText);
+
+    // Department Center records are resolved from their actual Atlas links first.
+    // Text matching is only a fallback for older/unlinked records. This prevents a
+    // Ford in New Garage, a wine fridge, a dryer, etc. from leaking into Dock merely
+    // because some unrelated field happens to contain a department keyword.
+    const departmentPatterns: Record<DepartmentKind, RegExp> = {
+      house: /\b(house|home|interior|exterior|room|appliance|boiler|hvac|mechanical|electrical|plumbing|lighting|door|alarm|wine\s*(fridge|refrigerator)|fridge|refrigerator|freezer|dryer|washer|laundry|kitchen|bath(room)?|roof|gutter|window|skylight)\b/i,
+      garage: /\b(garage|vehicle|vehicles|car|cars|mercedes|rivian|porsche|lucid|ford|f-?150|truck|charging|charger|tire|tires|fuel)\b/i,
+      pool: /\b(pool|spa|hot\s*tub|sundance|fountain|backwash|oxysheen|oxy\s*sheen|pool\s*juice|phosphate|pool\s*filter|spa\s*filter|pool\s*room)\b/i,
+      landscaping: /\b(landscap\w*|garden|lawn|weed\w*|irrigation|tree|grounds?|garden\s*bed|waterside\s*(bed|lawn)|veggie|mulch\w*|turf|dry\s*spot|plant\w*|mow\w*|edge\w*)\b/i,
+      marine: /\b(marine|dock|boat|cobalt|sea\s*-?\s*doo|seadoo|boat\s*lift|dock\s*lift|lift\s*box|water\s*trampoline|pwc|shoreline|waterfront)\b/i,
     };
-    const matchesDepartmentRecord = (value: unknown) =>
-      matches(value) && (kind !== "pool" || !isConventionalApplianceRecord(value));
-    const departmentWork = serviceRecords.filter((record) =>
-      isMarine ? isMarineServiceRecord(record) : isLandscape ? matches(record) && !isMarineServiceRecord(record) : matchesDepartmentRecord(record),
-    );
-    const openWork = departmentWork.filter((item) => !["Completed"].includes(String(item.status || "")));
+
+    const explicitDepartmentFromText = (text: string): DepartmentKind | null => {
+      if (!text.trim()) return null;
+
+      // Specific system/equipment words win before broad area words. For example,
+      // "courtyard gutters" is House & Maintenance, while "water pots in courtyard"
+      // can still fall through to Landscaping when no house-system term is present.
+      if (departmentPatterns.marine.test(text)) return "marine";
+      if (departmentPatterns.pool.test(text)) return "pool";
+      if (departmentPatterns.garage.test(text)) return "garage";
+      if (departmentPatterns.house.test(text)) return "house";
+      if (departmentPatterns.landscaping.test(text) || /\b(courtyard|patio)\b/i.test(text)) return "landscaping";
+      return null;
+    };
+
+    const locationDepartment = (locationId?: unknown): DepartmentKind | null => {
+      const id = String(locationId || "").trim();
+      if (!id) return null;
+      const location = locations.find((item) => String(item.id) === id);
+      if (!location) return null;
+      const record = location as Record<string, unknown>;
+      return explicitDepartmentFromText(recordSearchText(
+        record.name,
+        record.type,
+        record.zone,
+        record.area,
+        record.category,
+        record.notes,
+      ));
+    };
+
+    const assetDepartment = (asset?: AssetRecord | null): DepartmentKind | null => {
+      if (!asset) return null;
+      const atlasAsset = asset as AtlasAssetRecord & Record<string, unknown>;
+
+      // Primary saved location is authoritative. Only consult secondary locationIds
+      // when there is no usable primary location.
+      const primaryLocationDepartment = locationDepartment(atlasAsset.locationId);
+      if (primaryLocationDepartment) return primaryLocationDepartment;
+
+      const secondaryLocationIds = Array.isArray(atlasAsset.locationIds) ? atlasAsset.locationIds : [];
+      for (const locationId of secondaryLocationIds) {
+        const linkedDepartment = locationDepartment(locationId);
+        if (linkedDepartment) return linkedDepartment;
+      }
+
+      return explicitDepartmentFromText(recordSearchText(
+        atlasAsset.name,
+        atlasAsset.category,
+        atlasAsset.type,
+        atlasAsset.assetType,
+        atlasAsset.system,
+        atlasAsset.area,
+        atlasAsset.notes,
+      ));
+    };
+
+    const assetDepartmentById = (assetId?: unknown): DepartmentKind | null => {
+      const id = String(assetId || "").trim();
+      if (!id) return null;
+      return assetDepartment(assetRecords.find((asset) => String(asset.id) === id) || null);
+    };
+
+    const workDepartment = (value: ServiceRecord): DepartmentKind | null => {
+      const record = value as AtlasServiceRecord & Record<string, unknown>;
+
+      // A linked asset is the strongest signal because the asset already has a saved
+      // location. A linked work-order location is next. Do not override either with
+      // keyword matching from the title/notes.
+      const linkedAssetDepartment = assetDepartmentById(record.assetId);
+      if (linkedAssetDepartment) return linkedAssetDepartment;
+
+      const linkedLocationDepartment = locationDepartment(record.locationId);
+      if (linkedLocationDepartment) return linkedLocationDepartment;
+
+      return explicitDepartmentFromText(recordSearchText(
+        record.title,
+        record.workCategory,
+        record.responsibilityArea,
+        record.category,
+        record.area,
+        record.notes,
+      ));
+    };
+
+    const documentDepartment = (value: DocumentRecord): DepartmentKind | null => {
+      const document = value as DocumentRecord & Record<string, unknown>;
+      const linkedAssetId = document.linkedAssetId || (document.targetType === "Asset" ? document.targetId : "");
+      const linkedAssetDepartment = assetDepartmentById(linkedAssetId);
+      if (linkedAssetDepartment) return linkedAssetDepartment;
+
+      const linkedLocationId = document.targetType === "Location" ? document.targetId : document.locationId;
+      const linkedLocationDepartment = locationDepartment(linkedLocationId);
+      if (linkedLocationDepartment) return linkedLocationDepartment;
+
+      return explicitDepartmentFromText(recordSearchText(
+        document.title,
+        document.type,
+        document.area,
+        document.targetName,
+        document.notes,
+      ));
+    };
+
+    const procedureDepartment = (value: ProcedureRecord): DepartmentKind | null => {
+      const procedure = value as ProcedureRecord & Record<string, unknown>;
+      const linkedAssetIds = Array.isArray(procedure.linkedAssetIds) ? procedure.linkedAssetIds : [];
+      for (const assetId of linkedAssetIds) {
+        const linkedDepartment = assetDepartmentById(assetId);
+        if (linkedDepartment) return linkedDepartment;
+      }
+
+      const linkedLocationIds = Array.isArray(procedure.linkedLocationIds) ? procedure.linkedLocationIds : [];
+      for (const locationId of linkedLocationIds) {
+        const linkedDepartment = locationDepartment(locationId);
+        if (linkedDepartment) return linkedDepartment;
+      }
+
+      return explicitDepartmentFromText(recordSearchText(
+        procedure.title,
+        procedure.area,
+        procedure.category,
+        procedure.purpose,
+        procedure.notes,
+      ));
+    };
+
+    const genericDepartment = (value: unknown): DepartmentKind | null => {
+      const record = (value || {}) as Record<string, unknown>;
+
+      const linkedAssetDepartment = assetDepartmentById(record.assetId || record.linkedAssetId);
+      if (linkedAssetDepartment) return linkedAssetDepartment;
+
+      const linkedLocationDepartment = locationDepartment(record.locationId || record.linkedLocationId);
+      if (linkedLocationDepartment) return linkedLocationDepartment;
+
+      return explicitDepartmentFromText(recordSearchText(
+        record.title,
+        record.name,
+        record.area,
+        record.category,
+        record.type,
+        record.department,
+        record.notes,
+        record.description,
+      ));
+    };
+
+    const departmentWork = serviceRecords.filter((record) => workDepartment(record) === kind);
+    const openWork = departmentWork.filter((item) => String(item.status || "") !== "Completed");
     const completedWork = departmentWork.filter((item) => String(item.status || "") === "Completed");
-    const departmentAssets = isMarine ? assetRecords.filter((asset) => marineAssetIds.has(asset.id)) : assetRecords.filter((asset) => matchesDepartmentRecord(asset) && (!isLandscape || !isMarineAssetRecord(asset)));
-    const departmentLocations = isMarine ? locations.filter((location) => marineLocationIds.has(location.id)) : locations.filter((location) => matches(location) && (!isLandscape || !marineLocationIds.has(location.id)));
-    const departmentVendors = vendorRecords.filter(matches);
-    const departmentDocuments = mergeDocuments(documents, intakeDocs).filter((document) =>
-      isMarine ? isMarineDocumentRecord(document) : matchesDepartmentRecord(document) && (!isLandscape || !isMarineDocumentRecord(document)),
-    );
-    const departmentProcedures = procedureRecords.filter((procedure) =>
-      isMarine
-        ? marineDepartmentPattern.test(recordSearchText(procedure)) ||
-          (procedure.linkedAssetIds || []).some((id) => marineAssetIds.has(id)) ||
-          (procedure.linkedLocationIds || []).some((id) => marineLocationIds.has(id))
-        : matchesDepartmentRecord(procedure) && (!isLandscape || !marineDepartmentPattern.test(recordSearchText(procedure))),
-    );
-    const departmentRequests = requestRecords.filter((request) =>
-      isMarine ? matches(request) : matchesDepartmentRecord(request) && (!isLandscape || !marineDepartmentPattern.test(recordSearchText(request))),
-    );
+    const departmentAssets = assetRecords.filter((asset) => assetDepartment(asset) === kind);
+    const departmentLocations = locations.filter((location) => {
+      const record = location as Record<string, unknown>;
+      return explicitDepartmentFromText(recordSearchText(
+        record.name,
+        record.type,
+        record.zone,
+        record.area,
+        record.category,
+        record.notes,
+      )) === kind;
+    });
+    const departmentVendors = vendorRecords.filter((vendor) => genericDepartment(vendor) === kind);
+    const departmentDocuments = mergeDocuments(documents, intakeDocs).filter((document) => documentDepartment(document) === kind);
+    const departmentProcedures = procedureRecords.filter((procedure) => procedureDepartment(procedure) === kind);
+    const departmentRequests = requestRecords.filter((request) => genericDepartment(request) === kind);
     const assignedNames = config.people;
 
     const openCenter = (next: AtlasScreen) => {
@@ -25653,7 +24567,7 @@ ${notes.trim()}` : notes.trim(),
     let content: React.ReactNode;
 
     if (isAddisonUser) {
-      content = screen === "routines" ? renderRoutines() : renderAddisonToday();
+      content = screen === "routines" ? renderRoutines() : renderWorkPlanner();
     } else if (departmentCenter) content = renderDepartmentCenter(departmentCenter);
     else if (screen === "dashboard") content = renderDashboard();
     else if (screen === "portfolio") content = renderPortfolio();
@@ -25786,7 +24700,7 @@ ${notes.trim()}` : notes.trim(),
                 <button type="button" onClick={() => openQuickCapture("asset")}><span>◇</span>{quickCaptureMode === "create" ? "New Asset" : "Existing Asset"}</button>
                 <button type="button" onClick={() => openQuickCapture("vendor")}><span>V</span>{quickCaptureMode === "create" ? "New Vendor" : "Existing Vendor"}</button>
                 <button type="button" onClick={() => openQuickCapture("procedure")}><span>☷</span>{quickCaptureMode === "create" ? "New Procedure" : "Existing Procedure"}</button>
-                <button type="button" className="atlas-talk-action" onClick={() => { setQuickCaptureOpen(false); startVoiceAssistant(); }}><span>✦</span>Athena</button>
+                <button type="button" className="atlas-talk-action" onClick={() => { setQuickCaptureOpen(false); startVoiceAssistant(); }}><span>✦</span>Talk to Atlas</button>
               </div>
               <label className="atlas-quick-note-box">
                 <span>Quick note</span>
@@ -25942,28 +24856,7 @@ ${notes.trim()}` : notes.trim(),
           scroll-margin-top: 18px;
         }
         .atlas-page-header {
-          border-radius: 0 0 16px 16px;
-          box-shadow: 0 10px 26px rgba(7,27,47,0.12);
-          overflow: hidden;
-        }
-        .atlas-page-header button {
-          min-height: 40px;
-        }
-        .atlas-app-shell button {
-          -webkit-tap-highlight-color: transparent;
-        }
-        .atlas-app-shell button:active {
-          transform: translateY(1px);
-          box-shadow: none !important;
-        }
-        .atlas-app-shell button:disabled {
-          cursor: not-allowed !important;
-          opacity: 0.5;
-          box-shadow: none !important;
-        }
-        .atlas-app-shell [style*="border-top: 4px solid #C99A3D"],
-        .atlas-app-shell [style*="border-top:4px solid #C99A3D"] {
-          border-top-color: transparent !important;
+          border-radius: 0 0 14px 14px;
         }
         .atlas-page-header + * {
           margin-top: 10px;
@@ -25992,13 +24885,8 @@ ${notes.trim()}` : notes.trim(),
           transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
         }
         .atlas-app-shell button:hover {
-          border-color: #9FB0BF !important;
-          box-shadow: 0 3px 10px rgba(15,35,55,0.07);
-        }
-        .atlas-sidebar-nav-button:hover {
-          background: rgba(255,255,255,.08) !important;
-          border-color: rgba(255,255,255,.14) !important;
-          box-shadow: none !important;
+          border-color: rgba(201,154,61,0.72) !important;
+          box-shadow: 0 4px 14px rgba(15,35,55,0.08);
         }
         .atlas-app-shell input:hover, .atlas-app-shell select:hover, .atlas-app-shell textarea:hover {
           border-color: #9FB0BF !important;
@@ -27579,12 +26467,6 @@ ${notes.trim()}` : notes.trim(),
             font-size: clamp(20px, 6.4vw, 27px) !important;
             line-height: 1.1 !important;
           }
-          .atlas-app-shell button {
-            min-height: 40px;
-          }
-          .atlas-app-shell .atlas-sidebar-nav-button {
-            min-height: 36px !important;
-          }
         }
       `}</style>
       <div
@@ -27648,54 +26530,125 @@ ${notes.trim()}` : notes.trim(),
           </div>
 
           {isMobile ? (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(0, 1fr) auto auto",
-                gap: 8,
-                alignItems: "center",
-                width: "100%",
-              }}
-            >
+            <div style={mobileMenuRowStyle}>
               <select
-                value={activePropertyId}
-                onChange={(event) => selectProperty(event.currentTarget.value)}
-                aria-label="Active property"
-                style={{
-                  ...mobileMenuSelectStyle,
-                  width: "100%",
-                  minWidth: 0,
-                  minHeight: 42,
+                value={
+                  screen === "planner"
+                    ? tasksView === "walk"
+                      ? "planner:walk"
+                    : tasksView === "build"
+                      ? "planner:build"
+                      : tasksView === "route"
+                        ? "planner:route"
+                      : tasksView === "analytics"
+                        ? "planner:analytics"
+                      : tasksView === "vehicles"
+                      ? "planner:vehicles"
+                      : tasksView === "lists"
+                      ? "planner:lists"
+                      : tasksView === "planner"
+                        ? "planner:week"
+                        : "planner:tasks"
+                    : screen
+                }
+                onChange={(event) => {
+                  const nextValue = event.currentTarget.value;
+                  if (nextValue === "planner:tasks") {
+                    setTasksView("tasks");
+                    setScreen("planner");
+                    return;
+                  }
+                  if (nextValue === "planner:walk") {
+                    setTasksView("walk");
+                    setScreen("planner");
+                    return;
+                  }
+                  if (nextValue === "planner:build") {
+                    setTasksView("build");
+                    setScreen("planner");
+                    return;
+                  }
+                  if (nextValue === "planner:route") {
+                    setTasksView("route");
+                    setScreen("planner");
+                    return;
+                  }
+                  if (nextValue === "planner:analytics") {
+                    setTasksView("analytics");
+                    setScreen("planner");
+                    return;
+                  }
+                  if (nextValue === "planner:vehicles") {
+                    setTasksView("vehicles");
+                    setScreen("planner");
+                    return;
+                  }
+                  if (nextValue === "planner:lists") {
+                    openGraduationPartyChecklist();
+                    setScreen("planner");
+                    return;
+                  }
+                  if (nextValue === "planner:week") {
+                    setTasksView("planner");
+                    setScreen("planner");
+                    return;
+                  }
+                  const nextScreen = nextValue as Screen;
+                  if (nextScreen === "history") {
+                    setSelectedServiceId("");
+                    setWorkOrdersOpenKey((current) => current + 1);
+                  }
+                  setScreen(nextScreen);
                 }}
+                style={mobileMenuSelectStyle}
+                aria-label="Open Atlas section"
               >
-                {atlasProperties
-                  .filter((property) => allowedPropertyIds.includes(property.id))
-                  .map((property) => (
-                    <option key={property.id} value={property.id}>
-                      {property.name}
-                    </option>
-                  ))}
+                {isAddisonUser ? (
+                  <optgroup label="My Day">
+                    <option value="planner:tasks">My Tasks</option>
+                    <option value="routines">My Routine</option>
+                  </optgroup>
+                ) : (
+                  <>
+                    <optgroup label="Daily Work">
+                      <option value="planner:tasks">Tasks</option>
+                      <option value="planner:lists">Lists</option>
+                    </optgroup>
+                    <optgroup label="Main">
+                      {visibleAtlasScreens
+                        .filter(
+                          (item) =>
+                            item.id !== "intake" &&
+                            item.id !== "planner" &&
+                            item.id !== "manuals" &&
+                            !atlasMoreToolsScreens.includes(item.id),
+                        )
+                        .map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}
+                          </option>
+                        ))}
+                    </optgroup>
+                    <optgroup label="More Tools">
+                      {visibleMoreToolsScreens
+                        .map((screenId) =>
+                          screens.find((item) => item.id === screenId),
+                        )
+                        .filter(Boolean)
+                        .map((item) => (
+                          <option key={item!.id} value={item!.id}>
+                            {item!.label}
+                          </option>
+                        ))}
+                    </optgroup>
+                  </>
+                )}
               </select>
-              <button
-                type="button"
-                onClick={() => setDashboardAssistantOpen(true)}
-                aria-label="Athena"
-                title="Athena"
-                style={{
-                  ...secondaryButtonStyle,
-                  width: 42,
-                  minWidth: 42,
-                  minHeight: 42,
-                  padding: 0,
-                  display: "grid",
-                  placeItems: "center",
-                  borderColor: "rgba(255,255,255,.22)",
-                  background: "rgba(255,255,255,.10)",
-                  color: "#FFFFFF",
-                }}
-              >
-                <span aria-hidden="true" style={{ fontSize: 17 }}>✦</span>
-              </button>
+              {!isTeamScopedUser ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {([['house','⌂ House'],['garage','🚗 Garage'],['pool','💧 Pool & Spa'],['landscaping','🌿 Landscaping'],['marine','⚓ Dock']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => { setDepartmentDrilldown(""); setDepartmentCenter(id); }} style={{ ...secondaryButtonStyle, borderColor: departmentCenter === id ? colors.gold : colors.line }}>{label}</button>)}
+                </div>
+              ) : null}
             </div>
           ) : (
             <>
@@ -27762,7 +26715,7 @@ ${notes.trim()}` : notes.trim(),
                             key={item.id}
                             type="button"
                             className="atlas-sidebar-nav-button"
-                            title={sidebarCollapsed ? (item.id === "timeline" ? "Property Timeline" : item.id === "portfolio" ? "Properties" : item.label) : undefined}
+                            title={sidebarCollapsed ? (item.id === "timeline" ? "Projects" : item.id === "portfolio" ? "Properties" : item.label) : undefined}
                             onClick={() => {
                               if (item.id === "history") {
                                 setSelectedServiceId("");
@@ -27788,7 +26741,7 @@ ${notes.trim()}` : notes.trim(),
                               {isAddisonUser && item.id === "routines"
                                 ? "My Routine"
                                 : item.id === "timeline"
-                                  ? "Property Timeline"
+                                  ? "Projects"
                                   : item.id === "portfolio"
                                     ? "Properties"
                                     : item.label}
@@ -27913,7 +26866,7 @@ ${notes.trim()}` : notes.trim(),
             width: "100%",
             maxWidth: isMobile ? "100vw" : "none",
             overflowX: isMobile ? "hidden" : "visible",
-            paddingBottom: isMobile ? 104 : 0,
+            paddingBottom: isMobile ? 112 : 0,
           }}
         >
           <header className="atlas-page-header" style={isMobile ? mobileTopbarStyle : topbarStyle}>
@@ -27965,7 +26918,6 @@ ${notes.trim()}` : notes.trim(),
                               ? "My Routine"
                               : screens.find((item) => item.id === screen)?.label}
                   </h1>
-                  {!isMobile ? (
                   <div
                     role="status"
                     aria-live="polite"
@@ -28027,22 +26979,18 @@ ${notes.trim()}` : notes.trim(),
                         ? "Saved offline"
                         : "Syncing..."}
                   </div>
-                  ) : null}
-                  {!isMobile ? (
                   <button type="button" onClick={() => { if (operationsSyncState === "failed") void syncOperationalData(); }} title={operationsSyncMessage} style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 26, padding: "4px 9px", borderRadius: 999, border: `1px solid ${operationsSyncState === "failed" ? "#E8A2A2" : operationsSyncState === "saving" ? "#E7C46A" : "#9FD6B8"}`, background: operationsSyncState === "failed" ? "#FFF2F2" : operationsSyncState === "saving" ? "#FFF8E8" : "#F0FBF5", color: operationsSyncState === "failed" ? "#A51E1E" : operationsSyncState === "saving" ? "#8A5A00" : "#176B3A", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap", cursor: operationsSyncState === "failed" ? "pointer" : "default" }}><span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: "50%", background: operationsSyncState === "failed" ? "#D83737" : operationsSyncState === "saving" ? colors.gold : "#2BA568" }} />{operationsSyncState === "saving" ? "Saving" : operationsSyncState === "failed" ? "Failed · Retry" : operationsSyncState === "saved" ? "Saved" : "Ready"}</button>
-                  ) : null}
                 </div>
                 {screen === "dashboard" && !isMobile ? (
                   <p style={headerSubStyle}>{databaseStatus}</p>
                 ) : null}
               </div>
 
-              {!isMobile ? (
               <div
                 style={{
                   width: "100%",
                   minWidth: 0,
-                  flex: "1 1 760px",
+                  flex: isMobile ? "0 0 auto" : "1 1 760px",
                   display: "grid",
                   gridTemplateColumns: isMobile
                     ? "minmax(0, 1fr) auto"
@@ -28127,8 +27075,8 @@ ${notes.trim()}` : notes.trim(),
                 <button
                   type="button"
                   onClick={() => setDashboardAssistantOpen(true)}
-                  aria-label="Open Athena"
-                  title="Athena"
+                  aria-label="Open Ask Atlas"
+                  title="Ask Atlas"
                   style={{
                     ...secondaryButtonStyle,
                     width: "auto",
@@ -28147,8 +27095,9 @@ ${notes.trim()}` : notes.trim(),
                   }}
                 >
                   <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>✦</span>
-                  {!isMobile ? <span>Athena</span> : null}
+                  {!isMobile ? <span>Ask Atlas</span> : null}
                 </button>
+                <button type="button" onClick={startVoiceAssistant} aria-label="Talk to Atlas" title="Talk to Atlas" style={{ ...secondaryButtonStyle, width: "auto", minWidth: isMobile ? 44 : 112, minHeight: 40, margin: 0, padding: isMobile ? "7px 10px" : "7px 12px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, whiteSpace: "nowrap", borderColor: voiceAssistantListening ? colors.gold : "rgba(255,255,255,.24)", background: voiceAssistantListening ? colors.gold : "rgba(255,255,255,.12)", color: voiceAssistantListening ? colors.navy : "#FFFFFF" }}><span aria-hidden="true" style={{ fontSize: 16 }}>{voiceAssistantListening ? "●" : "🎤"}</span>{!isMobile ? <span>{voiceAssistantListening ? "Listening…" : "Talk to Atlas"}</span> : null}</button>
                 <div
                     style={{ position: "relative", minWidth: 0, gridColumn: isMobile ? "1 / -1" : undefined }}
                     onBlur={() => {
@@ -28162,12 +27111,11 @@ ${notes.trim()}` : notes.trim(),
                       value={query}
                       onFocus={() => {
                         setCommandCenterOpen(true);
-                        setSearchOpen(false);
+                        setSearchOpen(true);
                       }}
                       onChange={(event) => {
-                        const nextQuery = event.currentTarget.value;
-                        setQuery(nextQuery);
-                        setSearchOpen(false);
+                        setQuery(event.currentTarget.value);
+                        setSearchOpen(true);
                         setSearchActiveIndex(0);
                       }}
                       onKeyDown={(event) => {
@@ -28203,7 +27151,7 @@ ${notes.trim()}` : notes.trim(),
                         margin: 0,
                       }}
                     />
-                    {false ? (
+                    {searchOpen ? (
                       <div style={searchDropStyle}>
                         {query.trim() ? (
                           <>
@@ -28229,7 +27177,6 @@ ${notes.trim()}` : notes.trim(),
                     ) : null}
                   </div>
               </div>
-              ) : null}
             </div>
           </header>
 
@@ -28238,233 +27185,6 @@ ${notes.trim()}` : notes.trim(),
           </div>
         </section>
       </div>
-
-      {isMobile ? (
-        <>
-          <nav
-            aria-label="Atlas Field Mode"
-            style={{
-              position: "fixed",
-              left: 8,
-              right: 8,
-              bottom: "max(8px, env(safe-area-inset-bottom))",
-              zIndex: 9000,
-              display: "grid",
-              gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-              gap: 4,
-              padding: 6,
-              borderRadius: 18,
-              border: `1px solid ${colors.line}`,
-              background: "rgba(255,255,255,.97)",
-              boxShadow: "0 14px 40px rgba(7,27,47,.20)",
-              backdropFilter: "blur(14px)",
-            }}
-          >
-            {[
-              {
-                id: "today",
-                label: "Today",
-                active: screen === "routines",
-                action: () => {
-                  setMobileFieldMoreOpen(false);
-                  setScreen("routines");
-                },
-              },
-              {
-                id: "work",
-                label: "Work",
-                active: screen === "history",
-                action: () => {
-                  setMobileFieldMoreOpen(false);
-                  setSelectedServiceId("");
-                  setWorkOrdersOpenKey((current) => current + 1);
-                  setScreen("history");
-                },
-              },
-              {
-                id: "property",
-                label: "Property",
-                active: screen === "assets" || screen === "locations" || screen === "vendors",
-                action: () => {
-                  setMobileFieldMoreOpen(false);
-                  setScreen("assets");
-                },
-              },
-              {
-                id: "notes",
-                label: "Notes",
-                active: screen === "notes",
-                action: () => {
-                  setMobileFieldMoreOpen(false);
-                  setScreen("notes");
-                },
-              },
-              {
-                id: "more",
-                label: "More",
-                active: mobileFieldMoreOpen,
-                action: () => setMobileFieldMoreOpen((current) => !current),
-              },
-            ].map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={item.action}
-                style={{
-                  minWidth: 0,
-                  minHeight: 48,
-                  padding: "6px 3px",
-                  borderRadius: 12,
-                  border: item.active ? `1px solid ${colors.gold}` : "1px solid transparent",
-                  background: item.active ? "#FFF8E8" : "transparent",
-                  color: colors.navy,
-                  fontSize: 11,
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-
-          {mobileFieldMoreOpen ? (
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="More Atlas field tools"
-              onMouseDown={(event) => {
-                if (event.currentTarget === event.target) setMobileFieldMoreOpen(false);
-              }}
-              style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 8990,
-                display: "grid",
-                alignItems: "end",
-                background: "rgba(7,27,47,.36)",
-                padding: "12px 12px calc(82px + env(safe-area-inset-bottom))",
-              }}
-            >
-              <section
-                onMouseDown={(event) => event.stopPropagation()}
-                style={{
-                  width: "100%",
-                  maxHeight: "72dvh",
-                  overflowY: "auto",
-                  borderRadius: 20,
-                  background: "#FFFFFF",
-                  border: `1px solid ${colors.line}`,
-                  boxShadow: "0 22px 60px rgba(7,27,47,.28)",
-                  padding: 12,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 10,
-                    marginBottom: 10,
-                  }}
-                >
-                  <div>
-                    <div style={eyebrowStyle}>Field Mode</div>
-                    <strong style={{ color: colors.navy, fontSize: 17 }}>More</strong>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setMobileFieldMoreOpen(false)}
-                    style={{ ...secondaryButtonStyle, width: "auto", minHeight: 36, padding: "6px 10px" }}
-                  >
-                    Close
-                  </button>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                    gap: 8,
-                  }}
-                >
-                  {[
-                    ["Tasks", () => { setTasksView("tasks"); setScreen("planner"); }],
-                    ["Calendar", () => setScreen("calendar")],
-                    ["Locations", () => setScreen("locations")],
-                    ["Vendors", () => setScreen("vendors")],
-                    ["Documents", () => setScreen("documents")],
-                    ["Requests", () => setScreen("requests")],
-                    ["Procedures", () => setScreen("procedures")],
-                    ["Inbox", () => setScreen("inbox")],
-                    ["QR / Scan", () => setScreen("scan")],
-                  ].map(([label, action]) => (
-                    <button
-                      key={label as string}
-                      type="button"
-                      onClick={() => {
-                        setMobileFieldMoreOpen(false);
-                        (action as () => void)();
-                      }}
-                      style={{
-                        ...secondaryButtonStyle,
-                        minHeight: 48,
-                        padding: "9px 10px",
-                        justifyContent: "flex-start",
-                        textAlign: "left",
-                      }}
-                    >
-                      {label as string}
-                    </button>
-                  ))}
-                </div>
-
-                {!isTeamScopedUser ? (
-                  <>
-                    <div style={{ ...eyebrowStyle, marginTop: 14, marginBottom: 7 }}>
-                      Property Areas
-                    </div>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                        gap: 8,
-                      }}
-                    >
-                      {([
-                        ["house", "House & Maintenance"],
-                        ["garage", "Garage"],
-                        ["pool", "Pool & Spa"],
-                        ["landscaping", "Landscaping"],
-                        ["marine", "Dock & Waterfront"],
-                      ] as const).map(([id, label]) => (
-                        <button
-                          key={id}
-                          type="button"
-                          onClick={() => {
-                            setMobileFieldMoreOpen(false);
-                            setDepartmentDrilldown("");
-                            setDepartmentCenter(id);
-                          }}
-                          style={{
-                            ...secondaryButtonStyle,
-                            minHeight: 46,
-                            padding: "8px 10px",
-                            justifyContent: "flex-start",
-                            textAlign: "left",
-                          }}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                ) : null}
-              </section>
-            </div>
-          ) : null}
-        </>
-      ) : null}
 
       {true ? (
         <>
@@ -28695,7 +27415,7 @@ ${notes.trim()}` : notes.trim(),
             <div
               role="dialog"
               aria-modal="true"
-              aria-label="Athena"
+              aria-label="Atlas AI Assistant"
               style={{
                 position: "fixed",
                 inset: 0,
@@ -28743,10 +27463,10 @@ ${notes.trim()}` : notes.trim(),
                     <AtlasMiniMark size={38} />
                     <div>
                       <div style={{ ...eyebrowStyle, color: colors.gold2 }}>
-                        Atlas
+                        Atlas AI
                       </div>
                       <strong style={{ fontSize: 17 }}>
-                        Assistant
+                        Property Assistant
                       </strong>
                     </div>
                   </div>
@@ -28762,7 +27482,7 @@ ${notes.trim()}` : notes.trim(),
                       borderColor: "rgba(255,255,255,0.28)",
                       color: "#FFFFFF",
                     }}
-                    aria-label="Close Atlas"
+                    aria-label="Close Atlas AI"
                   >
                     {closeSymbol}
                   </button>
@@ -28778,121 +27498,7 @@ ${notes.trim()}` : notes.trim(),
                     gap: 10,
                   }}
                 >
-                  {!assistantTurns.length ? (
-                    <div style={{ display: "grid", gap: 12 }}>
-                      <div>
-                        <div style={{ ...eyebrowStyle, marginBottom: 7 }}>Athena Actions</div>
-                        <div style={{ ...mutedSmallStyle, marginBottom: 9 }}>
-                          Athena helps you run the day. Ask Atlas remains the property knowledge system.
-                        </div>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: isMobile
-                              ? "repeat(2,minmax(0,1fr))"
-                              : "repeat(2,minmax(0,1fr))",
-                            gap: 8,
-                          }}
-                        >
-                          {[
-                            {
-                              label: "Plan My Day",
-                              detail: "Build today around priorities and available time.",
-                              action: () => {
-                                setDashboardAssistantOpen(false);
-                                setTasksView("tasks");
-                                setScreen("planner");
-                              },
-                            },
-                            {
-                              label: "Needs Attention",
-                              detail: "Review overdue and high-priority property work.",
-                              action: () => {
-                                const prompt = "What needs my attention right now?";
-                                setAssistantQuestion(prompt);
-                                void askAtlas(prompt);
-                              },
-                            },
-                            {
-                              label: "Find Something",
-                              detail: "Search Atlas records from one place.",
-                              action: () => {
-                                setDashboardAssistantOpen(false);
-                                setCommandCenterOpen(true);
-                                setSearchOpen(true);
-                              },
-                            },
-                            {
-                              label: "Create Work",
-                              detail: "Speak a task, work order, or project for review.",
-                              action: () => {
-                                setDashboardAssistantOpen(false);
-                                startVoiceAssistant();
-                              },
-                            },
-                          ].map((item) => (
-                            <button
-                              key={item.label}
-                              type="button"
-                              onClick={item.action}
-                              style={{
-                                ...secondaryButtonStyle,
-                                minHeight: 78,
-                                padding: 10,
-                                textAlign: "left",
-                                justifyContent: "flex-start",
-                                alignItems: "flex-start",
-                                whiteSpace: "normal",
-                              }}
-                            >
-                              <span>
-                                <strong
-                                  style={{
-                                    display: "block",
-                                    color: colors.navy,
-                                    marginBottom: 3,
-                                  }}
-                                >
-                                  {item.label}
-                                </strong>
-                                <small style={{ ...mutedSmallStyle, lineHeight: 1.3 }}>
-                                  {item.detail}
-                                </small>
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={startVoiceAssistant}
-                        style={{
-                          ...goldButtonStyle,
-                          width: "100%",
-                          minHeight: 48,
-                          gap: 8,
-                        }}
-                      >
-                        <span aria-hidden="true">{voiceAssistantListening ? "●" : "🎤"}</span>
-                        {voiceAssistantListening ? "Listening…" : "Talk to Athena"}
-                      </button>
-
-                      <div style={{ ...mutedSmallStyle, textAlign: "center" }}>
-                        Nothing is saved automatically. Athena prepares changes for review first.
-                      </div>
-
-                      <div
-                        style={{
-                          ...cardStyle,
-                          whiteSpace: "pre-wrap",
-                          lineHeight: 1.55,
-                        }}
-                      >
-                        {assistantAnswer}
-                      </div>
-                    </div>
-                  ) : (
+                  {assistantTurns.length ? (
                     assistantTurns.slice(-8).map((turn) => (
                       <div
                         key={turn.id}
@@ -28923,6 +27529,16 @@ ${notes.trim()}` : notes.trim(),
                         </div>
                       </div>
                     ))
+                  ) : (
+                    <div
+                      style={{
+                        ...cardStyle,
+                        whiteSpace: "pre-wrap",
+                        lineHeight: 1.55,
+                      }}
+                    >
+                      {assistantAnswer}
+                    </div>
                   )}
 
                   {assistantLoading ? (
@@ -28956,9 +27572,9 @@ ${notes.trim()}` : notes.trim(),
 
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {[
-                      "Summarize today",
+                      "What do I need to do today?",
                       "Show high-priority work orders",
-                      "What needs my attention?",
+                      "Find an asset or manual",
                     ].map((prompt) => (
                       <button
                         key={prompt}
@@ -29038,7 +27654,7 @@ ${notes.trim()}` : notes.trim(),
                       marginTop: 8,
                     }}
                   >
-                    Ask Atlas
+                    Open Full Ask Atlas
                   </button>
                 </footer>
               </section>
@@ -29505,22 +28121,22 @@ const brandStyle: React.CSSProperties = {
 };
 
 const logoBoxStyle: React.CSSProperties = {
-  width: 38,
-  height: 38,
-  borderRadius: 10,
-  background: "#FFFFFF",
-  border: "1px solid rgba(255,255,255,.22)",
+  width: 30,
+  height: 30,
+  borderRadius: 12,
+  background: colors.gold,
+  border: `1px solid ${colors.gold}`,
   display: "grid",
   placeItems: "center",
   overflow: "hidden",
-  boxShadow: "0 8px 22px rgba(0,0,0,0.16)",
+  boxShadow: "0 12px 26px rgba(0,0,0,0.22)",
 };
 
 const logoImageStyle: React.CSSProperties = {
   width: "100%",
   height: "100%",
   objectFit: "contain",
-  padding: 3,
+  padding: 5,
 };
 
 const logoFallbackStyle: React.CSSProperties = {
@@ -29571,17 +28187,16 @@ const sidebarNavItemsStyle: React.CSSProperties = {
 const navButtonStyle: React.CSSProperties = {
   width: "100%",
   border: "1px solid transparent",
-  borderRadius: 9,
-  padding: "6px 9px",
+  borderRadius: 8,
+  padding: "clamp(3px, 0.5vh, 5px) 7px",
   textAlign: "left",
   cursor: "pointer",
-  fontWeight: 800,
-  fontSize: "clamp(12px, 1.5vh, 14px)",
+  fontWeight: 850,
+  fontSize: "clamp(12px, 1.55vh, 14px)",
   lineHeight: 1.2,
-  minHeight: 34,
+  minHeight: "clamp(25px, 3.2vh, 31px)",
   display: "flex",
   alignItems: "center",
-  transition: "background-color 150ms ease, border-color 150ms ease",
 };
 
 const reviewGridStyle: React.CSSProperties = {
@@ -29747,7 +28362,6 @@ const buttonRowStyle: React.CSSProperties = {
   gap: 8,
   flexWrap: "wrap",
   alignItems: "center",
-  justifyContent: "flex-start",
 };
 
 const calendarNavyShellStyle: React.CSSProperties = {
@@ -29936,39 +28550,24 @@ const goldButtonStyle: React.CSSProperties = {
   border: `1px solid ${colors.gold}`,
   background: colors.gold,
   color: colors.navy,
-  borderRadius: 10,
-  padding: "10px 15px",
-  minHeight: 40,
-  fontSize: 13,
-  lineHeight: 1.15,
-  fontWeight: 900,
-  letterSpacing: 0.1,
+  borderRadius: 13,
+  padding: "10px 14px",
+  fontSize: 14,
+  lineHeight: 1.2,
+  fontWeight: 800,
   cursor: "pointer",
-  boxShadow: "0 2px 7px rgba(15,35,55,0.08)",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 6,
-  whiteSpace: "nowrap",
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
-  border: "1px solid #C8D4DE",
+  border: `1px solid ${colors.line}`,
   background: "#FFFFFF",
   color: colors.navy,
   borderRadius: 10,
-  padding: "9px 13px",
-  minHeight: 38,
+  padding: "8px 11px",
   fontSize: 13,
-  lineHeight: 1.15,
-  fontWeight: 800,
+  lineHeight: 1.2,
+  fontWeight: 700,
   cursor: "pointer",
-  boxShadow: "0 1px 3px rgba(15,35,55,0.05)",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 6,
-  whiteSpace: "nowrap",
 };
 
 const compactUtilityButtonStyle: React.CSSProperties = {
@@ -30253,18 +28852,14 @@ const mapBoxRemoveButtonStyle: React.CSSProperties = {
 };
 
 const smallSubtleButtonStyle: React.CSSProperties = {
-  border: "1px solid #C8D4DE",
-  borderRadius: 9,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 999,
   background: "#FFFFFF",
   color: colors.navy,
   padding: "7px 10px",
-  minHeight: 32,
   fontSize: 12,
-  fontWeight: 800,
+  fontWeight: 900,
   cursor: "pointer",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
 };
 
 const mapVendorChipListStyle: React.CSSProperties = {
@@ -30458,16 +29053,12 @@ const searchDropStyle: React.CSSProperties = {
   position: "absolute",
   top: "calc(100% + 8px)",
   left: 0,
-  width: "min(680px, calc(100vw - 24px))",
-  minWidth: 320,
-  maxWidth: "calc(100vw - 24px)",
-  maxHeight: "70vh",
+  right: 0,
   background: "#FFFFFF",
   border: `1px solid ${colors.line}`,
   borderRadius: 16,
   boxShadow: "0 20px 45px rgba(11,30,51,0.18)",
-  overflowY: "auto",
-  overflowX: "hidden",
+  overflow: "hidden",
   zIndex: 50,
 };
 
