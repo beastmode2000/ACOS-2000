@@ -268,9 +268,21 @@ async function loadAddisonWork() {
       )
     : [];
 
+  const dailyNoteRows = await sql`
+    SELECT record
+    FROM atlas_operational_records
+    WHERE record_type = 'addison_daily_note'
+      AND property_id = '2000'
+      AND id = ${today}
+    LIMIT 1
+  `;
+  const dailyNoteRecord = dailyNoteRows[0]?.record || {};
+
   return {
     today,
     tasks,
+    dailyNote: String(dailyNoteRecord.note || ""),
+    dailyNoteUpdatedAt: String(dailyNoteRecord.updatedAt || ""),
     routine: occurrence
       ? {
           date: String(occurrence.occurrence_date || today).slice(0, 10),
@@ -823,6 +835,45 @@ export async function PATCH(request: NextRequest) {
         });
         if (!ok) return NextResponse.json({ ok: false, error: "Addison task not found." }, { status: 404 });
         return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
+      }
+
+      if (action === "daily-note") {
+        const note = String(body.note || "");
+        const sql = getSql();
+        const updatedAt = new Date().toISOString();
+
+        await sql`
+          INSERT INTO atlas_operational_records (
+            record_type, id, property_id, record, updated_at
+          )
+          VALUES (
+            'addison_daily_note',
+            ${today},
+            '2000',
+            ${JSON.stringify({ date: today, note, updatedAt })}::jsonb,
+            NOW()
+          )
+          ON CONFLICT (record_type, id)
+          DO UPDATE SET
+            property_id = EXCLUDED.property_id,
+            record = EXCLUDED.record,
+            updated_at = NOW()
+        `;
+
+        await sql`
+          UPDATE atlas_operational_records
+          SET record = ${JSON.stringify({ date: today, note, updatedAt })}::jsonb,
+              updated_at = NOW()
+          WHERE record_type = 'addison_daily_note'
+            AND property_id = '2000'
+            AND id = ${today}
+        `;
+
+        return NextResponse.json({
+          ok: true,
+          mode: "addison",
+          addison: await loadAddisonWork(),
+        });
       }
 
       if (action === "task-note") {
