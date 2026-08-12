@@ -78,6 +78,50 @@ async function ensureAddisonBackingTables() {
   `;
 }
 
+
+function isAddisonAssigneeValue(value: unknown) {
+  const assigned = String(value || "").trim().toLowerCase();
+  return assigned === "addison" || assigned === "addison hutton" || assigned.startsWith("addison ");
+}
+
+function nextAddisonWorkDate(dateKey: string) {
+  const date = new Date(`${dateKey}T12:00:00-07:00`);
+  do {
+    date.setDate(date.getDate() + 1);
+  } while ([0,1,6].includes(date.getDay()));
+  return date.toISOString().slice(0, 10);
+}
+
+async function patchAddisonRoutineTask(
+  taskId: string,
+  patch: Record<string, unknown>,
+) {
+  const sql = getSql();
+  const today = pacificDateKey();
+  const rows = await sql`
+    SELECT tasks
+    FROM atlas_routine_occurrences
+    WHERE property_id = '2000'
+      AND occurrence_date = ${today}::date
+    LIMIT 1
+  `;
+  if (!rows[0]) return false;
+  const tasks = Array.isArray(rows[0].tasks) ? rows[0].tasks : [];
+  const target = tasks.find((item: any) => String(item.id) === taskId);
+  if (!target || !isAddisonAssigneeValue(target?.assignedTo || target?.assignee || target?.assigned_to)) return false;
+  const next = tasks.map((item: any) =>
+    String(item.id) === taskId ? { ...item, ...patch } : item
+  );
+  await sql`
+    UPDATE atlas_routine_occurrences
+    SET tasks = ${JSON.stringify(next)}::jsonb,
+        updated_at = NOW()
+    WHERE property_id = '2000'
+      AND occurrence_date = ${today}::date
+  `;
+  return true;
+}
+
 async function loadAddisonWork() {
   await ensureAddisonBackingTables();
   const sql = getSql();
@@ -202,23 +246,26 @@ async function loadAddisonWork() {
   const routineTasks = Array.isArray(occurrence?.tasks)
     ? occurrence.tasks.filter((task: any) => {
         if (task?.enabled === false) return false;
-        const assigned = String(
-          task?.assignedTo ||
-          task?.assignee ||
-          task?.assigned_to ||
-          ""
-        )
-          .trim()
-          .toLowerCase();
-
-        // Atlas may store/display the person as either "Addison"
-        // or the full team-member name "Addison Hutton".
-        return (
-          assigned === "addison" ||
-          assigned === "addison hutton" ||
-          assigned.startsWith("addison ")
+        return isAddisonAssigneeValue(
+          task?.assignedTo || task?.assignee || task?.assigned_to
         );
       })
+    : [];
+
+  const nextDate = nextAddisonWorkDate(today);
+  const nextDay = weekdayFromDateKey(nextDate);
+  const nextRows = await sql`
+    SELECT name, tasks
+    FROM atlas_routine_templates
+    WHERE property_id = '2000'
+      AND day_of_week = ${nextDay}
+    LIMIT 1
+  `;
+  const nextRoutineTasks = Array.isArray(nextRows[0]?.tasks)
+    ? nextRows[0].tasks.filter((task: any) =>
+        task?.enabled !== false &&
+        isAddisonAssigneeValue(task?.assignedTo || task?.assignee || task?.assigned_to)
+      )
     : [];
 
   return {
@@ -231,6 +278,9 @@ async function loadAddisonWork() {
           tasks: routineTasks,
         }
       : { date: today, name: "Addison Routine", tasks: [] },
+    nextRoutine: nextRows[0]
+      ? { date: nextDate, name: String(nextRows[0].name || "Next Routine"), tasks: nextRoutineTasks }
+      : null,
   };
 }
 
@@ -783,6 +833,52 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
       }
 
+      if (action === "task-photo") {
+        const taskId = String(body.taskId || "");
+        const currentWork = await loadAddisonWork();
+        const currentTask = currentWork.tasks.find((task: any) => String(task.id) === taskId);
+        if (!currentTask) return NextResponse.json({ ok:false, error:"Addison task not found." }, { status:404 });
+        const meta = addisonTaskMeta(currentTask);
+        const photos = Array.isArray(meta?.photos) ? meta.photos : [];
+        const ok = await patchAddisonTask(taskId, { photos: [...photos, body.photo].filter(Boolean) });
+        if (!ok) return NextResponse.json({ ok:false, error:"Addison task not found." }, { status:404 });
+        return NextResponse.json({ ok:true, mode:"addison", addison:await loadAddisonWork() });
+      }
+
+      if (action === "task-flag" || action === "task-problem" || action === "task-nothing-needed") {
+        const taskId = String(body.taskId || "");
+        const patch =
+          action === "task-flag" ? { needsNick: Boolean(body.needsNick) } :
+          action === "task-problem" ? { problemFound: Boolean(body.problemFound) } :
+          { checkedNothingNeeded: Boolean(body.value) };
+        const ok = await patchAddisonTask(taskId, patch);
+        if (!ok) return NextResponse.json({ ok:false, error:"Addison task not found." }, { status:404 });
+        return NextResponse.json({ ok:true, mode:"addison", addison:await loadAddisonWork() });
+      }
+
+      if (
+        action === "routine-note" ||
+        action === "routine-photo" ||
+        action === "routine-flag" ||
+        action === "routine-problem" ||
+        action === "routine-nothing-needed"
+      ) {
+        const taskId = String(body.taskId || "");
+        const current = await loadAddisonWork();
+        const item = current.routine.tasks.find((task:any) => String(task.id) === taskId);
+        if (!item) return NextResponse.json({ ok:false, error:"Addison routine item not found." }, { status:404 });
+        const patch: Record<string, unknown> =
+          action === "routine-note" ? { addisonNote: String(body.note || "") } :
+          action === "routine-flag" ? { needsNick: Boolean(body.needsNick) } :
+          action === "routine-problem" ? { problemFound: Boolean(body.problemFound) } :
+          action === "routine-nothing-needed"
+            ? { checkedNothingNeeded: Boolean(body.value) }
+            : { photos: [...(Array.isArray(item.photos) ? item.photos : []), body.photo].filter(Boolean) };
+        const ok = await patchAddisonRoutineTask(taskId, patch);
+        if (!ok) return NextResponse.json({ ok:false, error:"Addison routine item not found." }, { status:404 });
+        return NextResponse.json({ ok:true, mode:"addison", addison:await loadAddisonWork() });
+      }
+
       if (action === "routine-toggle") {
         const taskId = String(body.taskId || "");
         const sql = getSql();
@@ -796,22 +892,9 @@ export async function PATCH(request: NextRequest) {
         if (!rows[0]) return NextResponse.json({ ok: false, error: "Routine not found." }, { status: 404 });
         const tasks = Array.isArray(rows[0].tasks) ? rows[0].tasks : [];
         const target = tasks.find((item: any) => String(item.id) === taskId);
-        const targetAssignee = String(
-          target?.assignedTo ||
-          target?.assignee ||
-          target?.assigned_to ||
-          ""
-        )
-          .trim()
-          .toLowerCase();
-
         if (
           !target ||
-          !(
-            targetAssignee === "addison" ||
-            targetAssignee === "addison hutton" ||
-            targetAssignee.startsWith("addison ")
-          )
+          !isAddisonAssigneeValue(target?.assignedTo || target?.assignee || target?.assigned_to)
         ) {
           return NextResponse.json({ ok: false, error: "Addison routine item not found." }, { status: 404 });
         }
