@@ -672,12 +672,19 @@ export default function AtlasAssetsWorkspace(props: any) {
       gridStyleOverride={
         isMobile
           ? { minWidth: 0, overflowX: "hidden" }
-          : { gridTemplateColumns: "minmax(300px, 340px) minmax(0, 1fr)", gap: 12 }
+          : { gridTemplateColumns: "minmax(300px, 340px) minmax(520px, 1fr)", gap: 12, alignItems: "start" }
       }
       listPanelStyleOverride={
         isMobile
           ? { minWidth: 0, overflowX: "hidden", padding: 0 }
-          : undefined
+          : {
+              minWidth: 0,
+              maxHeight: "calc(100vh - 190px)",
+              overflowY: "auto",
+              overflowX: "hidden",
+              paddingRight: 6,
+              alignSelf: "start",
+            }
       }
       drawerStyleOverride={
         isMobile
@@ -685,6 +692,9 @@ export default function AtlasAssetsWorkspace(props: any) {
           : {
               position: "sticky",
               top: 8,
+              width: "100%",
+              minWidth: 0,
+              boxSizing: "border-box",
               height: "calc(100vh - 24px)",
               maxHeight: "calc(100vh - 24px)",
               minHeight: 0,
@@ -1940,44 +1950,53 @@ export default function AtlasAssetsWorkspace(props: any) {
                 {!assetEditorOpen ? (
                   <button
                     type="button"
-                    onClick={() => setAssetEditorOpen(true)}
+                    onClick={() => {
+                      setAssetPanelCustomizeOpen(false);
+                      setAssetVisibleSectionsExpanded(false);
+                      setAssetPanelSection("overview");
+                      setAssetEditorOpen(true);
+                    }}
                     style={assetPrimaryActionButtonStyle}
                     aria-label="Edit asset"
                   >
                     Edit Asset
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() =>
-                    addWorkOrder({
-                      assetId: selectedAsset.id,
-                      locationId: selectedAsset.locationId || "",
-                    })
-                  }
-                  style={assetActionButtonStyle}
-                >
-                  Create Work Order
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAssetPanelCustomizeOpen((current) => !current)}
-                  style={{
-                    ...assetActionButtonStyle,
-                    borderColor: assetPanelCustomizeOpen ? colors.gold : colors.line,
-                    background: assetPanelCustomizeOpen ? "#FFF8E6" : "#FFFFFF",
-                  }}
-                  aria-expanded={assetPanelCustomizeOpen}
-                >
-                  Customize
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void deleteAssetRecord(selectedAsset)}
-                  style={{ ...dangerButtonStyle, width: "auto" }}
-                >
-                  Delete Asset
-                </button>
+                {!assetEditorOpen ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        addWorkOrder({
+                          assetId: selectedAsset.id,
+                          locationId: selectedAsset.locationId || "",
+                        })
+                      }
+                      style={assetActionButtonStyle}
+                    >
+                      Create Work Order
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAssetPanelCustomizeOpen((current) => !current)}
+                      style={{
+                        ...assetActionButtonStyle,
+                        borderColor: assetPanelCustomizeOpen ? colors.gold : colors.line,
+                        background: assetPanelCustomizeOpen ? "#FFF8E6" : "#FFFFFF",
+                      }}
+                      aria-expanded={assetPanelCustomizeOpen}
+                    >
+                      Customize
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteAssetRecord(selectedAsset)}
+                      style={{ ...dangerButtonStyle, width: "auto" }}
+                    >
+                      Delete Asset
+                    </button>
+                  </>
+                ) : null}
               </div>
             </div>
 
@@ -2064,7 +2083,7 @@ export default function AtlasAssetsWorkspace(props: any) {
               )}
             </div>
 
-            {assetPanelCustomizeOpen && assetPanelSection === "overview" ? (
+            {!assetEditorOpen && assetPanelCustomizeOpen && assetPanelSection === "overview" ? (
               <section
                 style={{
                   border: `1px solid ${colors.gold}`,
