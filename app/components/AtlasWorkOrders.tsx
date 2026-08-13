@@ -1,2941 +1,2983 @@
 "use client";
 
-import React, {
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { upload } from "@vercel/blob/client";
-import AtlasCalendar from "./AtlasCalendar";
-import AtlasRoutines from "./AtlasRoutines";
-import AtlasTeamWork from "./AtlasTeamWork";
-import { AtlasWorkOrders } from "./AtlasWorkOrders";
-import AtlasInsightsTimeline from "./AtlasInsightsTimeline";
-import ReportsAccessCenter from "./ReportsAccessCenter";
-import {
-  Field,
-  SelectField,
-  StatCard,
-  AtlasMiniMark,
-  SectionHeader,
-} from "./AtlasUiPrimitives";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  WORKLINK_LOGOS,
-  colors,
-  screens,
-  logoCandidates,
-  storageKeys,
-} from "../lib/atlas-page-config";
-import type { AtlasScreen } from "../lib/atlas-page-config";
-import { searchAtlas } from "../lib/atlas-search";
-import AskAtlasWorkspace from "./ai/AskAtlasWorkspace";
-import RelationshipPanel from "./ai/RelationshipPanel";
-import ActionApprovalCard from "./ai/ActionApprovalCard";
-import AskAtlasWeeklyMaintenancePlanner, {
-  type WeeklyMaintenancePlanItem,
-} from "./ai/AskAtlasWeeklyMaintenancePlanner";
-import AtlasIntelligenceRecommendations from "./ai/AtlasIntelligenceRecommendations";
-import DocumentIntelligencePanel from "./ai/DocumentIntelligencePanel";
-import PhotoIntelligencePanel from "./ai/PhotoIntelligencePanel";
-import AtlasGroupedSearchResults from "./ai/AtlasGroupedSearchResults";
-import AtlasNotifications from "./AtlasNotifications";
-import AtlasPortfolioCenter from "./AtlasPortfolioCenter";
-import AtlasParts from "./AtlasParts";
-import AtlasAddisonWork from "./AtlasAddisonWork";
-import AtlasTasks from "./AtlasTasks";
-import AtlasDashboardWorkspace from "./AtlasDashboardWorkspace";
-import { findRelatedRecords } from "../lib/ai/relationship-engine";
-import {
-  planAssistantAction,
-  type PendingAssistantAction,
-} from "../lib/ai/action-planner";
+import type { WorkOrderRecurrenceUnit } from "../lib/atlas-types";
 
-import type {
-  Screen,
-  Status,
-  ServiceStatus,
-  WorkOrderPriority,
-  WorkOrderRecurrenceUnit,
-  WorkSeason,
-  Priority,
-  PartStatus,
-  UploadedFileRecord,
-  LocationRecord,
-  MapDetailBox,
-  MapLabelRecord,
-  VendorRecord,
-  ContactRecord,
-  AssetRecord,
-  ServiceRecord,
-  ProcedureRecord,
-  RequestStatus,
-  OwnerRequestRecord,
-  IntakeTargetKind,
-  FastIntakeKind,
-  FastIntakeSaveMode,
-  InboxStatus,
-  InboxReviewDraft,
-  InboxItemRecord,
-  DocumentRecord,
-  ManualCategory,
-  ManualRecord,
-  PartRecord,
-  WorkLinkRecord,
-  QrKind,
-  QrRecord,
-  CalendarColorName,
-  CalendarRepeat,
-  CalendarReminder,
-  CalendarLinkType,
-  CalendarSource,
-  CalendarColor,
-  CalendarItem,
-  WorkPlanDay,
-  WorkPlanTask,
-  PhotoRecord,
-  WeatherDay,
-  AtlasApiPayload,
-  AtlasTable,
-  SearchResult,
-  ManualCandidate,
-} from "../lib/atlas-types";
-import {
-  closeSymbol, PHOTO_TIMELINE_TAGS, atlasOperationsTemplates, atlasProperties, dashboardWidgetDefinitions, dashboardDefaultGrid, legacySizeColumns, makeDailyForemanWidgets,
-  normalizeDashboardWidgets, builtInDashboardLayouts, loadDashboardRoutineItems, todayLogStorageKeys, dashboardRoutineStorageKeys, atlasMoreToolsScreens, atlasPrimaryNavigationSections, localISODate,
-  todayISO, addDays, uid, normalizeMapDetailBoxes, slugify, blankCalendarItem, clampPercent, formatDate,
-  monthName, isServiceStatus, isPriority, isWorkOrderRecurrenceUnit, seasonForDate, recurrenceLabel, nextRecurrenceDate, readStoredArray,
-  readAllStoredArrays, saveStoredArray, normalizePhotoRecord, photoSource, mergePhotoRecords, cachePhotoRecords, readCachedPhoto, deleteCachedPhoto,
-  persistPhotoRecords, readFileDataUrl, fileToUploadedRecord, imageUrlsFromClipboardText, importImageUrlAsFile, normalizeImageFile, mergeUploadedFiles, normalizeAsset,
-  assetLocationIds, assetHasLocation, normalizeLocationName, normalizeVendor, normalizeContact, blankContact, normalizeService, normalizeProcedure,
-  normalizeCalendar, mergeCalendarItemRecords, normalizePart, normalizeDocument, mergeDocuments, byName, mergeLocationRecords, byTitle,
-  badgeStyle, weatherText, weatherIcon, weatherGlyph, irrigationAdvice, weatherDayPlanning, categoryToColorId, calendarPlainColors,
-  repeatOptions, reminderOptions, linkTypeOptions, standardCalendarCategoryLabels, plainColor, colorNameFromLegacyColorId, defaultCalendarColors, mergeCalendarColors,
-  getUsHolidays, getJewishHolidays, calendarDateValue, isRecurringInstanceOnDate, getWeekCells, fallbackLocations, defaultMapLabels, fallbackVendors,
-  confirmedAssetCatalog, fallbackAssets, fallbackWorkOrders, fallbackProcedures, fallbackCalendar, fallbackParts, defaultWorkLinks, documents,
-  manualCategories, seaDooManualUrl, cleanManualOpenUrl, defaultManuals, inferManualCategory, blankManual, normalizeManualRecord, ListDrawerLayout,
-  CreatableRelationshipField,
-} from "./AtlasAppFoundation";
-import AtlasContacts from "./AtlasContacts";
-import AtlasWeather from "./AtlasWeather";
-import type {
-  AtlasCurrentUser, AtlasCalendarItem, AssistantTurn, PhotoTimelineTag, PhotoTimelineProjectCategory, PhotoTimelineMeta, ProjectTimelineEntry, PhotoTimelineProject,
-  WorkEffort, AtlasTaskMeta, TaskListFilter, AtlasBacklogItem, AtlasVehicleCare, AtlasSeasonalItem, AtlasDaySession, AtlasOperationsTemplate,
-  AtlasAssetRecord, LocationCustomDetail, AtlasLocationRecord, WorkChecklistItem, TodayLogEntry, DashboardRoutineItem, DashboardWidgetId, DashboardWidgetSetting,
-  DashboardSavedLayout, DashboardWidgetDropTarget, WorkCompletionEntry, AtlasServiceRecord,
-} from "./AtlasAppFoundation";
+type WorkItemType =
+  "Quick Task" | "Work Order" | "Preventive Maintenance" | "Project";
 
+type WorkEffort =
+  | "5 minutes"
+  | "15 minutes"
+  | "30 minutes"
+  | "1 hour"
+  | "Half Day"
+  | "Full Day"
+  | "Multi-Day";
 
+type WorkSection = {
+  id: string;
+  label: string;
+  kind:
+    | "my-work"
+    | "Quick Task"
+    | "Work Order"
+    | "Preventive Maintenance"
+    | "Project"
+    | "completed";
+};
 
-export default function AtlasAssetsWorkspace(props: any) {
-  const {
-    addAsset,
-    addAssetPhotoFiles,
-    addWorkOrder,
-    assetActionButtonStyle,
-    assetActionRowStyle,
-    assetAddVendorSelectStyle,
-    assetAlphabeticalListStyle,
-    assetBulkMode,
-    assetCardHeaderStyle,
-    assetCardHintStyle,
-    assetCardStyle,
-    assetClearFieldButtonStyle,
-    assetCompactInputStyle,
-    assetDeleteBottomButtonStyle,
-    assetEditButtonStyle,
-    assetEditorOpen,
-    assetEmptyStateStyle,
-    assetFileSummaryStyle,
-    assetFiltersOpen,
-    assetFixedPanelStyle,
-    assetHeroPhotoImageStyle,
-    assetHeroPhotoStyle,
-    assetHistoryHeaderActionsStyle,
-    assetHistoryOrderStyle,
-    assetIconButtonStyle,
-    assetInfoItemStyle,
-    assetInfoLabelStyle,
-    assetInfoValueStyle,
-    assetInformationGridStyle,
-    assetInlineEditorStyle,
-    assetListControlsStyle,
-    assetListDensity,
-    assetListNameStyle,
-    assetListRowStyle,
-    assetListSearch,
-    assetListThumbStyle,
-    assetMiddleGridStyle,
-    assetNotesEditorStyle,
-    assetNotesTextStyle,
-    assetPanelCustomizeOpen,
-    assetPanelFooterStyle,
-    assetPanelScrolling,
-    assetPanelSection,
-    assetPanelTitleRowStyle,
-    assetPanelTitleStyle,
-    assetPhotoDeleteIconStyle,
-    assetPhotoHeaderActionsStyle,
-    assetPhotoLabelButtonStyle,
-    assetPrimaryActionButtonStyle,
-    assetQuickAccessOpen,
-    assetRecordQualityOpen,
-    assetRecords,
-    assetSortOrder,
-    assetSortSelectStyle,
-    assetTinyButtonStyle,
-    assetTinyUploadStyle,
-    assetTopGridStyle,
-    assetVendorBlockStyle,
-    assetVendorChipStyle,
-    assetVendorRemoveStyle,
-    assetVendorRowStyle,
-    assetVisibleSections,
-    clearRecordDirty,
-    dangerButtonStyle,
-    deleteAssetPhoto,
-    deleteAssetRecord,
-    excludedAssetCategories,
-    excludedAssetStatuses,
-    favoriteAssetIds,
-    filesFromClipboardPayload,
-    filteredAssets,
-    findManualForAsset,
-    goldButtonStyle,
-    imagePayloadFromPasteEvent,
-    inputStyle,
-    intakeDocs,
-    isMobile,
-    isRecordDirty,
-    isSeanMarineUser,
-    locationName,
-    locations,
-    manualsForAsset,
-    mutedSmallStyle,
-    noticeStyle,
-    openPhotoPreview,
-    partRecords,
-    pasteAssetPhoto,
-    photoTimelineProjects,
-    photos,
-    postAtlasRecord,
-    procedureRecords,
-    recentAssetIds,
-    recordListIdentityStyle,
-    recordListThumbImageStyle,
-    renameAssetPhoto,
-    saveDirtyRecord,
-    seanVisibleAssetRecords,
-    selectedAsset,
-    selectedAssetId,
-    selectedAssetIds,
-    selectedAssetPhotos,
-    serviceRecords,
-    setAssetBulkMode,
-    setAssetEditorOpen,
-    setAssetFiltersOpen,
-    setAssetListDensity,
-    setAssetListSearch,
-    setAssetPanelCustomizeOpen,
-    setAssetPanelSection,
-    setAssetQuickAccessOpen,
-    setAssetRecordQualityOpen,
-    setAssetRecords,
-    setAssetSortOrder,
-    setAssetVisibleSections,
-    setDatabaseStatus,
-    setLocations,
-    setDocumentSearch,
-    setExcludedAssetCategories,
-    setExcludedAssetStatuses,
-    setFavoriteAssetIds,
-    setPhotoTimelineView,
-    setRecentAssetIds,
-    setScreen,
-    setSelectedAssetId,
-    setSelectedAssetIds,
-    setSelectedLocationId,
-    setSelectedManualId,
-    setSelectedPhotoProjectId,
-    setSelectedServiceId,
-    setSelectedTaskId,
-    setTasksView,
-    showSaveToast,
-    staffVisibleServiceRecords,
-    startManualForAsset,
-    taskDetails,
-    updateAsset,
-    vendorName,
-    vendorRecords,
-    workPlanTasks
-  } = props;
-  const [assetVisibleSectionsExpanded, setAssetVisibleSectionsExpanded] = useState(false);
-  const [assetCategoryAddOpen, setAssetCategoryAddOpen] = useState(false);
-  const [assetCategoryDraft, setAssetCategoryDraft] = useState("");
-  const assetSourceRecords = isSeanMarineUser ? seanVisibleAssetRecords : assetRecords;
-  const assetWorkSourceRecords = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
-  const attachedManuals = manualsForAsset(selectedAsset);
-  const relatedWorkOrders = selectedAsset.id
-    ? [...assetWorkSourceRecords]
-        .filter((record) => record.assetId === selectedAsset.id)
-        .sort((a, b) =>
-          String(
-            b.serviceHistory?.[0]?.completedAt ||
-              b.lastCompletedDate ||
-              b.date,
-          ).localeCompare(
-            String(
-              a.serviceHistory?.[0]?.completedAt ||
-                a.lastCompletedDate ||
-                a.date,
-            ),
-          ),
-        )
-    : [];
-  const assetHistory = relatedWorkOrders
-    .flatMap((record) => {
-      const completions = (record.serviceHistory || []).map((entry) => ({
-        id: `${record.id}-${entry.id}`,
-        workOrderId: record.id,
-        date: entry.completedAt.slice(0, 10),
-        title: record.title,
-        status: "Completed" as ServiceStatus,
-      }));
+type PhotoLike = {
+  id: string;
+  name: string;
+  type?: string;
+  dataUrl?: string;
+  url?: string;
+  createdAt?: string;
+};
 
-      const current = {
-        id: record.id,
-        workOrderId: record.id,
-        date: record.lastCompletedDate || record.date,
-        title: record.title,
-        status: record.status,
-      };
+type ChecklistItem = {
+  id: string;
+  text: string;
+  completed: boolean;
+};
 
-      return completions.length ? completions : [current];
-    })
-    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  const selectedAssetCoverPhoto =
-    selectedAssetPhotos.find(
-      (photo) =>
-        photoSource(photo) &&
-        /(^|\s)(cover|main|primary|hero)(\s|$)/i.test(photo.name || ""),
-    ) ||
-    [...selectedAssetPhotos]
-      .filter((photo) => photoSource(photo))
-      .sort((a, b) => {
-        const left = new Date(a.createdAt || 0).getTime() || 0;
-        const right = new Date(b.createdAt || 0).getTime() || 0;
-        return left - right;
-      })[0] ||
-    selectedAssetPhotos[0];
-  const selectedAssetCoverSource = photoSource(selectedAssetCoverPhoto);
-  const normalizedAssetSearch = assetListSearch.trim().toLowerCase();
-  const favoriteAssets = favoriteAssetIds
-    .map((id) => assetSourceRecords.find((asset) => asset.id === id))
-    .filter((asset): asset is AssetRecord => Boolean(asset));
-  const recentAssets = recentAssetIds
-    .filter((id) => !favoriteAssetIds.includes(id))
-    .map((id) => assetSourceRecords.find((asset) => asset.id === id))
-    .filter((asset): asset is AssetRecord => Boolean(asset))
-    .slice(0, 6);
-  const normalizeAssetMatchValue = (value: unknown) =>
-    String(value || "")
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, " ")
-      .trim();
+const SYMBOL = {
+  back: "\u2190",
+  close: "\u00D7",
+  edit: "\u270F",
+  up: "\u2191",
+  down: "\u2193",
+  collapsed: "\u25B8",
+  expanded: "\u25BE",
+};
 
-  const assetRecordQualityRows = assetSourceRecords.map((asset) => {
-    const linkedManualCount = intakeDocs.filter(
-      (document) =>
-        document.linkedAssetId === asset.id ||
-        (document.targetType === "Asset" && document.targetId === asset.id),
-    ).length;
-    const linkedProcedureCount = procedureRecords.filter((procedure) =>
-      (procedure.linkedAssetIds || []).includes(asset.id),
-    ).length;
-    const missing: string[] = [];
+const DEFAULT_CATEGORIES = [
+  "\u{1F527} Maintenance",
+  "\u{1F9F9} Cleaning",
+  "\u{1F33F} Landscaping",
+  "\u{1F6BF} Pool & Spa",
+  "\u{1F4A7} Irrigation",
+  "\u26A1 Electrical",
+  "\u{1F6B0} Plumbing",
+  "\u2744\uFE0F HVAC",
+  "\u{1F6A4} Dock & Marine",
+  "\u{1F697} Vehicles",
+  "\u{1F3E0} House",
+  "\u{1F4E6} Inventory",
+  "\u{1F4CB} Project",
+  "\u2705 Inspection",
+  "\u{1F6A8} Safety",
+  "\u{1F4C4} Admin",
+];
 
-    if (!asset.locationId || asset.locationId === "general") {
-      missing.push("location");
-    }
-    if (!asset.serial?.trim()) missing.push("serial");
-    if (!asset.make?.trim() && !asset.model?.trim()) {
-      missing.push("make or model");
-    }
-    if (!(asset.vendorIds || []).length) missing.push("vendor");
-    if (!linkedManualCount) missing.push("manual");
-    if (!linkedProcedureCount) missing.push("procedure");
+const DEFAULT_SECTIONS: WorkSection[] = [
+  { id: "my-work", label: "My Work", kind: "my-work" },
+  { id: "tasks", label: "Tasks", kind: "Quick Task" },
+  { id: "work-orders", label: "Work Orders", kind: "Work Order" },
+  {
+    id: "maintenance",
+    label: "Preventive Maintenance",
+    kind: "Preventive Maintenance",
+  },
+  { id: "projects", label: "Projects", kind: "Project" },
+];
 
-    return {
-      asset,
-      missing,
-      completeness: Math.max(0, 6 - missing.length),
-    };
+const SECTION_STORAGE_KEY = "atlas-work-section-settings-v1";
+const CATEGORY_STORAGE_KEY = "atlas-work-category-settings-v1";
+
+function itemType(record: any): WorkItemType {
+  if (
+    record.workType === "Quick Task" ||
+    record.workType === "Work Order" ||
+    record.workType === "Preventive Maintenance" ||
+    record.workType === "Project"
+  ) {
+    return record.workType;
+  }
+
+  return record.recurring ? "Preventive Maintenance" : "Work Order";
+}
+
+function categoryLabel(record: any) {
+  return String(record.workCategory || record.category || "🔧 Maintenance");
+}
+
+function categoryEmoji(category: string) {
+  const match = String(category || "")
+    .trim()
+    .match(
+      /^(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)/u,
+    );
+  return match?.[1] || "🔧";
+}
+
+function categoryDisplayLabel(category: string) {
+  return (
+    String(category || "Maintenance")
+      .replace(/^(?:\p{Extended_Pictographic}|\uFE0F|\u200D)+\s*/u, "")
+      .trim() || "Maintenance"
+  );
+}
+
+function dateKey(value: unknown) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const iso = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function todayKey() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDate(value: string) {
+  const key = dateKey(value);
+  if (!key) return null;
+  const parsed = new Date(`${key}T12:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function recurrencePreviewDates(record: any, count = 3) {
+  const start = parseDate(String(record.date || ""));
+  if (!start || !record.recurring) return [];
+
+  const interval = Math.max(
+    1,
+    Math.floor(Number(record.recurrenceInterval || 1)),
+  );
+  const unit = String(record.recurrenceUnit || "Weeks");
+  const endKey = dateKey(String(record.recurrenceEndDate || ""));
+  const dates: string[] = [];
+  let cursor = new Date(start);
+
+  for (let index = 0; index < count; index += 1) {
+    if (unit === "Days") cursor.setDate(cursor.getDate() + interval);
+    else if (unit === "Months")
+      cursor.setMonth(cursor.getMonth() + interval);
+    else if (unit === "Years")
+      cursor.setFullYear(cursor.getFullYear() + interval);
+    else cursor.setDate(cursor.getDate() + interval * 7);
+
+    const nextKey = [
+      cursor.getFullYear(),
+      String(cursor.getMonth() + 1).padStart(2, "0"),
+      String(cursor.getDate()).padStart(2, "0"),
+    ].join("-");
+
+    if (endKey && nextKey > endKey) break;
+    dates.push(nextKey);
+  }
+
+  return dates;
+}
+
+function dayDistance(dateValue: string) {
+  const dueKey = dateKey(dateValue);
+  if (!dueKey) return Number.POSITIVE_INFINITY;
+  const [dueYear, dueMonth, dueDay] = dueKey.split("-").map(Number);
+  const [todayYear, todayMonth, todayDay] = todayKey().split("-").map(Number);
+  const oneDay = 24 * 60 * 60 * 1000;
+  return Math.round(
+    (Date.UTC(dueYear, dueMonth - 1, dueDay) -
+      Date.UTC(todayYear, todayMonth - 1, todayDay)) /
+      oneDay,
+  );
+}
+
+function isInCalendarMonth(dateValue: string, monthOffset: number) {
+  const key = dateKey(dateValue);
+  if (!key) return false;
+  const [year, month] = key.split("-").map(Number);
+  const target = new Date();
+  target.setDate(1);
+  target.setMonth(target.getMonth() + monthOffset);
+  return year === target.getFullYear() && month === target.getMonth() + 1;
+}
+
+function myWorkGroup(record: any) {
+  if (record.status === "Completed") return "";
+  const distance = dayDistance(String(record.date || ""));
+  // Due date always wins for active work: overdue/today first, then the next 7 days.
+  if (distance <= 0) return "today";
+  if (distance <= 7) return "week";
+
+  const type = itemType(record);
+  if (type === "Project") return "projects";
+  if (type === "Preventive Maintenance" || record.recurring) {
+    return "maintenance";
+  }
+  return "upcoming";
+}
+
+function workSortValue(record: any) {
+  const priorityRank =
+    record.priority === "High" ? 0 : record.priority === "Medium" ? 1 : 2;
+  const due = parseDate(String(record.date || ""));
+  const dueTime = due ? due.getTime() : Number.MAX_SAFE_INTEGER;
+  return { priorityRank, dueTime, title: String(record.title || "") };
+}
+
+function sortWorkRecords(records: any[]) {
+  return [...records].sort((a, b) => {
+    const left = workSortValue(a);
+    const right = workSortValue(b);
+    if (left.priorityRank !== right.priorityRank)
+      return left.priorityRank - right.priorityRank;
+    if (left.dueTime !== right.dueTime) return left.dueTime - right.dueTime;
+    return left.title.localeCompare(right.title);
   });
+}
 
-  const incompleteAssetRecordCount = assetRecordQualityRows.filter(
-    (row) => row.missing.length >= 3,
-  ).length;
-  const incompleteAssetRows = assetRecordQualityRows
-    .filter((row) => row.missing.length >= 3)
-    .sort((a, b) => {
-      const missingDifference = b.missing.length - a.missing.length;
-      return missingDifference || a.asset.name.localeCompare(b.asset.name);
-    })
-    .slice(0, 8);
+function completedTime(record: any) {
+  const candidates = [
+    record.completedAt,
+    record.lastCompletedDate,
+    ...(Array.isArray(record.completionHistory)
+      ? record.completionHistory
+      : []),
+    ...(Array.isArray(record.serviceHistory)
+      ? record.serviceHistory.map((entry: any) => entry?.completedAt)
+      : []),
+  ];
 
-  const duplicateAssetGroups = (() => {
-    const groups = new Map<string, AssetRecord[]>();
+  return candidates.reduce((latest: number, value: unknown) => {
+    if (!value) return latest;
+    const parsed = new Date(String(value)).getTime();
+    return Number.isNaN(parsed) ? latest : Math.max(latest, parsed);
+  }, 0);
+}
 
-    assetSourceRecords.forEach((asset) => {
-      const serial = normalizeAssetMatchValue(asset.serial);
-      const name = normalizeAssetMatchValue(asset.name);
-      const model = normalizeAssetMatchValue(asset.model);
-      const make = normalizeAssetMatchValue(asset.make);
+function sortCompletedRecords(records: any[]) {
+  return [...records].sort((a, b) => {
+    const timeDifference = completedTime(b) - completedTime(a);
+    if (timeDifference !== 0) return timeDifference;
+    return String(a.title || "").localeCompare(String(b.title || ""));
+  });
+}
 
-      const key = serial
-        ? `serial:${serial}`
-        : name && model
-          ? `name-model:${name}|${model}`
-          : name && make
-            ? `name-make:${name}|${make}`
-            : "";
+function safeReadSections(): WorkSection[] {
+  if (typeof window === "undefined") return DEFAULT_SECTIONS;
+  try {
+    const raw = window.localStorage.getItem(SECTION_STORAGE_KEY);
+    if (!raw) return DEFAULT_SECTIONS;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || !parsed.length) return DEFAULT_SECTIONS;
+    return parsed
+      .filter(
+        (section): section is WorkSection =>
+          section &&
+          typeof section.id === "string" &&
+          typeof section.label === "string" &&
+          typeof section.kind === "string" && section.kind !== "completed",
+      )
+      .map((section) => ({ ...section }));
+  } catch {
+    return DEFAULT_SECTIONS;
+  }
+}
 
-      if (!key) return;
-      groups.set(key, [...(groups.get(key) || []), asset]);
+function safeSaveSections(sections: WorkSection[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SECTION_STORAGE_KEY, JSON.stringify(sections));
+  } catch {
+    // Section labels are optional UI preferences; a storage error must not
+    // interrupt the work-order screen.
+  }
+}
+
+function safeReadCategories() {
+  if (typeof window === "undefined") return DEFAULT_CATEGORIES;
+  try {
+    const raw = window.localStorage.getItem(CATEGORY_STORAGE_KEY);
+    if (!raw) return DEFAULT_CATEGORIES;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return DEFAULT_CATEGORIES;
+    const cleaned = parsed
+      .map(String)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return Array.from(new Set([...DEFAULT_CATEGORIES, ...cleaned]));
+  } catch {
+    return DEFAULT_CATEGORIES;
+  }
+}
+
+function safeSaveCategories(categories: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      CATEGORY_STORAGE_KEY,
+      JSON.stringify(categories),
+    );
+  } catch {
+    // Category settings are optional UI preferences.
+  }
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error("Photo could not be read."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function photoSource(photo?: PhotoLike | null) {
+  return String(photo?.dataUrl || photo?.url || "");
+}
+
+function uid(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+type AtlasWorkOrdersProps = {
+  ListDrawerLayout: any;
+  Field: any;
+  SelectField?: any;
+  isMobile: boolean;
+  addWorkOrder: (initial?: Record<string, unknown>) => void;
+  goldButtonStyle: React.CSSProperties;
+  stackStyle: React.CSSProperties;
+  eyebrowStyle: React.CSSProperties;
+  serviceRecords: any[];
+  colors: any;
+  filteredServices: any[];
+  listStyle: React.CSSProperties;
+  setSelectedServiceId: (id: string) => void;
+  rowButtonStyle: React.CSSProperties;
+  selectedService: any;
+  mutedSmallStyle: React.CSSProperties;
+  formatDate: (date: string) => string;
+  assetName: (id: string) => string;
+  vendorName: (id: string) => string;
+  recurrenceLabel: (record: any) => string;
+  workOrderListBadgesStyle: React.CSSProperties;
+  recurringBadgeStyle: React.CSSProperties;
+  badgeStyle: (value: string) => React.CSSProperties;
+  noticeStyle: React.CSSProperties;
+  editorHeaderStyle: React.CSSProperties;
+  detailSectionStyle: React.CSSProperties;
+  formGridStyle: React.CSSProperties;
+  updateWorkOrder: (patch: Record<string, unknown>) => void;
+  fieldLabelStyle: React.CSSProperties;
+  inputStyle: React.CSSProperties;
+  byName: (records: any[]) => any[];
+  assetRecords: any[];
+  assetPhotoRecords?: any[];
+  vendorRecords: any[];
+  locationRecords?: any[];
+  contactRecords?: any[];
+  procedureRecords?: any[];
+  documentRecords?: any[];
+  calendarItems?: any[];
+  weatherDays?: any[];
+  detailSectionHeaderStyle: React.CSSProperties;
+  recurrenceToggleStyle: React.CSSProperties;
+  recurrenceGridStyle: React.CSSProperties;
+  recurrenceHistoryStyle: React.CSSProperties;
+  buttonRowStyle: React.CSSProperties;
+  isRecordDirty: (type: string, id: string) => boolean;
+  saveWorkOrderRecord: () => Promise<void> | void;
+  completeWorkOrder: (record: any) => Promise<void> | void;
+  secondaryButtonStyle: React.CSSProperties;
+  deleteWorkOrderRecord: (record: any) => Promise<void> | void;
+  dangerButtonStyle: React.CSSProperties;
+  renderLinkedDocuments: (type: string, id: string) => React.ReactNode;
+  openResetKey?: number;
+};
+
+function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
+  const {
+    ListDrawerLayout,
+    Field,
+    isMobile,
+    addWorkOrder,
+    goldButtonStyle,
+    stackStyle,
+    eyebrowStyle,
+    serviceRecords,
+    colors,
+    filteredServices,
+    listStyle,
+    setSelectedServiceId,
+    rowButtonStyle,
+    selectedService,
+    mutedSmallStyle,
+    formatDate,
+    assetName,
+    vendorName,
+    recurrenceLabel,
+    workOrderListBadgesStyle,
+    recurringBadgeStyle,
+    badgeStyle,
+    noticeStyle,
+    editorHeaderStyle,
+    detailSectionStyle,
+    formGridStyle,
+    updateWorkOrder,
+    fieldLabelStyle,
+    inputStyle,
+    byName,
+    assetRecords,
+    assetPhotoRecords = [],
+    vendorRecords,
+    locationRecords = [],
+    contactRecords = [],
+    procedureRecords = [],
+    documentRecords = [],
+    calendarItems = [],
+    weatherDays = [],
+    detailSectionHeaderStyle,
+    recurrenceToggleStyle,
+    recurrenceGridStyle,
+    recurrenceHistoryStyle,
+    buttonRowStyle,
+    isRecordDirty,
+    saveWorkOrderRecord,
+    completeWorkOrder,
+    secondaryButtonStyle,
+    deleteWorkOrderRecord,
+    dangerButtonStyle,
+    renderLinkedDocuments,
+    openResetKey = 0,
+  } = props;
+
+  const [sections, setSections] = useState<WorkSection[]>(DEFAULT_SECTIONS);
+  const [activeSectionId, setActiveSectionId] = useState("my-work");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [typeFilter, setTypeFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [dueDateFilter, setDueDateFilter] = useState("All");
+  const [locationFilter, setLocationFilter] = useState("All");
+  const [assetFilter, setAssetFilter] = useState("All");
+  const [assignedFilter, setAssignedFilter] = useState("All");
+  const [localSearch, setLocalSearch] = useState("");
+  const [manageSectionsOpen, setManageSectionsOpen] = useState(false);
+  const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
+  const [categoryChoices, setCategoryChoices] =
+    useState<string[]>(DEFAULT_CATEGORIES);
+  const [newCategory, setNewCategory] = useState("");
+  const [photoMessage, setPhotoMessage] = useState("");
+  const [collapsedGroups, setCollapsedGroups] = useState<
+    Record<string, boolean>
+  >({});
+  const [pendingPatch, setPendingPatch] = useState<{
+    recordId: string;
+    patch: Record<string, unknown>;
+  } | null>(null);
+  const [pendingPhotoRecordId, setPendingPhotoRecordId] = useState("");
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const quickPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const newWorkTitleRef = useRef<HTMLInputElement | null>(null);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [newWorkOpen, setNewWorkOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [workEditorOpen, setWorkEditorOpen] = useState(false);
+  const [newWorkDraft, setNewWorkDraft] = useState<{
+    title: string;
+    workType: WorkItemType;
+    workCategory: string;
+    priority: "Low" | "Medium" | "High";
+    date: string;
+  }>({
+    title: "",
+    workType: "Work Order",
+    workCategory: "🔧 Maintenance",
+    priority: "Medium",
+    date: "",
+  });
+  const [newChecklistText, setNewChecklistText] = useState("");
+  const [newHistoryNote, setNewHistoryNote] = useState("");
+  const [recurrenceIntervalDraft, setRecurrenceIntervalDraft] = useState("1");
+  const [completedHistoryOpen, setCompletedHistoryOpen] = useState(true);
+  const [completedHistoryLimit, setCompletedHistoryLimit] = useState(5);
+
+  useEffect(() => {
+    setRecurrenceIntervalDraft(
+      String(Math.max(1, Number(selectedService?.recurrenceInterval || 1))),
+    );
+  }, [selectedService?.id, selectedService?.recurrenceInterval]);
+
+  useEffect(() => {
+    setNewWorkOpen(false);
+    setDetailOpen(false);
+    setPlanOpen(false);
+    setManageSectionsOpen(false);
+    setManageCategoriesOpen(false);
+  }, [openResetKey]);
+
+  useEffect(() => {
+    if (selectedService?.id) {
+      setDetailOpen(true);
+    } else {
+      setDetailOpen(false);
+    }
+    setWorkEditorOpen(false);
+  }, [selectedService?.id]);
+
+  useEffect(() => {
+    const loaded = safeReadSections();
+    setSections(loaded);
+    setCategoryChoices(safeReadCategories());
+    if (!loaded.some((section) => section.id === activeSectionId)) {
+      setActiveSectionId(loaded[0]?.id || "my-work");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!pendingPatch || selectedService.id !== pendingPatch.recordId) return;
+    updateWorkOrder(pendingPatch.patch);
+    setPendingPatch(null);
+  }, [pendingPatch, selectedService.id]);
+
+  useEffect(() => {
+    if (!pendingPhotoRecordId || selectedService.id !== pendingPhotoRecordId)
+      return;
+    quickPhotoInputRef.current?.click();
+    setPendingPhotoRecordId("");
+  }, [pendingPhotoRecordId, selectedService.id]);
+
+  const activeSection =
+    sections.find((section) => section.id === activeSectionId) || sections[0];
+
+  const categories = useMemo(() => {
+    const values = new Set(categoryChoices);
+    serviceRecords.forEach((record: any) => {
+      const category = categoryLabel(record).trim();
+      if (category) values.add(category);
     });
+    return ["All", ...Array.from(values)];
+  }, [categoryChoices, serviceRecords]);
 
-    return [...groups.values()]
-      .filter((group) => group.length > 1)
-      .sort((a, b) => b.length - a.length)
-      .slice(0, 6);
-  })();
+  function addCategory() {
+    const value = newCategory.trim();
+    if (!value) return;
+    const next = Array.from(new Set([...categoryChoices, value]));
+    setCategoryChoices(next);
+    safeSaveCategories(next);
+    setNewCategory("");
+  }
 
-  const openAssetWorkOrderCount = assetWorkSourceRecords.filter(
-    (record) =>
-      Boolean(record.assetId) &&
-      assetSourceRecords.some((asset) => asset.id === record.assetId) &&
-      record.status !== "Completed",
-  ).length;
-  const displayedAssets = [...filteredAssets]
-    .filter((asset) => !excludedAssetStatuses.includes(asset.status))
-    .filter((asset) => !excludedAssetCategories.includes(asset.category))
-    .filter((asset) => {
-      if (!normalizedAssetSearch) return true;
-      return [
-        asset.name,
-        asset.category,
-        asset.status,
-        asset.make,
-        asset.model,
-        asset.serial,
-        asset.notes,
-        locationName(asset.locationId),
-        asset.vendorIds.map(vendorName).join(" "),
+  function renameCategory(category: string) {
+    const nextName = window.prompt("Rename category", category)?.trim();
+    if (!nextName || nextName === category) return;
+    const next = Array.from(
+      new Set(
+        categoryChoices.map((item) => (item === category ? nextName : item)),
+      ),
+    );
+    setCategoryChoices(next);
+    safeSaveCategories(next);
+    if (categoryFilter === category) setCategoryFilter(nextName);
+    serviceRecords
+      .filter((record: any) => categoryLabel(record) === category)
+      .forEach((record: any) => {
+        if (record.id === selectedService.id) {
+          updateWorkOrder({
+            workCategory: nextName,
+            emoji: categoryEmoji(nextName),
+          });
+        }
+      });
+  }
+
+  function removeCategory(category: string) {
+    if (
+      !window.confirm(
+        `Remove ${category} from the category menu? Existing records keep their current category.`,
+      )
+    ) {
+      return;
+    }
+    const next = categoryChoices.filter((item) => item !== category);
+    setCategoryChoices(next);
+    safeSaveCategories(next);
+    if (categoryFilter === category) setCategoryFilter("All");
+  }
+
+  function restoreDefaultCategories() {
+    setCategoryChoices(DEFAULT_CATEGORIES);
+    safeSaveCategories(DEFAULT_CATEGORIES);
+    setCategoryFilter("All");
+  }
+
+  const matchesCommonFilters = (record: any) => {
+    const search = localSearch.trim().toLowerCase();
+    const category = categoryLabel(record);
+    const matchesCategory =
+      categoryFilter === "All" || category === categoryFilter;
+    const matchesType = typeFilter === "All" || itemType(record) === typeFilter;
+    const matchesStatus =
+      statusFilter === "All" ||
+      String(record.status || "Open") === statusFilter;
+    const dueDistance = dayDistance(String(record.date || ""));
+    const matchesDueDate =
+      dueDateFilter === "All" ||
+      (dueDateFilter === "Overdue" && dueDistance < 0) ||
+      (dueDateFilter === "Today" && dueDistance === 0) ||
+      (dueDateFilter === "Next 7 Days" &&
+        dueDistance >= 0 &&
+        dueDistance <= 7) ||
+      (dueDateFilter === "This Month" &&
+        isInCalendarMonth(String(record.date || ""), 0)) ||
+      (dueDateFilter === "Next Month" &&
+        isInCalendarMonth(String(record.date || ""), 1)) ||
+      (dueDateFilter === "No Due Date" && !String(record.date || "").trim());
+    const matchesLocation =
+      locationFilter === "All" ||
+      (locationFilter === "None" && !String(record.locationId || "")) ||
+      String(record.locationId || "") === locationFilter;
+    const matchesAsset =
+      assetFilter === "All" || String(record.assetId || "") === assetFilter;
+    const matchesAssigned =
+      assignedFilter === "All" ||
+      (assignedFilter === "None" && !String(record.assignedTo || "")) ||
+      String(record.assignedTo || "") === assignedFilter;
+    const matchesSearch =
+      !search ||
+      [
+        record.title,
+        record.notes,
+        record.status,
+        record.priority,
+        record.date,
+        itemType(record),
+        category,
+        record.emoji,
+        record.effort,
+        record.responsibilityArea,
+        record.assignedTo,
+        assetName(record.assetId),
+        vendorName(record.vendorId),
+        locationRecords.find(
+          (location: any) => location.id === record.locationId,
+        )?.name,
       ]
         .join(" ")
         .toLowerCase()
-        .includes(normalizedAssetSearch);
-    })
-    .sort((a, b) => {
-      const comparison = a.name.localeCompare(b.name, undefined, {
-        sensitivity: "base",
-      });
-      return assetSortOrder === "az" ? comparison : -comparison;
+        .includes(search);
+    return (
+      matchesCategory &&
+      matchesType &&
+      matchesStatus &&
+      matchesDueDate &&
+      matchesLocation &&
+      matchesAsset &&
+      matchesAssigned &&
+      matchesSearch
+    );
+  };
+
+  function assetPhotoPatch(assetId: string) {
+    if (!assetId || (selectedService.photos || []).length) {
+      return { assetId };
+    }
+    const photo = [...assetPhotoRecords]
+      .filter((item: any) => item.assetId === assetId && photoSource(item))
+      .sort((a: any, b: any) =>
+        String(a.createdAt || "").localeCompare(String(b.createdAt || "")),
+      )[0];
+    return photo
+      ? {
+          assetId,
+          photos: [
+            {
+              id: photo.id,
+              name: photo.name || "Asset photo",
+              dataUrl: photo.dataUrl,
+              url: photo.url,
+              createdAt: photo.createdAt,
+            },
+          ],
+        }
+      : { assetId };
+  }
+
+  const visibleRecords = useMemo(() => {
+    if (!activeSection) return [];
+    const matchingRecords = filteredServices.filter((record: any) => {
+      const type = itemType(record);
+      const matchesSection =
+        activeSection.kind === "my-work"
+          ? record.status !== "Completed"
+          : activeSection.kind === "completed"
+            ? record.status === "Completed"
+            : record.status !== "Completed" && type === activeSection.kind;
+      return matchesSection && matchesCommonFilters(record);
     });
-  const alphabeticalLocations = [...locations].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
-  );
-  const alphabeticalVendors = [...vendorRecords].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
-  );
-  const selectedVendors = selectedAsset.vendorIds
-    .map((id) => vendorRecords.find((vendor) => vendor.id === id))
-    .filter((vendor): vendor is VendorRecord => Boolean(vendor))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const assetCategories = [...new Set<string>(assetSourceRecords.map((asset: any) => String(asset.category || "")))]
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b));
+    return activeSection.kind === "completed"
+      ? sortCompletedRecords(matchingRecords)
+      : matchingRecords;
+  }, [
+    activeSection,
+    categoryFilter,
+    typeFilter,
+    statusFilter,
+    dueDateFilter,
+    locationFilter,
+    assetFilter,
+    assignedFilter,
+    filteredServices,
+    localSearch,
+    assetName,
+    vendorName,
+  ]);
 
-  const departmentCategoryOptions = [
-    "House & Maintenance",
-    "Garage / Vehicle",
-    "Pool & Spa",
-    "Landscaping & Irrigation",
-    "Dock / Marine",
-  ];
-  const editableAssetCategories = [
-    ...departmentCategoryOptions,
-    ...assetCategories.filter((category) => !departmentCategoryOptions.includes(category)),
-  ];
+  const myWorkGroups = useMemo(() => {
+    const groups = {
+      today: [] as any[],
+      week: [] as any[],
+      upcoming: [] as any[],
+      maintenance: [] as any[],
+      projects: [] as any[],
+    };
+    visibleRecords.forEach((record: any) => {
+      const group = myWorkGroup(record);
+      if (group && group in groups)
+        groups[group as keyof typeof groups].push(record);
+    });
+    return {
+      today: sortWorkRecords(groups.today),
+      week: sortWorkRecords(groups.week),
+      upcoming: sortWorkRecords(groups.upcoming),
+      maintenance: sortWorkRecords(groups.maintenance),
+      projects: sortWorkRecords(groups.projects),
+    };
+  }, [visibleRecords]);
 
-  const linkedAssetDocuments = selectedAsset.id
-    ? intakeDocs
-        .filter(
-          (document) =>
-            document.linkedAssetId === selectedAsset.id ||
-            (document.targetType === "Asset" &&
-              document.targetId === selectedAsset.id),
-        )
-        .sort((a, b) =>
-          String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
-        )
-    : [];
-  const linkedAssetProcedures = selectedAsset.id
-    ? procedureRecords
-        .filter((procedure) =>
-          (procedure.linkedAssetIds || []).includes(selectedAsset.id),
-        )
-        .sort((a, b) => a.title.localeCompare(b.title))
-    : [];
-  const linkedAssetParts = selectedAsset.id
-    ? partRecords
-        .filter((part) => part.assetId === selectedAsset.id)
-        .sort((a, b) => a.name.localeCompare(b.name))
-    : [];
-  const linkedAssetTasks = selectedAsset.id
-    ? workPlanTasks
-        .filter((task) => taskDetails(task.id).assetId === selectedAsset.id)
-        .sort((a, b) => {
-          const left = taskDetails(a.id);
-          const right = taskDetails(b.id);
-          const leftDone = left.status === "Completed" ? 1 : 0;
-          const rightDone = right.status === "Completed" ? 1 : 0;
-          return leftDone - rightDone || String(left.dueDate || "9999-12-31").localeCompare(String(right.dueDate || "9999-12-31"));
-        })
-    : [];
-  const openAssetTasks = linkedAssetTasks.filter(
-    (task) => taskDetails(task.id).status !== "Completed",
+  const completedHistoryRecords = useMemo(
+    () =>
+      sortCompletedRecords(
+        filteredServices.filter(
+          (record: any) => String(record.status || "") === "Completed",
+        ),
+      ),
+    [filteredServices],
   );
-  const linkedAssetProjects = selectedAsset.id
-    ? photoTimelineProjects
-        .filter((project) => project.assetId === selectedAsset.id)
-        .sort((a, b) => String(b.startDate || b.createdAt || "").localeCompare(String(a.startDate || a.createdAt || "")))
-    : [];
-  const activeAssetProjects = linkedAssetProjects.filter(
-    (project) => project.status !== "Completed" && !project.archived,
+
+  const visibleCompletedHistory = completedHistoryRecords.slice(
+    0,
+    completedHistoryLimit,
   );
-  const linkedAssetVendors = selectedAsset.vendorIds
-    .map((id) => vendorRecords.find((vendor) => vendor.id === id))
-    .filter((vendor): vendor is VendorRecord => Boolean(vendor));
-  const assetLastActivityDate = [
-    ...assetHistory.map((entry) => entry.date),
-    ...linkedAssetTasks.map((task) => taskDetails(task.id).completedAt?.slice(0, 10) || taskDetails(task.id).dueDate || ""),
-    ...linkedAssetProjects.map((project) => project.completedAt || project.startDate || project.createdAt?.slice(0, 10) || ""),
-    ...selectedAssetPhotos.map((photo) => photo.createdAt?.slice(0, 10) || ""),
-    ...linkedAssetDocuments.map((document) => document.createdAt?.slice(0, 10) || ""),
-  ].filter(Boolean).sort().reverse()[0] || "";
-  const openAssetWorkOrders = relatedWorkOrders
-    .filter((record) => record.status !== "Completed")
-    .sort((a, b) =>
-      String(a.date || "9999-12-31").localeCompare(
-        String(b.date || "9999-12-31"),
+
+  const activeFilterCount = [
+    categoryFilter,
+    typeFilter,
+    statusFilter,
+    dueDateFilter,
+    locationFilter,
+    assetFilter,
+    assignedFilter,
+  ].filter((value) => value !== "All").length + (localSearch.trim() ? 1 : 0);
+
+  function setQuickDateFilter(value: string) {
+    setDueDateFilter((current) => (current === value ? "All" : value));
+  }
+
+  const tabCounts = useMemo(() => {
+    const result: Record<string, number> = {};
+    sections.forEach((section) => {
+      result[section.id] = filteredServices.filter((record: any) => {
+        if (section.kind === "my-work") return record.status !== "Completed";
+        if (section.kind === "completed") return record.status === "Completed";
+        return (
+          record.status !== "Completed" && itemType(record) === section.kind
+        );
+      }).length;
+    });
+    return result;
+  }, [filteredServices, sections]);
+
+  const controlStyle: React.CSSProperties = {
+    width: "100%",
+    minHeight: 44,
+    border: `1px solid ${colors.line}`,
+    borderRadius: 10,
+    background: "#FFFFFF",
+    padding: "9px 11px",
+    font: "inherit",
+    color: colors.text,
+  };
+
+  const filterPanelStyle: React.CSSProperties = {
+    display: "grid",
+    gap: 10,
+    padding: 12,
+    border: `1px solid ${colors.line}`,
+    borderRadius: 14,
+    background: "#F8FAFC",
+  };
+
+  const tabRowStyle: React.CSSProperties = {
+    display: "flex",
+    gap: 8,
+    overflowX: "auto",
+    paddingBottom: 2,
+  };
+
+  const tabButtonStyle = (selected: boolean): React.CSSProperties => ({
+    flex: "0 0 auto",
+    minHeight: 42,
+    borderRadius: 999,
+    border: `1px solid ${selected ? colors.gold : colors.line}`,
+    background: selected ? "#FFF8E8" : "#FFFFFF",
+    color: colors.text,
+    padding: "8px 12px",
+    fontWeight: 800,
+    cursor: "pointer",
+  });
+
+  const miniButtonStyle: React.CSSProperties = {
+    ...secondaryButtonStyle,
+    padding: "7px 10px",
+    minHeight: 36,
+    whiteSpace: "nowrap",
+    flex: "0 0 auto",
+  };
+
+  const photoGridStyle: React.CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: isMobile
+      ? "repeat(2, minmax(0, 1fr))"
+      : "repeat(3, minmax(0, 1fr))",
+    gap: 10,
+  };
+
+  function saveSections(next: WorkSection[]) {
+    setSections(next);
+    safeSaveSections(next);
+    if (!next.some((section) => section.id === activeSectionId)) {
+      setActiveSectionId(next[0]?.id || "my-work");
+    }
+  }
+
+  function renameSection(section: WorkSection) {
+    const nextName = window.prompt("Rename this section", section.label);
+    if (nextName === null) return;
+    const trimmed = nextName.trim();
+    if (!trimmed) return;
+    saveSections(
+      sections.map((item) =>
+        item.id === section.id ? { ...item, label: trimmed } : item,
       ),
     );
-  const nextAssetMaintenance = openAssetWorkOrders
-    .filter((record) => record.recurring || record.workType === "Preventive Maintenance")
-    .find((record) => Boolean(record.date));
-  const lastCompletedAssetWork = assetHistory.find(
-    (entry) => entry.status === "Completed" && Boolean(entry.date),
-  );
-  const overdueAssetWorkOrders = openAssetWorkOrders.filter(
-    (record) => Boolean(record.date) && record.date < todayISO(),
-  );
-  const highPriorityAssetWorkOrders = openAssetWorkOrders.filter(
-    (record) => record.priority === "High",
-  );
-  const assetAttentionItems = [
-    ...overdueAssetWorkOrders.map((record) => `Overdue work order: ${record.title}`),
-    ...highPriorityAssetWorkOrders.map((record) => `High priority: ${record.title}`),
-    ...openAssetTasks
-      .filter((task) => Boolean(taskDetails(task.id).dueDate) && taskDetails(task.id).dueDate < todayISO())
-      .map((task) => `Overdue task: ${task.title}`),
-    ...(selectedAsset.status === "Offline" ? ["Asset is marked out of service"] : []),
-  ];
-  const assetRecommendedAction = assetAttentionItems[0]
-    || openAssetTasks[0]?.title
-    || openAssetWorkOrders[0]?.title
-    || activeAssetProjects[0]?.title
-    || (!linkedAssetProcedures.length && selectedAsset.procedureRequirement !== "Not Required" ? "Link a maintenance procedure" : "No immediate action required");
-  const assetActualCost = relatedWorkOrders.reduce(
-    (total, record) => total + Math.max(0, Number(record.actualCost || 0)),
-    0,
-  );
-  const assetEstimatedCost = openAssetWorkOrders.reduce(
-    (total, record) => total + Math.max(0, Number(record.estimatedCost || 0)),
-    0,
-  );
-  const assetConditionLabel =
-    selectedAsset.status === "Online"
-      ? "Operational"
-      : selectedAsset.status === "Offline"
-        ? "Out of Service"
-        : selectedAsset.status === "Seasonal"
-          ? "Seasonal"
-          : "Not Assessed";
+  }
 
-  const assetConditionBadge =
-    selectedAsset.status === "Online"
-      ? "Online"
-      : selectedAsset.status === "Offline"
-        ? "Offline"
-        : selectedAsset.status === "Seasonal"
-          ? "Seasonal"
-          : "Monitor";
+  function deleteSection(section: WorkSection) {
+    if (sections.length <= 1) return;
+    if (
+      !window.confirm(
+        `Remove the section “${section.label}” from this screen? Work records will not be deleted.`,
+      )
+    ) {
+      return;
+    }
+    saveSections(sections.filter((item) => item.id !== section.id));
+  }
 
-  const assetSetupItems = [
-    !selectedAsset.locationId || selectedAsset.locationId === "general"
-      ? "Assign a primary location"
-      : "",
-    !selectedAsset.serial && selectedAsset.serialRequirement !== "Not Required" ? "Add serial / VIN / HIN" : "",
-    !selectedAsset.vendorIds.length ? "Select a preferred vendor" : "",
-    !attachedManuals.length && selectedAsset.manualRequirement !== "Not Required" ? "Add a manual or supporting document" : "",
-    !linkedAssetProcedures.length && selectedAsset.procedureRequirement !== "Not Required" ? "Link a procedure" : "",
-  ].filter(Boolean);
+  function resetSections() {
+    saveSections(DEFAULT_SECTIONS.map((section) => ({ ...section })));
+    setActiveSectionId("my-work");
+  }
 
-  const assetSetupCompleted = 5 - assetSetupItems.length;
+  async function addPhotos(files: FileList | null) {
+    if (!files?.length || !selectedService?.id) return;
+    setPhotoMessage("Adding photos...");
+    try {
+      const incoming: PhotoLike[] = [];
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith("image/")) continue;
+        const dataUrl = await fileToDataUrl(file);
+        incoming.push({
+          id: uid("work-photo"),
+          name: file.name || "Work photo",
+          type: file.type,
+          dataUrl,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      updateWorkOrder({
+        photos: [...(selectedService.photos || []), ...incoming],
+      });
+      setPhotoMessage(
+        incoming.length
+          ? `Added ${incoming.length} photo${incoming.length === 1 ? "" : "s"}. Save the work item to keep them.`
+          : "No image files were selected.",
+      );
+    } catch (error) {
+      setPhotoMessage(
+        error instanceof Error ? error.message : "Photos could not be added.",
+      );
+    } finally {
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  }
 
-  const assetServiceIssues = [
-    selectedAsset.status === "Offline" ? "Asset is marked out of service" : "",
-    overdueAssetWorkOrders.length
-      ? `${overdueAssetWorkOrders.length} overdue work order${overdueAssetWorkOrders.length === 1 ? "" : "s"}`
-      : "",
-    highPriorityAssetWorkOrders.length
-      ? `${highPriorityAssetWorkOrders.length} high-priority open item${highPriorityAssetWorkOrders.length === 1 ? "" : "s"}`
-      : "",
-  ].filter(Boolean);
-
-  const removeVendor = (vendorId: string) =>
-    updateAsset({
-      vendorIds: selectedAsset.vendorIds.filter((id) => id !== vendorId),
+  function removePhoto(photoId: string) {
+    updateWorkOrder({
+      photos: (selectedService.photos || []).filter(
+        (photo: PhotoLike) => photo.id !== photoId,
+      ),
     });
+  }
 
-  const addSelectedVendor = (vendorId: string) => {
-    if (!vendorId || selectedAsset.vendorIds.includes(vendorId)) return;
-    updateAsset({ vendorIds: [...selectedAsset.vendorIds, vendorId] });
-  };
+  function selectAndPatch(record: any, patch: Record<string, unknown>) {
+    setDetailOpen(true);
+    setSelectedServiceId(record.id);
+    setPendingPatch({ recordId: record.id, patch });
+  }
 
-  const createLocationFromAsset = (name: string) => {
-    const cleanName = name.trim();
-    if (!cleanName) return "";
-    const existing = locations.find(
-      (location: AtlasLocationRecord) =>
-        location.name.trim().toLowerCase() === cleanName.toLowerCase(),
+  function quickReschedule(record: any) {
+    const value = window.prompt(
+      "New due date (YYYY-MM-DD)",
+      String(record.date || ""),
     );
-    if (existing) return existing.id;
-    const record: AtlasLocationRecord = {
-      id: uid("location"),
-      name: cleanName,
-      type: "Room / Area",
-      zone: "",
-      notes: "",
-      customDetails: [],
-      vendorIds: [],
+    if (value === null) return;
+    const nextDate = value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
+      window.alert("Enter the date as YYYY-MM-DD.");
+      return;
+    }
+    selectAndPatch(record, { date: nextDate, status: "Scheduled" });
+  }
+
+  function quickConvert(record: any) {
+    const value = window.prompt(
+      "Convert to: Task, Work Order, Maintenance, or Project",
+      itemType(record) === "Quick Task" ? "Task" : itemType(record),
+    );
+    if (value === null) return;
+    const normalized = value.trim().toLowerCase();
+    const workType: WorkItemType | "" =
+      normalized === "task" || normalized === "quick task"
+        ? "Quick Task"
+        : normalized === "work order" || normalized === "workorder"
+          ? "Work Order"
+          : normalized === "maintenance" ||
+              normalized === "preventive maintenance"
+            ? "Preventive Maintenance"
+            : normalized === "project"
+              ? "Project"
+              : "";
+    if (!workType) {
+      window.alert("Use Task, Work Order, Maintenance, or Project.");
+      return;
+    }
+    selectAndPatch(record, {
+      workType,
+      recurring:
+        workType === "Preventive Maintenance"
+          ? true
+          : Boolean(record.recurring),
+    });
+  }
+
+  function quickAddPhoto(record: any) {
+    setDetailOpen(true);
+    setSelectedServiceId(record.id);
+    setPendingPhotoRecordId(record.id);
+  }
+
+  function quickTask() {
+    openNewWork("Quick Task");
+  }
+
+  function openNewWork(workType: WorkItemType = "Work Order") {
+    setDetailOpen(false);
+    setSelectedServiceId("");
+    setNewWorkDraft({
+      title: "",
+      workType,
+      workCategory:
+        workType === "Quick Task"
+          ? "🧹 Cleaning"
+          : workType === "Project"
+            ? "📋 Project"
+            : "🔧 Maintenance",
+      priority: "Medium",
+      date:
+        workType === "Quick Task"
+          ? new Date().toISOString().slice(0, 10)
+          : "",
+    });
+    setNewWorkOpen(true);
+  }
+
+  function createNewWork() {
+    const title = newWorkTitleRef.current?.value.trim() || "";
+    if (!title) {
+      window.alert("Add a title before creating this work item.");
+      return;
+    }
+
+    setDetailOpen(true);
+    addWorkOrder({
+      title,
+      workType: newWorkDraft.workType,
+      workCategory: newWorkDraft.workCategory,
+      priority: newWorkDraft.priority,
+      date: newWorkDraft.date,
+      effort: newWorkDraft.workType === "Quick Task" ? "15 minutes" : "30 minutes",
+      status: "Open",
+      recurring: newWorkDraft.workType === "Preventive Maintenance",
+    } as any);
+    setNewWorkOpen(false);
+  }
+
+  function handleWorkOption(value: string) {
+    if (value === "add-work") openNewWork("Work Order");
+    if (value === "quick-task") quickTask();
+    if (value === "plan") setPlanOpen((current) => !current);
+    if (value === "sections")
+      setManageSectionsOpen((current) => !current);
+    if (value === "categories")
+      setManageCategoriesOpen((current) => !current);
+  }
+
+  function handleDetailAction(value: string) {
+    if (!value) return;
+    if (value === "reopen")
+      updateWorkOrder({ status: "Open", completedAt: "" });
+    if (value === "start") updateWorkOrder({ status: "In Progress" });
+    if (value === "complete") void completeWorkOrder(selectedService);
+    if (value === "reschedule") quickReschedule(selectedService);
+    if (value === "convert") quickConvert(selectedService);
+    if (value === "tomorrow")
+      updateWorkOrder({ date: tomorrowDate(), status: "Scheduled" });
+    if (value === "next-week")
+      updateWorkOrder({ date: nextWeekDate(), status: "Scheduled" });
+    if (value === "photo") quickAddPhoto(selectedService);
+    if (value === "duplicate") duplicateWork(selectedService);
+    if (value === "delete") void deleteWorkOrderRecord(selectedService);
+  }
+
+  function tomorrowDate() {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function nextWeekDate() {
+    const date = new Date();
+    date.setDate(date.getDate() + 7);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function duplicateWork(record: any) {
+    addWorkOrder({
+      ...record,
+      id: undefined,
+      title: `${record.title || "Work"} Copy`,
+      status: "Open",
+      lastCompletedDate: "",
+      completionHistory: [],
+      serviceHistory: [],
+      photos: [],
+      documents: [],
+      checklist: (record.checklist || []).map((item: ChecklistItem) => ({
+        ...item,
+        id: uid("check"),
+        completed: false,
+      })),
+    });
+  }
+
+  function effortMinutes(value: string) {
+    if (value === "5 minutes") return 5;
+    if (value === "15 minutes") return 15;
+    if (value === "30 minutes") return 30;
+    if (value === "1 hour") return 60;
+    if (value === "Half Day") return 240;
+    if (value === "Full Day") return 480;
+    if (value === "Multi-Day") return 960;
+    return 30;
+  }
+
+  const planContext = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const todayCalendar = calendarItems.filter(
+      (item: any) => item.date === today,
+    );
+    const todayWeather = weatherDays.find((day: any) => day.date === today);
+    const rainRisk = Number(todayWeather?.precipChance || 0) >= 50;
+    return { todayCalendar, todayWeather, rainRisk };
+  }, [calendarItems, weatherDays]);
+
+  const dayPlan = useMemo(() => {
+    const outdoorCategory = (record: any) => {
+      const value = categoryLabel(record).toLowerCase();
+      return [
+        "landscap",
+        "irrigation",
+        "dock",
+        "marine",
+        "exterior",
+        "vehicle",
+      ].some((term) => value.includes(term));
     };
-    setLocations((current: AtlasLocationRecord[]) => byName([record, ...current]));
-    void postAtlasRecord("locations", record);
-    showSaveToast(`${cleanName} added to Locations.`);
-    return record.id;
-  };
+    const candidates = serviceRecords
+      .filter((record: any) => record.status !== "Completed")
+      .map((record: any) => ({
+        ...record,
+        minutes: effortMinutes(String(record.effort || "30 minutes")),
+        distance: record.date ? dayDistance(String(record.date)) : 999,
+        weatherPenalty: planContext.rainRisk && outdoorCategory(record) ? 3 : 0,
+        inProgressRank: record.status === "In Progress" ? -2 : 0,
+      }))
+      .sort((a: any, b: any) => {
+        const priority = (value: string) =>
+          value === "High" ? 0 : value === "Medium" ? 1 : 2;
+        return (
+          a.inProgressRank - b.inProgressRank ||
+          a.weatherPenalty - b.weatherPenalty ||
+          priority(a.priority) - priority(b.priority) ||
+          a.distance - b.distance ||
+          String(a.locationId || "").localeCompare(String(b.locationId || ""))
+        );
+      });
+    let used = 0;
+    return candidates.filter((record: any) => {
+      if (used >= 480) return false;
+      used += Math.min(record.minutes, 480);
+      return true;
+    });
+  }, [serviceRecords, planContext]);
 
-  const assetIdentifierLabel = (() => {
-    const descriptor = [
-      selectedAsset.category,
-      selectedAsset.name,
-      selectedAsset.make,
-      selectedAsset.model,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
+  function addChecklistItem() {
+    const text = newChecklistText.trim();
+    if (!text) return;
+    const checklist = [
+      ...(selectedService.checklist || []),
+      { id: uid("check"), text, completed: false },
+    ];
+    updateWorkOrder({ checklist });
+    setNewChecklistText("");
+  }
 
-    if (/(boat|watercraft|sea[- ]?doo|jet ski|jetski|pwc|cobalt)/.test(descriptor)) {
-      return "HIN";
-    }
-    if (/(vehicle|car|truck|suv|van|ford|mercedes|porsche|rivian|raptor)/.test(descriptor)) {
-      return "VIN";
-    }
-    return "Serial Number";
-  })();
+  function toggleChecklistItem(id: string) {
+    updateWorkOrder({
+      checklist: (selectedService.checklist || []).map((item: ChecklistItem) =>
+        item.id === id ? { ...item, completed: !item.completed } : item,
+      ),
+    });
+  }
 
-  const infoValue = (
-    label: string,
-    value: string,
-    editor: React.ReactNode,
-    clear?: () => void,
-  ) => (
-    <div style={assetInfoItemStyle}>
-      <span style={assetInfoLabelStyle}>{label}</span>
-      {assetEditorOpen ? (
-        <div style={assetInlineEditorStyle}>
-          {editor}
-          {clear && value ? (
+  function deleteChecklistItem(id: string) {
+    updateWorkOrder({
+      checklist: (selectedService.checklist || []).filter(
+        (item: ChecklistItem) => item.id !== id,
+      ),
+    });
+  }
+
+  function addHistoryNote() {
+    const text = newHistoryNote.trim();
+    if (!text) return;
+    updateWorkOrder({
+      notesHistory: [
+        { id: uid("note"), text, createdAt: new Date().toISOString() },
+        ...(selectedService.notesHistory || []),
+      ],
+    });
+    setNewHistoryNote("");
+  }
+
+  function renderWorkRow(record: any) {
+    const type = itemType(record);
+    const category = categoryLabel(record);
+    const overdue =
+      record.status !== "Completed" &&
+      Boolean(record.date) &&
+      dayDistance(String(record.date)) < 0;
+
+    return (
+      <div
+        key={record.id}
+        role="button"
+        tabIndex={0}
+        onClick={() => {
+          setNewWorkOpen(false);
+          setDetailOpen(true);
+          setSelectedServiceId(record.id);
+        }}
+        onKeyDown={(event) => {
+          if (
+            event.target instanceof HTMLElement &&
+            event.target.closest("input, textarea, select, button, a")
+          ) {
+            return;
+          }
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setNewWorkOpen(false);
+            setDetailOpen(true);
+            setSelectedServiceId(record.id);
+          }
+        }}
+        style={{
+          ...rowButtonStyle,
+          display: "grid",
+          gap: 10,
+          cursor: "pointer",
+          borderColor:
+            record.id === selectedService.id ? colors.gold : colors.line,
+          borderLeft: overdue
+            ? `5px solid ${colors.red}`
+            : rowButtonStyle.borderLeft,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 12,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <strong style={{ display: "block", lineHeight: 1.35 }}>
+              {record.title || "Untitled Work"}
+            </strong>
+            <p style={{ ...mutedSmallStyle, marginTop: 4 }}>
+              {categoryDisplayLabel(category)} · {type}
+            </p>
+            <p style={{ ...mutedSmallStyle, marginTop: 2 }}>
+              {record.date
+                ? `${record.recurring ? "Next due" : "Due"} ${formatDate(record.date)}`
+                : "No due date"}
+              {record.priority ? ` · ${record.priority} priority` : ""}
+            </p>
+            {record.assetId || record.vendorId ? (
+              <p style={{ ...mutedSmallStyle, marginTop: 2 }}>
+                {record.assetId ? assetName(record.assetId) : ""}
+                {record.assetId && record.vendorId ? " · " : ""}
+                {record.vendorId ? vendorName(record.vendorId) : ""}
+              </p>
+            ) : null}
+          </div>
+          <div style={workOrderListBadgesStyle}>
+            {overdue ? <span style={badgeStyle("High")}>Overdue</span> : null}
+            {record.effort ? (
+              <span style={recurringBadgeStyle}>{record.effort}</span>
+            ) : null}
+            {record.assignedTo ? (
+              <span style={recurringBadgeStyle}>{record.assignedTo}</span>
+            ) : null}
+            {record.recurring ? (
+              <span style={recurringBadgeStyle}>Recurring</span>
+            ) : null}
+            {record.priority ? (
+              <span style={badgeStyle(record.priority)}>{record.priority}</span>
+            ) : null}
+            <span style={badgeStyle(record.status || "Open")}>
+              {record.status || "Open"}
+            </span>
+          </div>
+        </div>
+
+      </div>
+    );
+  }
+
+  function renderMyWorkList() {
+    const groupDefinitions = [
+      { id: "today", label: "Today", records: myWorkGroups.today },
+      { id: "week", label: "This Week", records: myWorkGroups.week },
+      { id: "upcoming", label: "Upcoming", records: myWorkGroups.upcoming },
+      {
+        id: "maintenance",
+        label: "🔁 Recurring Maintenance",
+        records: myWorkGroups.maintenance,
+      },
+      { id: "projects", label: "📋 Projects", records: myWorkGroups.projects },
+    ];
+    return (
+      <div style={{ display: "grid", gap: 14 }}>
+        {groupDefinitions.map((group) => (
+          <section
+            key={group.id}
+            style={{
+              border: `1px solid ${colors.line}`,
+              borderRadius: 14,
+              overflow: "hidden",
+              background: "#FFFFFF",
+            }}
+          >
             <button
               type="button"
-              onClick={clear}
-              style={assetClearFieldButtonStyle}
-              aria-label={`Clear ${label}`}
-              title={`Clear ${label}`}
-            >
-              {closeSymbol}
-            </button>
-          ) : null}
-        </div>
-      ) : (
-        <strong style={assetInfoValueStyle}>{value || "—"}</strong>
-      )}
-    </div>
-  );
-
-  return (
-    <ListDrawerLayout
-      eyebrow="Property Equipment"
-      title="Assets"
-      detail="Equipment, service history, documents, procedures, vendors, and maintenance in one place."
-      isMobile={isMobile}
-      drawerResetKey={selectedAssetId || "asset-empty"}
-      mobileDrawerOpen={isMobile && Boolean(selectedAssetId)}
-      onMobileDrawerClose={() => {
-        setSelectedAssetId("");
-        setAssetEditorOpen(false);
-      }}
-      mobileDrawerTitle={selectedAsset.name || "Asset Record"}
-      gridStyleOverride={
-        isMobile
-          ? { minWidth: 0, overflowX: "hidden" }
-          : {
-              gridTemplateColumns: "minmax(300px, 340px) minmax(520px, 1fr)",
-              gap: 12,
-              alignItems: "stretch",
-              height: "calc(100vh - 176px)",
-              minHeight: 0,
-              overflow: "hidden",
-            }
-      }
-      listPanelStyleOverride={
-        isMobile
-          ? { minWidth: 0, overflowX: "hidden", padding: 0 }
-          : {
-              minWidth: 0,
-              height: "100%",
-              maxHeight: "100%",
-              minHeight: 0,
-              overflowY: "auto",
-              overflowX: "hidden",
-              overscrollBehavior: "contain",
-              scrollbarGutter: "stable",
-              paddingRight: 6,
-              alignSelf: "stretch",
-            }
-      }
-      drawerStyleOverride={
-        isMobile
-          ? { minWidth: 0, overflowX: "hidden" }
-          : {
-              position: "relative",
-              top: "auto",
-              width: "100%",
-              minWidth: 0,
-              boxSizing: "border-box",
-              height: "100%",
-              maxHeight: "100%",
-              minHeight: 0,
-              overflowY: "auto",
-              overflowX: "hidden",
-              overscrollBehavior: "contain",
-              scrollbarGutter: "stable",
-              alignSelf: "stretch",
-              zIndex: 2,
-            }
-      }
-      right={
-        <div style={{ ...assetListControlsStyle, flexWrap: "wrap" }}>
-          <div
-            role="group"
-            aria-label="Asset list spacing"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              border: `1px solid ${colors.line}`,
-              borderRadius: 10,
-              padding: 2,
-              background: "#FFFFFF",
-            }}
-          >
-            {(["comfortable", "compact"] as const).map((density) => (
-              <button
-                key={density}
-                type="button"
-                onClick={() => setAssetListDensity(density)}
-                aria-pressed={assetListDensity === density}
-                style={{
-                  border: 0,
-                  borderRadius: 8,
-                  background:
-                    assetListDensity === density ? "#FFF3CF" : "transparent",
-                  color:
-                    assetListDensity === density ? colors.navy : colors.muted,
-                  padding: "7px 9px",
-                  fontSize: 11,
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {density === "comfortable" ? "Comfortable" : "Compact"}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => setAssetBulkMode((current) => !current)}
-            aria-pressed={assetBulkMode}
-            style={{
-              ...assetEditButtonStyle,
-              background: assetBulkMode ? "#FFF3CF" : "#FFFFFF",
-              color: colors.navy,
-              borderColor: assetBulkMode ? colors.gold : colors.line,
-            }}
-          >
-            {assetBulkMode ? "Done Selecting" : "Select"}
-          </button>
-          <select
-            value={assetSortOrder}
-            onChange={(event) =>
-              setAssetSortOrder(event.currentTarget.value as "az" | "za")
-            }
-            style={assetSortSelectStyle}
-            aria-label="Sort assets alphabetically"
-          >
-            <option value="az">Name: A–Z</option>
-            <option value="za">Name: Z–A</option>
-          </select>
-          <button type="button" onClick={() => addAsset()} style={goldButtonStyle}>
-            Add Asset
-          </button>
-        </div>
-      }
-      list={
-        <div style={{ display: "grid", gap: 7 }}>
-          <section
-            style={{
-              position: isMobile ? "relative" : "sticky",
-              top: isMobile ? "auto" : 8,
-              zIndex: 8,
-              border: `1px solid ${colors.line}`,
-              borderRadius: 12,
-              background: "#FFFFFF",
-              padding: 8,
-              boxShadow: isMobile ? "none" : "0 5px 16px rgba(24, 43, 77, 0.05)",
-            }}
-          >
-            <div
+              onClick={() =>
+                setCollapsedGroups((current) => ({
+                  ...current,
+                  [group.id]: !current[group.id],
+                }))
+              }
               style={{
+                width: "100%",
                 display: "flex",
+                justifyContent: "space-between",
                 alignItems: "center",
-                gap: 7,
-                minWidth: 0,
-                flexWrap: isMobile ? "wrap" : "nowrap",
+                gap: 10,
+                padding: "11px 13px",
+                border: 0,
+                borderBottom: collapsedGroups[group.id]
+                  ? 0
+                  : `1px solid ${colors.line}`,
+                background: "#F8FAFC",
+                color: colors.text,
+                cursor: "pointer",
+                textAlign: "left",
               }}
             >
-              <input
-                value={assetListSearch}
-                onChange={(event) => setAssetListSearch(event.currentTarget.value)}
-                placeholder="Search assets..."
-                style={{
-                  ...inputStyle,
-                  flex: "1 1 220px",
-                  minWidth: 0,
-                  height: 36,
-                  padding: "7px 10px",
-                }}
-                aria-label="Search assets"
-              />
+              <strong>{group.label}</strong>
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={recurringBadgeStyle}>{group.records.length}</span>
+                <span aria-hidden="true">
+                  {collapsedGroups[group.id] ? SYMBOL.collapsed : SYMBOL.expanded}
+                </span>
+              </span>
+            </button>
+            {!collapsedGroups[group.id] ? (
+              <div style={listStyle}>
+                {group.records.map(renderWorkRow)}
+                {!group.records.length ? (
+                  <div style={{ ...noticeStyle, margin: 10 }}>
+                    Nothing in this section.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
+        ))}
+      </div>
+    );
+  }
 
-              <div style={{ position: "relative", flex: "0 0 auto" }}>
-                <button
-                  type="button"
-                  onClick={() => setAssetFiltersOpen((current) => !current)}
-                  aria-expanded={assetFiltersOpen}
-                  aria-haspopup="menu"
+  return (
+    <>
+      <input
+        ref={quickPhotoInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={(event) => void addPhotos(event.currentTarget.files)}
+        style={{ display: "none" }}
+      />
+      <ListDrawerLayout
+        eyebrow="Organize / Complete"
+        title={activeSection?.label || "My Work"}
+        detail="Track active work, recurring maintenance, projects, and completed history."
+        isMobile={isMobile}
+        outerStyle={
+          isMobile
+            ? undefined
+            : {
+                height: "calc(100vh - 132px)",
+                minHeight: 620,
+                overflow: "hidden",
+                display: "grid",
+                gridTemplateRows: "auto minmax(0, 1fr)",
+              }
+        }
+        gridStyleOverride={
+          detailOpen && selectedService.id
+            ? isMobile
+              ? undefined
+              : {
+                  gridTemplateColumns: "minmax(340px, 38%) minmax(0, 62%)",
+                  height: "100%",
+                  minHeight: 0,
+                  overflow: "hidden",
+                  alignItems: "start",
+                }
+            : {
+                gridTemplateColumns: "1fr",
+                height: "100%",
+                minHeight: 0,
+                overflow: "hidden",
+              }
+        }
+        listPanelStyleOverride={
+          isMobile
+            ? undefined
+            : {
+                height: "100%",
+                minHeight: 0,
+                overflowY: "auto",
+                overflowX: "hidden",
+                paddingRight: 8,
+              }
+        }
+        drawerStyleOverride={
+          detailOpen && selectedService.id
+            ? isMobile
+              ? {
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 1000,
+                  width: "100%",
+                  height: "100dvh",
+                  maxHeight: "100dvh",
+                  overflowY: "auto",
+                  overscrollBehavior: "contain",
+                  background: "#FFFFFF",
+                  padding: 16,
+                }
+              : {
+                  position: "relative",
+                  top: 0,
+                  height: "100%",
+                  maxHeight: "100%",
+                  minHeight: 0,
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  alignSelf: "start",
+                }
+            : { display: "none" }
+        }
+        right={
+          <>
+            <select
+              value=""
+              onChange={(event) => {
+                handleWorkOption(event.currentTarget.value);
+                event.currentTarget.value = "";
+              }}
+              style={{
+                ...controlStyle,
+                width: "auto",
+                minWidth: 144,
+                minHeight: 38,
+                padding: "7px 32px 7px 11px",
+                background: "#F8FAFC",
+                color: colors.muted,
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+              aria-label="Work order options"
+            >
+              <option value="">Work Options</option>
+              <option value="quick-task">Add Quick Task</option>
+              <option value="plan">Plan My Day</option>
+              <option value="sections">Edit Sections</option>
+              <option value="categories">Edit Categories</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => openNewWork("Work Order")}
+              style={{ ...goldButtonStyle, minHeight: 38 }}
+            >
+              Add Work Order
+            </button>
+          </>
+        }
+        list={
+          <div style={stackStyle}>
+            {newWorkOpen ? (
+              <section style={{ ...filterPanelStyle, background: "#FFFFFF" }}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={{ ...eyebrowStyle, opacity: 0.75 }}>
+                      New Work
+                    </div>
+                    <span style={{ color: colors.muted, fontSize: 13 }}>
+                      Nothing is added until you press Create.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNewWorkOpen(false)}
+                    style={{ ...secondaryButtonStyle, fontWeight: 500 }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <input
+                    ref={newWorkTitleRef}
+                    defaultValue=""
+                    placeholder="Work title"
+                    autoFocus
+                    style={controlStyle}
+                  />
+                  <select
+                    value={newWorkDraft.workType}
+                    onChange={(event) =>
+                      setNewWorkDraft((current) => ({
+                        ...current,
+                        workType: event.currentTarget.value as WorkItemType,
+                      }))
+                    }
+                    style={controlStyle}
+                  >
+                    <option value="Quick Task">Task</option>
+                    <option value="Work Order">Work Order</option>
+                    <option value="Preventive Maintenance">
+                      Preventive Maintenance
+                    </option>
+                    <option value="Project">Project</option>
+                  </select>
+                  <select
+                    value={newWorkDraft.workCategory}
+                    onChange={(event) =>
+                      setNewWorkDraft((current) => ({
+                        ...current,
+                        workCategory: event.currentTarget.value,
+                      }))
+                    }
+                    style={controlStyle}
+                  >
+                    {categories
+                      .filter((category) => category !== "All")
+                      .map((category) => (
+                        <option key={category} value={category}>
+                          {categoryDisplayLabel(category)}
+                        </option>
+                      ))}
+                  </select>
+                  <select
+                    value={newWorkDraft.priority}
+                    onChange={(event) =>
+                      setNewWorkDraft((current) => ({
+                        ...current,
+                        priority: event.currentTarget.value as
+                          | "Low"
+                          | "Medium"
+                          | "High",
+                      }))
+                    }
+                    style={controlStyle}
+                  >
+                    <option value="Low">Low Priority</option>
+                    <option value="Medium">Medium Priority</option>
+                    <option value="High">High Priority</option>
+                  </select>
+                  <input
+                    type="date"
+                    value={newWorkDraft.date}
+                    onChange={(event) =>
+                      setNewWorkDraft((current) => ({
+                        ...current,
+                        date: event.currentTarget.value,
+                      }))
+                    }
+                    style={controlStyle}
+                  />
+                  <button
+                    type="button"
+                    onClick={createNewWork}
+                    style={goldButtonStyle}
+                  >
+                    Create Work
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
+            {planOpen ? (
+              <section style={{ ...filterPanelStyle, background: "#FFFFFF" }}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Smart Daily Plan</div>
+                    <strong>Prioritized for roughly 8 hours</strong>
+                    <div style={mutedSmallStyle}>
+                      {planContext.todayCalendar.length} calendar item
+                      {planContext.todayCalendar.length === 1 ? "" : "s"}
+                      {planContext.todayWeather
+                        ? ` · ${Math.round(Number(planContext.todayWeather.high || 0))}° high · ${Math.round(Number(planContext.todayWeather.precipChance || 0))}% rain`
+                        : ""}
+                    </div>
+                  </div>
+                  <span style={recurringBadgeStyle}>
+                    {dayPlan.length} items
+                  </span>
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {dayPlan.map((record: any, index: number) => (
+                    <button
+                      key={record.id}
+                      type="button"
+                      onClick={() => {
+                        setNewWorkOpen(false);
+                        setDetailOpen(true);
+                        setSelectedServiceId(record.id);
+                      }}
+                      style={{
+                        ...rowButtonStyle,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                      }}
+                    >
+                      <span>
+                        <strong>
+                          {index + 1}. {record.title || "Untitled Work"}
+                        </strong>
+                        <br />
+                        <small style={mutedSmallStyle}>
+                          {record.effort || "30 minutes"} ·{" "}
+                          {record.locationId || assetName(record.assetId)} ·{" "}
+                          {formatDate(record.date)}
+                        </small>
+                      </span>
+                      <span style={badgeStyle(record.priority)}>
+                        {record.priority}
+                      </span>
+                    </button>
+                  ))}
+                  {!dayPlan.length ? (
+                    <div style={noticeStyle}>No open work to plan.</div>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
+            <section style={filterPanelStyle}>
+              <div style={{ display: "grid", gap: 6 }}>
+                <span
                   style={{
-                    ...assetEditButtonStyle,
-                    height: 36,
-                    padding: "7px 10px",
-                    background:
-                      excludedAssetStatuses.length || excludedAssetCategories.length
-                        ? "#FFF3CF"
-                        : "#FFFFFF",
-                    borderColor:
-                      excludedAssetStatuses.length || excludedAssetCategories.length
-                        ? colors.gold
-                        : colors.line,
-                    whiteSpace: "nowrap",
+                    color: colors.muted,
+                    fontSize: 11,
+                    fontWeight: 500,
+                    letterSpacing: 0.5,
+                    textTransform: "uppercase",
                   }}
                 >
-                  Filters
-                  {excludedAssetStatuses.length + excludedAssetCategories.length
-                    ? ` (${excludedAssetStatuses.length + excludedAssetCategories.length})`
-                    : ""}
-                  {assetFiltersOpen ? " ▲" : " ▼"}
-                </button>
+                  Work Sections
+                </span>
+                <select
+                  value={activeSectionId}
+                  onChange={(event) =>
+                    setActiveSectionId(event.currentTarget.value)
+                  }
+                  style={{
+                    ...controlStyle,
+                    minHeight: 42,
+                    color: colors.text,
+                    fontSize: 14,
+                    fontWeight: 500,
+                  }}
+                  aria-label="Choose work section"
+                >
+                  {sections.map((section) => (
+                    <option
+                      key={section.id}
+                      value={section.id}
+                    >
+                      {section.label} ({tabCounts[section.id] || 0})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                {assetFiltersOpen ? (
-                  <div
-                    role="menu"
-                    style={{
-                      position: "absolute",
-                      right: 0,
-                      top: "calc(100% + 6px)",
-                      width: isMobile ? "min(320px, calc(100vw - 34px))" : 310,
-                      maxHeight: "min(420px, 70vh)",
-                      overflowY: "auto",
-                      border: `1px solid ${colors.line}`,
-                      borderRadius: 12,
-                      background: "#FFFFFF",
-                      padding: 10,
-                      boxShadow: "0 16px 38px rgba(24, 43, 77, 0.18)",
-                      display: "grid",
-                      gap: 10,
-                      zIndex: 30,
-                    }}
-                  >
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <span style={assetInfoLabelStyle}>Status</span>
-                      <select
-                        defaultValue=""
-                        onChange={(event) => {
-                          const status = event.currentTarget.value as Status;
-                          if (!status) return;
-                          setExcludedAssetStatuses((current) =>
-                            current.includes(status)
-                              ? current.filter((item) => item !== status)
-                              : [...current, status],
-                          );
-                          event.currentTarget.value = "";
-                          setAssetFiltersOpen(false);
-                        }}
-                        style={{ ...assetSortSelectStyle, width: "100%", height: 36 }}
-                        aria-label="Filter assets by status"
-                      >
-                        <option value="">Choose status...</option>
-                        {(["Online", "Monitor", "Offline", "Seasonal"] as Status[]).map(
-                          (status) => (
-                            <option key={status} value={status}>
-                              {excludedAssetStatuses.includes(status) ? "Show" : "Hide"}{" "}
-                              {status === "Online"
-                                ? "Operational"
-                                : status === "Offline"
-                                  ? "Out of Service"
-                                  : status === "Monitor"
-                                    ? "Not Assessed"
-                                    : status}
-                            </option>
-                          ),
-                        )}
-                      </select>
-                    </div>
-
-                    {assetCategories.length ? (
-                      <div style={{ display: "grid", gap: 6 }}>
-                        <span style={assetInfoLabelStyle}>Category</span>
-                        <select
-                          defaultValue=""
-                          onChange={(event) => {
-                            const category = event.currentTarget.value;
-                            if (!category) return;
-                            setExcludedAssetCategories((current) =>
-                              current.includes(category)
-                                ? current.filter((item) => item !== category)
-                                : [...current, category],
-                            );
-                            event.currentTarget.value = "";
-                            setAssetFiltersOpen(false);
-                          }}
-                          style={{ ...assetSortSelectStyle, width: "100%", height: 36 }}
-                          aria-label="Filter assets by category"
-                        >
-                          <option value="">Choose category...</option>
-                          {assetCategories.map((category) => (
-                            <option key={category} value={category}>
-                              {excludedAssetCategories.includes(category) ? "Show" : "Hide"}{" "}
-                              {category}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : null}
-
+              {manageSectionsOpen ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 8,
+                    padding: 10,
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 12,
+                    background: "#FFFFFF",
+                  }}
+                >
+                  {sections.map((section) => (
                     <div
+                      key={section.id}
                       style={{
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
-                        gap: 8,
-                        paddingTop: 4,
-                        borderTop: `1px solid ${colors.line}`,
+                        gap: 10,
                       }}
                     >
-                      <span style={mutedSmallStyle}>
-                        {displayedAssets.length} of {assetSourceRecords.length} assets
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setExcludedAssetStatuses([]);
-                          setExcludedAssetCategories([]);
-                          setAssetFiltersOpen(false);
-                        }}
-                        style={assetTinyButtonStyle}
-                      >
-                        Clear filters
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <span
-                style={{
-                  ...mutedSmallStyle,
-                  flex: "0 0 auto",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {displayedAssets.length} results
-              </span>
-
-              {(assetListSearch || excludedAssetStatuses.length || excludedAssetCategories.length) ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAssetListSearch("");
-                    setExcludedAssetStatuses([]);
-                    setExcludedAssetCategories([]);
-                    setAssetFiltersOpen(false);
-                  }}
-                  style={{ ...assetTinyButtonStyle, height: 34 }}
-                >
-                  Clear
-                </button>
-              ) : null}
-            </div>
-
-            {excludedAssetStatuses.length || excludedAssetCategories.length ? (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: 5,
-                  marginTop: 7,
-                }}
-              >
-                {excludedAssetStatuses.map((status) => (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() =>
-                      setExcludedAssetStatuses((current) =>
-                        current.filter((item) => item !== status),
-                      )
-                    }
-                    style={{
-                      ...assetTinyButtonStyle,
-                      padding: "4px 7px",
-                      borderRadius: 999,
-                      background: "#FFF8E5",
-                      borderColor: colors.gold,
-                    }}
-                  >
-                    Hidden: {status} {closeSymbol}
-                  </button>
-                ))}
-                {excludedAssetCategories.map((category) => (
-                  <button
-                    key={category}
-                    type="button"
-                    onClick={() =>
-                      setExcludedAssetCategories((current) =>
-                        current.filter((item) => item !== category),
-                      )
-                    }
-                    style={{
-                      ...assetTinyButtonStyle,
-                      padding: "4px 7px",
-                      borderRadius: 999,
-                      background: "#FFF8E5",
-                      borderColor: colors.gold,
-                    }}
-                  >
-                    Hidden: {category} {closeSymbol}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </section>
-
-          {assetBulkMode ? (
-            <section
-              style={{
-                border: `1px solid ${colors.gold}`,
-                borderRadius: 14,
-                background: "#FFF9E8",
-                padding: 10,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: 8,
-              }}
-              aria-label="Selected asset actions"
-            >
-              <div style={{ minWidth: 0 }}>
-                <strong
-                  style={{
-                    display: "block",
-                    color: colors.navy,
-                    fontSize: 12,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {selectedAssetIds.length} asset
-                  {selectedAssetIds.length === 1 ? "" : "s"} selected
-                </strong>
-                <span style={mutedSmallStyle}>
-                  Safe actions only. Nothing will be deleted or archived.
-                </span>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  justifyContent: "flex-end",
-                  gap: 6,
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedAssetIds(
-                      selectedAssetIds.length === displayedAssets.length
-                        ? []
-                        : displayedAssets.map((asset) => asset.id),
-                    )
-                  }
-                  style={assetTinyButtonStyle}
-                >
-                  {selectedAssetIds.length === displayedAssets.length &&
-                  displayedAssets.length
-                    ? "Clear Visible"
-                    : "Select All Visible"}
-                </button>
-
-                <button
-                  type="button"
-                  disabled={!selectedAssetIds.length}
-                  onClick={() =>
-                    setFavoriteAssetIds((current) => [
-                      ...selectedAssetIds,
-                      ...current.filter((id) => !selectedAssetIds.includes(id)),
-                    ])
-                  }
-                  style={{
-                    ...assetTinyButtonStyle,
-                    opacity: selectedAssetIds.length ? 1 : 0.5,
-                    cursor: selectedAssetIds.length ? "pointer" : "not-allowed",
-                  }}
-                >
-                  Add to Favorites
-                </button>
-
-                <button
-                  type="button"
-                  disabled={!selectedAssetIds.length}
-                  onClick={() =>
-                    setFavoriteAssetIds((current) =>
-                      current.filter((id) => !selectedAssetIds.includes(id)),
-                    )
-                  }
-                  style={{
-                    ...assetTinyButtonStyle,
-                    opacity: selectedAssetIds.length ? 1 : 0.5,
-                    cursor: selectedAssetIds.length ? "pointer" : "not-allowed",
-                  }}
-                >
-                  Remove Favorites
-                </button>
-
-                <button
-                  type="button"
-                  disabled={!selectedAssetIds.length}
-                  onClick={() => setSelectedAssetIds([])}
-                  style={{
-                    ...assetTinyButtonStyle,
-                    opacity: selectedAssetIds.length ? 1 : 0.5,
-                    cursor: selectedAssetIds.length ? "pointer" : "not-allowed",
-                  }}
-                >
-                  Clear Selection
-                </button>
-              </div>
-            </section>
-          ) : null}
-
-          {(duplicateAssetGroups.length || incompleteAssetRows.length) ? (
-            <section
-              style={{
-                border: `1px solid ${colors.line}`,
-                borderRadius: 14,
-                background: "#FFFFFF",
-                padding: 10,
-                display: "grid",
-                gap: 9,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <strong
-                    style={{
-                      display: "block",
-                      color: colors.navy,
-                      fontSize: 12,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Record Quality
-                  </strong>
-                  <span style={mutedSmallStyle}>
-                    {duplicateAssetGroups.length} possible duplicate group
-                    {duplicateAssetGroups.length === 1 ? "" : "s"} ·{" "}
-                    {incompleteAssetRows.length} incomplete record
-                    {incompleteAssetRows.length === 1 ? "" : "s"}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAssetRecordQualityOpen((current) => !current)}
-                  style={assetTinyButtonStyle}
-                  aria-expanded={assetRecordQualityOpen}
-                >
-                  {assetRecordQualityOpen ? "Collapse" : "Review"}
-                </button>
-              </div>
-
-              {assetRecordQualityOpen ? (
-                <div style={{ display: "grid", gap: 10 }}>
-                  {duplicateAssetGroups.length ? (
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <span style={assetInfoLabelStyle}>Possible Duplicates</span>
-                      <div style={{ display: "grid", gap: 6 }}>
-                        {duplicateAssetGroups.map((group, index) => (
-                          <div
-                            key={`${group[0]?.id || "duplicate"}-${index}`}
-                            style={{
-                              border: `1px solid ${colors.line}`,
-                              borderRadius: 10,
-                              background: "#FFF9E8",
-                              padding: 8,
-                              display: "grid",
-                              gap: 6,
-                            }}
-                          >
-                            <span
-                              style={{
-                                color: colors.navy,
-                                fontSize: 11,
-                                fontWeight: 850,
-                              }}
-                            >
-                              {group.length} records may describe the same asset
-                            </span>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                              {group.map((asset) => (
-                                <button
-                                  key={asset.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedAssetId(asset.id);
-                                    setAssetEditorOpen(false);
-                                    setRecentAssetIds((current) => [
-                                      asset.id,
-                                      ...current.filter((id) => id !== asset.id),
-                                    ].slice(0, 8));
-                                  }}
-                                  style={{
-                                    ...assetTinyButtonStyle,
-                                    maxWidth: "100%",
-                                    background:
-                                      selectedAssetId === asset.id
-                                        ? "#FFF3CF"
-                                        : "#FFFFFF",
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      display: "block",
-                                      maxWidth: 190,
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap",
-                                    }}
-                                  >
-                                    {asset.name}
-                                    {asset.serial ? ` · ${asset.serial}` : ""}
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <span style={mutedSmallStyle}>
-                        Atlas only flags possible matches. Nothing is merged automatically.
-                      </span>
-                    </div>
-                  ) : null}
-
-                  {incompleteAssetRows.length ? (
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <span style={assetInfoLabelStyle}>Needs More Information</span>
-                      <div style={{ display: "grid", gap: 6 }}>
-                        {incompleteAssetRows.map(({ asset, missing }) => (
-                          <button
-                            key={asset.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedAssetId(asset.id);
-                              setAssetPanelSection("overview");
-                              setAssetEditorOpen(false);
-                              setRecentAssetIds((current) => [
-                                asset.id,
-                                ...current.filter((id) => id !== asset.id),
-                              ].slice(0, 8));
-                            }}
-                            style={{
-                              border: `1px solid ${colors.line}`,
-                              borderRadius: 10,
-                              background:
-                                selectedAssetId === asset.id ? "#F4F8FD" : "#FFFFFF",
-                              padding: 9,
-                              textAlign: "left",
-                              cursor: "pointer",
-                              minWidth: 0,
-                            }}
-                          >
-                            <strong
-                              style={{
-                                display: "block",
-                                color: colors.navy,
-                                fontSize: 11,
-                                wordBreak: "normal",
-                                overflowWrap: "break-word",
-                              }}
-                            >
-                              {asset.name}
-                            </strong>
-                            <span style={mutedSmallStyle}>
-                              Missing: {missing.join(", ")}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </section>
-          ) : null}
-
-          {(favoriteAssets.length || recentAssets.length) ? (
-            <section
-              style={{
-                border: `1px solid ${colors.line}`,
-                borderRadius: 14,
-                background: "#FFFFFF",
-                padding: 10,
-                display: "grid",
-                gap: 9,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                }}
-              >
-                <div>
-                  <strong
-                    style={{
-                      display: "block",
-                      color: colors.navy,
-                      fontSize: 12,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Quick Access
-                  </strong>
-                  <span style={mutedSmallStyle}>
-                    Favorite and recently viewed assets
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAssetQuickAccessOpen((current) => !current)}
-                  style={assetTinyButtonStyle}
-                  aria-expanded={assetQuickAccessOpen}
-                >
-                  {assetQuickAccessOpen ? "Collapse" : "Open"}
-                </button>
-              </div>
-
-              {assetQuickAccessOpen ? (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {favoriteAssets.length ? (
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <span style={assetInfoLabelStyle}>Favorites</span>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {favoriteAssets.map((asset) => (
-                          <button
-                            key={asset.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedAssetId(asset.id);
-                              setAssetEditorOpen(false);
-                              setRecentAssetIds((current) => [
-                                asset.id,
-                                ...current.filter((id) => id !== asset.id),
-                              ].slice(0, 8));
-                            }}
-                            style={{
-                              ...assetTinyButtonStyle,
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 5,
-                              maxWidth: "100%",
-                              background:
-                                selectedAssetId === asset.id ? "#FFF3CF" : "#FFFFFF",
-                            }}
-                          >
-                            <span aria-hidden="true">★</span>
-                            <span
-                              style={{
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                maxWidth: 180,
-                              }}
-                            >
-                              {asset.name}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {recentAssets.length ? (
-                    <div style={{ display: "grid", gap: 6 }}>
+                      <strong>{section.label}</strong>
                       <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
+                        style={{ display: "flex", flexWrap: "wrap", gap: 6 }}
                       >
-                        <span style={assetInfoLabelStyle}>Recently Viewed</span>
                         <button
                           type="button"
-                          onClick={() => setRecentAssetIds([])}
-                          style={assetTinyButtonStyle}
+                          onClick={() => renameSection(section)}
+                          style={miniButtonStyle}
                         >
-                          Clear
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteSection(section)}
+                          style={{ ...dangerButtonStyle, padding: "7px 10px" }}
+                        >
+                          Remove
                         </button>
                       </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {recentAssets.map((asset) => (
-                          <button
-                            key={asset.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedAssetId(asset.id);
-                              setAssetEditorOpen(false);
-                              setRecentAssetIds((current) => [
-                                asset.id,
-                                ...current.filter((id) => id !== asset.id),
-                              ].slice(0, 8));
-                            }}
-                            style={{
-                              ...assetTinyButtonStyle,
-                              maxWidth: "100%",
-                              background:
-                                selectedAssetId === asset.id ? "#F4F8FD" : "#FFFFFF",
-                            }}
-                          >
-                            <span
-                              style={{
-                                display: "block",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                maxWidth: 180,
-                              }}
-                            >
-                              {asset.name}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
                     </div>
-                  ) : null}
+                  ))}
+                  <button
+                    type="button"
+                    onClick={resetSections}
+                    style={secondaryButtonStyle}
+                  >
+                    Restore Default Sections
+                  </button>
                 </div>
               ) : null}
-            </section>
-          ) : null}
 
-          <div
-            style={{
-              ...assetAlphabeticalListStyle,
-              gap: assetListDensity === "compact" ? 6 : 10,
-            }}
-          >
-          {displayedAssets.map((asset) => {
-            const assetPhotos = photos.filter(
-              (photo) => photo.assetId === asset.id,
-            );
-            const coverPhoto =
-              assetPhotos.find(
-                (photo) =>
-                  photoSource(photo) &&
-                  /(^|\s)(cover|main|primary|hero)(\s|$)/i.test(
-                    photo.name || "",
-                  ),
-              ) ||
-              [...assetPhotos]
-                .filter((photo) => photoSource(photo))
-                .sort((a, b) => {
-                  const left = new Date(a.createdAt || 0).getTime() || 0;
-                  const right = new Date(b.createdAt || 0).getTime() || 0;
-                  return left - right;
-                })[0] ||
-              assetPhotos[0];
-            const coverPhotoSource = photoSource(coverPhoto);
-            const assetOpenWork = assetWorkSourceRecords.filter(
-              (record) => record.assetId === asset.id && record.status !== "Completed",
-            );
-            const assetDocumentCount = intakeDocs.filter(
-              (document) =>
-                document.linkedAssetId === asset.id ||
-                (document.targetType === "Asset" && document.targetId === asset.id),
-            ).length;
-            const assetConditionLabel =
-              asset.status === "Online"
-                ? "Operational"
-                : asset.status === "Offline"
-                  ? "Out of Service"
-                  : asset.status === "Seasonal"
-                    ? "Seasonal"
-                    : "Not Assessed";
-            const assetConditionTone =
-              asset.status === "Online"
-                ? "Online"
-                : asset.status === "Offline"
-                  ? "Offline"
-                  : asset.status === "Seasonal"
-                    ? "Seasonal"
-                    : "Monitor";
-            const assetCompletedWork = assetWorkSourceRecords
-              .filter(
-                (record) =>
-                  record.assetId === asset.id &&
-                  record.status === "Completed" &&
-                  Boolean(record.date),
-              )
-              .sort((a, b) =>
-                String(b.date || "").localeCompare(String(a.date || "")),
-              );
-            const assetNextMaintenance = assetOpenWork
-              .filter(
-                (record) =>
-                  Boolean(record.date) &&
-                  (record.recurring ||
-                    record.workType === "Preventive Maintenance"),
-              )
-              .sort((a, b) =>
-                String(a.date || "9999-12-31").localeCompare(
-                  String(b.date || "9999-12-31"),
-                ),
-              )[0];
-            const assetNeedsService =
-              asset.status === "Offline" ||
-              assetOpenWork.some(
-                (record) =>
-                  record.priority === "High" ||
-                  (Boolean(record.date) && record.date < todayISO()),
-              );
-            const assetSetupIncomplete =
-              !asset.locationId ||
-              asset.locationId === "general" ||
-              !asset.serial ||
-              !asset.vendorIds.length ||
-              manualsForAsset(asset).length === 0 ||
-              !procedureRecords.some((procedure) =>
-                (procedure.linkedAssetIds || []).includes(asset.id),
-              );
-
-            return (
-              <div
-                key={asset.id}
-                className="atlas-gold-hover-card"
-                style={{
-                  position: "relative",
-                  border: `1px solid ${
-                    selectedAssetIds.includes(asset.id) || asset.id === selectedAsset.id
-                      ? colors.gold
-                      : colors.line
-                  }`,
-                  borderRadius: 12,
-                  background:
-                    selectedAssetIds.includes(asset.id) || asset.id === selectedAsset.id
-                      ? "#F4F8FD"
-                      : "#FFFFFF",
-                  overflow: "visible",
-                }}
-              >
-                <span className="atlas-gold-hover-card-accent" aria-hidden="true" />
-                {assetBulkMode ? (
-                  <label
-                    style={{
-                      position: "absolute",
-                      left: 9,
-                      top: 9,
-                      zIndex: 5,
-                      width: 26,
-                      height: 26,
-                      display: "grid",
-                      placeItems: "center",
-                      border: `1px solid ${
-                        selectedAssetIds.includes(asset.id)
-                          ? colors.gold
-                          : colors.line
-                      }`,
-                      borderRadius: 8,
-                      background: "#FFFFFF",
-                      cursor: "pointer",
-                    }}
-                    aria-label={`Select ${asset.name}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedAssetIds.includes(asset.id)}
-                      onChange={(event) =>
-                        setSelectedAssetIds((current) =>
-                          event.target.checked
-                            ? [...current, asset.id]
-                            : current.filter((id) => id !== asset.id),
-                        )
-                      }
-                    />
-                  </label>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (assetBulkMode) {
-                      setSelectedAssetIds((current) =>
-                        current.includes(asset.id)
-                          ? current.filter((id) => id !== asset.id)
-                          : [...current, asset.id],
-                      );
-                      return;
-                    }
-                    setSelectedAssetId(asset.id);
-                    setAssetEditorOpen(false);
-                    setRecentAssetIds((current) => [
-                      asset.id,
-                      ...current.filter((id) => id !== asset.id),
-                    ].slice(0, 8));
-                  }}
-                  style={{
-                    ...assetListRowStyle,
-                    width: "100%",
-                    border: 0,
-                    background: "transparent",
-                    borderRadius: 12,
-                    padding:
-                      assetListDensity === "compact"
-                        ? `9px ${assetBulkMode ? 10 : 118}px 9px ${
-                            assetBulkMode ? 44 : 10
-                          }px`
-                        : undefined,
-                    paddingLeft: assetBulkMode ? 44 : undefined,
-                    paddingRight:
-                      assetBulkMode ? 10 : assetListDensity === "compact" ? 118 : 120,
-                    textAlign: "left",
-                  }}
-                >
-                  <div style={{ ...recordListIdentityStyle, alignItems: "flex-start" }}>
-                    <div
-                      style={{
-                        ...assetListThumbStyle,
-                        width: assetListDensity === "compact" ? 38 : undefined,
-                        height: assetListDensity === "compact" ? 38 : undefined,
-                        minWidth: assetListDensity === "compact" ? 38 : undefined,
-                      }}
-                    >
-                      {coverPhotoSource ? (
-                        <img
-                          src={coverPhotoSource}
-                          alt=""
-                          style={recordListThumbImageStyle}
-                        />
-                      ) : (
-                        <span>{asset.name.slice(0, 1).toUpperCase()}</span>
-                      )}
-                    </div>
-                    <div style={{ minWidth: 0, display: "grid", gap: 4 }}>
-                      <strong style={assetListNameStyle}>{asset.name}</strong>
-                      <span style={{ ...mutedSmallStyle, display: "block" }}>
-                        {[asset.category, locationName(asset.locationId)].filter(Boolean).join(" · ") || "Unassigned asset"}
-                      </span>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 2 }}>
-                        <span style={badgeStyle(assetConditionTone)}>
-                          {assetConditionLabel}
-                        </span>
-                        {assetNeedsService ? (
-                          <span style={badgeStyle("Offline")}>Needs Service</span>
-                        ) : null}
-                        {assetSetupIncomplete ? (
-                          <span style={badgeStyle("Monitor")}>Needs Details</span>
-                        ) : null}
-                      </div>
-                      <div
-                        style={{
-                          display: assetListDensity === "compact" ? "none" : "grid",
-                          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                          gap: 5,
-                          marginTop: 1,
-                        }}
-                      >
-                        <span
-                          style={{
-                            ...mutedSmallStyle,
-                            border: `1px solid ${colors.line}`,
-                            borderRadius: 8,
-                            padding: "5px 7px",
-                            background: colors.panel,
-                            minWidth: 0,
-                          }}
-                        >
-                          <strong style={{ color: colors.navy }}>Last service:</strong>{" "}
-                          {assetCompletedWork[0]?.date
-                            ? formatDate(assetCompletedWork[0].date)
-                            : "No service recorded"}
-                        </span>
-                        <span
-                          style={{
-                            ...mutedSmallStyle,
-                            border: `1px solid ${colors.line}`,
-                            borderRadius: 8,
-                            padding: "5px 7px",
-                            background: colors.panel,
-                            minWidth: 0,
-                          }}
-                        >
-                          <strong style={{ color: colors.navy }}>Next maintenance:</strong>{" "}
-                          {assetNextMaintenance?.date
-                            ? formatDate(assetNextMaintenance.date)
-                            : "Not scheduled"}
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                        <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
-                          {assetOpenWork.length} open work order{assetOpenWork.length === 1 ? "" : "s"}
-                        </span>
-                        <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
-                          {assetDocumentCount} document{assetDocumentCount === 1 ? "" : "s"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </button>
-
+              {manageCategoriesOpen ? (
                 <div
-                  style={{
-                    position: "absolute",
-                    right: 8,
-                    top: assetListDensity === "compact" ? 7 : 8,
-                    display: assetBulkMode ? "none" : "grid",
-                    gap: assetListDensity === "compact" ? 4 : 5,
-                    zIndex: 3,
-                  }}
-                >
-                  <button
-                    type="button"
-                    title={
-                      favoriteAssetIds.includes(asset.id)
-                        ? "Remove from favorites"
-                        : "Add to favorites"
-                    }
-                    aria-label={
-                      favoriteAssetIds.includes(asset.id)
-                        ? `Remove ${asset.name} from favorites`
-                        : `Add ${asset.name} to favorites`
-                    }
-                    aria-pressed={favoriteAssetIds.includes(asset.id)}
-                    onClick={() =>
-                      setFavoriteAssetIds((current) =>
-                        current.includes(asset.id)
-                          ? current.filter((id) => id !== asset.id)
-                          : [asset.id, ...current],
-                      )
-                    }
-                    style={{
-                      ...assetTinyButtonStyle,
-                      minWidth: 34,
-                      color: favoriteAssetIds.includes(asset.id)
-                        ? "#9A6500"
-                        : colors.muted,
-                      background: favoriteAssetIds.includes(asset.id)
-                        ? "#FFF3CF"
-                        : "#FFFFFF",
-                    }}
-                  >
-                    {favoriteAssetIds.includes(asset.id) ? "★" : "☆"}
-                  </button>
-                  <button
-                    type="button"
-                    title="Edit asset"
-                    aria-label={`Edit ${asset.name}`}
-                    onClick={() => {
-                      setSelectedAssetId(asset.id);
-                      setAssetEditorOpen(true);
-                    }}
-                    style={assetTinyButtonStyle}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    title="Create a work order"
-                    aria-label={`Create work order for ${asset.name}`}
-                    onClick={() =>
-                      addWorkOrder({ assetId: asset.id, locationId: asset.locationId || "" })
-                    }
-                    style={assetTinyButtonStyle}
-                  >
-                    Work Order
-                  </button>
-                </div>
-
-                <span className="atlas-gold-hover-popover" aria-hidden="true">
-                  <strong>{asset.name}</strong>
-                  <span>{asset.make || "Make not recorded"} {asset.model || ""}</span>
-                  <span>Condition: {assetConditionLabel}</span>
-                  <span>
-                    Last service:{" "}
-                    {assetCompletedWork[0]?.date
-                      ? formatDate(assetCompletedWork[0].date)
-                      : "Not recorded"}
-                  </span>
-                  <span>
-                    Next service:{" "}
-                    {assetNextMaintenance?.date
-                      ? formatDate(assetNextMaintenance.date)
-                      : "Not scheduled"}
-                  </span>
-                  <span>{assetOpenWork.length} open work order{assetOpenWork.length === 1 ? "" : "s"}</span>
-                  <span>{assetDocumentCount} linked document{assetDocumentCount === 1 ? "" : "s"}</span>
-                </span>
-              </div>
-            );
-          })}
-          {displayedAssets.length === 0 ? (
-            <div style={noticeStyle}>
-              <strong>No matching assets found.</strong>
-              <p style={mutedSmallStyle}>Adjust the search or select Clear Filters to show all assets.</p>
-            </div>
-          ) : null}
-          </div>
-        </div>
-      }
-      drawer={
-        selectedAsset.id ? (
-          <div
-            className={`atlas-asset-drawer${assetPanelScrolling ? " atlas-asset-drawer-scrolling" : ""}`}
-            style={{
-              ...assetFixedPanelStyle,
-              maxHeight: "none",
-              minHeight: 0,
-              overflow: "visible",
-            }}
-            tabIndex={0}
-            onPaste={(event) => {
-              const payload = imagePayloadFromPasteEvent(event);
-              if (!payload.files.length && !payload.urls.length) return;
-              event.preventDefault();
-
-              void (async () => {
-                try {
-                  setDatabaseStatus("Reading pasted image...");
-                  const files = await filesFromClipboardPayload(
-                    payload.files,
-                    payload.urls,
-                  );
-                  if (!files.length) {
-                    throw new Error(
-                      "No usable image was found. Use Copy image instead of Copy link.",
-                    );
-                  }
-                  await addAssetPhotoFiles(files);
-                } catch (error) {
-                  setDatabaseStatus(
-                    error instanceof Error
-                      ? error.message
-                      : "Could not paste that image.",
-                  );
-                }
-              })();
-            }}
-          >
-            <div
-              style={{
-                ...assetPanelTitleRowStyle,
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 8,
-                paddingBottom: 8,
-                minHeight: 0,
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <h3
-                  style={{
-                    ...assetPanelTitleStyle,
-                    margin: 0,
-                    fontSize: 18,
-                    lineHeight: 1.15,
-                  }}
-                >
-                  {selectedAsset.name.trim() || "Asset"}
-                </h3>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: 5,
-                    marginTop: 3,
-                    lineHeight: 1.15,
-                  }}
-                >
-                  <span style={badgeStyle(assetConditionBadge)}>
-                    {assetConditionLabel}
-                  </span>
-                  {selectedAsset.category ? (
-                    <span style={mutedSmallStyle}>{selectedAsset.category}</span>
-                  ) : null}
-                  {selectedAsset.locationId && selectedAsset.locationId !== "general" ? (
-                    <span style={mutedSmallStyle}>· {locationName(selectedAsset.locationId)}</span>
-                  ) : null}
-                  {[selectedAsset.make, selectedAsset.model].filter(Boolean).length ? (
-                    <span style={mutedSmallStyle}>
-                      · {[selectedAsset.make, selectedAsset.model].filter(Boolean).join(" ")}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-              <div
-                style={{
-                  ...assetActionRowStyle,
-                  gap: 5,
-                  alignItems: "center",
-                  margin: 0,
-                }}
-              >
-                {assetEditorOpen ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setAssetEditorOpen(false)}
-                      style={assetActionButtonStyle}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void (async () => {
-                          await saveDirtyRecord(
-                            "assets",
-                            selectedAsset,
-                            "asset",
-                            selectedAsset.id,
-                          );
-                          setAssetEditorOpen(false);
-                          showSaveToast("Asset saved.");
-                        })()
-                      }
-                      style={assetPrimaryActionButtonStyle}
-                    >
-                      Save Changes
-                    </button>
-                  </>
-                ) : null}
-                {!assetEditorOpen && isRecordDirty("asset", selectedAsset.id) ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void (async () => {
-                        await saveDirtyRecord(
-                          "assets",
-                          selectedAsset,
-                          "asset",
-                          selectedAsset.id,
-                        );
-                        setAssetEditorOpen(false);
-                        showSaveToast("Asset saved.");
-                      })()
-                    }
-                    style={assetPrimaryActionButtonStyle}
-                  >
-                    Save Changes
-                  </button>
-                ) : null}
-                {!assetEditorOpen ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAssetPanelCustomizeOpen(false);
-                      setAssetVisibleSectionsExpanded(false);
-                      setAssetPanelSection("overview");
-                      setAssetEditorOpen(true);
-                    }}
-                    style={assetPrimaryActionButtonStyle}
-                    aria-label="Edit asset"
-                  >
-                    Edit Asset
-                  </button>
-                ) : null}
-                {!assetEditorOpen ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        addWorkOrder({
-                          assetId: selectedAsset.id,
-                          locationId: selectedAsset.locationId || "",
-                        })
-                      }
-                      style={assetActionButtonStyle}
-                    >
-                      Create Work Order
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAssetPanelCustomizeOpen((current) => !current)}
-                      style={{
-                        ...assetActionButtonStyle,
-                        borderColor: assetPanelCustomizeOpen ? colors.gold : colors.line,
-                        background: assetPanelCustomizeOpen ? "#FFF8E6" : "#FFFFFF",
-                      }}
-                      aria-expanded={assetPanelCustomizeOpen}
-                    >
-                      Customize
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void deleteAssetRecord(selectedAsset)}
-                      style={{ ...dangerButtonStyle, width: "auto" }}
-                    >
-                      Delete Asset
-                    </button>
-                  </>
-                ) : null}
-              </div>
-            </div>
-
-            {!assetEditorOpen && assetPanelCustomizeOpen && assetPanelSection === "overview" ? (
-              <section
-                style={{
-                  border: `1px solid ${colors.gold}`,
-                  borderRadius: 12,
-                  background: "#FFF9E8",
-                  padding: 11,
-                  marginBottom: 12,
-                }}
-                aria-label="Visible asset information sections"
-              >
-                <div style={{ ...assetCardHeaderStyle, marginBottom: 8 }}>
-                  <div>
-                    <strong style={{ whiteSpace: "nowrap" }}>Visible Sections</strong>
-                    <div style={assetCardHintStyle}>
-                      Choose what appears in the asset information panel.
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAssetVisibleSections({
-                          overview: true,
-                          status: true,
-                          linkedRecords: true,
-                          recordSetup: true,
-                          costs: false,
-                        })
-                      }
-                      style={assetTinyButtonStyle}
-                    >
-                      Reset
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAssetVisibleSectionsExpanded((current) => !current)}
-                      style={assetTinyButtonStyle}
-                      aria-expanded={assetVisibleSectionsExpanded}
-                      aria-label={assetVisibleSectionsExpanded ? "Collapse Visible Sections" : "Expand Visible Sections"}
-                    >
-                      {assetVisibleSectionsExpanded ? "▲" : "▼"}
-                    </button>
-                  </div>
-                </div>
-                {assetVisibleSectionsExpanded ? <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: isMobile
-                      ? "1fr"
-                      : "repeat(2, minmax(0, 1fr))",
-                    gap: 7,
+                    gap: 9,
+                    padding: 10,
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 12,
+                    background: "#FFFFFF",
                   }}
                 >
-                  {[
-                    ["overview", "Asset Overview"],
-                    ["status", "Asset Status"],
-                    ["linkedRecords", "Linked Records"],
-                    ["recordSetup", "Record Setup"],
-                    ["costs", "Service Costs"],
-                  ].map(([key, label]) => (
-                    <label
-                      key={key}
+                  <input
+                    value={newCategory}
+                    onChange={(event) =>
+                      setNewCategory(event.currentTarget.value)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addCategory();
+                      }
+                    }}
+                    placeholder="New category name"
+                    style={controlStyle}
+                  />
+                  <button
+                    type="button"
+                    onClick={addCategory}
+                    style={{ ...secondaryButtonStyle, fontWeight: 500 }}
+                  >
+                    Add Category
+                  </button>
+                  {categoryChoices.map((category) => (
+                    <details
+                      key={category}
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        minWidth: 0,
                         border: `1px solid ${colors.line}`,
                         borderRadius: 9,
-                        background: "#FFFFFF",
-                        padding: "8px 9px",
-                        color: colors.navy,
-                        fontSize: 11,
-                        fontWeight: 850,
-                        cursor: "pointer",
+                        background: "#F8FAFC",
                       }}
                     >
-                      <input
-                        type="checkbox"
-                        checked={assetVisibleSections[key] !== false}
-                        onChange={(event) =>
-                          setAssetVisibleSections((current) => ({
-                            ...current,
-                            [key]: event.target.checked,
-                          }))
-                        }
-                      />
-                      <span
+                      <summary
                         style={{
-                          whiteSpace: "nowrap",
-                          wordBreak: "normal",
-                          overflowWrap: "normal",
+                          padding: "9px 10px",
+                          color: colors.muted,
+                          fontSize: 13,
+                          fontWeight: 500,
+                          cursor: "pointer",
                         }}
                       >
-                        {label}
-                      </span>
-                    </label>
+                        {categoryDisplayLabel(category)}
+                      </summary>
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 6,
+                          padding: "0 8px 8px",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => renameCategory(category)}
+                          style={{ ...secondaryButtonStyle, fontWeight: 500 }}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeCategory(category)}
+                          style={{ ...dangerButtonStyle, fontWeight: 500 }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </details>
                   ))}
-                </div> : null}
-                <div style={{ ...assetCardHintStyle, marginTop: 8 }}>
-                  Service Costs are hidden by default because expenses are managed separately.
+                  <button
+                    type="button"
+                    onClick={restoreDefaultCategories}
+                    style={{ ...secondaryButtonStyle, fontWeight: 500 }}
+                  >
+                    Restore Default Categories
+                  </button>
                 </div>
-              </section>
-            ) : null}
+              ) : null}
+
+              <details
+                style={{
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 11,
+                  background: "#FFFFFF",
+                }}
+              >
+                <summary
+                  style={{
+                    padding: "11px 12px",
+                    color: colors.muted,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  Search &amp; Filters
+                  {activeFilterCount
+                    ? ` · ${activeFilterCount} active · ${visibleRecords.length} result${
+                        visibleRecords.length === 1 ? "" : "s"
+                      }`
+                    : ""}
+                </summary>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr",
+                    gap: 9,
+                    padding: "0 10px 10px",
+                  }}
+                >
+                <input
+                  value={localSearch}
+                  onChange={(event) =>
+                    setLocalSearch(event.currentTarget.value)
+                  }
+                  placeholder="Search work, asset, vendor, category..."
+                  style={controlStyle}
+                />
+                <select
+                  value={categoryFilter}
+                  onChange={(event) =>
+                    setCategoryFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category === "All"
+                        ? "All Categories"
+                        : categoryDisplayLabel(category)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={typeFilter}
+                  onChange={(event) => setTypeFilter(event.currentTarget.value)}
+                  style={controlStyle}
+                >
+                  <option value="All">All Types</option>
+                  <option value="Quick Task">Tasks</option>
+                  <option value="Work Order">Work Orders</option>
+                  <option value="Preventive Maintenance">
+                    Preventive Maintenance
+                  </option>
+                  <option value="Project">Projects</option>
+                </select>
+                <select
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
+                  <option value="All">All Statuses</option>
+                  {[
+                    "Open",
+                    "Scheduled",
+                    "In Progress",
+                    "Waiting",
+                    "Monitor",
+                    "Completed",
+                  ].map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={dueDateFilter}
+                  onChange={(event) =>
+                    setDueDateFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
+                  <option value="All">All Due Dates</option>
+                  <option value="Overdue">Overdue</option>
+                  <option value="Today">Due Today</option>
+                  <option value="Next 7 Days">Next 7 Days</option>
+                  <option value="This Month">This Month</option>
+                  <option value="Next Month">Next Month</option>
+                  <option value="No Due Date">No Due Date</option>
+                </select>
+                <select
+                  value={locationFilter}
+                  onChange={(event) =>
+                    setLocationFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
+                  <option value="All">All Locations</option>
+                  <option value="None">No Location</option>
+                  {byName(locationRecords).map((location: any) => (
+                    <option key={location.id} value={location.id}>
+                      {location.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={assetFilter}
+                  onChange={(event) =>
+                    setAssetFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
+                  <option value="All">All Assets</option>
+                  {byName(assetRecords).map((asset: any) => (
+                    <option key={asset.id} value={asset.id}>
+                      {asset.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={assignedFilter}
+                  onChange={(event) =>
+                    setAssignedFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
+                  <option value="All">Anyone Assigned</option>
+                  <option value="None">Unassigned</option>
+                  {byName(contactRecords).map((contact: any) => (
+                    <option
+                      key={contact.id || contact.name}
+                      value={contact.name}
+                    >
+                      {contact.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLocalSearch("");
+                    setCategoryFilter("All");
+                    setTypeFilter("All");
+                    setStatusFilter("All");
+                    setDueDateFilter("All");
+                    setLocationFilter("All");
+                    setAssetFilter("All");
+                    setAssignedFilter("All");
+                  }}
+                  style={secondaryButtonStyle}
+                >
+                  Clear Filters
+                </button>
+                </div>
+              </details>
+            </section>
 
             <div
               style={{
-                ...assetTopGridStyle,
-                gridTemplateColumns: "minmax(0, 1fr)",
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "repeat(3, minmax(0, 1fr))"
+                  : "repeat(3, minmax(120px, 180px))",
+                gap: 7,
               }}
             >
-              <section style={assetCardStyle}>
-                <div style={assetCardHeaderStyle}>
-                  <strong>Asset Information</strong>
-                  {!assetEditorOpen ? (
-                    <button
-                      type="button"
-                      onClick={() => setAssetEditorOpen(true)}
-                      style={assetIconButtonStyle}
-                      aria-label="Edit all asset information"
-                      title="Edit asset information"
-                    >
-                      ✏
-                    </button>
-                  ) : (
-                    <span style={assetCardHintStyle}>Editing all information</span>
-                  )}
-                </div>
-                <div
-                  style={{
-                    ...assetInformationGridStyle,
-                    gridTemplateColumns: isMobile
-                      ? "1fr"
-                      : "repeat(2, minmax(0, 1fr))",
-                  }}
-                >
-                  {infoValue(
-                    "Asset Name",
-                    selectedAsset.name,
-                    <input
-                      value={selectedAsset.name}
-                      onChange={(event) => updateAsset({ name: event.currentTarget.value })}
-                      style={assetCompactInputStyle}
-                    />,
-                  )}
-                  {infoValue(
-                    "Year",
-                    selectedAsset.year || "",
-                    <input
-                      value={selectedAsset.year || ""}
-                      inputMode="numeric"
-                      onChange={(event) => updateAsset({ year: event.currentTarget.value })}
-                      style={assetCompactInputStyle}
-                    />,
-                    () => updateAsset({ year: "" }),
-                  )}
-                  {infoValue(
-                    "Make",
-                    selectedAsset.make || "",
-                    <input
-                      value={selectedAsset.make || ""}
-                      onChange={(event) => updateAsset({ make: event.currentTarget.value })}
-                      style={assetCompactInputStyle}
-                    />,
-                    () => updateAsset({ make: "" }),
-                  )}
-                  {infoValue(
-                    "Model",
-                    selectedAsset.model || "",
-                    <input
-                      value={selectedAsset.model || ""}
-                      onChange={(event) => updateAsset({ model: event.currentTarget.value })}
-                      style={assetCompactInputStyle}
-                    />,
-                    () => updateAsset({ model: "" }),
-                  )}
-                  {infoValue(
-                    assetIdentifierLabel,
-                    selectedAsset.serial || "",
-                    <input
-                      value={selectedAsset.serial || ""}
-                      onChange={(event) => updateAsset({ serial: event.currentTarget.value })}
-                      placeholder={assetIdentifierLabel}
-                      style={assetCompactInputStyle}
-                    />,
-                    () => updateAsset({ serial: "" }),
-                  )}
-                  {infoValue(
-                    "Location",
-                    selectedAsset.locationId && selectedAsset.locationId !== "general"
-                      ? locationName(selectedAsset.locationId)
-                      : "",
-                    <CreatableRelationshipField
-                      label="Location"
-                      value={selectedAsset.locationId || ""}
-                      options={alphabeticalLocations.map((location) => ({ id: location.id, label: location.name }))}
-                      emptyLabel="Select or add location"
-                      compact
-                      onCreate={createLocationFromAsset}
-                      onChange={(locationId) => {
-                        updateAsset({
-                          locationId: locationId || "general",
-                          locationIds: locationId ? [locationId] : [],
-                        } as Partial<AtlasAssetRecord>);
-                      }}
-                    />,
-                  )}
-                  {infoValue(
-                    "Status",
-                    selectedAsset.status,
-                    <select
-                      value={selectedAsset.status}
-                      onChange={(event) => updateAsset({ status: event.currentTarget.value as Status })}
-                      style={assetCompactInputStyle}
-                    >
-                      {["Monitor", "Offline", "Online", "Seasonal"].map((status) => (
-                        <option key={status} value={status}>{status}</option>
-                      ))}
-                    </select>,
-                  )}
-                  <div style={assetInfoItemStyle}>
-                    <span style={assetInfoLabelStyle}>Work Orders</span>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                      <strong style={assetInfoValueStyle}>
-                        {openAssetWorkOrders.length} open · {relatedWorkOrders.length} total
-                      </strong>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          onClick={() => setAssetPanelSection("work")}
-                          style={assetTinyButtonStyle}
-                        >
-                          View Work Orders
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => addWorkOrder({ assetId: selectedAsset.id, locationId: selectedAsset.locationId || "" })}
-                          style={assetTinyButtonStyle}
-                        >
-                          + Add
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </div>
-
-            <details
-              style={{
-                ...assetCardStyle,
-                marginBottom: 12,
-                padding: 0,
-                overflow: "hidden",
-              }}
-            >
-              <summary
-                style={{
-                  cursor: "pointer",
-                  padding: "10px 12px",
-                  color: colors.navy,
-                  fontSize: 12,
-                  fontWeight: 900,
-                  listStylePosition: "inside",
-                }}
-              >
-                More Details
-              </summary>
-              <div
-                style={{
-                  display: "grid",
-                  gap: 7,
-                  padding: "0 12px 10px",
-                }}
-              >
-                <div
-                  style={{
-                    border: `1px solid ${colors.line}`,
-                    borderRadius: 9,
-                    background: "#FFFFFF",
-                    padding: 9,
-                    display: "grid",
-                    gap: 7,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 8,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div>
-                      <span style={assetInfoLabelStyle}>Department / Category</span>
-                      {!assetEditorOpen ? (
-                        <div style={{ ...assetInfoValueStyle, marginTop: 2 }}>
-                          {selectedAsset.category || "Not assigned"}
-                        </div>
-                      ) : null}
-                    </div>
-                    {assetEditorOpen ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAssetCategoryAddOpen((current) => !current);
-                          setAssetCategoryDraft("");
-                        }}
-                        style={assetTinyButtonStyle}
-                      >
-                        {assetCategoryAddOpen ? "Cancel" : "+ Add Category"}
-                      </button>
-                    ) : null}
-                  </div>
-
-                  {assetEditorOpen ? (
-                    <>
-                      <select
-                        value={selectedAsset.category || ""}
-                        onChange={(event) =>
-                          updateAsset({ category: event.currentTarget.value })
-                        }
-                        style={{ ...assetCompactInputStyle, width: "100%" }}
-                        aria-label="Asset department or category"
-                      >
-                        <option value="">Select department or category</option>
-                        <optgroup label="Atlas departments">
-                          {departmentCategoryOptions.map((category) => (
-                            <option key={`department-${category}`} value={category}>
-                              {category}
-                            </option>
-                          ))}
-                        </optgroup>
-                        {editableAssetCategories.some(
-                          (category) => !departmentCategoryOptions.includes(category),
-                        ) ? (
-                          <optgroup label="Saved categories">
-                            {editableAssetCategories
-                              .filter(
-                                (category) => !departmentCategoryOptions.includes(category),
-                              )
-                              .map((category) => (
-                                <option key={`category-${category}`} value={category}>
-                                  {category}
-                                </option>
-                              ))}
-                          </optgroup>
-                        ) : null}
-                      </select>
-
-                      {assetCategoryAddOpen ? (
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: isMobile
-                              ? "1fr"
-                              : "minmax(0, 1fr) auto",
-                            gap: 7,
-                          }}
-                        >
-                          <input
-                            value={assetCategoryDraft}
-                            onChange={(event) =>
-                              setAssetCategoryDraft(event.currentTarget.value)
-                            }
-                            placeholder="New category name"
-                            style={assetCompactInputStyle}
-                            autoFocus
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const cleanCategory = assetCategoryDraft.trim();
-                              if (!cleanCategory) return;
-                              updateAsset({ category: cleanCategory });
-                              setAssetCategoryDraft("");
-                              setAssetCategoryAddOpen(false);
-                            }}
-                            disabled={!assetCategoryDraft.trim()}
-                            style={{
-                              ...assetPrimaryActionButtonStyle,
-                              opacity: assetCategoryDraft.trim() ? 1 : 0.55,
-                            }}
-                          >
-                            Add
-                          </button>
-                        </div>
-                      ) : null}
-
-                      <div style={assetCardHintStyle}>
-                        Changing this moves the asset into the matching Atlas department after you save the asset. This control does not open another page.
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "repeat(2, minmax(0, 1fr))"
-                    : "repeat(4, minmax(0, 1fr))",
-                  gap: 7,
-                  padding: "0 12px 12px",
-                }}
-              >
-                {[
-                  ["photos", `Photos (${selectedAssetPhotos.length})`],
-                  ["documents", `Documents (${linkedAssetDocuments.length + attachedManuals.length})`],
-                  ["history", `Service History (${assetHistory.length})`],
-                  ["notes", "Notes"],
-                ].map(([key, label]) => (
+              {[
+                ["Today", "Today"],
+                ["Next 7 Days", "Next 7 Days"],
+                ["Next Month", "Next Month"],
+              ].map(([label, value]) => {
+                const selected = dueDateFilter === value;
+                return (
                   <button
-                    key={key}
+                    key={value}
                     type="button"
-                    onClick={() => setAssetPanelSection(key as typeof assetPanelSection)}
+                    aria-pressed={selected}
+                    onClick={() => setQuickDateFilter(value)}
                     style={{
-                      ...assetActionButtonStyle,
-                      minHeight: 38,
-                      background: assetPanelSection === key ? "#FFF9E8" : "#FFFFFF",
-                      borderColor: assetPanelSection === key ? colors.gold : colors.line,
+                      ...secondaryButtonStyle,
+                      width: "100%",
+                      minWidth: 0,
+                      padding: isMobile ? "8px 5px" : "8px 10px",
+                      background: selected ? colors.navy : "#FFFFFF",
+                      color: selected ? "#FFFFFF" : colors.navy,
+                      borderColor: selected ? colors.navy : colors.line,
+                      fontSize: isMobile ? 11 : 12,
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {label}
                   </button>
-                ))}
+                );
+              })}
+            </div>
+
+            {activeSection?.kind === "my-work" ? (
+              renderMyWorkList()
+            ) : (
+              <div style={listStyle}>
+                {visibleRecords.map(renderWorkRow)}
+                {!visibleRecords.length ? (
+                  <div style={noticeStyle}>
+                    No work matches this section, category, or search.
+                  </div>
+                ) : null}
               </div>
-            </details>
-
-            <div
-              style={{
-                ...assetMiddleGridStyle,
-                display:
-                  assetPanelSection === "notes" || assetPanelSection === "photos"
-                    ? "grid"
-                    : "none",
-                gridTemplateColumns: "minmax(0, 1fr)",
-                alignItems: "start",
-              }}
-            >
-              <section style={{ ...assetCardStyle, display: assetPanelSection === "notes" ? "block" : "none" }}>
-                <div style={assetCardHeaderStyle}>
-                  <strong>Notes</strong>
-                  {!assetEditorOpen ? (
-                    <button
-                      type="button"
-                      onClick={() => setAssetEditorOpen(true)}
-                      style={assetIconButtonStyle}
-                      aria-label="Edit notes"
-                    >
-                      ✏
-                    </button>
-                  ) : null}
-                </div>
-                {assetEditorOpen ? (
-                  <textarea
-                    value={selectedAsset.notes}
-                    onChange={(event) =>
-                      updateAsset({ notes: event.currentTarget.value })
-                    }
-                    style={assetNotesEditorStyle}
-                  />
-                ) : (
-                  <p style={assetNotesTextStyle}>
-                    {selectedAsset.notes || "No notes yet."}
-                  </p>
-                )}
-              </section>
-
-              <section style={{ ...assetCardStyle, display: assetPanelSection === "photos" ? "block" : "none" }}>
-                <div
-                  style={{
-                    ...assetCardHeaderStyle,
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                    rowGap: 6,
+            )}
+          </div>
+        }
+        drawer={
+          detailOpen && selectedService.id ? (
+            <div style={{ ...stackStyle, gap: 7 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  position: isMobile ? "sticky" : "relative",
+                  top: 0,
+                  zIndex: 5,
+                  padding: isMobile ? "4px 0 12px" : "0 0 8px",
+                  background: "#FFFFFF",
+                  borderBottom: `1px solid ${colors.line}`,
+                }}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => void deleteWorkOrderRecord(selectedService)}
+                    style={{
+                      ...dangerButtonStyle,
+                      width: "auto",
+                      padding: "7px 10px",
+                      border: 0,
+                      background: "transparent",
+                    }}
+                  >
+                    Delete Work Order
+                  </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDetailOpen(false);
+                    setSelectedServiceId("");
                   }}
+                  style={{
+                    ...secondaryButtonStyle,
+                    minHeight: 38,
+                    padding: "7px 11px",
+                    fontWeight: 500,
+                  }}
+                  aria-label="Back to work orders"
                 >
-                  <strong
-                    style={{
-                      whiteSpace: "nowrap",
-                      wordBreak: "keep-all",
-                      overflowWrap: "normal",
-                      flex: "0 0 auto",
-                      minWidth: "max-content",
-                    }}
-                  >
-                    Photos
-                  </strong>
-                  <div
-                    style={{
-                      ...assetPhotoHeaderActionsStyle,
-                      flexWrap: "wrap",
-                      justifyContent: "flex-end",
-                      minWidth: 0,
-                      flex: "1 1 220px",
-                      width: "100%",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => void pasteAssetPhoto()}
-                      style={assetTinyButtonStyle}
-                    >
-                      Paste
-                    </button>
-                    <label style={assetTinyUploadStyle}>
-                      + Add Photo
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        capture="environment"
-                        onChange={(event) => {
-                          void addAssetPhotoFiles(event.currentTarget.files);
-                          event.currentTarget.value = "";
-                        }}
-                        style={{ display: "none" }}
-                      />
-                    </label>
+                  {SYMBOL.back} Back to Work Orders
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDetailOpen(false);
+                    setSelectedServiceId("");
+                  }}
+                  style={{
+                    border: 0,
+                    background: "transparent",
+                    color: colors.text,
+                    fontSize: 26,
+                    lineHeight: 1,
+                    padding: 6,
+                    cursor: "pointer",
+                  }}
+                  aria-label="Close work order details"
+                  title="Close"
+                >
+                  {SYMBOL.close}
+                </button>
+                </span>
+              </div>
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(250px, 40%) minmax(0, 60%)", gap: 18 }}>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {photoSource((selectedService.photos || [])[0]) ? (
+                      <img src={photoSource(selectedService.photos[0])} alt={selectedService.title || "Work order"} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", borderRadius: 10 }} />
+                    ) : (
+                      <button type="button" onClick={() => photoInputRef.current?.click()} style={{ width: "100%", aspectRatio: "4 / 3", border: `1px dashed ${colors.line}`, borderRadius: 10, background: "#F8FAFC", color: colors.muted, cursor: "pointer" }}>Add Work Order Photo</button>
+                    )}
+                    <button type="button" onClick={() => photoInputRef.current?.click()} style={{ ...secondaryButtonStyle, fontWeight: 500 }}>Add / Change Photo</button>
+                  </div>
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={eyebrowStyle}>Work Order Details</div>
+                        {workEditorOpen ? (
+                          <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, marginTop: 5, fontSize: isMobile ? 20 : 24, fontWeight: 800 }} />
+                        ) : (
+                          <h2 style={{ margin: "5px 0 0", color: colors.text, fontSize: isMobile ? 22 : 27, lineHeight: 1.2 }}>{selectedService.title || "Untitled Work Order"}</h2>
+                        )}
+                      </div>
+                      {!workEditorOpen ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          {selectedService.status !== "Completed" ? (
+                            <button
+                              type="button"
+                              onClick={() => handleDetailAction("complete")}
+                              style={{ ...goldButtonStyle, width: "auto", minHeight: 34, padding: "7px 12px", whiteSpace: "nowrap" }}
+                            >
+                              Mark Done
+                            </button>
+                          ) : null}
+                          <button type="button" onClick={() => setWorkEditorOpen(true)} style={{ ...secondaryButtonStyle, width: 34, minWidth: 34, height: 34, minHeight: 34, padding: 0, borderRadius: 8 }} aria-label="Edit work order details" title="Edit work order details">{SYMBOL.edit}</button>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {workEditorOpen ? (
+                      <textarea value={selectedService.notes || ""} onChange={(event) => updateWorkOrder({ notes: event.currentTarget.value })} rows={3} placeholder="Describe the work that is needed" style={{ ...inputStyle, minHeight: 82, resize: "vertical" }} />
+                    ) : (
+                      <p style={{ margin: 0, color: colors.muted, fontSize: 13, lineHeight: 1.5 }}>{selectedService.notes || "No description added."}</p>
+                    )}
+
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+                      {workEditorOpen ? (
+                        <>
+                          <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due Date"}</span><input type="date" value={String(selectedService.date || "")} onChange={(event) => updateWorkOrder({ date: event.currentTarget.value })} style={inputStyle} /></label>
+                          <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Status</span><select value={selectedService.status || "Open"} onChange={(event) => updateWorkOrder({ status: event.currentTarget.value })} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="In Progress">In Progress</option><option value="Waiting">Waiting</option><option value="Monitor">Monitor</option><option value="Completed">Completed</option></select></label>
+                          <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Priority</span><select value={selectedService.priority || "Medium"} onChange={(event) => updateWorkOrder({ priority: event.currentTarget.value })} style={inputStyle}><option value="High">High</option><option value="Medium">Normal</option><option value="Low">Low</option></select></label>
+                          <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Work Type</span><select value={itemType(selectedService)} onChange={(event) => { const workType = event.currentTarget.value as WorkItemType; updateWorkOrder({ workType, recurring: workType === "Preventive Maintenance" ? true : selectedService.recurring }); }} style={inputStyle}><option value="Quick Task">Task</option><option value="Work Order">Work Order</option><option value="Preventive Maintenance">Preventive Maintenance</option><option value="Project">Project</option></select></label>
+                        </>
+                      ) : (
+                        <>
+                          <div><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due Date"}</span><div style={{ marginTop: 4 }}>{selectedService.date ? formatDate(selectedService.date) : "No due date"}</div></div>
+                          <div><span style={fieldLabelStyle}>Status</span><div style={{ marginTop: 4 }}><span style={badgeStyle(selectedService.status || "Open")}>{selectedService.status || "Open"}</span></div></div>
+                          <div><span style={fieldLabelStyle}>Priority</span><div style={{ marginTop: 4 }}><span style={badgeStyle(selectedService.priority || "Medium")}>{selectedService.priority || "Normal"}</span></div></div>
+                          <div><span style={fieldLabelStyle}>Work Type</span><div style={{ marginTop: 4 }}>{itemType(selectedService)}</div></div>
+                        </>
+                      )}
+                    </div>
+
+                    {workEditorOpen ? (
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                        <button type="button" onClick={() => setWorkEditorOpen(false)} style={secondaryButtonStyle}>Cancel</button>
+                        <button type="button" onClick={() => { void saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto" }}>Save Details</button>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
-                {selectedAssetPhotos.length ? (
-                  <details style={{ border: `1px solid ${colors.line}`, borderRadius: 8, background: "#FFFFFF" }}>
-                    <summary style={{ padding: "7px 9px", cursor: "pointer", color: colors.navy, fontSize: 11, fontWeight: 900 }}>
-                      Photos ({selectedAssetPhotos.length})
+              </section>
+
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
+                <div style={{ ...eyebrowStyle, marginBottom: 12 }}>Atlas Assignment</div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Asset</span><select value={selectedService.assetId || ""} onChange={(event) => updateWorkOrder(assetPhotoPatch(event.currentTarget.value))} style={inputStyle}><option value="">No linked asset</option>{byName(assetRecords).map((asset: any) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Location</span><select value={selectedService.locationId || ""} onChange={(event) => updateWorkOrder({ locationId: event.currentTarget.value })} style={inputStyle}><option value="">No linked location</option>{byName(locationRecords).map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Category</span><select value={categoryLabel(selectedService)} onChange={(event) => updateWorkOrder({ workCategory: event.currentTarget.value, emoji: categoryEmoji(event.currentTarget.value) })} style={inputStyle}>{categories.filter((category) => category !== "All").map((category) => <option key={category} value={category}>{categoryDisplayLabel(category)}</option>)}</select></label>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned To</span><select value={selectedService.assignedTo || ""} onChange={(event) => updateWorkOrder({ assignedTo: event.currentTarget.value })} style={inputStyle}><option value="">Unassigned</option>{byName(contactRecords).map((contact: any) => <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>)}</select></label>
+                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Vendor</span><select value={selectedService.vendorId || ""} onChange={(event) => updateWorkOrder({ vendorId: event.currentTarget.value })} style={inputStyle}><option value="">No vendor</option>{byName(vendorRecords).map((vendor: any) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+                </div>
+              </section>
+
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
+                <div style={{ ...eyebrowStyle, marginBottom: 12 }}>Cost & Invoice</div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                  <label style={{ display: "grid", gap: 5 }}>
+                    <span style={fieldLabelStyle}>Estimated Cost</span>
+                    <input type="number" min="0" step="0.01" value={selectedService.estimatedCost || ""} onChange={(event) => updateWorkOrder({ estimatedCost: Number(event.currentTarget.value || 0) })} style={inputStyle} />
+                  </label>
+                  <label style={{ display: "grid", gap: 5 }}>
+                    <span style={fieldLabelStyle}>Actual Cost</span>
+                    <input type="number" min="0" step="0.01" value={selectedService.actualCost || ""} onChange={(event) => updateWorkOrder({ actualCost: Number(event.currentTarget.value || 0) })} style={inputStyle} />
+                  </label>
+                  <label style={{ display: "grid", gap: 5 }}>
+                    <span style={fieldLabelStyle}>Invoice Number</span>
+                    <input value={selectedService.invoiceNumber || ""} onChange={(event) => updateWorkOrder({ invoiceNumber: event.currentTarget.value })} style={inputStyle} />
+                  </label>
+                </div>
+                <p style={{ ...mutedSmallStyle, marginBottom: 0 }}>Costs and invoice numbers are included in Atlas reports and CSV exports.</p>
+              </section>
+
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
+                <div style={{ ...eyebrowStyle, marginBottom: 10 }}>Internal Notes</div>
+                <textarea value={selectedService.internalNotes || ""} onChange={(event) => updateWorkOrder({ internalNotes: event.currentTarget.value })} rows={4} placeholder="Add internal notes here..." style={{ ...inputStyle, minHeight: 100, resize: "vertical" }} />
+                <p style={{ ...mutedSmallStyle, marginBottom: 0 }}>These notes stay inside Atlas.</p>
+              </section>
+
+              <div style={{ ...buttonRowStyle, justifyContent: "flex-start", padding: "2px 0 8px" }}>
+                <button type="button" onClick={() => void saveWorkOrderRecord()} style={{ ...goldButtonStyle, width: "auto" }}>Save Changes</button>
+              </div>
+
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Photos</div>
+                    <strong>
+                      {(selectedService.photos || []).length} attached
+                    </strong>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    style={secondaryButtonStyle}
+                  >
+                    Add Photos
+                  </button>
+                </div>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(event) =>
+                    void addPhotos(event.currentTarget.files)
+                  }
+                  style={{ display: "none" }}
+                />
+                {photoMessage ? (
+                  <p style={mutedSmallStyle}>{photoMessage}</p>
+                ) : null}
+                {(selectedService.photos || []).length ? (
+                  <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF" }}>
+                    <summary style={{ padding: "8px 10px", cursor: "pointer", color: colors.text, fontSize: 12, fontWeight: 700 }}>
+                      Photos ({(selectedService.photos || []).length})
                     </summary>
-                    <div style={{ display: "grid", gap: 4, maxHeight: 180, overflowY: "auto", padding: "0 7px 7px" }}>
-                      {selectedAssetPhotos.map((photo) => (
-                        <div key={photo.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center", gap: 5, padding: "5px 6px", border: `1px solid ${colors.line}`, borderRadius: 7 }}>
-                          <button type="button" onClick={() => openPhotoPreview(photo)} style={{ border: 0, padding: 0, background: "transparent", color: colors.navy, textAlign: "left", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>
-                            {photo.name || "Asset photo"}
-                          </button>
-                          <button type="button" onClick={() => void renameAssetPhoto(photo)} style={assetPhotoLabelButtonStyle} aria-label={`Edit ${photo.name || "photo"} label`}>✏</button>
-                          {assetEditorOpen ? <button type="button" onClick={() => void deleteAssetPhoto(photo)} style={assetPhotoDeleteIconStyle} aria-label={`Delete ${photo.name || "photo"}`}>{closeSymbol}</button> : null}
+                    <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
+                      {(selectedService.photos || []).map((photo: PhotoLike) => {
+                        const source = photoSource(photo);
+                        return (
+                          <div key={photo.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 8, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
+                            {source ? (
+                              <a href={source} target="_blank" rel="noreferrer" style={{ color: colors.text, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
+                                {photo.name || "Work photo"}
+                              </a>
+                            ) : (
+                              <span style={mutedSmallStyle}>{photo.name || "Photo unavailable"}</span>
+                            )}
+                            <button type="button" onClick={() => removePhoto(photo.id)} style={{ ...dangerButtonStyle, padding: "6px 8px" }}>Remove</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </details>
+                ) : null}
+              </section>
+
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Service History</div>
+                    <strong>
+                      {(selectedService.serviceHistory || []).length} saved
+                      completion snapshot
+                      {(selectedService.serviceHistory || []).length === 1
+                        ? ""
+                        : "s"}
+                    </strong>
+                  </div>
+                </div>
+                {(selectedService.serviceHistory || []).length ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 8,
+                      maxHeight: 150,
+                      overflowY: "auto",
+                    }}
+                  >
+                    {(selectedService.serviceHistory || []).map(
+                      (entry: any) => (
+                        <div
+                          key={entry.id}
+                          style={{
+                            border: `1px solid ${colors.line}`,
+                            borderRadius: 10,
+                            padding: 10,
+                            background: "#F8FAFC",
+                          }}
+                        >
+                          <strong>
+                            {new Date(entry.completedAt).toLocaleString()}
+                          </strong>
+                          <div style={mutedSmallStyle}>
+                            Due {formatDate(entry.dueDate)} ·{" "}
+                            {entry.statusBefore}
+                          </div>
+                          <div style={mutedSmallStyle}>
+                            {
+                              (entry.checklist || []).filter(
+                                (item: any) => item.completed,
+                              ).length
+                            }
+                            /{(entry.checklist || []).length} checklist items
+                            complete · {(entry.photos || []).length} photo(s)
+                          </div>
+                          {entry.notes ? (
+                            <p style={{ marginBottom: 0 }}>{entry.notes}</p>
+                          ) : null}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                ) : null}
+              </section>
+
+              <section style={{ ...detailSectionStyle, display: "none" }}>
+                <div style={eyebrowStyle}>Notes</div>
+                <textarea
+                  value={selectedService.notes || ""}
+                  onChange={(event) =>
+                    updateWorkOrder({ notes: event.currentTarget.value })
+                  }
+                  rows={2}
+                  style={{ ...inputStyle, resize: "vertical", minHeight: 58 }}
+                />
+              </section>
+
+              <details style={{ ...detailSectionStyle, display: "none" }}>
+                <summary
+                  style={{
+                    cursor: "pointer",
+                    fontWeight: 800,
+                    listStyle: "none",
+                  }}
+                >
+                  Category & Type
+                </summary>
+
+                <div style={{ ...formGridStyle, marginTop: 12 }}>
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>Work Type</span>
+                    <select
+                      value={itemType(selectedService)}
+                      onChange={(event) => {
+                        const workType = event.currentTarget
+                          .value as WorkItemType;
+                        updateWorkOrder({
+                          workType,
+                          recurring:
+                            workType === "Preventive Maintenance"
+                              ? true
+                              : selectedService.recurring,
+                        });
+                      }}
+                      style={inputStyle}
+                    >
+                      <option value="Quick Task">Task</option>
+                      <option value="Work Order">Work Order</option>
+                      <option value="Preventive Maintenance">
+                        Preventive Maintenance
+                      </option>
+                      <option value="Project">Project</option>
+                    </select>
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>Category</span>
+                    <select
+                      value={categoryLabel(selectedService)}
+                      onChange={(event) => {
+                        const workCategory = event.currentTarget.value;
+                        updateWorkOrder({
+                          workCategory,
+                          emoji: categoryEmoji(workCategory),
+                        });
+                      }}
+                      style={inputStyle}
+                    >
+                      {!categories.includes(categoryLabel(selectedService)) ? (
+                        <option value={categoryLabel(selectedService)}>
+                          {categoryDisplayLabel(categoryLabel(selectedService))}
+                        </option>
+                      ) : null}
+                      {categories
+                        .filter((category) => category !== "All")
+                        .map((category) => (
+                          <option key={category} value={category}>
+                            {categoryDisplayLabel(category)}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setManageCategoriesOpen((open) => !open)}
+                  style={{ ...miniButtonStyle, marginTop: 10 }}
+                >
+                  {manageCategoriesOpen ? "Close Category Manager" : "Manage Categories"}
+                </button>
+
+                {manageCategoriesOpen ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 10,
+                      marginTop: 10,
+                      paddingTop: 10,
+                      borderTop: `1px solid ${colors.line}`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile
+                          ? "1fr"
+                          : "minmax(0, 1fr) auto",
+                        gap: 8,
+                      }}
+                    >
+                      <input
+                        value={newCategory}
+                        onChange={(event) =>
+                          setNewCategory(event.currentTarget.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            addCategory();
+                          }
+                        }}
+                        placeholder="New category name"
+                        style={controlStyle}
+                      />
+                      <button
+                        type="button"
+                        onClick={addCategory}
+                        style={goldButtonStyle}
+                      >
+                        Add Category
+                      </button>
+                    </div>
+
+                    <div style={{ display: "grid", gap: 7 }}>
+                      {categoryChoices.map((category) => (
+                        <div
+                          key={category}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            padding: "8px 0",
+                            borderBottom: `1px solid ${colors.line}`,
+                          }}
+                        >
+                          <strong>{categoryDisplayLabel(category)}</strong>
+                          <div
+                            style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => renameCategory(category)}
+                              style={miniButtonStyle}
+                            >
+                              Rename
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeCategory(category)}
+                              style={{
+                                ...dangerButtonStyle,
+                                padding: "7px 10px",
+                              }}
+                            >
+                              Remove
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
-                  </details>
-                ) : (
-                  <div style={assetEmptyStateStyle}>No photos attached.</div>
-                )}
+
+                    <button
+                      type="button"
+                      onClick={restoreDefaultCategories}
+                      style={secondaryButtonStyle}
+                    >
+                      Restore Default Categories
+                    </button>
+                  </div>
+                ) : null}
+              </details>
+
+              <section
+                style={{
+                  ...detailSectionStyle,
+                  padding: 10,
+                  gap: 7,
+                  background: "#F8FAFC",
+                }}
+              >
                 <div
-                  className="atlas-photo-intelligence-shell"
                   style={{
-                    minWidth: 0,
-                    width: "100%",
-                    boxSizing: "border-box",
-                    position: "relative",
-                    isolation: "isolate",
-                    display: "block",
-                    overflow: "hidden",
-                    marginTop: 2,
+                    color: colors.muted,
+                    fontSize: 12,
+                    fontWeight: 400,
+                    letterSpacing: 0.2,
                   }}
                 >
-                  <PhotoIntelligencePanel
-                    asset={selectedAsset}
-                    photos={selectedAssetPhotos}
-                    photoSource={photoSource}
-                    colors={colors}
-                    onSaveAsset={async (patch, summary) => {
-                      const updated = normalizeAsset({
-                        ...selectedAsset,
-                        ...patch,
-                        notes: [selectedAsset.notes, `Photo Intelligence: ${summary}`]
-                          .filter(Boolean)
-                          .join("\n"),
-                      });
-                      const saved = await postAtlasRecord("assets", updated);
-                      if (!saved) throw new Error("Atlas could not save the asset details.");
-                      setAssetRecords((current) =>
-                        byName(current.map((item) => item.id === updated.id ? updated : item)),
-                      );
-                      clearRecordDirty("asset", updated.id);
-                      showSaveToast("Asset details approved and saved.");
-                    }}
-                    onDraftWorkOrder={(draft) =>
-                      addWorkOrder({
-                        assetId: selectedAsset.id,
-                        locationId: selectedAsset.locationId || "",
-                        title: draft.title,
-                        notes: draft.notes,
-                        priority: draft.priority,
-                      })
-                    }
-                  />
+                  Work Order Actions
                 </div>
-              </section>
-            </div>
+                {selectedService.status !== "Completed" ? (
+                  <button
+                    type="button"
+                    onClick={() => handleDetailAction("complete")}
+                    style={{
+                      ...secondaryButtonStyle,
+                      width: "100%",
+                      minHeight: 40,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {selectedService.recurring
+                      ? "Complete & Move to Next Due"
+                      : "Complete Work Order"}
+                  </button>
+                ) : null}
 
-            {assetPanelSection === "work" ? (
-              <section style={{ ...assetCardStyle, marginBottom: 12 }}>
-                <div style={{ ...assetCardHeaderStyle, marginBottom: 8 }}>
-                  <strong>Open Work Orders</strong>
+                <select
+                  value=""
+                  onChange={(event) => {
+                    handleDetailAction(event.currentTarget.value);
+                    event.currentTarget.value = "";
+                  }}
+                  style={{
+                    ...controlStyle,
+                    minHeight: 40,
+                    color: colors.muted,
+                    fontSize: 13,
+                    fontWeight: 400,
+                    background: "#FFFFFF",
+                  }}
+                  aria-label="Work order actions"
+                >
+                  <option value="">Choose an action...</option>
+                  {selectedService.status === "Completed" ? (
+                    <option value="reopen">Reopen Work Order</option>
+                  ) : (
+                    <>
+                      <option value="start">Start Work</option>
+                      <option value="complete">
+                        {selectedService.recurring
+                          ? "Complete & Move to Next Due"
+                          : "Mark Done"}
+                      </option>
+                      <option value="reschedule">Reschedule</option>
+                      <option value="tomorrow">Move to Tomorrow</option>
+                      <option value="next-week">Move to Next Week</option>
+                      <option value="convert">Convert Work Type</option>
+                    </>
+                  )}
+                  <option value="photo">Add Photo</option>
+                  <option value="duplicate">Duplicate Work Order</option>
+                  <option value="delete">Delete Work Order</option>
+                </select>
+
+                {selectedService.recurring ? (
+                  <div
+                    style={{
+                      ...recurrenceGridStyle,
+                      marginTop: 12,
+                      paddingTop: 12,
+                      borderTop: `1px solid ${colors.line}`,
+                    }}
+                  >
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Repeat Every</span>
+                      <input
+                        type="number"
+                        min={1}
+                        inputMode="numeric"
+                        value={recurrenceIntervalDraft}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(event) => {
+                          const nextValue = event.currentTarget.value;
+                          if (nextValue === "" || /^\d+$/.test(nextValue)) {
+                            setRecurrenceIntervalDraft(nextValue);
+                          }
+                        }}
+                        onBlur={() => {
+                          const nextValue = Math.max(
+                            1,
+                            Number(recurrenceIntervalDraft) || 1,
+                          );
+                          setRecurrenceIntervalDraft(String(nextValue));
+                          updateWorkOrder({ recurrenceInterval: nextValue });
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.currentTarget.blur();
+                          }
+                        }}
+                        style={inputStyle}
+                      />
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Unit</span>
+                      <select
+                        value={selectedService.recurrenceUnit || "Weeks"}
+                        onChange={(event) =>
+                          updateWorkOrder({
+                            recurrenceUnit: event.currentTarget
+                              .value as WorkOrderRecurrenceUnit,
+                          })
+                        }
+                        style={inputStyle}
+                      >
+                        {(
+                          [
+                            "Days",
+                            "Weeks",
+                            "Months",
+                            "Years",
+                          ] as WorkOrderRecurrenceUnit[]
+                        ).map((unit) => (
+                          <option key={unit} value={unit}>
+                            {unit}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <Field
+                      label="Stop Repeating After"
+                      value={selectedService.recurrenceEndDate || ""}
+                      onChange={(value: string) =>
+                        updateWorkOrder({ recurrenceEndDate: value })
+                      }
+                    />
+                    <div
+                      style={{
+                        gridColumn: "1 / -1",
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 10,
+                        background: "#F8FAFC",
+                        padding: 10,
+                      }}
+                    >
+                      <strong style={{ display: "block", marginBottom: 5 }}>
+                        Upcoming schedule
+                      </strong>
+                      <div style={mutedSmallStyle}>
+                        {selectedService.date
+                          ? `Current due date: ${formatDate(selectedService.date)}`
+                          : "Add a next-due date to start this schedule."}
+                      </div>
+                      {recurrencePreviewDates(selectedService).length ? (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: 6,
+                            marginTop: 8,
+                          }}
+                        >
+                          {recurrencePreviewDates(selectedService).map(
+                            (date) => (
+                              <span key={date} style={recurringBadgeStyle}>
+                                {formatDate(date)}
+                              </span>
+                            ),
+                          )}
+                        </div>
+                      ) : selectedService.date ? (
+                        <div style={{ ...mutedSmallStyle, marginTop: 6 }}>
+                          No later occurrence falls before the stop date.
+                        </div>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void saveWorkOrderRecord()}
+                      style={{
+                        ...goldButtonStyle,
+                        gridColumn: "1 / -1",
+                        width: "100%",
+                      }}
+                    >
+                      Save Recurring Schedule
+                    </button>
+                  </div>
+                ) : null}
+              </section>
+
+              {renderLinkedDocuments("Work Order", selectedService.id)}
+            </div>
+          ) : (
+            <div style={noticeStyle}>
+              <strong>Select work or add a new item.</strong>
+              <p style={mutedSmallStyle}>
+                Use Tasks for small work, Preventive Maintenance for recurring
+                service, and Projects for larger multi-step work.
+              </p>
+            </div>
+          )
+        }
+      />
+
+      {false ? (
+      <section
+        style={{
+          marginTop: 18,
+          padding: isMobile ? 12 : 18,
+          border: `1px solid ${colors.line}`,
+          borderRadius: 16,
+          background: colors.card || "#FFFFFF",
+          color: colors.text,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+            marginBottom: completedHistoryOpen ? 14 : 0,
+          }}
+        >
+          <div>
+            <div style={eyebrowStyle}>Completed History</div>
+            <h3 style={{ ...editorHeaderStyle, margin: "4px 0" }}>
+              Completed Work Orders
+            </h3>
+            <p style={{ ...mutedSmallStyle, margin: 0 }}>
+              Completed work orders, newest first.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCompletedHistoryOpen((open) => !open)}
+            style={{ ...secondaryButtonStyle, fontWeight: 500 }}
+          >
+            {completedHistoryOpen ? `Hide History ${SYMBOL.up}` : `Show History ${SYMBOL.down}`}
+          </button>
+        </div>
+
+        {completedHistoryOpen ? (
+          completedHistoryRecords.length ? (
+            <>
+              <div style={{ overflowX: "auto" }}>
+                <div
+                  style={{
+                    minWidth: isMobile ? 760 : 980,
+                    display: "grid",
+                    gap: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(270px, 2fr) 145px 150px 150px 150px 190px",
+                      gap: 12,
+                      padding: "0 10px 9px",
+                      color: colors.muted,
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span>Title</span>
+                    <span>Completed</span>
+                    <span>Asset</span>
+                    <span>Location</span>
+                    <span>Category</span>
+                    <span>Actions</span>
+                  </div>
+
+                  {visibleCompletedHistory.map((record: any) => {
+                    const photo = (record.photos || [])[0] as
+                      | PhotoLike
+                      | undefined;
+                    const source = photo ? photoSource(photo) : "";
+                    const location = locationRecords.find(
+                      (item: any) => item.id === record.locationId,
+                    );
+                    return (
+                      <div
+                        key={record.id}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            "minmax(270px, 2fr) 145px 150px 150px 150px 190px",
+                          gap: 12,
+                          alignItems: "center",
+                          padding: 10,
+                          borderTop: `1px solid ${colors.line}`,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewWorkOpen(false);
+                            setDetailOpen(true);
+                            setSelectedServiceId(record.id);
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            minWidth: 0,
+                            padding: 0,
+                            border: 0,
+                            background: "transparent",
+                            color: colors.text,
+                            textAlign: "left",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {source ? (
+                            <img
+                              src={source}
+                              alt=""
+                              style={{
+                                width: 64,
+                                height: 46,
+                                flex: "0 0 auto",
+                                objectFit: "cover",
+                                borderRadius: 8,
+                              }}
+                            />
+                          ) : (
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                width: 64,
+                                height: 46,
+                                display: "grid",
+                                placeItems: "center",
+                                flex: "0 0 auto",
+                                borderRadius: 8,
+                                background: "#F1F5F9",
+                                fontSize: 22,
+                              }}
+                            >
+                              {categoryEmoji(categoryLabel(record))}
+                            </span>
+                          )}
+                          <span style={{ minWidth: 0 }}>
+                            <strong
+                              style={{
+                                display: "block",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {record.title || "Untitled Work"}
+                            </strong>
+                            <small style={mutedSmallStyle}>
+                              {record.assignedTo
+                                ? `Completed by ${record.assignedTo}`
+                                : "Completed"}
+                            </small>
+                          </span>
+                        </button>
+                        <span style={{ fontSize: 13 }}>
+                          {completedTime(record)
+                            ? new Date(completedTime(record)).toLocaleString()
+                            : "—"}
+                        </span>
+                        <span style={{ fontSize: 13 }}>
+                          {record.assetId ? assetName(record.assetId) : "—"}
+                        </span>
+                        <span style={{ fontSize: 13 }}>
+                          {location?.name || "—"}
+                        </span>
+                        <span style={{ fontSize: 13 }}>
+                          {categoryDisplayLabel(categoryLabel(record))}
+                        </span>
+                        <span style={{ display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewWorkOpen(false);
+                              setDetailOpen(true);
+                              setSelectedServiceId(record.id);
+                            }}
+                            style={{ ...secondaryButtonStyle, padding: "7px 11px" }}
+                          >
+                            View / Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void deleteWorkOrderRecord(record)}
+                            style={{ ...dangerButtonStyle, padding: "7px 10px" }}
+                            aria-label={`Delete ${record.title || "work order"}`}
+                            title="Delete work order"
+                          >
+                            Delete
+                          </button>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                  marginTop: 12,
+                  color: colors.muted,
+                  fontSize: 13,
+                }}
+              >
+                <span>
+                  Showing 1 to {visibleCompletedHistory.length} of{" "}
+                  {completedHistoryRecords.length} completed items
+                </span>
+                {completedHistoryLimit < completedHistoryRecords.length ? (
                   <button
                     type="button"
                     onClick={() =>
-                      addWorkOrder({
-                        assetId: selectedAsset.id,
-                        locationId: selectedAsset.locationId || "",
-                      })
+                      setCompletedHistoryLimit((limit) => limit + 5)
                     }
-                    style={assetTinyButtonStyle}
+                    style={{ ...secondaryButtonStyle, fontWeight: 500 }}
                   >
-                    Create Work Order
+                    Load More {SYMBOL.down}
                   </button>
-                </div>
-                {openAssetWorkOrders.length ? (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {openAssetWorkOrders.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedServiceId(item.id);
-                          setScreen("history");
-                        }}
-                        style={{
-                          border: `1px solid ${colors.line}`,
-                          borderRadius: 10,
-                          background: "#FFFFFF",
-                          padding: 10,
-                          textAlign: "left",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <strong style={{ display: "block", color: colors.navy }}>
-                          {item.title}
-                        </strong>
-                        <span style={mutedSmallStyle}>{item.status || "Open"}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{
-                    border: `1px dashed ${colors.line}`,
-                    borderRadius: 10,
-                    background: "#F8FAFD",
-                    padding: 12,
-                    color: colors.muted,
-                    fontSize: 11,
-                    lineHeight: 1.45,
-                    wordBreak: "normal",
-                    overflowWrap: "break-word",
-                  }}>No open work orders.</div>
-                )}
-              </section>
-            ) : null}
-
-            {assetPanelSection === "history" ? (
-              <section style={{ ...assetCardStyle, marginBottom: 12 }}>
-                <div style={{ ...assetCardHeaderStyle, marginBottom: 8 }}>
-                  <div>
-                    <strong>Service History</strong>
-                    <div style={assetCardHintStyle}>Completed and previous work linked to this asset.</div>
-                  </div>
-                  <button type="button" onClick={() => setScreen("history")} style={assetTinyButtonStyle}>
-                    View All
-                  </button>
-                </div>
-                {assetHistory.length ? (
-                  <div style={{ display: "grid", gap: 7 }}>
-                    {assetHistory.slice(0, isMobile ? 6 : 8).map((entry) => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedServiceId(entry.workOrderId);
-                          setScreen("history");
-                        }}
-                        style={{
-                          border: `1px solid ${colors.line}`,
-                          borderRadius: 9,
-                          background: "#FFFFFF",
-                          padding: "8px 10px",
-                          display: "grid",
-                          gridTemplateColumns: isMobile ? "1fr" : "110px minmax(0, 1fr) auto",
-                          gap: 8,
-                          alignItems: "center",
-                          textAlign: "left",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <span style={mutedSmallStyle}>{formatDate(entry.date)}</span>
-                        <strong style={{ color: colors.navy, minWidth: 0 }}>{entry.title || "Service"}</strong>
-                        <span style={badgeStyle(entry.status)}>{entry.status}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={assetEmptyStateStyle}>No service history recorded yet.</div>
-                )}
-              </section>
-            ) : null}
-
-            {assetPanelSection === "documents" ? (
-              <section
-                style={{
-                  ...assetCardStyle,
-                  marginBottom: 12,
-                  background: "#FFFFFF",
-                }}
-                aria-label="Asset documents"
-              >
-                <div style={{ ...assetCardHeaderStyle, marginBottom: 10 }}>
-                  <div>
-                    <strong>Documents</strong>
-                    <div style={assetCardHintStyle}>
-                      Manuals, warranties, invoices, startup sheets, and other files linked to this asset.
-                    </div>
-                  </div>
-                  <span
-                    style={{
-                      border: `1px solid ${colors.line}`,
-                      borderRadius: 999,
-                      background: colors.panel,
-                      color: colors.navy,
-                      padding: "5px 9px",
-                      fontSize: 10,
-                      fontWeight: 900,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {linkedAssetDocuments.length + attachedManuals.length} linked
-                  </span>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile
-                      ? "1fr"
-                      : "repeat(2, minmax(0, 1fr))",
-                    gap: 8,
-                  }}
-                >
-                  <div
-                    style={{
-                      border: `1px solid ${colors.line}`,
-                      borderRadius: 10,
-                      background: "#F8FAFD",
-                      padding: 10,
-                    }}
-                  >
-                    <span style={assetInfoLabelStyle}>Document Library</span>
-                    <strong
-                      style={{
-                        display: "block",
-                        marginTop: 4,
-                        color: colors.navy,
-                        fontSize: 15,
-                      }}
-                    >
-                      {linkedAssetDocuments.length}
-                    </strong>
-                    <span style={{ ...assetCardHintStyle, display: "block", marginTop: 3 }}>
-                      Files linked through Atlas Documents
-                    </span>
-                  </div>
-
-                  <div
-                    style={{
-                      border: `1px solid ${colors.line}`,
-                      borderRadius: 10,
-                      background: "#F8FAFD",
-                      padding: 10,
-                    }}
-                  >
-                    <span style={assetInfoLabelStyle}>Manual Attachments</span>
-                    <strong
-                      style={{
-                        display: "block",
-                        marginTop: 4,
-                        color: colors.navy,
-                        fontSize: 15,
-                      }}
-                    >
-                      {attachedManuals.length}
-                    </strong>
-                    <span style={{ ...assetCardHintStyle, display: "block", marginTop: 3 }}>
-                      Existing manuals already associated with this asset
-                    </span>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 7,
-                    marginTop: 10,
-                  }}
-                >
+                ) : completedHistoryRecords.length > 5 ? (
                   <button
                     type="button"
-                    onClick={() => {
-                      setDocumentSearch(selectedAsset.name);
-                      setScreen("documents");
-                    }}
-                    style={assetPrimaryActionButtonStyle}
+                    onClick={() => setCompletedHistoryLimit(5)}
+                    style={{ ...secondaryButtonStyle, fontWeight: 500 }}
                   >
-                    Open Documents
+                    Show Less {SYMBOL.up}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDocumentSearch(selectedAsset.name);
-                      setScreen("documents");
-                    }}
-                    style={assetTinyButtonStyle}
-                  >
-                    Add / Link File
-                  </button>
-                </div>
-
-                {!linkedAssetDocuments.length && !attachedManuals.length ? (
-                  <div
-                    style={{
-                      border: `1px dashed ${colors.line}`,
-                      borderRadius: 10,
-                      background: "#F8FAFD",
-                      padding: 12,
-                      marginTop: 10,
-                      color: colors.muted,
-                      fontSize: 11,
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    No documents are linked yet. Add manuals and supporting records through Documents and link them to this asset.
-                  </div>
                 ) : null}
-
-                <div
-                  style={{
-                    ...assetPanelFooterStyle,
-                    marginTop: 12,
-                    paddingTop: 10,
-                    borderTop: `1px solid ${colors.line}`,
-                  }}
-                >
-                  <span style={assetCardHintStyle}>
-                    Files stay searchable in Documents while remaining connected to this asset.
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void deleteAssetRecord(selectedAsset)}
-                    style={assetDeleteBottomButtonStyle}
-                  >
-                    Delete Asset
-                  </button>
-                </div>
-              </section>
-            ) : null}
-          </div>
-        ) : (
-          <div style={noticeStyle}>
-            <strong>Select an asset.</strong>
-            <p style={mutedSmallStyle}>
-              Open an asset to see its information, photos, work orders, documents, procedures, and service history.
-            </p>
-          </div>
-        )
-      }
-    />
+              </div>
+            </>
+          ) : (
+            <div style={noticeStyle}>No completed work orders yet.</div>
+          )
+        ) : null}
+      </section>
+      ) : null}
+    </>
   );
 }
+
+export { AtlasWorkOrders };
+export default AtlasWorkOrders;
