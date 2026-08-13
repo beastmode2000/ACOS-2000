@@ -24155,7 +24155,7 @@ ${notes.trim()}` : notes.trim(),
 
   function renderDepartmentCenter(kind: DepartmentKind) {
     const departmentConfig: Record<DepartmentKind, { title: string; short: string; icon: string; matcher: RegExp; detail: string; people: string[] }> = {
-      house: { title: "House & Maintenance", short: "House", icon: "⌂", matcher: /house|interior|exterior|room|appliance|boiler|hvac|mechanical|pump|electrical|plumbing|lighting|door|gate|alarm|window|skylight|glass|cleaning/i, detail: "House systems, mechanical equipment, inspections, repairs, procedures, service history, and current work.", people: ["Nick", "Vendors"] },
+      house: { title: "Maintenance & Cleaning", short: "Maintenance", icon: "⌂", matcher: /house|interior|exterior|room|appliance|boiler|hvac|mechanical|pump|electrical|plumbing|lighting|door|gate|alarm|window|skylight|glass|cleaning/i, detail: "House systems, mechanical equipment, inspections, repairs, procedures, service history, and current work.", people: ["Nick", "Vendors"] },
       garage: { title: "Garage", short: "Garage", icon: "🚗", matcher: /garage|vehicle|car|mercedes|rivian|porsche|lucid|ford|kia|honda|subaru|charging|tire|fuel/i, detail: "Cars, weekly cleaning, inspections, charging, service, documents, photos, and connected work.", people: ["Nick", "Addison"] },
       pool: { title: "Pool & Spa", short: "Pool & Spa", icon: "💧", matcher: /pool|spa|hot tub|sundance|fountain|filter|backwash|oxy|phosphate|vacuum/i, detail: "Pool, Spa, Fountain, water treatment, cleaning rotation, filter readings, equipment, procedures, and service history.", people: ["Nick", "Addison", "Vendors"] },
       landscaping: { title: "Landscaping & Irrigation", short: "Landscaping", icon: "🌿", matcher: /landscap|garden|lawn|weed|irrigation|tree|grounds|bed|courtyard|waterside|veggie/i, detail: "Landscaping, irrigation, crew visits, areas, progress photos, tasks, work orders, and follow-up.", people: ["Pat", "Lanken Landscaping", "Addison"] },
@@ -24204,7 +24204,7 @@ ${notes.trim()}` : notes.trim(),
       if (/dock|marine|waterfront|boat|cobalt|sea.?doo|pwc|lift/.test(classificationText)) return "marine";
       if (/landscap|irrigation|garden|lawn|grounds|tree|bed/.test(classificationText)) return "landscaping";
       if (/garage|vehicle|car|automotive|charging|tire|fuel/.test(classificationText)) return "garage";
-      if (/house|maintenance|interior|exterior|mechanical|hvac|plumbing|electrical|appliance|window|cleaning/.test(classificationText)) return "house";
+      if (/maintenance\s*&\s*cleaning|house|maintenance|interior|exterior|mechanical|hvac|plumbing|electrical|appliance|window|cleaning/.test(classificationText)) return "house";
 
       return "";
     };
@@ -26663,7 +26663,7 @@ ${notes.trim()}` : notes.trim(),
                   <div style={{ ...sidebarNavSectionStyle, order: 40 }}>
                     <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>Departments</div>
                     <div style={sidebarNavItemsStyle}>
-                      {([['house','⌂ House & Maintenance'],['garage','🚗 Garage'],['pool','💧 Pool & Spa'],['landscaping','🌿 Landscaping & Irrigation'],['marine','⚓ Dock & Waterfront']] as const).map(([id, label]) => (
+                      {([['house','⌂ Maintenance & Cleaning'],['garage','🚗 Garage'],['pool','💧 Pool & Spa'],['landscaping','🌿 Landscaping & Irrigation'],['marine','⚓ Dock & Waterfront']] as const).map(([id, label]) => (
                         <button
                           key={id}
                           type="button"
@@ -26803,7 +26803,7 @@ ${notes.trim()}` : notes.trim(),
                   {screen === "dashboard" ? <AtlasMiniMark size={34} /> : null}
                   <h1 style={isMobile ? mobilePageTitleStyle : pageTitleStyle}>
                     {departmentCenter
-                      ? departmentCenter === "house" ? "House & Maintenance" : departmentCenter === "garage" ? "Garage" : departmentCenter === "pool" ? "Pool & Spa" : departmentCenter === "landscaping" ? "Landscaping & Irrigation" : "Dock & Waterfront"
+                      ? departmentCenter === "house" ? "Maintenance & Cleaning" : departmentCenter === "garage" ? "Garage" : departmentCenter === "pool" ? "Pool & Spa" : departmentCenter === "landscaping" ? "Landscaping & Irrigation" : "Dock & Waterfront"
                       : screen === "dashboard"
                         ? `Atlas / ${atlasProperties.find((item) => item.id === activePropertyId)?.name || "2000"}`
                         : screen === "timeline"
