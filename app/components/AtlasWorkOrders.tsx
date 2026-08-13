@@ -1378,9 +1378,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         style={{ display: "none" }}
       />
       <ListDrawerLayout
-        eyebrow="Organize / Complete"
         title={activeSection?.label || "My Work"}
-        detail="Track active work, recurring maintenance, projects, and completed history."
         isMobile={isMobile}
         outerStyle={
           isMobile
@@ -1646,6 +1644,176 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </div>
               </section>
             ) : null}
+            <section
+              style={{
+                ...filterPanelStyle,
+                padding: isMobile ? 9 : 10,
+                background: "#FFFFFF",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  marginBottom: 8,
+                }}
+              >
+                <span style={{ ...eyebrowStyle, margin: 0 }}>Filters</span>
+                <span style={mutedSmallStyle}>
+                  {activeFilterCount
+                    ? `${activeFilterCount} active · ${visibleRecords.length} result${visibleRecords.length === 1 ? "" : "s"}`
+                    : `${visibleRecords.length} result${visibleRecords.length === 1 ? "" : "s"}`}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "repeat(4, minmax(0, 1fr))",
+                  gap: 7,
+                }}
+              >
+                <input
+                  value={localSearch}
+                  onChange={(event) =>
+                    setLocalSearch(event.currentTarget.value)
+                  }
+                  placeholder="Search work, asset, vendor, category..."
+                  style={controlStyle}
+                />
+                <select
+                  value={categoryFilter}
+                  onChange={(event) =>
+                    setCategoryFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category === "All"
+                        ? "All Categories"
+                        : categoryDisplayLabel(category)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={typeFilter}
+                  onChange={(event) => setTypeFilter(event.currentTarget.value)}
+                  style={controlStyle}
+                >
+                  <option value="All">All Types</option>
+                  <option value="Quick Task">Tasks</option>
+                  <option value="Work Order">Work Orders</option>
+                  <option value="Preventive Maintenance">
+                    Preventive Maintenance
+                  </option>
+                  <option value="Project">Projects</option>
+                </select>
+                <select
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
+                  <option value="All">All Statuses</option>
+                  {[
+                    "Open",
+                    "Scheduled",
+                    "In Progress",
+                    "Waiting",
+                    "Monitor",
+                    "Completed",
+                  ].map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={dueDateFilter}
+                  onChange={(event) =>
+                    setDueDateFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
+                  <option value="All">All Due Dates</option>
+                  <option value="Overdue">Overdue</option>
+                  <option value="Today">Due Today</option>
+                  <option value="Next 7 Days">Next 7 Days</option>
+                  <option value="This Month">This Month</option>
+                  <option value="Next Month">Next Month</option>
+                  <option value="No Due Date">No Due Date</option>
+                </select>
+                <select
+                  value={locationFilter}
+                  onChange={(event) =>
+                    setLocationFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
+                  <option value="All">All Locations</option>
+                  <option value="None">No Location</option>
+                  {byName(locationRecords).map((location: any) => (
+                    <option key={location.id} value={location.id}>
+                      {location.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={assetFilter}
+                  onChange={(event) =>
+                    setAssetFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
+                  <option value="All">All Assets</option>
+                  {byName(assetRecords).map((asset: any) => (
+                    <option key={asset.id} value={asset.id}>
+                      {asset.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={assignedFilter}
+                  onChange={(event) =>
+                    setAssignedFilter(event.currentTarget.value)
+                  }
+                  style={controlStyle}
+                >
+                  <option value="All">Anyone Assigned</option>
+                  <option value="None">Unassigned</option>
+                  {byName(contactRecords).map((contact: any) => (
+                    <option
+                      key={contact.id || contact.name}
+                      value={contact.name}
+                    >
+                      {contact.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLocalSearch("");
+                    setCategoryFilter("All");
+                    setTypeFilter("All");
+                    setStatusFilter("All");
+                    setDueDateFilter("All");
+                    setLocationFilter("All");
+                    setAssetFilter("All");
+                    setAssignedFilter("All");
+                  }}
+                  style={secondaryButtonStyle}
+                >
+                  Clear Filters
+                </button>
+
+              </div>
+            </section>
             <section style={filterPanelStyle}>
               <div style={{ display: "grid", gap: 6 }}>
                 <span
@@ -1822,174 +1990,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </div>
               ) : null}
 
-              <details
-                style={{
-                  border: `1px solid ${colors.line}`,
-                  borderRadius: 11,
-                  background: "#FFFFFF",
-                }}
-              >
-                <summary
-                  style={{
-                    padding: "11px 12px",
-                    color: colors.muted,
-                    fontSize: 13,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                  }}
-                >
-                  Search &amp; Filters
-                  {activeFilterCount
-                    ? ` · ${activeFilterCount} active · ${visibleRecords.length} result${
-                        visibleRecords.length === 1 ? "" : "s"
-                      }`
-                    : ""}
-                </summary>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr",
-                    gap: 9,
-                    padding: "0 10px 10px",
-                  }}
-                >
-                <input
-                  value={localSearch}
-                  onChange={(event) =>
-                    setLocalSearch(event.currentTarget.value)
-                  }
-                  placeholder="Search work, asset, vendor, category..."
-                  style={controlStyle}
-                />
-                <select
-                  value={categoryFilter}
-                  onChange={(event) =>
-                    setCategoryFilter(event.currentTarget.value)
-                  }
-                  style={controlStyle}
-                >
-                  {categories.map((category) => (
-                    <option key={category} value={category}>
-                      {category === "All"
-                        ? "All Categories"
-                        : categoryDisplayLabel(category)}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={typeFilter}
-                  onChange={(event) => setTypeFilter(event.currentTarget.value)}
-                  style={controlStyle}
-                >
-                  <option value="All">All Types</option>
-                  <option value="Quick Task">Tasks</option>
-                  <option value="Work Order">Work Orders</option>
-                  <option value="Preventive Maintenance">
-                    Preventive Maintenance
-                  </option>
-                  <option value="Project">Projects</option>
-                </select>
-                <select
-                  value={statusFilter}
-                  onChange={(event) =>
-                    setStatusFilter(event.currentTarget.value)
-                  }
-                  style={controlStyle}
-                >
-                  <option value="All">All Statuses</option>
-                  {[
-                    "Open",
-                    "Scheduled",
-                    "In Progress",
-                    "Waiting",
-                    "Monitor",
-                    "Completed",
-                  ].map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={dueDateFilter}
-                  onChange={(event) =>
-                    setDueDateFilter(event.currentTarget.value)
-                  }
-                  style={controlStyle}
-                >
-                  <option value="All">All Due Dates</option>
-                  <option value="Overdue">Overdue</option>
-                  <option value="Today">Due Today</option>
-                  <option value="Next 7 Days">Next 7 Days</option>
-                  <option value="This Month">This Month</option>
-                  <option value="Next Month">Next Month</option>
-                  <option value="No Due Date">No Due Date</option>
-                </select>
-                <select
-                  value={locationFilter}
-                  onChange={(event) =>
-                    setLocationFilter(event.currentTarget.value)
-                  }
-                  style={controlStyle}
-                >
-                  <option value="All">All Locations</option>
-                  <option value="None">No Location</option>
-                  {byName(locationRecords).map((location: any) => (
-                    <option key={location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={assetFilter}
-                  onChange={(event) =>
-                    setAssetFilter(event.currentTarget.value)
-                  }
-                  style={controlStyle}
-                >
-                  <option value="All">All Assets</option>
-                  {byName(assetRecords).map((asset: any) => (
-                    <option key={asset.id} value={asset.id}>
-                      {asset.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={assignedFilter}
-                  onChange={(event) =>
-                    setAssignedFilter(event.currentTarget.value)
-                  }
-                  style={controlStyle}
-                >
-                  <option value="All">Anyone Assigned</option>
-                  <option value="None">Unassigned</option>
-                  {byName(contactRecords).map((contact: any) => (
-                    <option
-                      key={contact.id || contact.name}
-                      value={contact.name}
-                    >
-                      {contact.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLocalSearch("");
-                    setCategoryFilter("All");
-                    setTypeFilter("All");
-                    setStatusFilter("All");
-                    setDueDateFilter("All");
-                    setLocationFilter("All");
-                    setAssetFilter("All");
-                    setAssignedFilter("All");
-                  }}
-                  style={secondaryButtonStyle}
-                >
-                  Clear Filters
-                </button>
-                </div>
-              </details>
+
             </section>
 
             <div
@@ -2115,15 +2116,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </span>
               </div>
               <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(250px, 40%) minmax(0, 60%)", gap: 18 }}>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {photoSource((selectedService.photos || [])[0]) ? (
-                      <img src={photoSource(selectedService.photos[0])} alt={selectedService.title || "Work order"} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", borderRadius: 10 }} />
-                    ) : (
-                      <button type="button" onClick={() => photoInputRef.current?.click()} style={{ width: "100%", aspectRatio: "4 / 3", border: `1px dashed ${colors.line}`, borderRadius: 10, background: "#F8FAFC", color: colors.muted, cursor: "pointer" }}>Add Work Order Photo</button>
-                    )}
-                    <button type="button" onClick={() => photoInputRef.current?.click()} style={{ ...secondaryButtonStyle, fontWeight: 500 }}>Add / Change Photo</button>
-                  </div>
+                <div style={{ display: "grid", gap: 12 }}>
                   <div style={{ display: "grid", gap: 12 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
                       <div style={{ minWidth: 0, flex: 1 }}>
@@ -2195,24 +2188,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </div>
               </section>
 
-              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
-                <div style={{ ...eyebrowStyle, marginBottom: 12 }}>Cost & Invoice</div>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-                  <label style={{ display: "grid", gap: 5 }}>
-                    <span style={fieldLabelStyle}>Estimated Cost</span>
-                    <input type="number" min="0" step="0.01" value={selectedService.estimatedCost || ""} onChange={(event) => updateWorkOrder({ estimatedCost: Number(event.currentTarget.value || 0) })} style={inputStyle} />
-                  </label>
-                  <label style={{ display: "grid", gap: 5 }}>
-                    <span style={fieldLabelStyle}>Actual Cost</span>
-                    <input type="number" min="0" step="0.01" value={selectedService.actualCost || ""} onChange={(event) => updateWorkOrder({ actualCost: Number(event.currentTarget.value || 0) })} style={inputStyle} />
-                  </label>
-                  <label style={{ display: "grid", gap: 5 }}>
-                    <span style={fieldLabelStyle}>Invoice Number</span>
-                    <input value={selectedService.invoiceNumber || ""} onChange={(event) => updateWorkOrder({ invoiceNumber: event.currentTarget.value })} style={inputStyle} />
-                  </label>
-                </div>
-                <p style={{ ...mutedSmallStyle, marginBottom: 0 }}>Costs and invoice numbers are included in Atlas reports and CSV exports.</p>
-              </section>
+
 
               <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16 }}>
                 <div style={{ ...eyebrowStyle, marginBottom: 10 }}>Internal Notes</div>
