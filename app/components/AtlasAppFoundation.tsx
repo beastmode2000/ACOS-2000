@@ -466,8 +466,6 @@ export type TodayLogEntry = {
   category: "Task" | "Repair" | "Inspection" | "Vendor" | "Delivery" | "Note";
   text: string;
   createdAt: string;
-  updatedAt?: string;
-  history?: Array<{ text: string; savedAt: string }>;
 };
 
 export type DashboardRoutineItem = {
@@ -725,6 +723,8 @@ export type WorkCompletionEntry = {
 export type AtlasServiceRecord = ServiceRecord & {
   workType?: WorkItemType;
   workCategory?: string;
+  department?: string;
+  subcategory?: string;
   effort?: WorkEffort;
   responsibilityArea?: string;
   emoji?: string;
@@ -1641,9 +1641,12 @@ export function normalizeService(
           : "Work Order",
     workCategory: String(
       record.workCategory ||
+        record.subcategory ||
         (record as AtlasServiceRecord & { category?: string }).category ||
         "🔧 Maintenance",
     ),
+    department: String(record.department || ""),
+    subcategory: String(record.subcategory || record.workCategory || ""),
     effort: record.effort || undefined,
     responsibilityArea: String(record.responsibilityArea || ""),
     emoji: String(record.emoji || ""),
