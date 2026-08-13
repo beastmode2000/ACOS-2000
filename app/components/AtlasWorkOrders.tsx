@@ -87,6 +87,65 @@ const DEFAULT_SECTIONS: WorkSection[] = [
 const SECTION_STORAGE_KEY = "atlas-work-section-settings-v1";
 const CATEGORY_STORAGE_KEY = "atlas-work-category-settings-v1";
 
+const WORK_DEPARTMENTS = [
+  "Maintenance & Cleaning",
+  "Garage / Vehicles",
+  "Pool & Spa",
+  "Landscaping & Irrigation",
+  "Dock / Marine",
+] as const;
+
+const SUBCATEGORIES_BY_DEPARTMENT: Record<string, string[]> = {
+  "Maintenance & Cleaning": [
+    "General Maintenance",
+    "Appliances",
+    "HVAC",
+    "Plumbing",
+    "Electrical",
+    "Windows & Glass",
+    "Cleaning",
+    "Preventive Maintenance",
+    "Mechanical Systems",
+    "Doors & Hardware",
+    "Interior",
+    "Exterior",
+  ],
+  "Garage / Vehicles": [
+    "Vehicle Service",
+    "Cleaning & Detailing",
+    "Tires",
+    "Fluids",
+    "Charging & Fuel",
+    "Registration",
+    "Garage Equipment",
+  ],
+  "Pool & Spa": [
+    "Pool",
+    "Spa",
+    "Water Chemistry",
+    "Filters",
+    "Cleaning",
+    "Mechanical Equipment",
+  ],
+  "Landscaping & Irrigation": [
+    "Landscaping",
+    "Irrigation",
+    "Lawn",
+    "Plant Care",
+    "Trees",
+    "Seasonal",
+  ],
+  "Dock / Marine": [
+    "Dock",
+    "Boat",
+    "PWC / Sea-Doo",
+    "Lifts",
+    "Registration",
+    "Waterfront",
+  ],
+};
+
+
 function itemType(record: any): WorkItemType {
   if (
     record.workType === "Quick Task" ||
@@ -101,7 +160,33 @@ function itemType(record: any): WorkItemType {
 }
 
 function categoryLabel(record: any) {
-  return String(record.workCategory || record.category || "🔧 Maintenance");
+  return String(record.subcategory || record.workCategory || record.category || "General Maintenance");
+}
+
+function legacyDepartmentLabel(record: any) {
+  const explicit = String(record?.department || "").trim();
+  if (explicit) return explicit;
+
+  const text = [
+    record?.responsibilityArea,
+    record?.category,
+    record?.workCategory,
+    record?.title,
+    record?.notes,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (/pool|spa|hot tub|sundance/.test(text)) return "Pool & Spa";
+  if (/dock|marine|waterfront|boat|cobalt|sea.?doo|pwc|lift/.test(text)) return "Dock / Marine";
+  if (/landscap|irrigation|garden|lawn|grounds|tree|bed/.test(text)) return "Landscaping & Irrigation";
+  if (/garage|vehicle|car|automotive|charging|tire|fuel/.test(text)) return "Garage / Vehicles";
+  return "Maintenance & Cleaning";
+}
+
+function subcategoryLabel(record: any) {
+  return String(record?.subcategory || record?.workCategory || record?.category || "General Maintenance");
 }
 
 function categoryEmoji(category: string) {
@@ -491,13 +576,17 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [newWorkDraft, setNewWorkDraft] = useState<{
     title: string;
     workType: WorkItemType;
+    department: string;
+    subcategory: string;
     workCategory: string;
     priority: "Low" | "Medium" | "High";
     date: string;
   }>({
     title: "",
     workType: "Work Order",
-    workCategory: "🔧 Maintenance",
+    department: "Maintenance & Cleaning",
+    subcategory: "General Maintenance",
+    workCategory: "General Maintenance",
     priority: "Medium",
     date: "",
   });
@@ -1000,15 +1089,18 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   function openNewWork(workType: WorkItemType = "Work Order") {
     setDetailOpen(false);
     setSelectedServiceId("");
+    const defaultSubcategory =
+      workType === "Quick Task"
+        ? "Cleaning"
+        : workType === "Preventive Maintenance"
+          ? "Preventive Maintenance"
+          : "General Maintenance";
     setNewWorkDraft({
       title: "",
       workType,
-      workCategory:
-        workType === "Quick Task"
-          ? "🧹 Cleaning"
-          : workType === "Project"
-            ? "📋 Project"
-            : "🔧 Maintenance",
+      department: "Maintenance & Cleaning",
+      subcategory: defaultSubcategory,
+      workCategory: defaultSubcategory,
       priority: "Medium",
       date:
         workType === "Quick Task"
@@ -1029,7 +1121,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     addWorkOrder({
       title,
       workType: newWorkDraft.workType,
-      workCategory: newWorkDraft.workCategory,
+      department: newWorkDraft.department,
+      subcategory: newWorkDraft.subcategory,
+      workCategory: newWorkDraft.subcategory,
       priority: newWorkDraft.priority,
       date: newWorkDraft.date,
       effort: newWorkDraft.workType === "Quick Task" ? "15 minutes" : "30 minutes",
@@ -1681,7 +1775,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   onChange={(event) =>
                     setLocalSearch(event.currentTarget.value)
                   }
-                  placeholder="Search work, asset, vendor, category..."
+                  placeholder="Search work, asset, vendor, subcategory..."
                   style={controlStyle}
                 />
                 <select
@@ -1926,7 +2020,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                         addCategory();
                       }
                     }}
-                    placeholder="New category name"
+                    placeholder="New subcategory name"
                     style={controlStyle}
                   />
                   <button
@@ -2182,7 +2276,44 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                   <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Asset</span><select value={selectedService.assetId || ""} onChange={(event) => updateWorkOrder(assetPhotoPatch(event.currentTarget.value))} style={inputStyle}><option value="">No linked asset</option>{byName(assetRecords).map((asset: any) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
                   <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Location</span><select value={selectedService.locationId || ""} onChange={(event) => updateWorkOrder({ locationId: event.currentTarget.value })} style={inputStyle}><option value="">No linked location</option>{byName(locationRecords).map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
-                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Category</span><select value={categoryLabel(selectedService)} onChange={(event) => updateWorkOrder({ workCategory: event.currentTarget.value, emoji: categoryEmoji(event.currentTarget.value) })} style={inputStyle}>{categories.filter((category) => category !== "All").map((category) => <option key={category} value={category}>{categoryDisplayLabel(category)}</option>)}</select></label>
+                  <label style={{ display: "grid", gap: 5 }}>
+                    <span style={fieldLabelStyle}>Department</span>
+                    <select
+                      value={legacyDepartmentLabel(selectedService)}
+                      onChange={(event) => {
+                        const department = event.currentTarget.value;
+                        const currentSubcategory = subcategoryLabel(selectedService);
+                        const allowed = SUBCATEGORIES_BY_DEPARTMENT[department] || [];
+                        const subcategory = allowed.includes(currentSubcategory)
+                          ? currentSubcategory
+                          : (allowed[0] || "General Maintenance");
+                        updateWorkOrder({ department, subcategory, workCategory: subcategory });
+                      }}
+                      style={inputStyle}
+                    >
+                      {WORK_DEPARTMENTS.map((department) => (
+                        <option key={department} value={department}>{department}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 5 }}>
+                    <span style={fieldLabelStyle}>Subcategory</span>
+                    <select
+                      value={subcategoryLabel(selectedService)}
+                      onChange={(event) => {
+                        const subcategory = event.currentTarget.value;
+                        updateWorkOrder({ subcategory, workCategory: subcategory, emoji: categoryEmoji(subcategory) });
+                      }}
+                      style={inputStyle}
+                    >
+                      {!((SUBCATEGORIES_BY_DEPARTMENT[legacyDepartmentLabel(selectedService)] || []).includes(subcategoryLabel(selectedService))) ? (
+                        <option value={subcategoryLabel(selectedService)}>{categoryDisplayLabel(subcategoryLabel(selectedService))}</option>
+                      ) : null}
+                      {(SUBCATEGORIES_BY_DEPARTMENT[legacyDepartmentLabel(selectedService)] || []).map((subcategory) => (
+                        <option key={subcategory} value={subcategory}>{subcategory}</option>
+                      ))}
+                    </select>
+                  </label>
                   <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned To</span><select value={selectedService.assignedTo || ""} onChange={(event) => updateWorkOrder({ assignedTo: event.currentTarget.value })} style={inputStyle}><option value="">Unassigned</option>{byName(contactRecords).map((contact: any) => <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>)}</select></label>
                   <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Vendor</span><select value={selectedService.vendorId || ""} onChange={(event) => updateWorkOrder({ vendorId: event.currentTarget.value })} style={inputStyle}><option value="">No vendor</option>{byName(vendorRecords).map((vendor: any) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
                 </div>
@@ -2365,30 +2496,48 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   </label>
 
                   <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                    <span style={fieldLabelStyle}>Category</span>
+                    <span style={fieldLabelStyle}>Department</span>
                     <select
-                      value={categoryLabel(selectedService)}
+                      value={legacyDepartmentLabel(selectedService)}
                       onChange={(event) => {
-                        const workCategory = event.currentTarget.value;
+                        const department = event.currentTarget.value;
+                        const currentSubcategory = subcategoryLabel(selectedService);
+                        const allowed = SUBCATEGORIES_BY_DEPARTMENT[department] || [];
+                        const subcategory = allowed.includes(currentSubcategory)
+                          ? currentSubcategory
+                          : (allowed[0] || "General Maintenance");
+                        updateWorkOrder({ department, subcategory, workCategory: subcategory });
+                      }}
+                      style={inputStyle}
+                    >
+                      {WORK_DEPARTMENTS.map((department) => (
+                        <option key={department} value={department}>{department}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>Subcategory</span>
+                    <select
+                      value={subcategoryLabel(selectedService)}
+                      onChange={(event) => {
+                        const subcategory = event.currentTarget.value;
                         updateWorkOrder({
-                          workCategory,
-                          emoji: categoryEmoji(workCategory),
+                          subcategory,
+                          workCategory: subcategory,
+                          emoji: categoryEmoji(subcategory),
                         });
                       }}
                       style={inputStyle}
                     >
-                      {!categories.includes(categoryLabel(selectedService)) ? (
-                        <option value={categoryLabel(selectedService)}>
-                          {categoryDisplayLabel(categoryLabel(selectedService))}
+                      {!((SUBCATEGORIES_BY_DEPARTMENT[legacyDepartmentLabel(selectedService)] || []).includes(subcategoryLabel(selectedService))) ? (
+                        <option value={subcategoryLabel(selectedService)}>
+                          {categoryDisplayLabel(subcategoryLabel(selectedService))}
                         </option>
                       ) : null}
-                      {categories
-                        .filter((category) => category !== "All")
-                        .map((category) => (
-                          <option key={category} value={category}>
-                            {categoryDisplayLabel(category)}
-                          </option>
-                        ))}
+                      {(SUBCATEGORIES_BY_DEPARTMENT[legacyDepartmentLabel(selectedService)] || []).map((subcategory) => (
+                        <option key={subcategory} value={subcategory}>{subcategory}</option>
+                      ))}
                     </select>
                   </label>
                 </div>
@@ -2398,7 +2547,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   onClick={() => setManageCategoriesOpen((open) => !open)}
                   style={{ ...miniButtonStyle, marginTop: 10 }}
                 >
-                  {manageCategoriesOpen ? "Close Category Manager" : "Manage Categories"}
+                  {manageCategoriesOpen ? "Close Subcategory Manager" : "Manage Subcategories"}
                 </button>
 
                 {manageCategoriesOpen ? (
@@ -2431,7 +2580,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                             addCategory();
                           }
                         }}
-                        placeholder="New category name"
+                        placeholder="New subcategory name"
                         style={controlStyle}
                       />
                       <button
@@ -2775,7 +2924,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     <span>Completed</span>
                     <span>Asset</span>
                     <span>Location</span>
-                    <span>Category</span>
+                    <span>Subcategory</span>
                     <span>Actions</span>
                   </div>
 
