@@ -273,6 +273,8 @@ export default function AtlasAssetsWorkspace(props: any) {
     workPlanTasks
   } = props;
   const [assetVisibleSectionsExpanded, setAssetVisibleSectionsExpanded] = useState(false);
+  const [assetCategoryAddOpen, setAssetCategoryAddOpen] = useState(false);
+  const [assetCategoryDraft, setAssetCategoryDraft] = useState("");
   const assetSourceRecords = isSeanMarineUser ? seanVisibleAssetRecords : assetRecords;
   const assetWorkSourceRecords = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
   const attachedManuals = manualsForAsset(selectedAsset);
@@ -457,6 +459,18 @@ export default function AtlasAssetsWorkspace(props: any) {
   const assetCategories = [...new Set<string>(assetSourceRecords.map((asset: any) => String(asset.category || "")))]
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b));
+
+  const departmentCategoryOptions = [
+    "House & Maintenance",
+    "Garage / Vehicle",
+    "Pool & Spa",
+    "Landscaping & Irrigation",
+    "Dock / Marine",
+  ];
+  const editableAssetCategories = [
+    ...departmentCategoryOptions,
+    ...assetCategories.filter((category) => !departmentCategoryOptions.includes(category)),
+  ];
 
   const linkedAssetDocuments = selectedAsset.id
     ? intakeDocs
@@ -2325,6 +2339,136 @@ export default function AtlasAssetsWorkspace(props: any) {
               >
                 More Details
               </summary>
+              <div
+                style={{
+                  display: "grid",
+                  gap: 7,
+                  padding: "0 12px 10px",
+                }}
+              >
+                <div
+                  style={{
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 9,
+                    background: "#FFFFFF",
+                    padding: 9,
+                    display: "grid",
+                    gap: 7,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div>
+                      <span style={assetInfoLabelStyle}>Department / Category</span>
+                      {!assetEditorOpen ? (
+                        <div style={{ ...assetInfoValueStyle, marginTop: 2 }}>
+                          {selectedAsset.category || "Not assigned"}
+                        </div>
+                      ) : null}
+                    </div>
+                    {assetEditorOpen ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAssetCategoryAddOpen((current) => !current);
+                          setAssetCategoryDraft("");
+                        }}
+                        style={assetTinyButtonStyle}
+                      >
+                        {assetCategoryAddOpen ? "Cancel" : "+ Add Category"}
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {assetEditorOpen ? (
+                    <>
+                      <select
+                        value={selectedAsset.category || ""}
+                        onChange={(event) =>
+                          updateAsset({ category: event.currentTarget.value })
+                        }
+                        style={{ ...assetCompactInputStyle, width: "100%" }}
+                        aria-label="Asset department or category"
+                      >
+                        <option value="">Select department or category</option>
+                        <optgroup label="Atlas departments">
+                          {departmentCategoryOptions.map((category) => (
+                            <option key={`department-${category}`} value={category}>
+                              {category}
+                            </option>
+                          ))}
+                        </optgroup>
+                        {editableAssetCategories.some(
+                          (category) => !departmentCategoryOptions.includes(category),
+                        ) ? (
+                          <optgroup label="Saved categories">
+                            {editableAssetCategories
+                              .filter(
+                                (category) => !departmentCategoryOptions.includes(category),
+                              )
+                              .map((category) => (
+                                <option key={`category-${category}`} value={category}>
+                                  {category}
+                                </option>
+                              ))}
+                          </optgroup>
+                        ) : null}
+                      </select>
+
+                      {assetCategoryAddOpen ? (
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: isMobile
+                              ? "1fr"
+                              : "minmax(0, 1fr) auto",
+                            gap: 7,
+                          }}
+                        >
+                          <input
+                            value={assetCategoryDraft}
+                            onChange={(event) =>
+                              setAssetCategoryDraft(event.currentTarget.value)
+                            }
+                            placeholder="New category name"
+                            style={assetCompactInputStyle}
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const cleanCategory = assetCategoryDraft.trim();
+                              if (!cleanCategory) return;
+                              updateAsset({ category: cleanCategory });
+                              setAssetCategoryDraft("");
+                              setAssetCategoryAddOpen(false);
+                            }}
+                            disabled={!assetCategoryDraft.trim()}
+                            style={{
+                              ...assetPrimaryActionButtonStyle,
+                              opacity: assetCategoryDraft.trim() ? 1 : 0.55,
+                            }}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      ) : null}
+
+                      <div style={assetCardHintStyle}>
+                        Changing this moves the asset into the matching Atlas department after you save the asset. This control does not open another page.
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+
               <div
                 style={{
                   display: "grid",
