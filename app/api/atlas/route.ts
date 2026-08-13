@@ -518,6 +518,16 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
 
   await sql`
     ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS department text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS subcategory text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
     ADD COLUMN IF NOT EXISTS effort text
   `;
 
@@ -707,7 +717,9 @@ function mapWorkOrder(row: JsonRecord) {
     lastCompletedDate: databaseDateKey(row.last_completed_date),
     completionHistory: asArray(row.completion_history).map(String),
     workType: String(row.work_type || "Work Order"),
-    workCategory: String(row.work_category || "Maintenance"),
+    workCategory: String(row.work_category || row.subcategory || "Maintenance"),
+    department: row.department ? String(row.department) : "",
+    subcategory: row.subcategory ? String(row.subcategory) : String(row.work_category || ""),
     effort: row.effort ? String(row.effort) : "",
     responsibilityArea: row.responsibility_area
       ? String(row.responsibility_area)
@@ -1042,6 +1054,8 @@ export async function GET(request: NextRequest) {
         completion_history,
         work_type,
         work_category,
+        department,
+        subcategory,
         effort,
         responsibility_area,
         emoji,
@@ -1683,7 +1697,9 @@ if (table === "assets") {
             record.completionHistory,
           )}::jsonb,
           work_type = ${asStatus(record.workType, "Work Order")},
-          work_category = ${asStatus(record.workCategory, "Maintenance")},
+          work_category = ${asStatus(record.workCategory || record.subcategory, "Maintenance")},
+          department = ${nullableString(record.department)},
+          subcategory = ${nullableString(record.subcategory || record.workCategory)},
           effort = ${nullableString(record.effort)},
           responsibility_area = ${nullableString(record.responsibilityArea)},
           emoji = ${nullableString(record.emoji)},
@@ -1727,6 +1743,8 @@ if (table === "assets") {
             completion_history,
             work_type,
             work_category,
+            department,
+            subcategory,
             effort,
             responsibility_area,
             emoji,
@@ -1764,7 +1782,9 @@ if (table === "assets") {
             ${savedLastCompletedDate}::date,
             ${jsonArray(record.completionHistory)}::jsonb,
             ${asStatus(record.workType, "Work Order")},
-            ${asStatus(record.workCategory, "Maintenance")},
+            ${asStatus(record.workCategory || record.subcategory, "Maintenance")},
+            ${nullableString(record.department)},
+            ${nullableString(record.subcategory || record.workCategory)},
             ${nullableString(record.effort)},
             ${nullableString(record.responsibilityArea)},
             ${nullableString(record.emoji)},
