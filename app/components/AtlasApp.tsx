@@ -24179,15 +24179,57 @@ ${notes.trim()}` : notes.trim(),
         .join(" ");
       return /\bappliances?\b/i.test(classificationText) || conventionalAppliancePattern.test(identityText);
     };
-    const matchesDepartmentRecord = (value: unknown) =>
-      matches(value) && (kind !== "pool" || !isConventionalApplianceRecord(value));
+    const explicitDepartmentForRecord = (value: unknown): DepartmentKind | "" => {
+      const record = (value || {}) as Record<string, any>;
+
+      const linkedAsset =
+        record.assetId
+          ? assetRecords.find((asset) => asset.id === String(record.assetId))
+          : null;
+
+      const classificationText = [
+        record.department,
+        record.departmentName,
+        record.category,
+        record.workCategory,
+        record.responsibilityArea,
+        record.area,
+        linkedAsset?.category,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      if (/pool|spa|hot tub|sundance/.test(classificationText)) return "pool";
+      if (/dock|marine|waterfront|boat|cobalt|sea.?doo|pwc|lift/.test(classificationText)) return "marine";
+      if (/landscap|irrigation|garden|lawn|grounds|tree|bed/.test(classificationText)) return "landscaping";
+      if (/garage|vehicle|car|automotive|charging|tire|fuel/.test(classificationText)) return "garage";
+      if (/house|maintenance|interior|exterior|mechanical|hvac|plumbing|electrical|appliance|window|cleaning/.test(classificationText)) return "house";
+
+      return "";
+    };
+
+    const matchesDepartmentRecord = (value: unknown) => {
+      const explicitDepartment = explicitDepartmentForRecord(value);
+
+      // A saved category/department (or the linked asset's category) is authoritative.
+      // Only use broad keyword matching when the record has no department classification.
+      if (explicitDepartment) {
+        if (explicitDepartment !== kind) return false;
+        return kind !== "pool" || !isConventionalApplianceRecord(value);
+      }
+
+      return matches(value) && (kind !== "pool" || !isConventionalApplianceRecord(value));
+    };
     const isWindowCleaningRecord = (value: unknown) =>
       /window|skylight|glass cleaning|exterior cleaning|cleaning \/ windows/i.test(recordSearchText(value));
     const departmentWork = serviceRecords.filter((record) =>
       isMarine
-        ? isMarineServiceRecord(record)
+        ? explicitDepartmentForRecord(record)
+          ? explicitDepartmentForRecord(record) === "marine"
+          : isMarineServiceRecord(record)
         : isLandscape
-          ? matches(record) && !isMarineServiceRecord(record) && !isWindowCleaningRecord(record)
+          ? matchesDepartmentRecord(record) && !isMarineServiceRecord(record) && !isWindowCleaningRecord(record)
           : matchesDepartmentRecord(record),
     );
     const openWork = departmentWork.filter((item) => !["Completed"].includes(String(item.status || "")));
