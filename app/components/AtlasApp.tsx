@@ -24140,15 +24140,8 @@ ${notes.trim()}` : notes.trim(),
       <section
         style={{
           ...sectionStyle,
-          marginBottom: screen === "assets" ? 10 : 16,
-          padding:
-            screen === "assets"
-              ? isMobile
-                ? "10px 12px"
-                : "11px 14px"
-              : isMobile
-                ? 16
-                : 20,
+          marginBottom: 10,
+          padding: isMobile ? "10px 12px" : "11px 14px",
           background:
             "linear-gradient(135deg, rgba(255,255,255,0.98), rgba(246,248,252,0.96))",
           overflow: "hidden",
@@ -24158,33 +24151,22 @@ ${notes.trim()}` : notes.trim(),
           style={{
             display: "flex",
             justifyContent: "space-between",
-            gap: screen === "assets" ? 8 : 16,
+            gap: 8,
             alignItems: "flex-end",
             flexWrap: "wrap",
-            marginBottom: screen === "assets" ? 8 : 14,
+            marginBottom: 8,
           }}
         >
           <div>
-            {screen !== "assets" ? (
-              <p style={{ ...eyebrowStyle, marginBottom: 5 }}>Visual Summary</p>
-            ) : null}
             <h2
               style={{
                 ...sectionTitleStyle,
-                marginBottom: summary.detail ? 5 : 0,
-                fontSize:
-                  screen === "assets"
-                    ? isMobile
-                      ? 16
-                      : 18
-                    : sectionTitleStyle.fontSize,
+                marginBottom: 0,
+                fontSize: isMobile ? 16 : 18,
               }}
             >
               {summary.title}
             </h2>
-            {summary.detail ? (
-              <p style={{ ...mutedSmallStyle, maxWidth: 720 }}>{summary.detail}</p>
-            ) : null}
           </div>
           <span style={badgeStyle(atlasProperties.find((property) => property.id === activePropertyId)?.name || activePropertyId)}>
             {atlasProperties.find((property) => property.id === activePropertyId)?.name || activePropertyId}
@@ -24198,7 +24180,7 @@ ${notes.trim()}` : notes.trim(),
                 ? "repeat(2, minmax(0, 1fr))"
                 : "1fr"
               : `repeat(${summary.cards.length}, minmax(0, 1fr))`,
-            gap: screen === "assets" ? 8 : 12,
+            gap: 8,
           }}
         >
           {summary.cards.map((card) => (
@@ -24206,8 +24188,8 @@ ${notes.trim()}` : notes.trim(),
               key={card.label}
               style={{
                 border: `1px solid ${colors.line}`,
-                borderRadius: screen === "assets" ? 12 : 16,
-                padding: screen === "assets" ? (isMobile ? 9 : 10) : 15,
+                borderRadius: 12,
+                padding: isMobile ? 9 : 10,
                 background: colors.card,
                 boxShadow: "0 8px 22px rgba(15, 23, 42, 0.05)",
               }}
@@ -24215,8 +24197,8 @@ ${notes.trim()}` : notes.trim(),
               <p
                 style={{
                   ...mutedSmallStyle,
-                  marginBottom: screen === "assets" ? 3 : 6,
-                  fontSize: screen === "assets" ? 10 : mutedSmallStyle.fontSize,
+                  marginBottom: 3,
+                  fontSize: 10,
                 }}
               >
                 {card.label}
@@ -24225,16 +24207,9 @@ ${notes.trim()}` : notes.trim(),
                 style={{
                   display: "block",
                   color: colors.navy,
-                  fontSize:
-                    screen === "assets"
-                      ? isMobile
-                        ? 20
-                        : 22
-                      : isMobile
-                        ? 24
-                        : 28,
+                  fontSize: isMobile ? 20 : 22,
                   lineHeight: 1,
-                  marginBottom: screen === "assets" ? 4 : 7,
+                  marginBottom: 4,
                 }}
               >
                 {card.value}
@@ -24242,8 +24217,8 @@ ${notes.trim()}` : notes.trim(),
               <p
                 style={{
                   ...mutedSmallStyle,
-                  fontSize: screen === "assets" ? 10 : mutedSmallStyle.fontSize,
-                  lineHeight: screen === "assets" ? 1.2 : mutedSmallStyle.lineHeight,
+                  fontSize: 10,
+                  lineHeight: 1.2,
                 }}
               >
                 {card.note}
