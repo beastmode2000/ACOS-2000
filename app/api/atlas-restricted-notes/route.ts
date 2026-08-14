@@ -227,7 +227,9 @@ function verifyPinHash(
   );
 }
 
-async function ensureTables(
+let restrictedNotesTablesReady: Promise<void> | null = null;
+
+async function initializeRestrictedNotesTables(
   sql: ReturnType<typeof neon>,
 ) {
   await sql`
@@ -279,6 +281,18 @@ async function ensureTables(
       created_at ASC
     )
   `;
+}
+
+async function ensureTables(
+  sql: ReturnType<typeof neon>,
+) {
+  if (!restrictedNotesTablesReady) {
+    restrictedNotesTablesReady = initializeRestrictedNotesTables(sql).catch((error) => {
+      restrictedNotesTablesReady = null;
+      throw error;
+    });
+  }
+  await restrictedNotesTablesReady;
 }
 
 async function readAccessRow(
@@ -827,6 +841,27 @@ export async function POST(
       )
       RETURNING id, note_id, property_id, label, file_name, mime_type, size_bytes, created_at
     `) as unknown as RestrictedAttachmentRow[];
+
+    return NextResponse.json({ ok: true, attachment: serializeAttachment(rows[0]) });
+  }
+
+  if (action === "updateAttachmentLabel") {
+    const attachmentId = String(body.attachmentId || "").trim();
+    const label = String(body.label || "").trim();
+    if (!attachmentId || !label) {
+      return NextResponse.json({ ok: false, error: "Attachment id and label are required." }, { status: 400 });
+    }
+
+    const rows = (await sql`
+      UPDATE atlas_restricted_note_attachments
+      SET label = ${label}
+      WHERE id = ${attachmentId} AND property_id = ${auth.propertyId}
+      RETURNING id, note_id, property_id, label, file_name, mime_type, size_bytes, created_at
+    `) as unknown as RestrictedAttachmentRow[];
+
+    if (!rows.length) {
+      return NextResponse.json({ ok: false, error: "Restricted PDF not found." }, { status: 404 });
+    }
 
     return NextResponse.json({ ok: true, attachment: serializeAttachment(rows[0]) });
   }
