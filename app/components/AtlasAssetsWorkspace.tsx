@@ -2582,11 +2582,23 @@ export default function AtlasAssetsWorkspace(props: any) {
                       Paste
                     </button>
                     <label style={assetTinyUploadStyle}>
-                      + Add Photo
+                      + Upload Photo
                       <input
                         type="file"
                         accept="image/*"
                         multiple
+                        onChange={(event) => {
+                          void addAssetPhotoFiles(event.currentTarget.files);
+                          event.currentTarget.value = "";
+                        }}
+                        style={{ display: "none" }}
+                      />
+                    </label>
+                    <label style={assetTinyUploadStyle}>
+                      Take Photo
+                      <input
+                        type="file"
+                        accept="image/*"
                         capture="environment"
                         onChange={(event) => {
                           void addAssetPhotoFiles(event.currentTarget.files);
