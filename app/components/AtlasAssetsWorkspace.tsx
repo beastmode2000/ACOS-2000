@@ -2482,7 +2482,6 @@ export default function AtlasAssetsWorkspace(props: any) {
                 }}
               >
                 {[
-                  ["photos", `Photos (${selectedAssetPhotos.length})`],
                   ["documents", `Documents (${linkedAssetDocuments.length + attachedManuals.length})`],
                   ["history", `Service History (${assetHistory.length})`],
                   ["notes", "Notes"],
@@ -2508,7 +2507,9 @@ export default function AtlasAssetsWorkspace(props: any) {
               style={{
                 ...assetMiddleGridStyle,
                 display:
-                  assetPanelSection === "notes" || assetPanelSection === "photos"
+                  assetPanelSection === "overview" ||
+                  assetPanelSection === "notes" ||
+                  assetPanelSection === "photos"
                     ? "grid"
                     : "none",
                 gridTemplateColumns: "minmax(0, 1fr)",
@@ -2544,7 +2545,17 @@ export default function AtlasAssetsWorkspace(props: any) {
                 )}
               </section>
 
-              <section style={{ ...assetCardStyle, display: assetPanelSection === "photos" ? "block" : "none" }}>
+              <section
+                id={`asset-photos-${selectedAsset.id}`}
+                style={{
+                  ...assetCardStyle,
+                  display:
+                    assetPanelSection === "overview" || assetPanelSection === "photos"
+                      ? "block"
+                      : "none",
+                  scrollMarginTop: 72,
+                }}
+              >
                 <div
                   style={{
                     ...assetCardHeaderStyle,
@@ -2553,17 +2564,21 @@ export default function AtlasAssetsWorkspace(props: any) {
                     rowGap: 6,
                   }}
                 >
-                  <strong
-                    style={{
-                      whiteSpace: "nowrap",
-                      wordBreak: "keep-all",
-                      overflowWrap: "normal",
-                      flex: "0 0 auto",
-                      minWidth: "max-content",
-                    }}
-                  >
-                    Photos
-                  </strong>
+                  <div style={{ minWidth: 0 }}>
+                    <strong
+                      style={{
+                        display: "block",
+                        whiteSpace: "nowrap",
+                        wordBreak: "keep-all",
+                        overflowWrap: "normal",
+                      }}
+                    >
+                      Photos
+                    </strong>
+                    <span style={assetCardHintStyle}>
+                      {selectedAssetPhotos.length} attached
+                    </span>
+                  </div>
                   <div
                     style={{
                       ...assetPhotoHeaderActionsStyle,
