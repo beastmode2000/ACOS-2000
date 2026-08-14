@@ -694,7 +694,7 @@ export default function AtlasAssetsWorkspace(props: any) {
     <ListDrawerLayout
       eyebrow="Property Equipment"
       title="Assets"
-      detail="Equipment, service history, documents, procedures, vendors, and maintenance in one place."
+      detail=""
       isMobile={isMobile}
       drawerResetKey={selectedAssetId || "asset-empty"}
       mobileDrawerOpen={isMobile && Boolean(selectedAssetId)}
@@ -2020,22 +2020,27 @@ export default function AtlasAssetsWorkspace(props: any) {
                   </button>
                 ) : null}
                 {!assetEditorOpen ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAssetPanelCustomizeOpen(false);
-                      setAssetVisibleSectionsExpanded(false);
-                      setAssetPanelSection("overview");
-                      setAssetEditorOpen(true);
-                    }}
-                    style={assetPrimaryActionButtonStyle}
-                    aria-label="Edit asset"
-                  >
-                    Edit Asset
-                  </button>
-                ) : null}
-                {!assetEditorOpen ? (
                   <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssetPanelCustomizeOpen(false);
+                        setAssetVisibleSectionsExpanded(false);
+                        setAssetPanelSection("overview");
+                        setAssetEditorOpen(true);
+                      }}
+                      style={assetPrimaryActionButtonStyle}
+                      aria-label="Edit asset"
+                    >
+                      Edit Asset
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteAssetRecord(selectedAsset)}
+                      style={{ ...dangerButtonStyle, width: "auto" }}
+                    >
+                      Delete Asset
+                    </button>
                     <button
                       type="button"
                       onClick={() =>
@@ -2059,13 +2064,6 @@ export default function AtlasAssetsWorkspace(props: any) {
                       aria-expanded={assetPanelCustomizeOpen}
                     >
                       Customize
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void deleteAssetRecord(selectedAsset)}
-                      style={{ ...dangerButtonStyle, width: "auto" }}
-                    >
-                      Delete Asset
                     </button>
                   </>
                 ) : null}
@@ -2631,12 +2629,53 @@ export default function AtlasAssetsWorkspace(props: any) {
                     </summary>
                     <div style={{ display: "grid", gap: 4, maxHeight: 180, overflowY: "auto", padding: "0 7px 7px" }}>
                       {selectedAssetPhotos.map((photo) => (
-                        <div key={photo.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center", gap: 5, padding: "5px 6px", border: `1px solid ${colors.line}`, borderRadius: 7 }}>
-                          <button type="button" onClick={() => openPhotoPreview(photo)} style={{ border: 0, padding: 0, background: "transparent", color: colors.navy, textAlign: "left", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>
+                        <div
+                          key={photo.id}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "minmax(0, 1fr) auto auto",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "6px 7px",
+                            border: `1px solid ${colors.line}`,
+                            borderRadius: 7,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => openPhotoPreview(photo)}
+                            style={{
+                              border: 0,
+                              padding: 0,
+                              background: "transparent",
+                              color: colors.navy,
+                              textAlign: "left",
+                              fontSize: 10,
+                              fontWeight: 800,
+                              cursor: "pointer",
+                              minWidth: 0,
+                            }}
+                          >
                             {photo.name || "Asset photo"}
                           </button>
-                          <button type="button" onClick={() => void renameAssetPhoto(photo)} style={assetPhotoLabelButtonStyle} aria-label={`Edit ${photo.name || "photo"} label`}>✏</button>
-                          {assetEditorOpen ? <button type="button" onClick={() => void deleteAssetPhoto(photo)} style={assetPhotoDeleteIconStyle} aria-label={`Delete ${photo.name || "photo"}`}>{closeSymbol}</button> : null}
+                          <button
+                            type="button"
+                            onClick={() => void renameAssetPhoto(photo)}
+                            style={assetPhotoLabelButtonStyle}
+                            aria-label={`Edit ${photo.name || "photo"} name`}
+                            title="Edit photo name"
+                          >
+                            Edit Name
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void deleteAssetPhoto(photo)}
+                            style={assetPhotoDeleteIconStyle}
+                            aria-label={`Delete ${photo.name || "photo"}`}
+                            title="Delete photo"
+                          >
+                            Delete
+                          </button>
                         </div>
                       ))}
                     </div>
