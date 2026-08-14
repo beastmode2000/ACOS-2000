@@ -8801,8 +8801,11 @@ export default function AtlasApp() {
 
   async function completeWorkOrder(record: AtlasServiceRecord) {
     if (record.date && String(record.date).slice(0, 10) > todayISO()) {
-      showSaveToast(`This work order is due ${formatDate(record.date)} and cannot be completed early.`, "warning");
-      return;
+      const itemTitle = String(record.title || "Work order").trim();
+      const confirmed = window.confirm(
+        `${itemTitle} is due ${formatDate(record.date)}. Are you sure you want to complete it early?`,
+      );
+      if (!confirmed) return;
     }
     const actionKey = `complete-work-order:${record.id}`;
     if (atlasActionLocksRef.current.has(actionKey)) {
@@ -24155,7 +24158,7 @@ ${notes.trim()}` : notes.trim(),
 
   function renderDepartmentCenter(kind: DepartmentKind) {
     const departmentConfig: Record<DepartmentKind, { title: string; short: string; icon: string; matcher: RegExp; detail: string; people: string[] }> = {
-      house: { title: "Maintenance & Cleaning", short: "Maintenance", icon: "⌂", matcher: /house|interior|exterior|room|appliance|boiler|hvac|mechanical|pump|electrical|plumbing|lighting|door|gate|alarm|window|skylight|glass|cleaning/i, detail: "House systems, mechanical equipment, inspections, repairs, procedures, service history, and current work.", people: ["Nick", "Vendors"] },
+      house: { title: "House & Maintenance", short: "House", icon: "⌂", matcher: /house|interior|exterior|room|appliance|boiler|hvac|mechanical|pump|electrical|plumbing|lighting|door|gate|alarm|window|skylight|glass|cleaning/i, detail: "House systems, mechanical equipment, inspections, repairs, procedures, service history, and current work.", people: ["Nick", "Vendors"] },
       garage: { title: "Garage", short: "Garage", icon: "🚗", matcher: /garage|vehicle|car|mercedes|rivian|porsche|lucid|ford|kia|honda|subaru|charging|tire|fuel/i, detail: "Cars, weekly cleaning, inspections, charging, service, documents, photos, and connected work.", people: ["Nick", "Addison"] },
       pool: { title: "Pool & Spa", short: "Pool & Spa", icon: "💧", matcher: /pool|spa|hot tub|sundance|fountain|filter|backwash|oxy|phosphate|vacuum/i, detail: "Pool, Spa, Fountain, water treatment, cleaning rotation, filter readings, equipment, procedures, and service history.", people: ["Nick", "Addison", "Vendors"] },
       landscaping: { title: "Landscaping & Irrigation", short: "Landscaping", icon: "🌿", matcher: /landscap|garden|lawn|weed|irrigation|tree|grounds|bed|courtyard|waterside|veggie/i, detail: "Landscaping, irrigation, crew visits, areas, progress photos, tasks, work orders, and follow-up.", people: ["Pat", "Lanken Landscaping", "Addison"] },
@@ -24179,57 +24182,15 @@ ${notes.trim()}` : notes.trim(),
         .join(" ");
       return /\bappliances?\b/i.test(classificationText) || conventionalAppliancePattern.test(identityText);
     };
-    const explicitDepartmentForRecord = (value: unknown): DepartmentKind | "" => {
-      const record = (value || {}) as Record<string, any>;
-
-      const linkedAsset =
-        record.assetId
-          ? assetRecords.find((asset) => asset.id === String(record.assetId))
-          : null;
-
-      const classificationText = [
-        record.department,
-        record.departmentName,
-        record.category,
-        record.workCategory,
-        record.responsibilityArea,
-        record.area,
-        linkedAsset?.category,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      if (/pool|spa|hot tub|sundance/.test(classificationText)) return "pool";
-      if (/dock|marine|waterfront|boat|cobalt|sea.?doo|pwc|lift/.test(classificationText)) return "marine";
-      if (/landscap|irrigation|garden|lawn|grounds|tree|bed/.test(classificationText)) return "landscaping";
-      if (/garage|vehicle|car|automotive|charging|tire|fuel/.test(classificationText)) return "garage";
-      if (/maintenance\s*&\s*cleaning|house|maintenance|interior|exterior|mechanical|hvac|plumbing|electrical|appliance|window|cleaning/.test(classificationText)) return "house";
-
-      return "";
-    };
-
-    const matchesDepartmentRecord = (value: unknown) => {
-      const explicitDepartment = explicitDepartmentForRecord(value);
-
-      // A saved category/department (or the linked asset's category) is authoritative.
-      // Only use broad keyword matching when the record has no department classification.
-      if (explicitDepartment) {
-        if (explicitDepartment !== kind) return false;
-        return kind !== "pool" || !isConventionalApplianceRecord(value);
-      }
-
-      return matches(value) && (kind !== "pool" || !isConventionalApplianceRecord(value));
-    };
+    const matchesDepartmentRecord = (value: unknown) =>
+      matches(value) && (kind !== "pool" || !isConventionalApplianceRecord(value));
     const isWindowCleaningRecord = (value: unknown) =>
       /window|skylight|glass cleaning|exterior cleaning|cleaning \/ windows/i.test(recordSearchText(value));
     const departmentWork = serviceRecords.filter((record) =>
       isMarine
-        ? explicitDepartmentForRecord(record)
-          ? explicitDepartmentForRecord(record) === "marine"
-          : isMarineServiceRecord(record)
+        ? isMarineServiceRecord(record)
         : isLandscape
-          ? matchesDepartmentRecord(record) && !isMarineServiceRecord(record) && !isWindowCleaningRecord(record)
+          ? matches(record) && !isMarineServiceRecord(record) && !isWindowCleaningRecord(record)
           : matchesDepartmentRecord(record),
     );
     const openWork = departmentWork.filter((item) => !["Completed"].includes(String(item.status || "")));
@@ -26663,7 +26624,7 @@ ${notes.trim()}` : notes.trim(),
                   <div style={{ ...sidebarNavSectionStyle, order: 40 }}>
                     <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>Departments</div>
                     <div style={sidebarNavItemsStyle}>
-                      {([['house','⌂ Maintenance & Cleaning'],['garage','🚗 Garage'],['pool','💧 Pool & Spa'],['landscaping','🌿 Landscaping & Irrigation'],['marine','⚓ Dock & Waterfront']] as const).map(([id, label]) => (
+                      {([['house','⌂ House & Maintenance'],['garage','🚗 Garage'],['pool','💧 Pool & Spa'],['landscaping','🌿 Landscaping & Irrigation'],['marine','⚓ Dock & Waterfront']] as const).map(([id, label]) => (
                         <button
                           key={id}
                           type="button"
@@ -26803,7 +26764,7 @@ ${notes.trim()}` : notes.trim(),
                   {screen === "dashboard" ? <AtlasMiniMark size={34} /> : null}
                   <h1 style={isMobile ? mobilePageTitleStyle : pageTitleStyle}>
                     {departmentCenter
-                      ? departmentCenter === "house" ? "Maintenance & Cleaning" : departmentCenter === "garage" ? "Garage" : departmentCenter === "pool" ? "Pool & Spa" : departmentCenter === "landscaping" ? "Landscaping & Irrigation" : "Dock & Waterfront"
+                      ? departmentCenter === "house" ? "House & Maintenance" : departmentCenter === "garage" ? "Garage" : departmentCenter === "pool" ? "Pool & Spa" : departmentCenter === "landscaping" ? "Landscaping & Irrigation" : "Dock & Waterfront"
                       : screen === "dashboard"
                         ? `Atlas / ${atlasProperties.find((item) => item.id === activePropertyId)?.name || "2000"}`
                         : screen === "timeline"
