@@ -3116,7 +3116,26 @@ export const fallbackVendors: VendorRecord[] = [
   },
 ];
 
-export const confirmedAssetCatalog = [
+export type ConfirmedAssetCatalogItem = {
+  sourceId: string;
+  propertyId: string;
+  name: string;
+  status: string;
+  location: string;
+  category: string;
+  year: string;
+  manufacturer: string;
+  model: string;
+  serial: string;
+  description: string;
+  vendors: string;
+  criticality: string;
+  controlNumber?: string;
+  unitNumber?: string;
+  maintenanceRecommendation?: string;
+};
+
+export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
   {
     "sourceId": "4955454",
     "propertyId": "2000",
