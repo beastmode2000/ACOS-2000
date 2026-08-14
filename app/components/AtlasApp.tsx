@@ -24514,16 +24514,36 @@ ${notes.trim()}` : notes.trim(),
 
   return (
     <main className="atlas-app-shell" style={isMobile ? appStyle : desktopAppStyle}>
-      <div style={{ position: "fixed", top: 10, right: 10, zIndex: 12050, display: "grid", gap: 6, justifyItems: "end", pointerEvents: "none" }}>
-        <div style={{ pointerEvents: "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", background: "rgba(255,255,255,.96)", border: `1px solid ${/failed|error|offline/i.test(databaseStatus) ? "#E6AAAA" : colors.line}`, borderRadius: 12, padding: "6px 8px", boxShadow: "0 8px 24px rgba(15,23,42,.12)" }}>
-          <button type="button" title={databaseStatus} onClick={() => { if (/failed|error|offline/i.test(databaseStatus)) window.alert(databaseStatus); }} style={{ border: 0, background: "transparent", padding: "2px 4px", fontSize: 11, fontWeight: 900, cursor: /failed|error|offline/i.test(databaseStatus) ? "pointer" : "default", color: /failed|error|offline/i.test(databaseStatus) ? colors.red : colors.navy }}>
-            {/loading/i.test(databaseStatus) ? "Loading…" : /saving|deleting/i.test(databaseStatus) ? "Saving…" : /failed|error|offline/i.test(databaseStatus) ? "Save failed" : "Saved ✓"}
+      {taskUndo ? (
+        <div
+          style={{
+            position: "fixed",
+            top: 10,
+            right: 10,
+            zIndex: 12050,
+            pointerEvents: "auto",
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            background: colors.navy,
+            color: "#FFFFFF",
+            borderRadius: 11,
+            padding: "8px 10px",
+            boxShadow: "0 8px 24px rgba(15,23,42,.18)",
+          }}
+        >
+          <span style={{ fontSize: 12, fontWeight: 800 }}>
+            Deleted {taskUndo.task.title}
+          </span>
+          <button
+            type="button"
+            onClick={restoreDeletedTask}
+            style={{ ...compactUtilityButtonStyle, background: "#FFFFFF" }}
+          >
+            Undo
           </button>
-          {canUseAdminTools ? <button type="button" onClick={() => setAdminPreviewMode((current) => current === "addison" ? "none" : "addison")} style={{ ...compactUtilityButtonStyle, minHeight: 27 }}>{adminPreviewMode === "addison" ? "Exit Addison Preview" : "Preview Addison"}</button> : null}
-          {canUseAdminTools && adminPreviewMode === "none" ? <button type="button" onClick={exportAtlasBackup} style={{ ...compactUtilityButtonStyle, minHeight: 27 }}>Backup</button> : null}
         </div>
-        {taskUndo ? <div style={{ pointerEvents: "auto", display: "flex", gap: 8, alignItems: "center", background: colors.navy, color: "#FFFFFF", borderRadius: 11, padding: "8px 10px", boxShadow: "0 8px 24px rgba(15,23,42,.18)" }}><span style={{ fontSize: 12, fontWeight: 800 }}>Deleted {taskUndo.task.title}</span><button type="button" onClick={restoreDeletedTask} style={{ ...compactUtilityButtonStyle, background: "#FFFFFF" }}>Undo</button></div> : null}
-      </div>
+      ) : null}
       <button
         type="button"
         aria-label="Quick capture"
