@@ -1190,6 +1190,7 @@ export default function AtlasAssetsWorkspace(props: any) {
           {(duplicateAssetGroups.length || incompleteAssetRows.length) ? (
             <section
               style={{
+                order: 99,
                 border: `1px solid ${colors.line}`,
                 borderRadius: 14,
                 background: "#FFFFFF",
@@ -1362,6 +1363,7 @@ export default function AtlasAssetsWorkspace(props: any) {
           {(favoriteAssets.length || recentAssets.length) ? (
             <section
               style={{
+                order: 99,
                 border: `1px solid ${colors.line}`,
                 borderRadius: 14,
                 background: "#FFFFFF",
