@@ -2016,16 +2016,47 @@ export default function AtlasDashboardWorkspace(props: any) {
     const clean = text.trim();
     if (!clean) return "";
     const id = existingId || uid("dashboard-note");
-    const createdAt = dashboardReminders.find((item) => item.id === id)?.createdAt || new Date().toISOString();
+    const existingReminder = dashboardReminders.find((item) => item.id === id);
+    const createdAt = existingReminder?.createdAt || new Date().toISOString();
+    const record = {
+      id,
+      propertyId: activePropertyId,
+      date: today,
+      category: "Note",
+      text: clean,
+      createdAt,
+      updatedAt: new Date().toISOString(),
+      section: "General",
+      pinned: false,
+      followUpDate: "",
+      attachments: [],
+      dashboard: true,
+      dueDate: dueDate || existingReminder?.dueDate || "",
+      done: Boolean(existingReminder?.done),
+    };
+
     setDashboardReminders((current) => {
       const existing = current.find((item) => item.id === id);
-      const record = { id, text: clean, done: existing?.done || false, createdAt, dueDate: dueDate || existing?.dueDate || undefined };
-      return existing ? current.map((item) => item.id === id ? record : item) : [record, ...current];
+      const reminder = {
+        id,
+        text: clean,
+        done: existing?.done || false,
+        createdAt,
+        dueDate: dueDate || existing?.dueDate || undefined,
+      };
+      return existing
+        ? current.map((item) => (item.id === id ? reminder : item))
+        : [reminder, ...current];
     });
-    setTodayLogEntries((current) => {
-      const noteRecord = { id, propertyId: activePropertyId, date: today, category: "Note", text: clean, createdAt };
-      return [noteRecord, ...current.filter((entry: any) => entry.id !== id)];
-    });
+    setTodayLogEntries((current) => [
+      record,
+      ...current.filter((entry: any) => entry.id !== id),
+    ]);
+
+    // Dashboard notes must hit shared Atlas immediately. Do not wait for the
+    // background local-state sync; that delay is what allowed desktop and
+    // phone to diverge.
+    void postAtlasRecord("notes", record);
     return id;
   };
   const deleteDashboardNote = (noteId: string) => {
