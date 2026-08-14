@@ -3257,8 +3257,8 @@ export default function AtlasApp() {
         setRequestPortalToken(String(payload.portalToken || ""));
         setMarineRequestPortalToken(
           String(
-            payload.portalToken
-              ? `marine-${payload.portalToken}` : "",
+            payload.marinePortalToken ||
+              (payload.portalToken ? `marine-${payload.portalToken}` : ""),
           ),
         );
         setSelectedRequestId((current) =>
@@ -24140,7 +24140,7 @@ ${notes.trim()}` : notes.trim(),
             <div style={qrCardBodyStyle}>
               <div>
                 <div style={eyebrowStyle}>Sean Marine Request</div>
-                <h3 style={qrCardTitleStyle}>Request Boat Service</h3>
+                <h3 style={qrCardTitleStyle}>Marine Service</h3>
                 <p style={mutedSmallStyle}>
                   Secure public form for boat detailing, Sea-Doo, dock, lift,
                   and other marine-service requests. Requests are automatically
