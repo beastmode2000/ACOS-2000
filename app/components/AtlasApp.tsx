@@ -3246,6 +3246,134 @@ export default function AtlasApp() {
   ]);
 
   useEffect(() => {
+    if (!ready || !notesHydrated) return;
+
+    let cancelled = false;
+
+    async function refreshSharedNotesFromServer() {
+      try {
+        const response = await fetch(
+          `/api/atlas?notesRefresh=${Date.now()}&propertyId=${encodeURIComponent(activePropertyId)}`,
+          { cache: "no-store" },
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.ok !== true || cancelled) return;
+
+        const sharedNotes = (Array.isArray(payload.notes)
+          ? payload.notes
+          : Array.isArray(payload.noteRecords)
+            ? payload.noteRecords
+            : [])
+          .filter((note: any) => note?.id && note?.text)
+          .map((note: any) => ({
+            ...note,
+            id: String(note.id),
+            propertyId: String(note.propertyId || activePropertyId),
+            category: "Note" as const,
+            text: String(note.text || ""),
+            createdAt: String(note.createdAt || new Date().toISOString()),
+          }));
+
+        if (cancelled) return;
+        const remoteIds = new Set(sharedNotes.map((note: any) => String(note.id)));
+        sharedNoteIdsRef.current = new Set([
+          ...Array.from(sharedNoteIdsRef.current),
+          ...Array.from(remoteIds),
+        ]);
+
+        setTodayLogEntries((current) => {
+          const localPropertyNotes = current.filter(
+            (entry) =>
+              entry.category === "Note" &&
+              String(entry.propertyId || "2000") === activePropertyId,
+          );
+          const localById = new Map(localPropertyNotes.map((entry) => [String(entry.id), entry]));
+          const mergedRemote = sharedNotes.map((note: any) => ({
+            id: String(note.id),
+            propertyId: activePropertyId,
+            date: String(note.date || note.createdAt || todayISO()).slice(0, 10),
+            category: "Note" as const,
+            text: String(note.text || ""),
+            createdAt: String(note.createdAt || new Date().toISOString()),
+            updatedAt: note.updatedAt ? String(note.updatedAt) : undefined,
+          }));
+          const localOnly = localPropertyNotes.filter((entry) => !remoteIds.has(String(entry.id)));
+          return [
+            ...mergedRemote,
+            ...localOnly,
+            ...current.filter(
+              (entry) =>
+                entry.category !== "Note" ||
+                String(entry.propertyId || "2000") !== activePropertyId,
+            ),
+          ];
+        });
+
+        setNotesSectionById((current) => ({
+          ...current,
+          ...Object.fromEntries(
+            sharedNotes.map((note: any) => [String(note.id), (note.section || "General") as NoteSection]),
+          ),
+        }));
+        setPinnedNoteIds((current) => Array.from(new Set([
+          ...current.filter((id) => !remoteIds.has(id)),
+          ...sharedNotes.filter((note: any) => note.pinned).map((note: any) => String(note.id)),
+        ])));
+        setNoteFollowUpDates((current) => ({
+          ...current,
+          ...Object.fromEntries(
+            sharedNotes
+              .filter((note: any) => note.followUpDate)
+              .map((note: any) => [String(note.id), String(note.followUpDate)]),
+          ),
+        }));
+        setNoteAttachments((current) => ({
+          ...current,
+          ...Object.fromEntries(
+            sharedNotes.map((note: any) => [
+              String(note.id),
+              Array.isArray(note.attachments) ? note.attachments : [],
+            ]),
+          ),
+        }));
+        setDashboardReminders(
+          sharedNotes
+            .filter((note: any) => note.dashboard || String(note.id).startsWith("dashboard-note"))
+            .map((note: any) => ({
+              id: String(note.id),
+              text: String(note.text || ""),
+              done: Boolean(note.done),
+              createdAt: String(note.createdAt || new Date().toISOString()),
+              dueDate: note.dueDate ? String(note.dueDate) : undefined,
+            })),
+        );
+      } catch {
+        // Keep the current local view when the network is unavailable.
+      }
+    }
+
+    const onFocus = () => void refreshSharedNotesFromServer();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refreshSharedNotesFromServer();
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshSharedNotesFromServer();
+    }, 10000);
+
+    void refreshSharedNotesFromServer();
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.clearInterval(interval);
+    };
+  }, [ready, notesHydrated, activePropertyId]);
+
+  useEffect(() => {
     if (!ready) return;
     saveStoredArray(dashboardRoutineStorageKeys[0], completedDashboardRoutineIds);
   }, [ready, completedDashboardRoutineIds]);
