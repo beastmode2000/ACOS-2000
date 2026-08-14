@@ -181,6 +181,7 @@ export default function AtlasLocationsWorkspace(props: any) {
     recordInfoGridStyle,
     recordInfoItemStyle,
     recordNotesStyle,
+    renameLinkedImage,
     removeAssetFromLocation,
     removeLocationCustomDetail,
     renderLinkedDocuments,
@@ -609,222 +610,6 @@ export default function AtlasLocationsWorkspace(props: any) {
         <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: isMobile
-                ? "repeat(2, minmax(0, 1fr))"
-                : "repeat(6, minmax(0, 1fr))",
-              gap: 7,
-            }}
-          >
-            {[
-              ["🏠", "Top level", topLevelLocationCount, "Main property areas"],
-              ["🔗", "Connected", linkedLocationCount, "With linked records"],
-              ["🔧", "Active work", locationsWithOpenWork, "Locations with work"],
-              [
-                "↔",
-                "Review",
-                possibleAssetLocations.length,
-                "May belong in Assets",
-              ],
-              [
-                "📦",
-                "Unassigned Assets",
-                vagueLocationAssetCount,
-                "Need a real location",
-              ],
-              [
-                "⚠",
-                "Hierarchy Issues",
-                orphanLocationCount,
-                "Missing parent records",
-              ],
-            ].map(([icon, label, value, note]) => (
-              <div
-                key={String(label)}
-                style={{
-                  minWidth: 0,
-                  padding: isMobile ? "10px 9px" : "11px 10px",
-                  borderRadius: 14,
-                  border: `1px solid ${colors.line}`,
-                  background: colors.card,
-                  boxShadow: "0 5px 16px rgba(15, 42, 67, 0.06)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                  }}
-                >
-                  <span style={{ ...fieldLabelStyle, display: "block" }}>
-                    {label}
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 9,
-                      display: "grid",
-                      placeItems: "center",
-                      background: colors.panel,
-                      border: `1px solid ${colors.line}`,
-                      fontSize: 14,
-                      flex: "0 0 auto",
-                    }}
-                  >
-                    {icon}
-                  </span>
-                </div>
-                <strong
-                  style={{
-                    display: "block",
-                    fontSize: 22,
-                    lineHeight: 1,
-                    marginTop: 5,
-                    color: colors.navy,
-                  }}
-                >
-                  {value}
-                </strong>
-                <small
-                  style={{
-                    ...mutedSmallStyle,
-                    display: "block",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    marginTop: 5,
-                  }}
-                >
-                  {note}
-                </small>
-              </div>
-            ))}
-          </div>
-          {(vagueLocationAssetCount || orphanLocationCount) ? (
-            <section
-              style={{
-                border: `1px solid ${colors.line}`,
-                borderRadius: 12,
-                background: "#FFFFFF",
-                padding: 10,
-                display: "grid",
-                gap: 9,
-              }}
-            >
-              <div>
-                <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
-                  Hierarchy and Assignment Review
-                </strong>
-                <span style={mutedSmallStyle}>
-                  Assign assets to the most specific physical location and repair missing parent relationships.
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr",
-                  gap: 8,
-                }}
-              >
-                <div style={recordInfoItemStyle}>
-                  <span style={fieldLabelStyle}>Assets needing location</span>
-                  <strong>{vagueLocationAssetCount}</strong>
-                  <small style={mutedSmallStyle}>General, unknown, or unassigned</small>
-                </div>
-                <div style={recordInfoItemStyle}>
-                  <span style={fieldLabelStyle}>Broken parent links</span>
-                  <strong>{orphanLocationCount}</strong>
-                  <small style={mutedSmallStyle}>Parent location no longer exists</small>
-                </div>
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {locationAssetSourceRecords
-                  .filter((asset) => {
-                    const location = locationSourceRecords.find((item) => item.id === asset.locationId);
-                    return !asset.locationId || isVagueLocation(location);
-                  })
-                  .slice(0, 8)
-                  .map((asset) => (
-                    <button
-                      key={asset.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedAssetId(asset.id);
-                        setScreen("assets");
-                      }}
-                      style={secondaryButtonStyle}
-                    >
-                      Reassign {asset.name}
-                    </button>
-                  ))}
-              </div>
-            </section>
-          ) : null}
-
-          {possibleAssetLocations.length ? (
-            <section
-              style={{
-                border: `1px solid ${colors.gold}`,
-                borderRadius: 12,
-                background: "#FFF9E8",
-                padding: 10,
-                display: "grid",
-                gap: 8,
-              }}
-            >
-              <div>
-                <strong
-                  style={{
-                    display: "block",
-                    color: colors.navy,
-                    fontSize: 12,
-                  }}
-                >
-                  Location Classification Review
-                </strong>
-                <span style={mutedSmallStyle}>
-                  These records look more like equipment or vehicles than
-                  physical property areas.
-                </span>
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {possibleAssetLocations.slice(0, 8).map((location) => (
-                  <button
-                    key={location.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedLocationId(location.id);
-                      setLocationEditorOpen(false);
-                      if (isMobile) setLocationMobileDrawerOpen(true);
-                    }}
-                    style={{
-                      ...secondaryButtonStyle,
-                      minHeight: 30,
-                      padding: "5px 8px",
-                      background: "#FFFFFF",
-                    }}
-                  >
-                    {location.name}
-                  </button>
-                ))}
-                {possibleAssetLocations.length > 8 ? (
-                  <span style={mutedSmallStyle}>
-                    +{possibleAssetLocations.length - 8} more
-                  </span>
-                ) : null}
-              </div>
-              <span style={mutedSmallStyle}>
-                Atlas will not move or delete these records automatically.
-              </span>
-            </section>
-          ) : null}
-
-          <div
-            style={{
               position: "sticky",
               top: 0,
               zIndex: 8,
@@ -1220,6 +1005,224 @@ export default function AtlasLocationsWorkspace(props: any) {
               </div>
             ) : null}
           </div>
+
+          <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "repeat(2, minmax(0, 1fr))"
+                : "repeat(6, minmax(0, 1fr))",
+              gap: 7,
+            }}
+          >
+            {[
+              ["🏠", "Top level", topLevelLocationCount, "Main property areas"],
+              ["🔗", "Connected", linkedLocationCount, "With linked records"],
+              ["🔧", "Active work", locationsWithOpenWork, "Locations with work"],
+              [
+                "↔",
+                "Review",
+                possibleAssetLocations.length,
+                "May belong in Assets",
+              ],
+              [
+                "📦",
+                "Unassigned Assets",
+                vagueLocationAssetCount,
+                "Need a real location",
+              ],
+              [
+                "⚠",
+                "Hierarchy Issues",
+                orphanLocationCount,
+                "Missing parent records",
+              ],
+            ].map(([icon, label, value, note]) => (
+              <div
+                key={String(label)}
+                style={{
+                  minWidth: 0,
+                  padding: isMobile ? "10px 9px" : "11px 10px",
+                  borderRadius: 14,
+                  border: `1px solid ${colors.line}`,
+                  background: colors.card,
+                  boxShadow: "0 5px 16px rgba(15, 42, 67, 0.06)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ ...fieldLabelStyle, display: "block" }}>
+                    {label}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 9,
+                      display: "grid",
+                      placeItems: "center",
+                      background: colors.panel,
+                      border: `1px solid ${colors.line}`,
+                      fontSize: 14,
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    {icon}
+                  </span>
+                </div>
+                <strong
+                  style={{
+                    display: "block",
+                    fontSize: 22,
+                    lineHeight: 1,
+                    marginTop: 5,
+                    color: colors.navy,
+                  }}
+                >
+                  {value}
+                </strong>
+                <small
+                  style={{
+                    ...mutedSmallStyle,
+                    display: "block",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    marginTop: 5,
+                  }}
+                >
+                  {note}
+                </small>
+              </div>
+            ))}
+          </div>
+          {(vagueLocationAssetCount || orphanLocationCount) ? (
+            <section
+              style={{
+                border: `1px solid ${colors.line}`,
+                borderRadius: 12,
+                background: "#FFFFFF",
+                padding: 10,
+                display: "grid",
+                gap: 9,
+              }}
+            >
+              <div>
+                <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
+                  Hierarchy and Assignment Review
+                </strong>
+                <span style={mutedSmallStyle}>
+                  Assign assets to the most specific physical location and repair missing parent relationships.
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr",
+                  gap: 8,
+                }}
+              >
+                <div style={recordInfoItemStyle}>
+                  <span style={fieldLabelStyle}>Assets needing location</span>
+                  <strong>{vagueLocationAssetCount}</strong>
+                  <small style={mutedSmallStyle}>General, unknown, or unassigned</small>
+                </div>
+                <div style={recordInfoItemStyle}>
+                  <span style={fieldLabelStyle}>Broken parent links</span>
+                  <strong>{orphanLocationCount}</strong>
+                  <small style={mutedSmallStyle}>Parent location no longer exists</small>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {locationAssetSourceRecords
+                  .filter((asset) => {
+                    const location = locationSourceRecords.find((item) => item.id === asset.locationId);
+                    return !asset.locationId || isVagueLocation(location);
+                  })
+                  .slice(0, 8)
+                  .map((asset) => (
+                    <button
+                      key={asset.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedAssetId(asset.id);
+                        setScreen("assets");
+                      }}
+                      style={secondaryButtonStyle}
+                    >
+                      Reassign {asset.name}
+                    </button>
+                  ))}
+              </div>
+            </section>
+          ) : null}
+
+          {possibleAssetLocations.length ? (
+            <section
+              style={{
+                border: `1px solid ${colors.gold}`,
+                borderRadius: 12,
+                background: "#FFF9E8",
+                padding: 10,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div>
+                <strong
+                  style={{
+                    display: "block",
+                    color: colors.navy,
+                    fontSize: 12,
+                  }}
+                >
+                  Location Classification Review
+                </strong>
+                <span style={mutedSmallStyle}>
+                  These records look more like equipment or vehicles than
+                  physical property areas.
+                </span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {possibleAssetLocations.slice(0, 8).map((location) => (
+                  <button
+                    key={location.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedLocationId(location.id);
+                      setLocationEditorOpen(false);
+                      if (isMobile) setLocationMobileDrawerOpen(true);
+                    }}
+                    style={{
+                      ...secondaryButtonStyle,
+                      minHeight: 30,
+                      padding: "5px 8px",
+                      background: "#FFFFFF",
+                    }}
+                  >
+                    {location.name}
+                  </button>
+                ))}
+                {possibleAssetLocations.length > 8 ? (
+                  <span style={mutedSmallStyle}>
+                    +{possibleAssetLocations.length - 8} more
+                  </span>
+                ) : null}
+              </div>
+              <span style={mutedSmallStyle}>
+                Atlas will not move or delete these records automatically.
+              </span>
+            </section>
+          ) : null}
+          </div>
         </div>
       }
       drawer={
@@ -1392,15 +1395,13 @@ export default function AtlasLocationsWorkspace(props: any) {
                       Edit
                     </button>
                   )}
-                  {locationEditorOpen && (!isMobile || mobileFieldDetailsOpen) ? (
-                    <button
-                      type="button"
-                      onClick={() => void deleteSelectedLocation()}
-                      style={{ ...dangerButtonStyle, width: isMobile ? "100%" : undefined }}
-                    >
-                      Delete Location
-                    </button>
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void deleteSelectedLocation()}
+                    style={{ ...dangerButtonStyle, width: isMobile ? "100%" : undefined }}
+                  >
+                    Delete
+                  </button>
                   {locationEditorOpen ||
                   isRecordDirty("location", selectedLocation.id) ? (
                     <button
@@ -1883,47 +1884,91 @@ export default function AtlasLocationsWorkspace(props: any) {
                     <div
                       key={file.id}
                       style={{
-                        position: "relative",
-                        aspectRatio: "4 / 3",
                         borderRadius: 10,
                         overflow: "hidden",
                         border: `1px solid ${colors.line}`,
-                        background: colors.panel,
+                        background: "#FFFFFF",
+                        display: "grid",
                       }}
                     >
                       <button
                         type="button"
                         onClick={() => openUploadedFile(file)}
                         title={file.name}
-                        style={{ border: 0, padding: 0, width: "100%", height: "100%", background: "transparent", cursor: "pointer" }}
+                        style={{
+                          border: 0,
+                          padding: 0,
+                          width: "100%",
+                          aspectRatio: "4 / 3",
+                          background: colors.panel,
+                          cursor: "pointer",
+                          overflow: "hidden",
+                        }}
                       >
                         <img
                           src={file.dataUrl || file.url}
                           alt={file.name || "Location photo"}
-                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            display: "block",
+                          }}
                         />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => void deleteLinkedImage(file)}
-                        aria-label={`Delete ${file.name}`}
-                        title="Delete photo"
+                      <div
                         style={{
-                          position: "absolute",
-                          top: 6,
-                          right: 6,
-                          width: 26,
-                          height: 26,
-                          borderRadius: 999,
-                          border: "1px solid rgba(255,255,255,.8)",
-                          background: "rgba(15,42,67,.82)",
-                          color: "white",
-                          cursor: "pointer",
-                          fontWeight: 900,
+                          display: "grid",
+                          gap: 6,
+                          padding: 7,
+                          borderTop: `1px solid ${colors.line}`,
                         }}
                       >
-                        {closeSymbol}
-                      </button>
+                        <strong
+                          title={file.name}
+                          style={{
+                            color: colors.navy,
+                            fontSize: 10,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {file.name || "Location photo"}
+                        </strong>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: 5,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => void renameLinkedImage(file)}
+                            style={{
+                              ...secondaryButtonStyle,
+                              minHeight: 28,
+                              padding: "4px 6px",
+                              fontSize: 10,
+                            }}
+                          >
+                            Edit Name
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void deleteLinkedImage(file)}
+                            style={{
+                              ...dangerButtonStyle,
+                              minHeight: 28,
+                              padding: "4px 6px",
+                              fontSize: 10,
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ))}
                   {locationPhotos.length > 8 ? (
