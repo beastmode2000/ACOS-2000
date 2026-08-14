@@ -168,6 +168,8 @@ export default function AtlasApp() {
   const [notesSection, setNotesSection] = useState<NoteSection>("General");
   const [notesSectionFilter, setNotesSectionFilter] = useState<NoteSection | "All">("All");
   const [selectedNoteId, setSelectedNoteId] = useState("");
+  const [notesHydrated, setNotesHydrated] = useState(false);
+  const sharedNoteIdsRef = useRef<Set<string>>(new Set());
   const [notesSectionById, setNotesSectionById] = useState<Record<string, NoteSection>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -2243,6 +2245,7 @@ export default function AtlasApp() {
     let cancelled = false;
 
     async function loadAtlasApi() {
+      setNotesHydrated(false);
       try {
         setSyncState("loading");
 
@@ -2331,6 +2334,8 @@ export default function AtlasApp() {
           vehicleCare?: AtlasVehicleCare[];
           vehicleCareRecords?: AtlasVehicleCare[];
           daySessions?: AtlasDaySession[];
+          notes?: Array<TodayLogEntry & { updatedAt?: string; section?: NoteSection; pinned?: boolean; followUpDate?: string; attachments?: NoteAttachment[]; dashboard?: boolean; dueDate?: string; done?: boolean }>;
+          noteRecords?: Array<TodayLogEntry & { updatedAt?: string; section?: NoteSection; pinned?: boolean; followUpDate?: string; attachments?: NoteAttachment[]; dashboard?: boolean; dueDate?: string; done?: boolean }>;
         };
         const pendingTaskDeleteIds = new Set(
           readStoredArray<{ table: string; id: string }>(
@@ -2350,6 +2355,11 @@ export default function AtlasApp() {
         );
         const apiVehicles = Array.isArray(operationsPayload.vehicleCareRecords) ? operationsPayload.vehicleCareRecords : Array.isArray(operationsPayload.vehicleCare) ? operationsPayload.vehicleCare : [];
         const apiDaySessions = Array.isArray(operationsPayload.daySessions) ? operationsPayload.daySessions : [];
+        const apiNotes = Array.isArray(operationsPayload.noteRecords)
+          ? operationsPayload.noteRecords
+          : Array.isArray(operationsPayload.notes)
+            ? operationsPayload.notes
+            : [];
         const apiPhotos = (
           Array.isArray(payload.photos)
             ? payload.photos
@@ -2701,6 +2711,136 @@ export default function AtlasApp() {
         setSelectedPhotoProjectId((current) => sharedProjects.some((project) => project.id === current) ? current : "");
         setProjectsApiHydrated(true);
 
+        // Shared Notes: Neon is authoritative after the one-time browser migration.
+        // This makes desktop, phone, Dashboard Quick Notes, and the Notes workspace
+        // read/write the same property-scoped records.
+        const noteMigrationKey = `atlas-notes-migration-v1-${activePropertyId}`;
+        const localNoteEntries = readStoredArray<TodayLogEntry>(todayLogStorageKeys, [])
+          .filter((entry) =>
+            entry?.id &&
+            entry?.text &&
+            entry.category === "Note" &&
+            String(entry.propertyId || "2000") === activePropertyId,
+          );
+        let localDashboardReminders: Array<{ id: string; text: string; done: boolean; createdAt: string; dueDate?: string }> = [];
+        try {
+          const raw = window.localStorage.getItem(`atlas-dashboard-reminders-v1:${activePropertyId}`);
+          const parsed = raw ? JSON.parse(raw) : [];
+          localDashboardReminders = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          localDashboardReminders = [];
+        }
+        const localSections = (() => {
+          try {
+            const raw = window.localStorage.getItem("atlas-note-sections-v1");
+            const parsed = raw ? JSON.parse(raw) : {};
+            return parsed && typeof parsed === "object" ? parsed as Record<string, NoteSection> : {};
+          } catch { return {} as Record<string, NoteSection>; }
+        })();
+        const localPins = (() => {
+          try {
+            const parsed = JSON.parse(window.localStorage.getItem("atlas-note-pins-v1") || "[]");
+            return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+          } catch { return new Set<string>(); }
+        })();
+        const localFollowUps = (() => {
+          try {
+            const parsed = JSON.parse(window.localStorage.getItem("atlas-note-followups-v1") || "{}");
+            return parsed && typeof parsed === "object" ? parsed as Record<string, string> : {};
+          } catch { return {} as Record<string, string>; }
+        })();
+        const localAttachments = (() => {
+          try {
+            const parsed = JSON.parse(window.localStorage.getItem("atlas-note-attachments-v1") || "{}");
+            return parsed && typeof parsed === "object" ? parsed as Record<string, NoteAttachment[]> : {};
+          } catch { return {} as Record<string, NoteAttachment[]>; }
+        })();
+
+        let sharedNotes = apiNotes
+          .filter((note) => note?.id && note?.text)
+          .map((note) => ({
+            ...note,
+            propertyId: String(note.propertyId || activePropertyId),
+            category: "Note" as const,
+            section: note.section || "General",
+            pinned: Boolean(note.pinned),
+            followUpDate: String(note.followUpDate || ""),
+            attachments: Array.isArray(note.attachments) ? note.attachments : [],
+          }));
+
+        if (window.localStorage.getItem(noteMigrationKey) !== "done") {
+          const sharedIds = new Set(sharedNotes.map((note) => String(note.id)));
+          const localOnly = localNoteEntries.filter((entry) => !sharedIds.has(String(entry.id)));
+          const migrated: typeof sharedNotes = [];
+          for (const entry of localOnly) {
+            const dashboardReminder = localDashboardReminders.find((item) => item.id === entry.id);
+            const record = {
+              ...entry,
+              propertyId: activePropertyId,
+              category: "Note" as const,
+              section: localSections[entry.id] || "General",
+              pinned: localPins.has(entry.id),
+              followUpDate: localFollowUps[entry.id] || "",
+              attachments: Array.isArray(localAttachments[entry.id]) ? localAttachments[entry.id] : [],
+              dashboard: Boolean(dashboardReminder || String(entry.id).startsWith("dashboard-note")),
+              dueDate: dashboardReminder?.dueDate || "",
+              done: Boolean(dashboardReminder?.done),
+              updatedAt: (entry as TodayLogEntry & { updatedAt?: string }).updatedAt || entry.createdAt || new Date().toISOString(),
+            };
+            if (await postAtlasRecord("notes" as AtlasTable, record)) migrated.push(record);
+          }
+          sharedNotes = [...sharedNotes, ...migrated];
+          if (localOnly.length === migrated.length) window.localStorage.setItem(noteMigrationKey, "done");
+        }
+
+        const noteById = new Map(sharedNotes.map((note) => [String(note.id), note]));
+        sharedNotes = Array.from(noteById.values()).sort((a, b) =>
+          String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")),
+        );
+        const sharedNoteIds = new Set(sharedNotes.map((note) => String(note.id)));
+        sharedNoteIdsRef.current = sharedNoteIds;
+        setTodayLogEntries((current) => [
+          ...sharedNotes.map((note) => ({
+            id: String(note.id),
+            propertyId: activePropertyId,
+            date: String(note.date || note.createdAt || todayISO()).slice(0, 10),
+            category: "Note" as const,
+            text: String(note.text || ""),
+            createdAt: String(note.createdAt || new Date().toISOString()),
+          })),
+          ...current.filter((entry) =>
+            entry.category !== "Note" || String(entry.propertyId || "2000") !== activePropertyId,
+          ),
+        ]);
+        setNotesSectionById((current) => ({
+          ...current,
+          ...Object.fromEntries(sharedNotes.map((note) => [String(note.id), (note.section || "General") as NoteSection])),
+        }));
+        setPinnedNoteIds((current) => Array.from(new Set([
+          ...current.filter((id) => !sharedNoteIds.has(id)),
+          ...sharedNotes.filter((note) => note.pinned).map((note) => String(note.id)),
+        ])));
+        setNoteFollowUpDates((current) => ({
+          ...Object.fromEntries(Object.entries(current).filter(([id]) => !sharedNoteIds.has(id))),
+          ...Object.fromEntries(sharedNotes.filter((note) => note.followUpDate).map((note) => [String(note.id), String(note.followUpDate)])),
+        }));
+        setNoteAttachments((current) => ({
+          ...Object.fromEntries(Object.entries(current).filter(([id]) => !sharedNoteIds.has(id))),
+          ...Object.fromEntries(sharedNotes.map((note) => [String(note.id), Array.isArray(note.attachments) ? note.attachments : []])),
+        }));
+        setDashboardReminders(
+          sharedNotes
+            .filter((note) => note.dashboard || String(note.id).startsWith("dashboard-note"))
+            .map((note) => ({
+              id: String(note.id),
+              text: String(note.text || ""),
+              done: Boolean(note.done),
+              createdAt: String(note.createdAt || new Date().toISOString()),
+              dueDate: note.dueDate ? String(note.dueDate) : undefined,
+            })),
+        );
+        setNotesHydrated(true);
+
         setDatabaseStatus(
           `Atlas loaded: ${nextAssets.length} assets, ${nextVendors.length} vendors, ${nextServices.length} work orders.`,
         );
@@ -2715,6 +2855,7 @@ export default function AtlasApp() {
       } catch {
         if (!cancelled) {
           setOperationsHydrated(true);
+          setNotesHydrated(true);
           setOperationsSyncState("failed");
           setOperationsSyncMessage("Offline — changes are safe and will retry automatically.");
           setSyncState("offline");
@@ -3046,6 +3187,63 @@ export default function AtlasApp() {
     if (!ready) return;
     saveStoredArray(todayLogStorageKeys[0], todayLogEntries);
   }, [ready, todayLogEntries]);
+
+  useEffect(() => {
+    if (!ready || !notesHydrated) return;
+
+    let cancelled = false;
+    const currentNotes = todayLogEntries.filter((entry) =>
+      entry.category === "Note" && String(entry.propertyId || "2000") === activePropertyId,
+    );
+    const currentIds = new Set(currentNotes.map((entry) => String(entry.id)));
+    const removedIds = Array.from(sharedNoteIdsRef.current).filter((id) => !currentIds.has(id));
+
+    async function syncSharedNotes() {
+      for (const id of removedIds) {
+        if (cancelled) return;
+        const deleted = await deleteAtlasRecord("notes" as AtlasTable, id);
+        if (deleted) sharedNoteIdsRef.current.delete(id);
+      }
+
+      for (const entry of currentNotes) {
+        if (cancelled) return;
+        const dashboardReminder = dashboardReminders.find((item) => item.id === entry.id);
+        const record = {
+          ...entry,
+          propertyId: activePropertyId,
+          category: "Note",
+          section: notesSectionById[entry.id] || "General",
+          pinned: pinnedNoteIds.includes(entry.id),
+          followUpDate: noteFollowUpDates[entry.id] || "",
+          attachments: noteAttachments[entry.id] || [],
+          dashboard: Boolean(dashboardReminder || String(entry.id).startsWith("dashboard-note")),
+          dueDate: dashboardReminder?.dueDate || "",
+          done: Boolean(dashboardReminder?.done),
+          updatedAt: (entry as TodayLogEntry & { updatedAt?: string }).updatedAt || entry.createdAt || new Date().toISOString(),
+        };
+        const saved = await postAtlasRecord("notes" as AtlasTable, record);
+        if (saved) sharedNoteIdsRef.current.add(String(entry.id));
+      }
+    }
+
+    const syncTimer = window.setTimeout(() => {
+      void syncSharedNotes();
+    }, 450);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(syncTimer);
+    };
+  }, [
+    ready,
+    notesHydrated,
+    activePropertyId,
+    todayLogEntries,
+    notesSectionById,
+    pinnedNoteIds,
+    noteFollowUpDates,
+    noteAttachments,
+    dashboardReminders,
+  ]);
 
   useEffect(() => {
     if (!ready) return;
