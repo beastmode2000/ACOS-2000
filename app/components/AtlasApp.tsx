@@ -6864,6 +6864,51 @@ export default function AtlasApp() {
     });
   }
 
+  async function renameLinkedImage(file: UploadedFileRecord) {
+    const record = intakeDocs.find((document) =>
+      (document.files || []).some((item) => item.id === file.id),
+    );
+    if (!record) {
+      setDocumentSyncStatus(
+        "That image is not stored in the editable Atlas vault.",
+      );
+      return;
+    }
+
+    const nextName = window.prompt(
+      "Photo name",
+      file.name || "Photo",
+    );
+    if (nextName === null) return;
+
+    const name = nextName.trim();
+    if (!name || name === file.name) return;
+
+    const updatedFiles = (record.files || []).map((item) =>
+      item.id === file.id ? { ...item, name } : item,
+    );
+    const updated = normalizeDocument({
+      ...record,
+      files: updatedFiles,
+    });
+
+    replaceDocumentInVault(updated);
+
+    try {
+      await postDocumentToAtlasVault(updated);
+      setDocumentSyncStatus(`Photo name saved as ${name}.`);
+      showSaveToast("Photo name saved.");
+    } catch {
+      setDocumentSyncStatus(
+        `Photo name changed here, but Atlas vault sync did not complete.`,
+      );
+      showSaveToast(
+        "Photo name changed on this device; Atlas sync did not finish.",
+        "warning",
+      );
+    }
+  }
+
   async function deleteLinkedImage(file: UploadedFileRecord) {
     const record = intakeDocs.find((document) =>
       (document.files || []).some((item) => item.id === file.id),
@@ -17033,6 +17078,7 @@ ${notes.trim()}` : notes.trim(),
       recordInfoGridStyle,
       recordInfoItemStyle,
       recordNotesStyle,
+      renameLinkedImage,
       removeAssetFromLocation,
       removeLocationCustomDetail,
       renderLinkedDocuments,
@@ -24041,7 +24087,7 @@ ${notes.trim()}` : notes.trim(),
       },
       assets: {
         title: "Asset summary",
-        detail: "Equipment condition and record readiness without treating missing information as a mechanical problem.",
+        detail: "",
         cards: [
           { label: "Total Assets", value: assetRecords.length, note: "Tracked on this property" },
           { label: "Operational", value: operationalAssets, note: "Marked as operating normally" },
@@ -24094,8 +24140,15 @@ ${notes.trim()}` : notes.trim(),
       <section
         style={{
           ...sectionStyle,
-          marginBottom: 16,
-          padding: isMobile ? 16 : 20,
+          marginBottom: screen === "assets" ? 10 : 16,
+          padding:
+            screen === "assets"
+              ? isMobile
+                ? "10px 12px"
+                : "11px 14px"
+              : isMobile
+                ? 16
+                : 20,
           background:
             "linear-gradient(135deg, rgba(255,255,255,0.98), rgba(246,248,252,0.96))",
           overflow: "hidden",
@@ -24105,16 +24158,33 @@ ${notes.trim()}` : notes.trim(),
           style={{
             display: "flex",
             justifyContent: "space-between",
-            gap: 16,
+            gap: screen === "assets" ? 8 : 16,
             alignItems: "flex-end",
             flexWrap: "wrap",
-            marginBottom: 14,
+            marginBottom: screen === "assets" ? 8 : 14,
           }}
         >
           <div>
-            <p style={{ ...eyebrowStyle, marginBottom: 5 }}>Visual Summary</p>
-            <h2 style={{ ...sectionTitleStyle, marginBottom: 5 }}>{summary.title}</h2>
-            <p style={{ ...mutedSmallStyle, maxWidth: 720 }}>{summary.detail}</p>
+            {screen !== "assets" ? (
+              <p style={{ ...eyebrowStyle, marginBottom: 5 }}>Visual Summary</p>
+            ) : null}
+            <h2
+              style={{
+                ...sectionTitleStyle,
+                marginBottom: summary.detail ? 5 : 0,
+                fontSize:
+                  screen === "assets"
+                    ? isMobile
+                      ? 16
+                      : 18
+                    : sectionTitleStyle.fontSize,
+              }}
+            >
+              {summary.title}
+            </h2>
+            {summary.detail ? (
+              <p style={{ ...mutedSmallStyle, maxWidth: 720 }}>{summary.detail}</p>
+            ) : null}
           </div>
           <span style={badgeStyle(atlasProperties.find((property) => property.id === activePropertyId)?.name || activePropertyId)}>
             {atlasProperties.find((property) => property.id === activePropertyId)?.name || activePropertyId}
@@ -24128,7 +24198,7 @@ ${notes.trim()}` : notes.trim(),
                 ? "repeat(2, minmax(0, 1fr))"
                 : "1fr"
               : `repeat(${summary.cards.length}, minmax(0, 1fr))`,
-            gap: 12,
+            gap: screen === "assets" ? 8 : 12,
           }}
         >
           {summary.cards.map((card) => (
@@ -24136,25 +24206,48 @@ ${notes.trim()}` : notes.trim(),
               key={card.label}
               style={{
                 border: `1px solid ${colors.line}`,
-                borderRadius: 16,
-                padding: 15,
+                borderRadius: screen === "assets" ? 12 : 16,
+                padding: screen === "assets" ? (isMobile ? 9 : 10) : 15,
                 background: colors.card,
                 boxShadow: "0 8px 22px rgba(15, 23, 42, 0.05)",
               }}
             >
-              <p style={{ ...mutedSmallStyle, marginBottom: 6 }}>{card.label}</p>
+              <p
+                style={{
+                  ...mutedSmallStyle,
+                  marginBottom: screen === "assets" ? 3 : 6,
+                  fontSize: screen === "assets" ? 10 : mutedSmallStyle.fontSize,
+                }}
+              >
+                {card.label}
+              </p>
               <strong
                 style={{
                   display: "block",
                   color: colors.navy,
-                  fontSize: isMobile ? 24 : 28,
+                  fontSize:
+                    screen === "assets"
+                      ? isMobile
+                        ? 20
+                        : 22
+                      : isMobile
+                        ? 24
+                        : 28,
                   lineHeight: 1,
-                  marginBottom: 7,
+                  marginBottom: screen === "assets" ? 4 : 7,
                 }}
               >
                 {card.value}
               </strong>
-              <p style={mutedSmallStyle}>{card.note}</p>
+              <p
+                style={{
+                  ...mutedSmallStyle,
+                  fontSize: screen === "assets" ? 10 : mutedSmallStyle.fontSize,
+                  lineHeight: screen === "assets" ? 1.2 : mutedSmallStyle.lineHeight,
+                }}
+              >
+                {card.note}
+              </p>
             </div>
           ))}
         </div>
