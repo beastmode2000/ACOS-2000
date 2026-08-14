@@ -1831,11 +1831,28 @@ export default function AtlasLocationsWorkspace(props: any) {
                     Paste Image
                   </button>
                   <label style={compactUploadButtonStyle}>
-                    Add Photo
+                    Upload Photo
                     <input
                       type="file"
                       accept="image/*"
                       multiple
+                      onChange={(event) => {
+                        void addLinkedPhotoFiles(
+                          "Location",
+                          selectedLocation.id,
+                          selectedLocation.name,
+                          event.currentTarget.files,
+                        );
+                        event.currentTarget.value = "";
+                      }}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                  <label style={compactUploadButtonStyle}>
+                    Take Photo
+                    <input
+                      type="file"
+                      accept="image/*"
                       capture="environment"
                       onChange={(event) => {
                         void addLinkedPhotoFiles(
@@ -1934,7 +1951,7 @@ export default function AtlasLocationsWorkspace(props: any) {
                 >
                   <div>
                     <strong>Add the first location photo</strong>
-                    <p style={{ ...mutedSmallStyle, marginBottom: 0 }}>Paste an image, use Add Photo, or drop an image into this panel.</p>
+                    <p style={{ ...mutedSmallStyle, marginBottom: 0 }}>Paste an image, upload from your photo library, take a photo, or drop an image into this panel.</p>
                   </div>
                 </div>
               )}
