@@ -246,6 +246,11 @@ export default function AtlasApp() {
   const [restrictedAttachmentEditId, setRestrictedAttachmentEditId] = useState("");
   const [restrictedAttachmentEditLabel, setRestrictedAttachmentEditLabel] = useState("");
   const [restrictedAttachmentBusyNoteId, setRestrictedAttachmentBusyNoteId] = useState("");
+  const [selectedRestrictedNoteId, setSelectedRestrictedNoteId] = useState("");
+  const [restrictedPdfPreviewUrl, setRestrictedPdfPreviewUrl] = useState("");
+  const [restrictedPdfPreviewAttachmentId, setRestrictedPdfPreviewAttachmentId] = useState("");
+  const [restrictedPdfPreviewName, setRestrictedPdfPreviewName] = useState("");
+  const [restrictedPdfZoom, setRestrictedPdfZoom] = useState(100);
   const [notesSectionById, setNotesSectionById] = useState<Record<string, NoteSection>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -6229,6 +6234,8 @@ export default function AtlasApp() {
     setRestrictedPinInputKey((current) => current + 1);
     setRestrictedPinConfirm("");
     setRestrictedNotesError("");
+    setSelectedRestrictedNoteId("");
+    clearRestrictedPdfPreview();
     void refreshRestrictedPinStatus();
   }, [activePropertyId]);
 
@@ -6243,6 +6250,8 @@ export default function AtlasApp() {
       setRestrictedNoteEditId("");
       setRestrictedNoteEditText("");
       setRestrictedNotesError("");
+      setSelectedRestrictedNoteId("");
+      clearRestrictedPdfPreview();
     }, 15 * 60 * 1000);
     return () => window.clearTimeout(timer);
   }, [restrictedNotesUnlocked]);
@@ -6259,6 +6268,8 @@ export default function AtlasApp() {
     setRestrictedNoteEditId("");
     setRestrictedNoteEditText("");
     setRestrictedNotesError("");
+    setSelectedRestrictedNoteId("");
+    clearRestrictedPdfPreview();
   }, [screen]);
 
   useEffect(() => {
@@ -6276,6 +6287,8 @@ export default function AtlasApp() {
       setRestrictedNoteEditId("");
       setRestrictedNoteEditText("");
       setRestrictedNotesError("");
+      setSelectedRestrictedNoteId("");
+      clearRestrictedPdfPreview();
     };
 
     const lockOnPageHide = () => {
@@ -6288,6 +6301,8 @@ export default function AtlasApp() {
       setRestrictedNoteEditId("");
       setRestrictedNoteEditText("");
       setRestrictedNotesError("");
+      setSelectedRestrictedNoteId("");
+      clearRestrictedPdfPreview();
     };
 
     document.addEventListener("visibilitychange", lockWhenHidden);
@@ -6299,7 +6314,7 @@ export default function AtlasApp() {
     };
   }, []);
 
-  async function restrictedNotesRequest(action: "status" | "setupPin" | "changePin" | "list" | "create" | "update" | "delete" | "addAttachment" | "getAttachment" | "updateAttachmentLabel" | "deleteAttachment", extra: Record<string, unknown> = {}) {
+  async function restrictedNotesRequest(action: "status" | "setupPin" | "changePin" | "list" | "create" | "quickCreate" | "update" | "delete" | "addAttachment" | "getAttachment" | "updateAttachmentLabel" | "deleteAttachment", extra: Record<string, unknown> = {}) {
     const response = await fetch("/api/atlas-restricted-notes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -6352,9 +6367,9 @@ export default function AtlasApp() {
       setRestrictedPinConfirm("");
 
       const payload = await restrictedNotesRequest("list");
-      setRestrictedNotes(
-        Array.isArray(payload.notes) ? payload.notes : [],
-      );
+      const unlockedNotes = Array.isArray(payload.notes) ? payload.notes : [];
+      setRestrictedNotes(unlockedNotes);
+      setSelectedRestrictedNoteId(unlockedNotes[0]?.id || "");
       setRestrictedNotesUnlocked(true);
       showSaveToast("Restricted Notes PIN created.");
     } catch (error) {
@@ -6382,7 +6397,9 @@ export default function AtlasApp() {
       });
       const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; notes?: RestrictedNote[] };
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not unlock Restricted Notes.");
-      setRestrictedNotes(Array.isArray(payload.notes) ? payload.notes : []);
+      const unlockedNotes = Array.isArray(payload.notes) ? payload.notes : [];
+      setRestrictedNotes(unlockedNotes);
+      setSelectedRestrictedNoteId(unlockedNotes[0]?.id || "");
       setRestrictedNotesSessionPin(pinToUse);
       setRestrictedNotesPin("");
       setRestrictedNotesUnlocked(true);
@@ -6421,6 +6438,51 @@ export default function AtlasApp() {
     setRestrictedAttachmentEditLabel("");
     setRestrictedAttachmentBusyNoteId("");
     setRestrictedNotesError("");
+    setSelectedRestrictedNoteId("");
+    clearRestrictedPdfPreview();
+  }
+
+  function clearRestrictedPdfPreview() {
+    setRestrictedPdfPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return "";
+    });
+    setRestrictedPdfPreviewAttachmentId("");
+    setRestrictedPdfPreviewName("");
+    setRestrictedPdfZoom(100);
+  }
+
+  function restrictedNoteDisplayTitle(note: RestrictedNote) {
+    const firstLine = String(note.text || "").split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "";
+    const fallback = note.attachments?.[0]?.label || "Restricted Note";
+    const title = firstLine || fallback;
+    return title.length > 54 ? `${title.slice(0, 51)}…` : title;
+  }
+
+  async function selectRestrictedNote(note: RestrictedNote) {
+    setSelectedRestrictedNoteId(note.id);
+    clearRestrictedPdfPreview();
+  }
+
+  async function quickAddRestrictedNote() {
+    const text = notesDraft.trim();
+    if (!text || restrictedNotesBusy) return;
+    setRestrictedNotesBusy(true);
+    setRestrictedNotesError("");
+    try {
+      const payload = await restrictedNotesRequest("quickCreate", { text });
+      setNotesDraft("");
+      showSaveToast("Added to Restricted Notes.");
+      if (restrictedNotesUnlocked && payload.note) {
+        setRestrictedNotes((current) => [payload.note!, ...current.filter((note) => note.id !== payload.note!.id)]);
+        setSelectedRestrictedNoteId(payload.note.id);
+      }
+    } catch (error) {
+      setRestrictedNotesError(error instanceof Error ? error.message : "Could not add to Restricted Notes.");
+      showSaveToast(error instanceof Error ? error.message : "Could not add to Restricted Notes.", "warning");
+    } finally {
+      setRestrictedNotesBusy(false);
+    }
   }
 
   async function fileToBase64(file: File) {
@@ -6487,15 +6549,13 @@ export default function AtlasApp() {
       for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
       const blob = new Blob([bytes], { type: payload.mimeType || "application/pdf" });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.download = payload.fileName || attachment.fileName || "restricted-document.pdf";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setRestrictedPdfPreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return url;
+      });
+      setRestrictedPdfPreviewAttachmentId(attachment.id);
+      setRestrictedPdfPreviewName(attachment.label || attachment.fileName || "Restricted PDF");
+      setRestrictedPdfZoom(100);
     } catch (error) {
       setRestrictedNotesError(error instanceof Error ? error.message : "Could not open restricted PDF.");
     } finally {
@@ -6553,7 +6613,10 @@ export default function AtlasApp() {
     setRestrictedNotesError("");
     try {
       const payload = await restrictedNotesRequest("create", { text });
-      if (payload.note) setRestrictedNotes((current) => [payload.note!, ...current]);
+      if (payload.note) {
+        setRestrictedNotes((current) => [payload.note!, ...current]);
+        setSelectedRestrictedNoteId(payload.note.id);
+      }
       setRestrictedNotesDraft("");
       showSaveToast("Restricted note saved.");
     } catch (error) {
@@ -6644,25 +6707,6 @@ export default function AtlasApp() {
           detail="A simple property notepad for things you want to remember."
         />
 
-        {isMobile ? (
-          <button
-            type="button"
-            onClick={() => setMobileNotesMoreOpen((current) => !current)}
-            aria-expanded={mobileNotesMoreOpen}
-            style={{
-              ...secondaryButtonStyle,
-              width: "100%",
-              minHeight: 42,
-              justifyContent: "space-between",
-              padding: "8px 11px",
-            }}
-          >
-            <span>Restricted Notes</span>
-            <span>{mobileNotesMoreOpen ? "Hide" : "Open"}</span>
-          </button>
-        ) : null}
-
-        {(!isMobile || mobileNotesMoreOpen) ? (
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 16, borderColor: restrictedNotesUnlocked ? "#D7B45D" : colors.line }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div>
@@ -6831,100 +6875,161 @@ export default function AtlasApp() {
                 </button>
               </div>
 
-              <div style={{ display: "grid", gap: 8 }}>
-                {restrictedNotes.map((note) => (
-                  <div key={note.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFDF7", padding: 11 }}>
-                    {restrictedNoteEditId === note.id ? (
-                      <textarea value={restrictedNoteEditText} onChange={(event) => setRestrictedNoteEditText(event.currentTarget.value)} rows={4} style={{ ...inputStyle, width: "100%", resize: "vertical" }} />
-                    ) : (
-                      <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.58, color: colors.text, fontSize: 14 }}>{note.text}</div>
-                    )}
-
-                    <div style={{ display: "grid", gap: 7, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${colors.line}` }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                        <strong style={{ color: colors.navy, fontSize: 12 }}>PDF Attachments</strong>
-                        <small style={mutedSmallStyle}>Restricted · 3 MB max</small>
-                      </div>
-                      {(note.attachments || []).map((attachment) => (
-                        <div key={attachment.id} style={{ display: "grid", gap: 7, padding: "8px 9px", border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF" }}>
-                          {restrictedAttachmentEditId === attachment.id ? (
-                            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto auto", gap: 7, alignItems: "center" }}>
-                              <input
-                                autoFocus
-                                value={restrictedAttachmentEditLabel}
-                                onChange={(event) => setRestrictedAttachmentEditLabel(event.currentTarget.value)}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") void updateRestrictedPdfLabel(note.id, attachment.id);
-                                  if (event.key === "Escape") { setRestrictedAttachmentEditId(""); setRestrictedAttachmentEditLabel(""); }
-                                }}
-                                placeholder="PDF label"
-                                style={{ ...inputStyle, minHeight: 36 }}
-                              />
-                              <button type="button" onClick={() => { setRestrictedAttachmentEditId(""); setRestrictedAttachmentEditLabel(""); }} style={secondaryButtonStyle}>Cancel</button>
-                              <button type="button" onClick={() => void updateRestrictedPdfLabel(note.id, attachment.id)} disabled={!restrictedAttachmentEditLabel.trim() || restrictedAttachmentBusyNoteId === note.id} style={goldButtonStyle}>Save Label</button>
-                            </div>
-                          ) : (
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                              <div style={{ minWidth: 0 }}>
-                                <strong style={{ display: "block", color: colors.navy, fontSize: 13 }}>{attachment.label || attachment.fileName}</strong>
-                                <small style={{ ...mutedSmallStyle, display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{attachment.fileName}</small>
-                              </div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => void openRestrictedPdf(attachment)} disabled={restrictedAttachmentBusyNoteId === note.id} style={secondaryButtonStyle}>View PDF</button>
-                                <button type="button" onClick={() => { setRestrictedAttachmentEditId(attachment.id); setRestrictedAttachmentEditLabel(attachment.label || attachment.fileName.replace(/\.pdf$/i, "")); }} disabled={restrictedAttachmentBusyNoteId === note.id} style={secondaryButtonStyle}>Edit Label</button>
-                                <button type="button" onClick={() => void deleteRestrictedPdf(note.id, attachment.id)} disabled={restrictedAttachmentBusyNoteId === note.id} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete PDF</button>
-                              </div>
-                            </div>
-                          )}
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 30%) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
+                <div style={{ display: "grid", gap: 7 }}>
+                  {restrictedNotes.map((note) => {
+                    const selected = note.id === selectedRestrictedNoteId;
+                    return (
+                      <button
+                        key={note.id}
+                        type="button"
+                        onClick={() => void selectRestrictedNote(note)}
+                        style={{
+                          ...rowButtonStyle,
+                          width: "100%",
+                          textAlign: "left",
+                          borderColor: selected ? colors.gold : colors.line,
+                          background: selected ? "#FFF9E9" : "#FFFFFF",
+                          alignItems: "flex-start",
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <strong style={{ display: "block", color: colors.navy, overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {restrictedNoteDisplayTitle(note)}
+                          </strong>
+                          <small style={mutedSmallStyle}>
+                            {(note.attachments || []).length} PDF{(note.attachments || []).length === 1 ? "" : "s"} · {new Date(note.updatedAt || note.createdAt).toLocaleDateString()}
+                          </small>
                         </div>
-                      ))}
-                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, alignItems: "center" }}>
-                        <input
-                          value={restrictedAttachmentLabelByNote[note.id] || ""}
-                          onChange={(event) => setRestrictedAttachmentLabelByNote((current) => ({ ...current, [note.id]: event.currentTarget.value }))}
-                          placeholder="PDF label (optional)"
-                          style={{ ...inputStyle, minHeight: 38 }}
-                        />
-                        <label style={{ ...secondaryButtonStyle, cursor: restrictedAttachmentBusyNoteId === note.id ? "wait" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                          {restrictedAttachmentBusyNoteId === note.id ? "Working…" : "Add PDF"}
-                          <input
-                            type="file"
-                            accept="application/pdf,.pdf"
-                            disabled={restrictedAttachmentBusyNoteId === note.id}
-                            onChange={(event) => {
-                              const file = event.currentTarget.files?.[0];
-                              event.currentTarget.value = "";
-                              if (file) void addRestrictedPdf(note.id, file);
-                            }}
-                            style={{ display: "none" }}
-                          />
-                        </label>
-                      </div>
-                    </div>
+                      </button>
+                    );
+                  })}
+                  {!restrictedNotes.length ? <div style={noticeStyle}>No restricted notes for this property yet.</div> : null}
+                </div>
 
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 9 }}>
-                      <small style={mutedSmallStyle}>{new Date(note.updatedAt || note.createdAt).toLocaleString()}</small>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {restrictedNoteEditId === note.id ? (
-                          <>
-                            <button type="button" onClick={() => { setRestrictedNoteEditId(""); setRestrictedNoteEditText(""); }} style={secondaryButtonStyle}>Cancel</button>
-                            <button type="button" onClick={() => void updateRestrictedNote(note.id)} disabled={!restrictedNoteEditText.trim() || restrictedNotesBusy} style={goldButtonStyle}>Save</button>
-                          </>
-                        ) : (
-                          <button type="button" onClick={() => { setRestrictedNoteEditId(note.id); setRestrictedNoteEditText(note.text); }} style={secondaryButtonStyle}>Edit</button>
-                        )}
-                        <button type="button" onClick={() => void deleteRestrictedNote(note.id)} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
+                {(() => {
+                  const note = restrictedNotes.find((item) => item.id === selectedRestrictedNoteId) || restrictedNotes[0];
+                  if (!note) return <div style={noticeStyle}>Select a restricted note.</div>;
+                  return (
+                    <div style={{ ...cardStyle, padding: isMobile ? 10 : 14, background: "#FFFDF7", minWidth: 0 }}>
+                      {restrictedNoteEditId === note.id ? (
+                        <textarea value={restrictedNoteEditText} onChange={(event) => setRestrictedNoteEditText(event.currentTarget.value)} rows={4} style={{ ...inputStyle, width: "100%", resize: "vertical" }} />
+                      ) : (
+                        <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.58, color: colors.text, fontSize: 14 }}>{note.text}</div>
+                      )}
+
+                      <div style={{ display: "grid", gap: 8, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${colors.line}` }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <strong style={{ color: colors.navy, fontSize: 12 }}>PDF Attachments</strong>
+                          <small style={mutedSmallStyle}>Click a PDF to view it here</small>
+                        </div>
+
+                        {(note.attachments || []).map((attachment) => (
+                          <div key={attachment.id} style={{ display: "grid", gap: 7, padding: "8px 9px", border: `1px solid ${restrictedPdfPreviewAttachmentId === attachment.id ? colors.gold : colors.line}`, borderRadius: 10, background: restrictedPdfPreviewAttachmentId === attachment.id ? "#FFF9E9" : "#FFFFFF" }}>
+                            {restrictedAttachmentEditId === attachment.id ? (
+                              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto auto", gap: 7, alignItems: "center" }}>
+                                <input
+                                  autoFocus
+                                  value={restrictedAttachmentEditLabel}
+                                  onChange={(event) => setRestrictedAttachmentEditLabel(event.currentTarget.value)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") void updateRestrictedPdfLabel(note.id, attachment.id);
+                                    if (event.key === "Escape") { setRestrictedAttachmentEditId(""); setRestrictedAttachmentEditLabel(""); }
+                                  }}
+                                  placeholder="PDF label"
+                                  style={{ ...inputStyle, minHeight: 36 }}
+                                />
+                                <button type="button" onClick={() => { setRestrictedAttachmentEditId(""); setRestrictedAttachmentEditLabel(""); }} style={secondaryButtonStyle}>Cancel</button>
+                                <button type="button" onClick={() => void updateRestrictedPdfLabel(note.id, attachment.id)} disabled={!restrictedAttachmentEditLabel.trim() || restrictedAttachmentBusyNoteId === note.id} style={goldButtonStyle}>Save Label</button>
+                              </div>
+                            ) : (
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => void openRestrictedPdf(attachment)}
+                                  disabled={restrictedAttachmentBusyNoteId === note.id}
+                                  style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", textAlign: "left", minWidth: 0, flex: "1 1 220px" }}
+                                >
+                                  <strong style={{ display: "block", color: colors.navy, fontSize: 13 }}>{attachment.label || attachment.fileName}</strong>
+                                  <small style={{ ...mutedSmallStyle, display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{attachment.fileName}</small>
+                                </button>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  <button type="button" onClick={() => { setRestrictedAttachmentEditId(attachment.id); setRestrictedAttachmentEditLabel(attachment.label || attachment.fileName.replace(/\.pdf$/i, "")); }} disabled={restrictedAttachmentBusyNoteId === note.id} style={secondaryButtonStyle}>Edit Label</button>
+                                  <button type="button" onClick={() => void deleteRestrictedPdf(note.id, attachment.id)} disabled={restrictedAttachmentBusyNoteId === note.id} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete PDF</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, alignItems: "center" }}>
+                          <input
+                            value={restrictedAttachmentLabelByNote[note.id] || ""}
+                            onChange={(event) => setRestrictedAttachmentLabelByNote((current) => ({ ...current, [note.id]: event.currentTarget.value }))}
+                            placeholder="PDF label (optional)"
+                            style={{ ...inputStyle, minHeight: 38 }}
+                          />
+                          <label style={{ ...secondaryButtonStyle, cursor: restrictedAttachmentBusyNoteId === note.id ? "wait" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                            {restrictedAttachmentBusyNoteId === note.id ? "Working…" : "Add PDF"}
+                            <input
+                              type="file"
+                              accept="application/pdf,.pdf"
+                              disabled={restrictedAttachmentBusyNoteId === note.id}
+                              onChange={(event) => {
+                                const file = event.currentTarget.files?.[0];
+                                event.currentTarget.value = "";
+                                if (file) void addRestrictedPdf(note.id, file);
+                              }}
+                              style={{ display: "none" }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      {restrictedPdfPreviewUrl ? (
+                        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            <strong style={{ color: colors.navy }}>{restrictedPdfPreviewName || "Restricted PDF"}</strong>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <button type="button" onClick={() => setRestrictedPdfZoom((current) => Math.max(50, current - 25))} style={secondaryButtonStyle}>−</button>
+                              <span style={{ ...mutedSmallStyle, minWidth: 48, textAlign: "center" }}>{restrictedPdfZoom}%</span>
+                              <button type="button" onClick={() => setRestrictedPdfZoom((current) => Math.min(200, current + 25))} style={secondaryButtonStyle}>+</button>
+                              <button type="button" onClick={clearRestrictedPdfPreview} style={secondaryButtonStyle}>Close PDF</button>
+                            </div>
+                          </div>
+                          <div style={{ border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#E5E7EB", minHeight: isMobile ? 480 : 680 }}>
+                            <iframe
+                              key={`${restrictedPdfPreviewAttachmentId}-${restrictedPdfZoom}`}
+                              title={restrictedPdfPreviewName || "Restricted PDF"}
+                              src={`${restrictedPdfPreviewUrl}#zoom=${restrictedPdfZoom}`}
+                              style={{ width: "100%", height: isMobile ? 480 : 680, border: 0, display: "block", background: "#FFFFFF" }}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
+                        <small style={mutedSmallStyle}>{new Date(note.updatedAt || note.createdAt).toLocaleString()}</small>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {restrictedNoteEditId === note.id ? (
+                            <>
+                              <button type="button" onClick={() => { setRestrictedNoteEditId(""); setRestrictedNoteEditText(""); }} style={secondaryButtonStyle}>Cancel</button>
+                              <button type="button" onClick={() => void updateRestrictedNote(note.id)} disabled={!restrictedNoteEditText.trim() || restrictedNotesBusy} style={goldButtonStyle}>Save</button>
+                            </>
+                          ) : (
+                            <button type="button" onClick={() => { setRestrictedNoteEditId(note.id); setRestrictedNoteEditText(note.text); }} style={secondaryButtonStyle}>Edit</button>
+                          )}
+                          <button type="button" onClick={() => void deleteRestrictedNote(note.id)} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-                {!restrictedNotes.length ? <div style={noticeStyle}>No restricted notes for this property yet.</div> : null}
+                  );
+                })()}
               </div>
             </div>
           )}
           {restrictedNotesError ? <div style={{ marginTop: 10, color: colors.red, fontSize: 12, fontWeight: 800 }}>{restrictedNotesError}</div> : null}
         </section>
-        ) : null}
 
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 180px", gap: 10 }}>
@@ -6983,6 +7088,7 @@ export default function AtlasApp() {
             </select>
             <div style={{ display: "flex", gap: 7 }}>
               {notesDraft ? <button type="button" onClick={() => setNotesDraft("")} style={secondaryButtonStyle}>Clear</button> : null}
+              <button type="button" onClick={() => void quickAddRestrictedNote()} disabled={!notesDraft.trim() || restrictedNotesBusy} style={secondaryButtonStyle}>Add to Restricted</button>
               <button type="button" onClick={savePermanentNote} disabled={!notesDraft.trim()} style={goldButtonStyle}>Save Note</button>
             </div>
           </div>
