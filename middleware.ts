@@ -38,18 +38,34 @@ function isPublicPath(request: NextRequest) {
   if (pathname === "/api/atlas-login") return true;
   if (pathname === "/api/atlas-logout") return true;
 
-  if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(pathname)) {
+  if (
+    /\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(
+      pathname,
+    )
+  ) {
     return true;
   }
 
   // Public crew checklist access stays public only when the share token is in the URL.
   if (pathname === "/landscape-help" && hasShareToken(request)) return true;
-  if (pathname === "/api/landscape-help" && hasShareToken(request)) return true;
+  if (pathname === "/api/landscape-help" && hasShareToken(request)) {
+    return true;
+  }
 
   // Addison field app.
   if (pathname === "/addison-work") return true;
   if (pathname === "/addison-manifest.json") return true;
-  if (pathname === "/api/addison-upload" && hasShareToken(request)) return true;
+  if (pathname === "/api/addison-upload" && hasShareToken(request)) {
+    return true;
+  }
+
+  // Public owner and marine request form.
+  // The page can open without an Atlas login.
+  // The request API still requires the secure token.
+  if (pathname === "/request") return true;
+  if (pathname === "/api/atlas-requests" && hasShareToken(request)) {
+    return true;
+  }
 
   return false;
 }
@@ -83,7 +99,10 @@ function base64UrlDecodeText(value: string) {
   return new TextDecoder().decode(bytes);
 }
 
-async function signSessionPayload(payloadBase64: string, secret: string) {
+async function signSessionPayload(
+  payloadBase64: string,
+  secret: string,
+) {
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -111,17 +130,25 @@ async function verifySessionCookie(
   const [payloadBase64, signature] = cookieValue.split(".");
   if (!payloadBase64 || !signature) return false;
 
-  const expectedSignature = await signSessionPayload(payloadBase64, secret);
+  const expectedSignature = await signSessionPayload(
+    payloadBase64,
+    secret,
+  );
+
   if (signature !== expectedSignature) return false;
 
   try {
-    const payload = JSON.parse(base64UrlDecodeText(payloadBase64)) as {
+    const payload = JSON.parse(
+      base64UrlDecodeText(payloadBase64),
+    ) as {
       username?: string;
       expiresAt?: number;
     };
 
     if (payload.username !== expectedUsername) return false;
-    if (!payload.expiresAt || Date.now() > payload.expiresAt) return false;
+    if (!payload.expiresAt || Date.now() > payload.expiresAt) {
+      return false;
+    }
 
     return true;
   } catch {
@@ -136,6 +163,7 @@ function getBasicAuth(request: NextRequest) {
   try {
     const decoded = atob(header.slice(6));
     const separatorIndex = decoded.indexOf(":");
+
     if (separatorIndex === -1) return null;
 
     return {
@@ -147,14 +175,19 @@ function getBasicAuth(request: NextRequest) {
   }
 }
 
-function createBasicAuthHeader(username: string, password: string) {
+function createBasicAuthHeader(
+  username: string,
+  password: string,
+) {
   return `Basic ${btoa(`${username}:${password}`)}`;
 }
 
 function redirectToLogin(request: NextRequest) {
   const loginUrl = request.nextUrl.clone();
+
   loginUrl.pathname = "/login";
   loginUrl.search = "";
+
   loginUrl.searchParams.set(
     "next",
     `${request.nextUrl.pathname}${request.nextUrl.search}`,
@@ -164,13 +197,22 @@ function redirectToLogin(request: NextRequest) {
 }
 
 export async function middleware(request: NextRequest) {
-  const redirectedOldLandscapeLink = redirectOldLandscapeTokenLink(request);
-  if (redirectedOldLandscapeLink) return redirectedOldLandscapeLink;
+  const redirectedOldLandscapeLink =
+    redirectOldLandscapeTokenLink(request);
 
-  if (isPublicPath(request)) return NextResponse.next();
+  if (redirectedOldLandscapeLink) {
+    return redirectedOldLandscapeLink;
+  }
 
-  const expectedUsername = process.env.ATLAS_ACCESS_USERNAME || "";
-  const expectedPassword = process.env.ATLAS_ACCESS_PASSWORD || "";
+  if (isPublicPath(request)) {
+    return NextResponse.next();
+  }
+
+  const expectedUsername =
+    process.env.ATLAS_ACCESS_USERNAME || "";
+
+  const expectedPassword =
+    process.env.ATLAS_ACCESS_PASSWORD || "";
 
   if (!expectedUsername || !expectedPassword) {
     return new NextResponse(
@@ -179,7 +221,9 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  const sessionCookie = request.cookies.get(SESSION_COOKIE)?.value;
+  const sessionCookie =
+    request.cookies.get(SESSION_COOKIE)?.value;
+
   const hasValidSession = await verifySessionCookie(
     sessionCookie,
     expectedUsername,
@@ -188,6 +232,7 @@ export async function middleware(request: NextRequest) {
 
   // Keep old Basic Auth working temporarily so you do not get locked out during the changeover.
   const basicAuth = getBasicAuth(request);
+
   const hasValidBasicAuth =
     basicAuth?.username === expectedUsername &&
     basicAuth?.password === expectedPassword;
@@ -196,9 +241,13 @@ export async function middleware(request: NextRequest) {
     // Forward the same Authorization header internally so older API routes
     // that still check Basic Auth keep working.
     const requestHeaders = new Headers(request.headers);
+
     requestHeaders.set(
       "authorization",
-      createBasicAuthHeader(expectedUsername, expectedPassword),
+      createBasicAuthHeader(
+        expectedUsername,
+        expectedPassword,
+      ),
     );
 
     const response = NextResponse.next({
@@ -208,13 +257,16 @@ export async function middleware(request: NextRequest) {
     });
 
     if (hasValidBasicAuth && !hasValidSession) {
-      const expiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
+      const expiresAt =
+        Date.now() + SESSION_TTL_SECONDS * 1000;
+
       const payloadBase64 = base64UrlEncodeText(
         JSON.stringify({
           username: expectedUsername,
           expiresAt,
         }),
       );
+
       const signature = await signSessionPayload(
         payloadBase64,
         expectedPassword,
@@ -237,7 +289,10 @@ export async function middleware(request: NextRequest) {
   }
 
   if (request.nextUrl.pathname.startsWith("/api/")) {
-    return new NextResponse("Atlas login required.", { status: 401 });
+    return new NextResponse(
+      "Atlas login required.",
+      { status: 401 },
+    );
   }
 
   return redirectToLogin(request);
