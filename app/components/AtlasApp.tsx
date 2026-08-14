@@ -27734,13 +27734,13 @@ ${notes.trim()}` : notes.trim(),
       ) : null}
 
       {isMobile ? (
-        <nav style={mobileBottomNavStyle} aria-label="Mobile Atlas navigation">
+        <nav className="atlas-mobile-bottom-nav" style={mobileBottomNavStyle} aria-label="Mobile Atlas navigation">
           {[
             { id: "dashboard" as Screen, label: "Home" },
-            { id: "calendar" as Screen, label: "Calendar" },
-            { id: "map" as Screen, label: "Map" },
-            { id: "timeline" as Screen, label: "Projects" },
-            { id: "history" as Screen, label: "Work" },
+            { id: "planner" as Screen, label: "Tasks" },
+            { id: "routines" as Screen, label: "Routine" },
+            { id: "history" as Screen, label: "Work Orders" },
+            { id: "assets" as Screen, label: "Assets" },
           ].map((item) => (
             <button
               key={item.id}
@@ -28008,17 +28008,19 @@ const mobileContentStyle: React.CSSProperties = {
 
 const mobileBottomNavStyle: React.CSSProperties = {
   position: "fixed",
-  left: 8,
-  right: 8,
-  bottom: "calc(8px + env(safe-area-inset-bottom))",
-  maxWidth: "calc(100vw - 16px)",
+  left: 0,
+  right: 0,
+  bottom: 0,
+  width: "100%",
+  maxWidth: "100vw",
   boxSizing: "border-box",
-  zIndex: 60,
-  background: "rgba(255,255,255,0.96)",
+  zIndex: 120,
+  background: "rgba(255,255,255,0.97)",
   border: `1px solid ${colors.line}`,
-  borderRadius: 20,
-  boxShadow: "0 18px 45px rgba(15,23,42,0.22)",
-  padding: 8,
+  borderBottom: 0,
+  borderRadius: "20px 20px 0 0",
+  boxShadow: "0 -10px 32px rgba(15,23,42,0.16)",
+  padding: "8px 8px calc(8px + env(safe-area-inset-bottom))",
   display: "grid",
   gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
   gap: 5,
