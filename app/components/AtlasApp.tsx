@@ -22574,6 +22574,7 @@ ${notes.trim()}` : notes.trim(),
       convertedWorkOrderId: record.id,
     });
     setSelectedServiceId(record.id);
+    showSaveToast("Work order created and request saved.");
     setScreen("history");
   }
 
