@@ -22531,7 +22531,7 @@ ${notes.trim()}` : notes.trim(),
       status: "Open",
       priority: request.priority || "Medium",
       assignedTo:
-        request.assignedTo ||
+        (request as OwnerRequestRecord & { assignedTo?: string }).assignedTo ||
         ((request.category || "").toLowerCase() === "dock & marine" ? "Sean" : ""),
       workCategory: request.category || "Maintenance",
       locationId:
