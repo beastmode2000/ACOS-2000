@@ -590,6 +590,58 @@ export async function POST(
     });
   }
 
+  if (action === "quickCreate") {
+    if (auth.session.role !== "master") {
+      return NextResponse.json(
+        { ok: false, error: "Only the Atlas master account can add a Restricted Note without unlocking it." },
+        { status: 403 },
+      );
+    }
+
+    const accessRow = await readAccessRow(sql, auth.propertyId);
+    if (!accessRow) {
+      return NextResponse.json(
+        { ok: false, error: "Create the Restricted Notes PIN before adding restricted notes." },
+        { status: 409 },
+      );
+    }
+
+    const text = String(body.text || "").trim();
+    if (!text) {
+      return NextResponse.json({ ok: false, error: "Note text is required." }, { status: 400 });
+    }
+
+    const id =
+      "restricted-note-" +
+      Date.now() +
+      "-" +
+      Math.random().toString(16).slice(2);
+
+    const rows = (await sql`
+      INSERT INTO atlas_restricted_notes (
+        id,
+        property_id,
+        text
+      )
+      VALUES (
+        ${id},
+        ${auth.propertyId},
+        ${text}
+      )
+      RETURNING
+        id,
+        property_id,
+        text,
+        created_at,
+        updated_at
+    `) as unknown as RestrictedNoteRow[];
+
+    return NextResponse.json({
+      ok: true,
+      note: serializeNote(rows[0] as RestrictedNoteRow),
+    });
+  }
+
   const suppliedPin =
     String(body.pin || "");
 
