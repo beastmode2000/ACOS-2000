@@ -29,6 +29,12 @@ function tokenFromUrl() {
     : "";
 }
 
+function propertyIdFromUrl() {
+  if (typeof window === "undefined") return "";
+  const url = new URL(window.location.href);
+  return (url.searchParams.get("propertyId") || "").trim();
+}
+
 async function imageToDataUrl(file: File) {
   const original = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -59,6 +65,7 @@ export default function OwnerRequestPage() {
   const [token, setToken] = useState("");
   const [portalReady, setPortalReady] = useState(false);
   const [portalType, setPortalType] = useState<RequestPortalType>("owner");
+  const [propertyId, setPropertyId] = useState("");
   const [requesterName, setRequesterName] = useState("");
   const [requesterContact, setRequesterContact] = useState("");
   const [title, setTitle] = useState("");
@@ -74,7 +81,9 @@ export default function OwnerRequestPage() {
 
   useEffect(() => {
     const nextToken = tokenFromUrl();
+    const nextPropertyId = propertyIdFromUrl();
     setToken(nextToken);
+    setPropertyId(nextPropertyId);
 
     const tokenLooksMarine = nextToken.toLowerCase().startsWith("marine-");
     if (tokenLooksMarine) {
@@ -175,6 +184,7 @@ export default function OwnerRequestPage() {
             assetName,
             priority,
             preferredTiming,
+            propertyId,
             photos,
           }),
         },
