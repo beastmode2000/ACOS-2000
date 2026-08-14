@@ -3257,8 +3257,8 @@ export default function AtlasApp() {
         setRequestPortalToken(String(payload.portalToken || ""));
         setMarineRequestPortalToken(
           String(
-            payload.marinePortalToken ||
-              (payload.portalToken ? `marine-${payload.portalToken}` : ""),
+            payload.portalToken
+              ? `marine-${payload.portalToken}` : "",
           ),
         );
         setSelectedRequestId((current) =>
