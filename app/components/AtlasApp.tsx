@@ -67,7 +67,7 @@ import type {
   AssetRecord,
   ServiceRecord,
   ProcedureRecord,
-  OwnerRequestRecord,
+  OwnerRequestRecord as BaseOwnerRequestRecord,
   IntakeTargetKind,
   FastIntakeKind,
   FastIntakeSaveMode,
@@ -96,6 +96,10 @@ import type {
   SearchResult,
   ManualCandidate,
 } from "../lib/atlas-types";
+
+type OwnerRequestRecord = BaseOwnerRequestRecord & {
+  assignedTo?: string;
+};
 import {
   closeSymbol, atlasOperationsTemplates, atlasProperties, makeDailyForemanWidgets,
   normalizeDashboardWidgets, loadDashboardRoutineItems, todayLogStorageKeys, dashboardRoutineStorageKeys, atlasMoreToolsScreens, atlasPrimaryNavigationSections, localISODate,
@@ -22531,7 +22535,7 @@ ${notes.trim()}` : notes.trim(),
       status: "Open",
       priority: request.priority || "Medium",
       assignedTo:
-        (request as OwnerRequestRecord & { assignedTo?: string }).assignedTo ||
+        request.assignedTo ||
         ((request.category || "").toLowerCase() === "dock & marine" ? "Sean" : ""),
       workCategory: request.category || "Maintenance",
       locationId:
