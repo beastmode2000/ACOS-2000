@@ -3821,6 +3821,11 @@ export default function AtlasApp() {
       (hasTeamProfile("sean", "marine", "marine-operations", "sean-marine") ||
         /^sean(?:\s|$)/i.test(currentAtlasUser.name)),
   );
+  const isRequestCoordinatorUser = Boolean(
+    currentAtlasUser &&
+      (hasTeamProfile("request-coordinator", "requests", "request-management") ||
+        /^delaney(?:\s|$)/i.test(currentAtlasUser.name)),
+  );
   const isAddisonUser = Boolean(
     adminPreviewMode === "addison" ||
       (currentAtlasUser &&
@@ -3842,8 +3847,16 @@ export default function AtlasApp() {
         hasTeamProfile("vendor", "vendor-portal", "service-provider")),
   );
 
-  const teamWorkspace = isSeanMarineUser
+  const teamWorkspace = isRequestCoordinatorUser
     ? {
+        title: `${currentAtlasUser?.name || "Request Coordinator"} Request Coordination`,
+        centerTitle: "Request Coordination",
+        detail: "Review incoming requests, connect locations and assets, and route work to the correct person.",
+        emptyMessage: "No open request-related work is currently assigned.",
+        assignmentAliases: [currentStaffFirstName, normalizedCurrentUserName].filter(Boolean),
+      }
+    : isSeanMarineUser
+      ? {
         title: "Sean Marine Operations",
         centerTitle: "Marine Work Center",
         detail: "Boat, dock, lift, and marine-service work assigned to you.",
@@ -3956,6 +3969,7 @@ export default function AtlasApp() {
 
   const staffVisibleServiceRecords = isTeamScopedUser
     ? serviceRecords.filter((record) => {
+        if (isRequestCoordinatorUser) return true;
         if (isSeanMarineUser) return isMarineServiceRecord(record);
         const assigned = String((record as AtlasServiceRecord).assignedTo || "").trim().toLowerCase();
         if (!assigned) return false;
@@ -3981,9 +3995,11 @@ export default function AtlasApp() {
   const restrictedTeamScreenIds = new Set<AtlasScreen>(
     isAddisonUser
       ? ["planner", "routines"]
-      : isSeanMarineUser
-        ? ["dashboard", "history", "calendar", "requests", "assets", "documents", "procedures"]
-        : ["dashboard", "history", "calendar", "assets", "documents", "procedures"],
+      : isRequestCoordinatorUser
+        ? ["dashboard", "requests", "locations", "assets", "history"]
+        : isSeanMarineUser
+          ? ["dashboard", "history", "calendar", "requests", "assets", "documents", "procedures"]
+          : ["dashboard", "history", "calendar", "assets", "documents", "procedures"],
   );
   const visibleAtlasScreens = isTeamScopedUser
     ? screens.filter((item) => restrictedTeamScreenIds.has(item.id))
@@ -3991,12 +4007,20 @@ export default function AtlasApp() {
   const visiblePrimaryNavigationSections = isTeamScopedUser
     ? [
         {
-          label: isAddisonUser ? "My Day" : isSeanMarineUser ? "Marine Operations" : "My Atlas",
+          label: isAddisonUser
+            ? "My Day"
+            : isRequestCoordinatorUser
+              ? "Request Coordination"
+              : isSeanMarineUser
+                ? "Marine Operations"
+                : "My Atlas",
           items: isAddisonUser
             ? (["planner", "routines"] as AtlasScreen[])
-            : isSeanMarineUser
-              ? (["dashboard", "history", "calendar", "requests", "assets", "documents", "procedures"] as AtlasScreen[])
-              : (["dashboard", "history", "calendar", "assets", "documents", "procedures"] as AtlasScreen[]),
+            : isRequestCoordinatorUser
+              ? (["dashboard", "requests", "locations", "assets", "history"] as AtlasScreen[])
+              : isSeanMarineUser
+                ? (["dashboard", "history", "calendar", "requests", "assets", "documents", "procedures"] as AtlasScreen[])
+                : (["dashboard", "history", "calendar", "assets", "documents", "procedures"] as AtlasScreen[]),
         },
       ]
     : (() => {
@@ -22506,6 +22530,17 @@ ${notes.trim()}` : notes.trim(),
       title: request.title || "Owner Request",
       status: "Open",
       priority: request.priority || "Medium",
+      assignedTo:
+        request.assignedTo ||
+        ((request.category || "").toLowerCase() === "dock & marine" ? "Sean" : ""),
+      workCategory: request.category || "Maintenance",
+      locationId:
+        locations.find(
+          (location) =>
+            request.locationName &&
+            location.name.trim().toLowerCase() ===
+              request.locationName.trim().toLowerCase(),
+        )?.id || "",
       notes: [
         request.description,
         request.locationName ? `Location: ${request.locationName}` : "",
@@ -22611,7 +22646,7 @@ ${notes.trim()}` : notes.trim(),
       requestPortalToken && typeof window !== "undefined"
         ? `${window.location.origin}/request?token=${encodeURIComponent(
             requestPortalToken,
-          )}`
+          )}&propertyId=${encodeURIComponent(activePropertyId)}`
         : "";
     const ownerRequestQr = portalLink ? qrImageUrl(portalLink, 320) : "";
     const primaryPhoto = selectedRequest?.photos?.[0];
@@ -22636,6 +22671,19 @@ ${notes.trim()}` : notes.trim(),
       "Safety",
       "Admin",
     ];
+    const requestAssigneeOptions = Array.from(
+      new Set([
+        "",
+        "Sean",
+        "Pat",
+        "Geronimo",
+        "Nick",
+        ...teamDirectory
+          .filter((member) => member.active)
+          .map((member) => member.name.trim())
+          .filter(Boolean),
+      ]),
+    );
     const formatRequestDateTime = (value: string) => {
       if (!value) return "Not recorded";
       const parsed = new Date(value);
@@ -22892,6 +22940,20 @@ ${notes.trim()}` : notes.trim(),
                 )
               }
               options={requestCategories}
+            />
+            <SelectField
+              label="Assign To"
+              value={selectedRequest.assignedTo || ""}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, assignedTo: value }
+                      : item,
+                  ),
+                )
+              }
+              options={requestAssigneeOptions}
             />
             <SelectField
               label="Priority"
