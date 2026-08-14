@@ -79,17 +79,47 @@ function adminBlockResponse(request: NextRequest) {
 }
 
 
-type RequestAccess = { email:string; role:string; profiles:string[]; restricted:boolean };
+type RequestAccess = {
+  email: string;
+  role: string;
+  profiles: string[];
+  propertyIds: string[];
+  restricted: boolean;
+};
 
 async function getRequestAccess(request: NextRequest): Promise<RequestAccess> {
   const email = (request.headers.get("x-atlas-user-email") || "").toLowerCase();
   const role = String(request.headers.get("x-atlas-user-role") || "").toLowerCase();
-  if (!email || role === "master" || role === "administrator") return { email, role, profiles:[], restricted:false };
+  if (!email || role === "master" || role === "administrator") {
+    return { email, role, profiles: [], propertyIds: [], restricted: false };
+  }
+
   const sql = getSql();
-  const rows = await sql`SELECT role, active, access_profiles FROM atlas_team_access WHERE lower(email)=${email} LIMIT 1`;
+  const rows = await sql`
+    SELECT name, role, active, access_profiles, property_ids
+    FROM atlas_team_access
+    WHERE lower(email)=${email}
+    LIMIT 1
+  `;
   const row = rows[0] as Record<string, unknown> | undefined;
-  const profiles = Array.isArray(row?.access_profiles) ? (row!.access_profiles as unknown[]).map(String) : [];
-  return { email, role:String(row?.role || role), profiles, restricted:Boolean(row && row.active !== false && profiles.length) };
+  const storedProfiles = Array.isArray(row?.access_profiles)
+    ? (row!.access_profiles as unknown[]).map(String)
+    : [];
+  const name = String(row?.name || "").trim();
+  const profiles = /^delaney(?:\s|$)/i.test(name) && !storedProfiles.includes("request-coordinator")
+    ? [...storedProfiles, "request-coordinator"]
+    : storedProfiles;
+  const propertyIds = Array.isArray(row?.property_ids)
+    ? (row!.property_ids as unknown[]).map(String)
+    : [];
+
+  return {
+    email,
+    role: String(row?.role || role),
+    profiles,
+    propertyIds,
+    restricted: Boolean(row && row.active !== false && profiles.length),
+  };
 }
 
 function isMarineRequest(row: any) {
@@ -99,6 +129,12 @@ function isMarineRequest(row: any) {
 
 function requestAllowed(access: RequestAccess, row: any) {
   if (!access.restricted) return true;
+
+  if (access.profiles.includes("request-coordinator")) {
+    const propertyId = String(row?.property_id || row?.propertyId || "").trim();
+    return Boolean(propertyId && access.propertyIds.includes(propertyId));
+  }
+
   if (access.profiles.includes("marine") && isMarineRequest(row)) return true;
   const text = Object.values(row || {}).map(String).join(" ").toLowerCase();
   return access.profiles.some((profile)=>text.includes(profile.replace("-", " ")));
@@ -443,8 +479,10 @@ export async function POST(request: NextRequest) {
       title:
         savedRequest.portalType === "marine"
           ? "New Sean Marine Request"
-          : "New Atlas Owner Request",
-      body: `${savedRequest.title || (savedRequest.portalType === "marine" ? "Marine Request" : "Maintenance Request")}${savedRequest.requesterName ? ` · ${savedRequest.requesterName}` : ""}`,
+          : savedRequest.propertyId === "3661"
+            ? "New 3661 Owner Request"
+            : "New Atlas Owner Request",
+      body: `${savedRequest.title || (savedRequest.portalType === "marine" ? "Marine Request" : "Maintenance Request")}${savedRequest.requesterName ? ` · ${savedRequest.requesterName}` : ""}${savedRequest.propertyId ? ` · ${savedRequest.propertyId}` : ""}`,
       url: "/#requests",
       tag: `atlas-request-${savedRequest.id}`,
       category: "requests",
