@@ -8801,11 +8801,8 @@ export default function AtlasApp() {
 
   async function completeWorkOrder(record: AtlasServiceRecord) {
     if (record.date && String(record.date).slice(0, 10) > todayISO()) {
-      const itemTitle = String(record.title || "Work order").trim();
-      const confirmed = window.confirm(
-        `${itemTitle} is due ${formatDate(record.date)}. Are you sure you want to complete it early?`,
-      );
-      if (!confirmed) return;
+      showSaveToast(`This work order is due ${formatDate(record.date)} and cannot be completed early.`, "warning");
+      return;
     }
     const actionKey = `complete-work-order:${record.id}`;
     if (atlasActionLocksRef.current.has(actionKey)) {
@@ -12812,7 +12809,7 @@ ${notes.trim()}` : notes.trim(),
 
   async function setupConfirmedAssetCatalog() {
     if (confirmedAssetCatalogSetupRunningRef.current || typeof window === "undefined" || !["2000", "hangar"].includes(activePropertyId)) return;
-    const setupKey = `atlas-confirmed-asset-catalog-v2-${activePropertyId}`;
+    const setupKey = `atlas-confirmed-asset-catalog-v3-${activePropertyId}`;
     if (window.localStorage.getItem(setupKey) === "ready") return;
     confirmedAssetCatalogSetupRunningRef.current = true;
     try {
@@ -12864,7 +12861,12 @@ ${notes.trim()}` : notes.trim(),
           existingIndex = nextAssets.findIndex((asset) => normalizeLocationName(asset.make || asset.manufacturer || "") === normalizeLocationName(definition.manufacturer) && normalizeLocationName(asset.model || "") === normalizeLocationName(definition.model));
         }
         const locationId = resolveLocationId(definition.location);
-        const importedNotes = [definition.description, definition.vendors ? `Vendors: ${definition.vendors}.` : "", definition.criticality ? `Criticality: ${definition.criticality}.` : "", "Confirmed from the property asset catalog."].filter(Boolean).join(" ");
+        const registerNotes = [
+          definition.controlNumber ? `Control #: ${definition.controlNumber}.` : "",
+          definition.unitNumber ? `Unit #: ${definition.unitNumber}.` : "",
+          definition.maintenanceRecommendation ? `Maintenance recommendation: ${definition.maintenanceRecommendation}` : "",
+        ].filter(Boolean).join(" ");
+        const importedNotes = [definition.description, definition.vendors ? `Vendors: ${definition.vendors}.` : "", definition.criticality ? `Criticality: ${definition.criticality}.` : "", registerNotes ? `Asset register: ${registerNotes}` : "", "Confirmed from the property asset catalog."].filter(Boolean).join(" ");
         if (existingIndex >= 0) {
           const existing = nextAssets[existingIndex];
           const next = normalizeAsset({
@@ -12877,7 +12879,11 @@ ${notes.trim()}` : notes.trim(),
             model: existing.model || definition.model,
             year: existing.year || definition.year,
             serial: existing.serial || definition.serial,
-            notes: existing.notes.includes("Confirmed from the property asset catalog") ? existing.notes : [existing.notes, importedNotes].filter(Boolean).join(" ").trim(),
+            notes: (() => {
+              const baseNotes = existing.notes.includes("Confirmed from the property asset catalog") ? existing.notes : [existing.notes, importedNotes].filter(Boolean).join(" ").trim();
+              if (!registerNotes || baseNotes.includes(registerNotes)) return baseNotes;
+              return [baseNotes, `Asset register: ${registerNotes}`].filter(Boolean).join(" ").trim();
+            })(),
           });
           if (JSON.stringify(existing) !== JSON.stringify(next)) {
             nextAssets[existingIndex] = next;
