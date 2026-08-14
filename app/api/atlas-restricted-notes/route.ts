@@ -32,6 +32,18 @@ type RestrictedAccessRow = {
   pin_hash: string;
 };
 
+type RestrictedAttachmentRow = {
+  id: string;
+  note_id: string;
+  property_id: string;
+  label: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  data_base64?: string;
+  created_at: string | Date;
+};
+
 type PropertyAuth = {
   session: SessionPayload;
   propertyId: string;
@@ -244,6 +256,29 @@ async function ensureTables(
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_restricted_note_attachments (
+      id text PRIMARY KEY,
+      note_id text NOT NULL,
+      property_id text NOT NULL,
+      label text NOT NULL DEFAULT '',
+      file_name text NOT NULL,
+      mime_type text NOT NULL DEFAULT 'application/pdf',
+      size_bytes integer NOT NULL DEFAULT 0,
+      data_base64 text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS atlas_restricted_note_attachments_note_idx
+    ON atlas_restricted_note_attachments (
+      property_id,
+      note_id,
+      created_at ASC
+    )
+  `;
 }
 
 async function readAccessRow(
@@ -276,6 +311,29 @@ function serializeNote(
     updatedAt:
       new Date(row.updated_at).toISOString(),
   };
+}
+
+function serializeAttachment(
+  row: RestrictedAttachmentRow,
+) {
+  return {
+    id: String(row.id),
+    noteId: String(row.note_id),
+    label: String(row.label || row.file_name || "PDF"),
+    fileName: String(row.file_name || "restricted-document.pdf"),
+    mimeType: String(row.mime_type || "application/pdf"),
+    sizeBytes: Number(row.size_bytes || 0),
+    createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
+function validPdfBase64(value: string) {
+  try {
+    const bytes = Buffer.from(value, "base64");
+    return bytes.length >= 5 && bytes.subarray(0, 5).toString("ascii") === "%PDF-";
+  } catch {
+    return false;
+  }
 }
 
 async function readBody(
@@ -594,13 +652,29 @@ export async function POST(
         created_at DESC
     `) as unknown as RestrictedNoteRow[];
 
+    const attachmentRows = (await sql`
+      SELECT
+        id,
+        note_id,
+        property_id,
+        label,
+        file_name,
+        mime_type,
+        size_bytes,
+        created_at
+      FROM atlas_restricted_note_attachments
+      WHERE property_id = ${auth.propertyId}
+      ORDER BY created_at ASC
+    `) as unknown as RestrictedAttachmentRow[];
+
     return NextResponse.json({
       ok: true,
-      notes: rows.map((row) =>
-        serializeNote(
-          row as RestrictedNoteRow,
-        ),
-      ),
+      notes: rows.map((row) => ({
+        ...serializeNote(row as RestrictedNoteRow),
+        attachments: attachmentRows
+          .filter((attachment) => String(attachment.note_id) === String(row.id))
+          .map((attachment) => serializeAttachment(attachment)),
+      })),
     });
   }
 
@@ -712,6 +786,86 @@ export async function POST(
     });
   }
 
+  if (action === "addAttachment") {
+    const noteId = String(body.noteId || "").trim();
+    const fileName = String(body.fileName || "").trim();
+    const mimeType = String(body.mimeType || "application/pdf").trim().toLowerCase();
+    const label = String(body.label || "").trim() || fileName.replace(/\.pdf$/i, "") || "PDF";
+    const dataBase64 = String(body.dataBase64 || "").trim();
+    const sizeBytes = Number(body.sizeBytes || 0);
+
+    if (!noteId || !fileName || !dataBase64) {
+      return NextResponse.json({ ok: false, error: "Note, PDF file, and file data are required." }, { status: 400 });
+    }
+    if (mimeType !== "application/pdf" || !fileName.toLowerCase().endsWith(".pdf")) {
+      return NextResponse.json({ ok: false, error: "Restricted Notes attachments must be PDF files." }, { status: 400 });
+    }
+    const decodedSize = Buffer.from(dataBase64, "base64").length;
+    if (decodedSize > 3 * 1024 * 1024 || sizeBytes > 3 * 1024 * 1024) {
+      return NextResponse.json({ ok: false, error: "Restricted Notes PDFs must be 3 MB or smaller." }, { status: 413 });
+    }
+    if (!validPdfBase64(dataBase64)) {
+      return NextResponse.json({ ok: false, error: "The selected file is not a valid PDF." }, { status: 400 });
+    }
+
+    const noteRows = (await sql`
+      SELECT id FROM atlas_restricted_notes
+      WHERE id = ${noteId} AND property_id = ${auth.propertyId}
+      LIMIT 1
+    `) as unknown as { id: string }[];
+    if (!noteRows.length) {
+      return NextResponse.json({ ok: false, error: "Restricted note not found." }, { status: 404 });
+    }
+
+    const attachmentId =
+      "restricted-pdf-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+    const rows = (await sql`
+      INSERT INTO atlas_restricted_note_attachments (
+        id, note_id, property_id, label, file_name, mime_type, size_bytes, data_base64
+      ) VALUES (
+        ${attachmentId}, ${noteId}, ${auth.propertyId}, ${label}, ${fileName}, 'application/pdf', ${decodedSize}, ${dataBase64}
+      )
+      RETURNING id, note_id, property_id, label, file_name, mime_type, size_bytes, created_at
+    `) as unknown as RestrictedAttachmentRow[];
+
+    return NextResponse.json({ ok: true, attachment: serializeAttachment(rows[0]) });
+  }
+
+  if (action === "getAttachment") {
+    const attachmentId = String(body.attachmentId || "").trim();
+    if (!attachmentId) {
+      return NextResponse.json({ ok: false, error: "Attachment id is required." }, { status: 400 });
+    }
+    const rows = (await sql`
+      SELECT id, note_id, property_id, label, file_name, mime_type, size_bytes, data_base64, created_at
+      FROM atlas_restricted_note_attachments
+      WHERE id = ${attachmentId} AND property_id = ${auth.propertyId}
+      LIMIT 1
+    `) as unknown as RestrictedAttachmentRow[];
+    if (!rows.length) {
+      return NextResponse.json({ ok: false, error: "Restricted PDF not found." }, { status: 404 });
+    }
+    const row = rows[0];
+    return NextResponse.json({
+      ok: true,
+      fileName: String(row.file_name || "restricted-document.pdf"),
+      mimeType: "application/pdf",
+      dataBase64: String(row.data_base64 || ""),
+    });
+  }
+
+  if (action === "deleteAttachment") {
+    const attachmentId = String(body.attachmentId || "").trim();
+    if (!attachmentId) {
+      return NextResponse.json({ ok: false, error: "Attachment id is required." }, { status: 400 });
+    }
+    await sql`
+      DELETE FROM atlas_restricted_note_attachments
+      WHERE id = ${attachmentId} AND property_id = ${auth.propertyId}
+    `;
+    return NextResponse.json({ ok: true });
+  }
+
   if (action === "delete") {
     const id =
       String(body.id || "").trim();
@@ -727,6 +881,11 @@ export async function POST(
         },
       );
     }
+
+    await sql`
+      DELETE FROM atlas_restricted_note_attachments
+      WHERE note_id = ${id} AND property_id = ${auth.propertyId}
+    `;
 
     await sql`
       DELETE FROM atlas_restricted_notes
