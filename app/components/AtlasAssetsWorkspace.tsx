@@ -360,6 +360,26 @@ export default function AtlasAssetsWorkspace(props: any) {
     );
   };
 
+  const openAssetDocumentImmediately = (document: DocumentRecord) => {
+    const primaryFile = (document.files || []).find(
+      (file) => file.url || file.dataUrl,
+    );
+    const source =
+      primaryFile?.url ||
+      primaryFile?.dataUrl ||
+      document.href ||
+      "";
+
+    if (source && typeof window !== "undefined") {
+      window.open(source, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    // Only fall back to Documents when the record has no directly openable file.
+    setDocumentSearch(document.title || selectedAsset.name);
+    setScreen("documents");
+  };
+
   const assetRecordQualityRows = assetSourceRecords.map((asset) => {
     const linkedManualCount = intakeDocs.filter((document) =>
       isDocumentLinkedToAsset(document, asset),
@@ -1681,48 +1701,6 @@ export default function AtlasAssetsWorkspace(props: any) {
                         {assetNeedsService ? (
                           <span style={badgeStyle("Offline")}>Needs Service</span>
                         ) : null}
-                        {assetSetupIncomplete ? (
-                          <span style={badgeStyle("Monitor")}>Needs Details</span>
-                        ) : null}
-                      </div>
-                      <div
-                        style={{
-                          display: assetListDensity === "compact" ? "none" : "grid",
-                          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                          gap: 5,
-                          marginTop: 1,
-                        }}
-                      >
-                        <span
-                          style={{
-                            ...mutedSmallStyle,
-                            border: `1px solid ${colors.line}`,
-                            borderRadius: 8,
-                            padding: "5px 7px",
-                            background: colors.panel,
-                            minWidth: 0,
-                          }}
-                        >
-                          <strong style={{ color: colors.navy }}>Last service:</strong>{" "}
-                          {assetCompletedWork[0]?.date
-                            ? formatDate(assetCompletedWork[0].date)
-                            : "No service recorded"}
-                        </span>
-                        <span
-                          style={{
-                            ...mutedSmallStyle,
-                            border: `1px solid ${colors.line}`,
-                            borderRadius: 8,
-                            padding: "5px 7px",
-                            background: colors.panel,
-                            minWidth: 0,
-                          }}
-                        >
-                          <strong style={{ color: colors.navy }}>Next maintenance:</strong>{" "}
-                          {assetNextMaintenance?.date
-                            ? formatDate(assetNextMaintenance.date)
-                            : "Not scheduled"}
-                        </span>
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                         <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
@@ -2899,9 +2877,8 @@ export default function AtlasAssetsWorkspace(props: any) {
                 <div
                   style={{
                     ...assetInformationGridStyle,
-                    gridTemplateColumns: isMobile
-                      ? "1fr"
-                      : "repeat(2, minmax(0, 1fr))",
+                    gridTemplateColumns: "1fr",
+                    gap: 8,
                   }}
                 >
                   {infoValue(
@@ -3075,30 +3052,6 @@ export default function AtlasAssetsWorkspace(props: any) {
                       /> : null}
                     </div>,
                     () => updateAsset({ serial: "" }),
-                  )}
-                  {infoValue(
-                    "Manual",
-                    selectedAsset.manualRequirement === "Not Required" ? "Not required" : attachedManuals.length ? `${attachedManuals.length} attached` : "Required",
-                    <select
-                      value={selectedAsset.manualRequirement || "Required"}
-                      onChange={(event) => updateAsset({ manualRequirement: event.currentTarget.value as "Required" | "Not Required" })}
-                      style={assetCompactInputStyle}
-                    >
-                      <option value="Required">Required</option>
-                      <option value="Not Required">Not required</option>
-                    </select>,
-                  )}
-                  {infoValue(
-                    "Procedure",
-                    selectedAsset.procedureRequirement === "Not Required" ? "Not required" : linkedAssetProcedures.length ? `${linkedAssetProcedures.length} linked` : "Required",
-                    <select
-                      value={selectedAsset.procedureRequirement || "Required"}
-                      onChange={(event) => updateAsset({ procedureRequirement: event.currentTarget.value as "Required" | "Not Required" })}
-                      style={assetCompactInputStyle}
-                    >
-                      <option value="Required">Required</option>
-                      <option value="Not Required">Not required</option>
-                    </select>,
                   )}
                 </div>
 
@@ -3690,10 +3643,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                         <button
                           key={document.id}
                           type="button"
-                          onClick={() => {
-                            setDocumentSearch(document.title || selectedAsset.name);
-                            setScreen("documents");
-                          }}
+                          onClick={() => openAssetDocumentImmediately(document)}
                           style={{
                             border: `1px solid ${colors.line}`,
                             borderRadius: 9,
