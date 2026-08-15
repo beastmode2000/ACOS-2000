@@ -1962,19 +1962,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               </section>
             ) : null}
 
-            <section
-              aria-label="Work order quality"
-              style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 8 }}
-            >
-              <button type="button" onClick={() => { setStatusFilter("All"); setDueDateFilter("All"); }} style={{ ...rowButtonStyle, textAlign: "left", display: "grid", gap: 3 }}>
-                <strong>{recordQuality.incomplete.length} records need information</strong>
-                <span style={mutedSmallStyle}>Missing assignment, due date, asset, or location.</span>
-              </button>
-              <div style={{ ...rowButtonStyle, display: "grid", gap: 3 }}>
-                <strong>{recordQuality.duplicateIds.size} possible duplicates</strong>
-                <span style={mutedSmallStyle}>Matching title, asset, and due date.</span>
-              </div>
-            </section>
+            
 
             <section
               aria-label="Work order summary"
