@@ -345,11 +345,24 @@ export default function AtlasAssetsWorkspace(props: any) {
       .replace(/[^a-z0-9]+/g, " ")
       .trim();
 
+  const isDocumentLinkedToAsset = (document: DocumentRecord, asset: AssetRecord) => {
+    if (!asset.id) return false;
+    if (document.linkedAssetId === asset.id) return true;
+    if (document.targetType === "Asset" && document.targetId === asset.id) return true;
+
+    // Older document links can retain an obsolete asset ID after duplicate cleanup
+    // or asset replacement. When Atlas still records the target as an Asset,
+    // preserve the visible relationship by matching the saved target name.
+    return (
+      document.targetType === "Asset" &&
+      normalizeAssetMatchValue(document.targetName) ===
+        normalizeAssetMatchValue(asset.name)
+    );
+  };
+
   const assetRecordQualityRows = assetSourceRecords.map((asset) => {
-    const linkedManualCount = intakeDocs.filter(
-      (document) =>
-        document.linkedAssetId === asset.id ||
-        (document.targetType === "Asset" && document.targetId === asset.id),
+    const linkedManualCount = intakeDocs.filter((document) =>
+      isDocumentLinkedToAsset(document, asset),
     ).length;
     const linkedProcedureCount = procedureRecords.filter((procedure) =>
       (procedure.linkedAssetIds || []).includes(asset.id),
@@ -460,12 +473,7 @@ export default function AtlasAssetsWorkspace(props: any) {
 
   const linkedAssetDocuments = selectedAsset.id
     ? intakeDocs
-        .filter(
-          (document) =>
-            document.linkedAssetId === selectedAsset.id ||
-            (document.targetType === "Asset" &&
-              document.targetId === selectedAsset.id),
-        )
+        .filter((document) => isDocumentLinkedToAsset(document, selectedAsset))
         .sort((a, b) =>
           String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
         )
@@ -1493,10 +1501,8 @@ export default function AtlasAssetsWorkspace(props: any) {
             const assetOpenWork = assetWorkSourceRecords.filter(
               (record) => record.assetId === asset.id && record.status !== "Completed",
             );
-            const assetDocumentCount = intakeDocs.filter(
-              (document) =>
-                document.linkedAssetId === asset.id ||
-                (document.targetType === "Asset" && document.targetId === asset.id),
+            const assetDocumentCount = intakeDocs.filter((document) =>
+              isDocumentLinkedToAsset(document, asset),
             ).length;
             const assetConditionLabel =
               asset.status === "Online"
