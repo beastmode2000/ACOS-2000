@@ -138,6 +138,7 @@ export default function AtlasProceduresWorkspace(props: any) {
   const [procedureSearch, setProcedureSearch] = React.useState("");
   const {
     assetRecords,
+    colors,
     buttonRowStyle,
     cardStyle,
     closeProcedureViewer,
@@ -184,7 +185,6 @@ export default function AtlasProceduresWorkspace(props: any) {
     <div style={{ display: "grid", gap: 16 }}>
       <div
         style={{
-          order: -3,
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
@@ -261,7 +261,7 @@ export default function AtlasProceduresWorkspace(props: any) {
         ) : null}
       </div>
 
-      <div style={{ ...formGridStyle, order: -1 }}>
+      <div style={formGridStyle}>
         <Field
           label="Title"
           value={selectedProcedure.title}
@@ -389,7 +389,7 @@ export default function AtlasProceduresWorkspace(props: any) {
         />
       </div>
 
-      <div style={{ ...cardStyle, order: -2 }}>
+      <div style={cardStyle}>
         <div
           style={{
             display: "flex",
@@ -400,7 +400,7 @@ export default function AtlasProceduresWorkspace(props: any) {
           }}
         >
           <div>
-            <div style={eyebrowStyle}>Procedure</div>
+            <div style={eyebrowStyle}>Procedure Checklist</div>
             <strong>{selectedProcedure.steps.length} steps</strong>
           </div>
           <button
@@ -468,83 +468,205 @@ export default function AtlasProceduresWorkspace(props: any) {
             </div>
           ))}
           {!selectedProcedure.steps.length ? (
-            <div style={noticeStyle}>No procedure created yet. Add the first step.</div>
+            <div style={noticeStyle}>Add the first checklist step.</div>
           ) : null}
         </div>
       </div>
 
       <div style={cardStyle}>
         <div style={eyebrowStyle}>Linked Records</div>
-        <div style={{ display: "grid", gap: 12 }}>
-          <div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile
+              ? "1fr"
+              : "repeat(3, minmax(0, 1fr))",
+            gap: 10,
+          }}
+        >
+          <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
             <strong>Assets</strong>
-            <div style={{ ...buttonRowStyle, marginTop: 6 }}>
-              {assetRecords.map((asset) => (
-                <button
-                  key={asset.id}
-                  type="button"
-                  onClick={() =>
-                    toggleProcedureLink("linkedAssetIds", asset.id)
-                  }
-                  style={
-                    (selectedProcedure.linkedAssetIds || []).includes(
-                      asset.id,
-                    )
-                      ? goldButtonStyle
-                      : smallSubtleButtonStyle
-                  }
-                >
-                  {asset.name}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
+            <select
+              value=""
+              onChange={(event) => {
+                const id = event.currentTarget.value;
+                if (!id) return;
+                toggleProcedureLink("linkedAssetIds", id);
+                event.currentTarget.value = "";
+              }}
+              style={inputStyle}
+              aria-label="Add linked asset"
+            >
+              <option value="">Select asset...</option>
+              {[...assetRecords]
+                .sort((a, b) =>
+                  a.name.localeCompare(b.name, undefined, {
+                    sensitivity: "base",
+                  }),
+                )
+                .filter(
+                  (asset) =>
+                    !(selectedProcedure.linkedAssetIds || []).includes(asset.id),
+                )
+                .map((asset) => (
+                  <option key={asset.id} value={asset.id}>
+                    {asset.name}
+                  </option>
+                ))}
+            </select>
+            {(selectedProcedure.linkedAssetIds || []).length ? (
+              <div style={{ display: "grid", gap: 5 }}>
+                {(selectedProcedure.linkedAssetIds || [])
+                  .map((id) => assetRecords.find((asset) => asset.id === id))
+                  .filter(Boolean)
+                  .sort((a, b) =>
+                    a.name.localeCompare(b.name, undefined, {
+                      sensitivity: "base",
+                    }),
+                  )
+                  .map((asset) => (
+                    <button
+                      key={asset.id}
+                      type="button"
+                      onClick={() =>
+                        toggleProcedureLink("linkedAssetIds", asset.id)
+                      }
+                      style={{
+                        ...smallSubtleButtonStyle,
+                        width: "100%",
+                        textAlign: "left",
+                      }}
+                    >
+                      {asset.name} {closeSymbol}
+                    </button>
+                  ))}
+              </div>
+            ) : null}
+          </label>
+
+          <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
             <strong>Locations</strong>
-            <div style={{ ...buttonRowStyle, marginTop: 6 }}>
-              {locations.map((location) => (
-                <button
-                  key={location.id}
-                  type="button"
-                  onClick={() =>
-                    toggleProcedureLink("linkedLocationIds", location.id)
-                  }
-                  style={
-                    (selectedProcedure.linkedLocationIds || []).includes(
+            <select
+              value=""
+              onChange={(event) => {
+                const id = event.currentTarget.value;
+                if (!id) return;
+                toggleProcedureLink("linkedLocationIds", id);
+                event.currentTarget.value = "";
+              }}
+              style={inputStyle}
+              aria-label="Add linked location"
+            >
+              <option value="">Select location...</option>
+              {[...locations]
+                .sort((a, b) =>
+                  a.name.localeCompare(b.name, undefined, {
+                    sensitivity: "base",
+                  }),
+                )
+                .filter(
+                  (location) =>
+                    !(selectedProcedure.linkedLocationIds || []).includes(
                       location.id,
-                    )
-                      ? goldButtonStyle
-                      : smallSubtleButtonStyle
-                  }
-                >
-                  {location.name}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
+                    ),
+                )
+                .map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+            </select>
+            {(selectedProcedure.linkedLocationIds || []).length ? (
+              <div style={{ display: "grid", gap: 5 }}>
+                {(selectedProcedure.linkedLocationIds || [])
+                  .map((id) => locations.find((location) => location.id === id))
+                  .filter(Boolean)
+                  .sort((a, b) =>
+                    a.name.localeCompare(b.name, undefined, {
+                      sensitivity: "base",
+                    }),
+                  )
+                  .map((location) => (
+                    <button
+                      key={location.id}
+                      type="button"
+                      onClick={() =>
+                        toggleProcedureLink("linkedLocationIds", location.id)
+                      }
+                      style={{
+                        ...smallSubtleButtonStyle,
+                        width: "100%",
+                        textAlign: "left",
+                      }}
+                    >
+                      {location.name} {closeSymbol}
+                    </button>
+                  ))}
+              </div>
+            ) : null}
+          </label>
+
+          <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
             <strong>Vendors</strong>
-            <div style={{ ...buttonRowStyle, marginTop: 6 }}>
-              {vendorRecords.map((vendor) => (
-                <button
-                  key={vendor.id}
-                  type="button"
-                  onClick={() =>
-                    toggleProcedureLink("linkedVendorIds", vendor.id)
-                  }
-                  style={
-                    (selectedProcedure.linkedVendorIds || []).includes(
+            <select
+              value=""
+              onChange={(event) => {
+                const id = event.currentTarget.value;
+                if (!id) return;
+                toggleProcedureLink("linkedVendorIds", id);
+                event.currentTarget.value = "";
+              }}
+              style={inputStyle}
+              aria-label="Add linked vendor"
+            >
+              <option value="">Select vendor...</option>
+              {[...vendorRecords]
+                .sort((a, b) =>
+                  a.name.localeCompare(b.name, undefined, {
+                    sensitivity: "base",
+                  }),
+                )
+                .filter(
+                  (vendor) =>
+                    !(selectedProcedure.linkedVendorIds || []).includes(
                       vendor.id,
-                    )
-                      ? goldButtonStyle
-                      : smallSubtleButtonStyle
-                  }
-                >
-                  {vendor.name}
-                </button>
-              ))}
-            </div>
-          </div>
+                    ),
+                )
+                .map((vendor) => (
+                  <option key={vendor.id} value={vendor.id}>
+                    {vendor.name}
+                  </option>
+                ))}
+            </select>
+            {(selectedProcedure.linkedVendorIds || []).length ? (
+              <div style={{ display: "grid", gap: 5 }}>
+                {(selectedProcedure.linkedVendorIds || [])
+                  .map((id) => vendorRecords.find((vendor) => vendor.id === id))
+                  .filter(Boolean)
+                  .sort((a, b) =>
+                    a.name.localeCompare(b.name, undefined, {
+                      sensitivity: "base",
+                    }),
+                  )
+                  .map((vendor) => (
+                    <button
+                      key={vendor.id}
+                      type="button"
+                      onClick={() =>
+                        toggleProcedureLink("linkedVendorIds", vendor.id)
+                      }
+                      style={{
+                        ...smallSubtleButtonStyle,
+                        width: "100%",
+                        textAlign: "left",
+                      }}
+                    >
+                      {vendor.name} {closeSymbol}
+                    </button>
+                  ))}
+              </div>
+            ) : null}
+          </label>
         </div>
       </div>
 
@@ -867,7 +989,7 @@ export default function AtlasProceduresWorkspace(props: any) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(280px, 320px) minmax(0, 1fr)",
+              gridTemplateColumns: "minmax(250px, 330px) minmax(0, 1fr)",
               gap: 12,
               alignItems: "start",
             }}
