@@ -626,7 +626,7 @@ function mapAsset(row: JsonRecord) {
   return {
     id: String(row.id || ""),
     name: String(row.name || ""),
-    locationId: String(row.location_id || "general"),
+    locationId: String(row.location_id || ""),
     locationIds: asStringArray(row.location_ids),
     category: String(row.category || ""),
     status: String(row.status || "Monitor"),
@@ -1507,8 +1507,8 @@ if (table === "assets") {
         VALUES (
           ${id},
           ${asString(record.name) || "Untitled Asset"},
-          ${asString(record.locationId) || asStringArray(record.locationIds)[0] || "general"},
-          ${asStringArray(record.locationIds).length ? asStringArray(record.locationIds) : [asString(record.locationId) || "general"]},
+          ${asString(record.locationId) || asStringArray(record.locationIds)[0] || ""},
+          ${asStringArray(record.locationIds).filter(Boolean)},
           ${asString(record.category) || "General"},
           ${asStatus(record.status, "Monitor")},
           ${nullableString(record.make)},
