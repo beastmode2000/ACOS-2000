@@ -989,9 +989,6 @@ export default function AtlasAssetsWorkspace(props: any) {
             const assetOpenWork = assetWorkSourceRecords.filter(
               (record) => record.assetId === asset.id && record.status !== "Completed",
             );
-            const assetDocumentCount = intakeDocs.filter((document) =>
-              isDocumentLinkedToAsset(document, asset),
-            ).length;
             const assetConditionLabel =
               asset.status === "Online"
                 ? "Operational"
@@ -1008,43 +1005,12 @@ export default function AtlasAssetsWorkspace(props: any) {
                   : asset.status === "Seasonal"
                     ? "Seasonal"
                     : "Monitor";
-            const assetCompletedWork = assetWorkSourceRecords
-              .filter(
-                (record) =>
-                  record.assetId === asset.id &&
-                  record.status === "Completed" &&
-                  Boolean(record.date),
-              )
-              .sort((a, b) =>
-                String(b.date || "").localeCompare(String(a.date || "")),
-              );
-            const assetNextMaintenance = assetOpenWork
-              .filter(
-                (record) =>
-                  Boolean(record.date) &&
-                  (record.recurring ||
-                    record.workType === "Preventive Maintenance"),
-              )
-              .sort((a, b) =>
-                String(a.date || "9999-12-31").localeCompare(
-                  String(b.date || "9999-12-31"),
-                ),
-              )[0];
             const assetNeedsService =
               asset.status === "Offline" ||
               assetOpenWork.some(
                 (record) =>
                   record.priority === "High" ||
                   (Boolean(record.date) && record.date < todayISO()),
-              );
-            const assetSetupIncomplete =
-              !asset.locationId ||
-              asset.locationId === "general" ||
-              !asset.serial ||
-              !asset.vendorIds.length ||
-              manualsForAsset(asset).length === 0 ||
-              !procedureRecords.some((procedure) =>
-                (procedure.linkedAssetIds || []).includes(asset.id),
               );
 
             return (
@@ -1170,14 +1136,6 @@ export default function AtlasAssetsWorkspace(props: any) {
                           <span style={badgeStyle("Offline")}>Needs Service</span>
                         ) : null}
                       </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                        <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
-                          {assetOpenWork.length} open work order{assetOpenWork.length === 1 ? "" : "s"}
-                        </span>
-                        <span style={{ ...mutedSmallStyle, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "3px 6px", background: colors.panel }}>
-                          {assetDocumentCount} document{assetDocumentCount === 1 ? "" : "s"}
-                        </span>
-                      </div>
                     </div>
                   </div>
                 </button>
@@ -1250,25 +1208,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                   </button>
                 </div>
 
-                <span className="atlas-gold-hover-popover" aria-hidden="true">
-                  <strong>{asset.name}</strong>
-                  <span>{asset.make || "Make not recorded"} {asset.model || ""}</span>
-                  <span>Condition: {assetConditionLabel}</span>
-                  <span>
-                    Last service:{" "}
-                    {assetCompletedWork[0]?.date
-                      ? formatDate(assetCompletedWork[0].date)
-                      : "Not recorded"}
-                  </span>
-                  <span>
-                    Next service:{" "}
-                    {assetNextMaintenance?.date
-                      ? formatDate(assetNextMaintenance.date)
-                      : "Not scheduled"}
-                  </span>
-                  <span>{assetOpenWork.length} open work order{assetOpenWork.length === 1 ? "" : "s"}</span>
-                  <span>{assetDocumentCount} linked document{assetDocumentCount === 1 ? "" : "s"}</span>
-                </span>
+
               </div>
             );
           })}
@@ -2671,22 +2611,57 @@ export default function AtlasAssetsWorkspace(props: any) {
                   </div>
                 </div>
                 {selectedAssetPhotos.length ? (
-                  <details style={{ border: `1px solid ${colors.line}`, borderRadius: 8, background: "#FFFFFF" }}>
-                    <summary style={{ padding: "7px 9px", cursor: "pointer", color: colors.navy, fontSize: 11, fontWeight: 900 }}>
-                      Photos ({selectedAssetPhotos.length})
-                    </summary>
-                    <div style={{ display: "grid", gap: 4, maxHeight: 180, overflowY: "auto", padding: "0 7px 7px" }}>
-                      {selectedAssetPhotos.map((photo) => (
-                        <div key={photo.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center", gap: 5, padding: "5px 6px", border: `1px solid ${colors.line}`, borderRadius: 7 }}>
-                          <button type="button" onClick={() => openPhotoPreview(photo)} style={{ border: 0, padding: 0, background: "transparent", color: colors.navy, textAlign: "left", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>
-                            {photo.name || "Asset photo"}
-                          </button>
-                          <button type="button" onClick={() => void renameAssetPhoto(photo)} style={assetPhotoLabelButtonStyle} aria-label={`Edit ${photo.name || "photo"} label`}>✏</button>
-                          {assetEditorOpen ? <button type="button" onClick={() => void deleteAssetPhoto(photo)} style={assetPhotoDeleteIconStyle} aria-label={`Delete ${photo.name || "photo"}`}>{closeSymbol}</button> : null}
-                        </div>
-                      ))}
-                    </div>
-                  </details>
+                  <div style={{ display: "grid", gap: 5 }}>
+                    {selectedAssetPhotos.map((photo) => (
+                      <div
+                        key={photo.id}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "minmax(0, 1fr) auto auto",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "7px 8px",
+                          border: `1px solid ${colors.line}`,
+                          borderRadius: 8,
+                          background: "#FFFFFF",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => openPhotoPreview(photo)}
+                          style={{
+                            border: 0,
+                            padding: 0,
+                            background: "transparent",
+                            color: colors.navy,
+                            textAlign: "left",
+                            fontSize: 11,
+                            fontWeight: 800,
+                            cursor: "pointer",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {photo.name || "Asset photo"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void renameAssetPhoto(photo)}
+                          style={assetTinyButtonStyle}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteAssetPhoto(photo)}
+                          style={{ ...dangerButtonStyle, width: "auto", padding: "5px 8px" }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   <div style={assetEmptyStateStyle}>No photos attached.</div>
                 )}
