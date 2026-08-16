@@ -48,8 +48,7 @@ type AtlasTable =
   | "projects"
   | "tasks"
   | "vehicle_care"
-  | "day_sessions"
-  | "notes";
+  | "day_sessions";
 
 function getSql() {
   const connectionString =
@@ -174,7 +173,6 @@ function cleanTable(value: unknown): AtlasTable | "" {
   if (table === "tasks") return "tasks";
   if (table === "vehicle_care") return "vehicle_care";
   if (table === "day_sessions") return "day_sessions";
-  if (table === "notes") return "notes";
 
   return "";
 }
@@ -520,16 +518,6 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
 
   await sql`
     ALTER TABLE atlas_work_orders
-    ADD COLUMN IF NOT EXISTS department text
-  `;
-
-  await sql`
-    ALTER TABLE atlas_work_orders
-    ADD COLUMN IF NOT EXISTS subcategory text
-  `;
-
-  await sql`
-    ALTER TABLE atlas_work_orders
     ADD COLUMN IF NOT EXISTS effort text
   `;
 
@@ -719,9 +707,7 @@ function mapWorkOrder(row: JsonRecord) {
     lastCompletedDate: databaseDateKey(row.last_completed_date),
     completionHistory: asArray(row.completion_history).map(String),
     workType: String(row.work_type || "Work Order"),
-    workCategory: String(row.work_category || row.subcategory || "Maintenance"),
-    department: row.department ? String(row.department) : "",
-    subcategory: row.subcategory ? String(row.subcategory) : String(row.work_category || ""),
+    workCategory: String(row.work_category || "Maintenance"),
     effort: row.effort ? String(row.effort) : "",
     responsibilityArea: row.responsibility_area
       ? String(row.responsibility_area)
@@ -1056,8 +1042,6 @@ export async function GET(request: NextRequest) {
         completion_history,
         work_type,
         work_category,
-        department,
-        subcategory,
         effort,
         responsibility_area,
         emoji,
@@ -1206,8 +1190,6 @@ export async function GET(request: NextRequest) {
       vehicleCare: operationalRecords("vehicle_care"),
       vehicleCareRecords: operationalRecords("vehicle_care"),
       daySessions: operationalRecords("day_sessions"),
-      notes: operationalRecords("notes"),
-      noteRecords: operationalRecords("notes"),
     });
   } catch (error) {
     return NextResponse.json(
@@ -1701,9 +1683,7 @@ if (table === "assets") {
             record.completionHistory,
           )}::jsonb,
           work_type = ${asStatus(record.workType, "Work Order")},
-          work_category = ${asStatus(record.workCategory || record.subcategory, "Maintenance")},
-          department = ${nullableString(record.department)},
-          subcategory = ${nullableString(record.subcategory || record.workCategory)},
+          work_category = ${asStatus(record.workCategory, "Maintenance")},
           effort = ${nullableString(record.effort)},
           responsibility_area = ${nullableString(record.responsibilityArea)},
           emoji = ${nullableString(record.emoji)},
@@ -1747,8 +1727,6 @@ if (table === "assets") {
             completion_history,
             work_type,
             work_category,
-            department,
-            subcategory,
             effort,
             responsibility_area,
             emoji,
@@ -1786,9 +1764,7 @@ if (table === "assets") {
             ${savedLastCompletedDate}::date,
             ${jsonArray(record.completionHistory)}::jsonb,
             ${asStatus(record.workType, "Work Order")},
-            ${asStatus(record.workCategory || record.subcategory, "Maintenance")},
-            ${nullableString(record.department)},
-            ${nullableString(record.subcategory || record.workCategory)},
+            ${asStatus(record.workCategory, "Maintenance")},
             ${nullableString(record.effort)},
             ${nullableString(record.responsibilityArea)},
             ${nullableString(record.emoji)},
@@ -1855,9 +1831,9 @@ if (table === "assets") {
       return NextResponse.json({ ok: true, id });
     }
 
-    if (table === "tasks" || table === "vehicle_care" || table === "day_sessions" || table === "notes") {
+    if (table === "tasks" || table === "vehicle_care" || table === "day_sessions") {
       await ensureOperationalRecordsTable(sql);
-      const id = getId(record, table === "tasks" ? "task" : table === "vehicle_care" ? "vehicle" : table === "notes" ? "note" : "day-session");
+      const id = getId(record, table === "tasks" ? "task" : table === "vehicle_care" ? "vehicle" : "day-session");
       const savedRecord = { ...record, id, propertyId, updatedAt: new Date().toISOString() };
 
       await sql`
@@ -2368,39 +2344,79 @@ export async function DELETE(request: NextRequest) {
         RETURNING id
       `) as unknown as JsonRecord[];
     } else if (table === "assets") {
-      await sql`
-        DELETE FROM atlas_asset_photos
-        WHERE asset_id = ${id}
-          AND property_id = ${propertyId}
-      `;
+      let assetPropertyId = propertyId;
 
-      await sql`
-        UPDATE atlas_work_orders
-        SET asset_id = NULL
-        WHERE asset_id = ${id}
-          AND property_id = ${propertyId}
-      `;
-
-      await sql`
-        UPDATE atlas_parts
-        SET asset_id = NULL
-        WHERE asset_id = ${id}
-          AND property_id = ${propertyId}
-      `;
-
-      await sql`
-        UPDATE atlas_documents
-        SET linked_asset_id = NULL
-        WHERE linked_asset_id = ${id}
-          AND property_id = ${propertyId}
-      `;
-
-      deletedRows = (await sql`
-        DELETE FROM atlas_assets
+      let assetRows = (await sql`
+        SELECT id, property_id
+        FROM atlas_assets
         WHERE id = ${id}
           AND property_id = ${propertyId}
-        RETURNING id
+        LIMIT 2
       `) as unknown as JsonRecord[];
+
+      // Older Atlas assets can carry a stale property_id from before strict
+      // property isolation. If the active-property lookup misses, resolve the
+      // single stored record and authorize that stored property before deletion.
+      if (!assetRows.length) {
+        const legacyRows = (await sql`
+          SELECT id, property_id
+          FROM atlas_assets
+          WHERE id = ${id}
+          LIMIT 2
+        `) as unknown as JsonRecord[];
+
+        if (legacyRows.length === 1) {
+          const storedPropertyId = asString(legacyRows[0].property_id) || "2000";
+          if (
+            storedPropertyId !== propertyId &&
+            (await authorizeAtlasRequest(
+              sql,
+              request,
+              storedPropertyId,
+              "delete",
+            ))
+          ) {
+            assetPropertyId = storedPropertyId;
+            assetRows = legacyRows;
+          }
+        }
+      }
+
+      if (assetRows.length === 1) {
+        await sql`
+          DELETE FROM atlas_asset_photos
+          WHERE asset_id = ${id}
+            AND property_id = ${assetPropertyId}
+        `;
+
+        await sql`
+          UPDATE atlas_work_orders
+          SET asset_id = NULL
+          WHERE asset_id = ${id}
+            AND property_id = ${assetPropertyId}
+        `;
+
+        await sql`
+          UPDATE atlas_parts
+          SET asset_id = NULL
+          WHERE asset_id = ${id}
+            AND property_id = ${assetPropertyId}
+        `;
+
+        await sql`
+          UPDATE atlas_documents
+          SET linked_asset_id = NULL
+          WHERE linked_asset_id = ${id}
+            AND property_id = ${assetPropertyId}
+        `;
+
+        deletedRows = (await sql`
+          DELETE FROM atlas_assets
+          WHERE id = ${id}
+            AND property_id = ${assetPropertyId}
+          RETURNING id, property_id
+        `) as unknown as JsonRecord[];
+      }
     } else if (table === "procedures") {
       await sql`
         UPDATE atlas_work_orders
@@ -2493,7 +2509,7 @@ export async function DELETE(request: NextRequest) {
           AND property_id = ${propertyId}
         RETURNING id
       `) as unknown as JsonRecord[];
-    } else if (table === "tasks" || table === "vehicle_care" || table === "day_sessions" || table === "notes") {
+    } else if (table === "tasks" || table === "vehicle_care" || table === "day_sessions") {
       deletedRows = (await sql`
         DELETE FROM atlas_operational_records
         WHERE record_type = ${table}
