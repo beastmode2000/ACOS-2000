@@ -1960,12 +1960,6 @@ export default function AtlasAssetsWorkspace(props: any) {
                     >
                       {item.detail}
                     </span>
-                    <span className="atlas-gold-hover-popover" aria-hidden="true">
-                      <strong>{item.hoverTitle}</strong>
-                      {item.hoverLines.map((line) => (
-                        <span key={line}>{line}</span>
-                      ))}
-                    </span>
                   </button>
                 ))}
               </div>
