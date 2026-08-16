@@ -180,6 +180,7 @@ function cleanTable(value: unknown): AtlasTable | "" {
 async function ensureAssetColumns(sql: ReturnType<typeof neon>) {
   await sql`ALTER TABLE atlas_assets ADD COLUMN IF NOT EXISTS year text`;
   await sql`ALTER TABLE atlas_assets ADD COLUMN IF NOT EXISTS manufacturer text`;
+  await sql`ALTER TABLE atlas_assets ADD COLUMN IF NOT EXISTS serial_2 text`;
 }
 
 async function ensurePropertyColumns(sql: ReturnType<typeof neon>) {
@@ -634,6 +635,7 @@ function mapAsset(row: JsonRecord) {
     year: row.year ? String(row.year) : "",
     manufacturer: row.manufacturer ? String(row.manufacturer) : "",
     serial: row.serial ? String(row.serial) : "",
+    serial2: row.serial_2 ? String(row.serial_2) : "",
     notes: String(row.notes || ""),
     vendorIds: asStringArray(row.vendor_ids),
     documents: asArray(row.documents),
@@ -973,7 +975,7 @@ export async function GET(request: NextRequest) {
     `) as unknown as JsonRecord[];
 
     const assetRows = (await sql`
-      SELECT id, name, location_id, location_ids, category, status, make, model, year, manufacturer, serial, notes, vendor_ids, documents
+      SELECT id, name, location_id, location_ids, category, status, make, model, year, manufacturer, serial, serial_2, notes, vendor_ids, documents
       FROM atlas_assets
       WHERE property_id = ${propertyId}
       ORDER BY name ASC
@@ -1495,6 +1497,7 @@ if (table === "assets") {
           year,
           manufacturer,
           serial,
+          serial_2,
           notes,
           vendor_ids,
           documents,
@@ -1513,6 +1516,7 @@ if (table === "assets") {
           ${nullableString(record.year)},
           ${nullableString(record.manufacturer)},
           ${nullableString(record.serial)},
+          ${nullableString(record.serial2)},
           ${asString(record.notes)},
           ARRAY(
             SELECT jsonb_array_elements_text(
@@ -1535,6 +1539,7 @@ if (table === "assets") {
           year = EXCLUDED.year,
           manufacturer = EXCLUDED.manufacturer,
           serial = EXCLUDED.serial,
+          serial_2 = EXCLUDED.serial_2,
           notes = EXCLUDED.notes,
           vendor_ids = EXCLUDED.vendor_ids,
           documents = EXCLUDED.documents,
