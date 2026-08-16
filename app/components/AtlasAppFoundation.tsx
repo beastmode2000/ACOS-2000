@@ -1026,7 +1026,15 @@ export function readAllStoredArrays<T>(keys: string[]): T[] {
     }
   }
 
-  return combined;
+  const unique = new Map<string, T>();
+  combined.forEach((item, index) => {
+    const record = item as Record<string, unknown> | null;
+    const id = record && typeof record === "object" ? String(record.id || "").trim() : "";
+    const key = id ? `id:${id}` : `value:${JSON.stringify(item)}:${index}`;
+    if (!unique.has(key)) unique.set(key, item);
+  });
+
+  return Array.from(unique.values());
 }
 
 export function saveStoredArray<T>(key: string, value: T[]) {
@@ -2029,8 +2037,91 @@ export function mergeLocationRecords(
   return byName(Array.from(merged.values()));
 }
 
+function normalizedWorkOrderFingerprint(record: Record<string, unknown>) {
+  const looksLikeWorkOrder =
+    "workType" in record ||
+    "recurring" in record ||
+    ("status" in record && "priority" in record && "date" in record);
+  if (!looksLikeWorkOrder) return "";
+
+  const normalize = (value: unknown) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+
+  return [
+    normalize(record.propertyId),
+    normalize(record.title),
+    normalize(record.assetId),
+    normalize(record.locationId),
+    normalize(record.subLocationId || record.subLocation),
+    normalize(record.date),
+    normalize(record.workType),
+    record.recurring ? "recurring" : "one-time",
+    normalize(record.recurrenceInterval),
+    normalize(record.recurrenceUnit),
+  ].join("|");
+}
+
+function recordCompletenessScore(record: Record<string, unknown>) {
+  const scalarFields = [
+    "notes",
+    "assignedTo",
+    "vendorId",
+    "assetId",
+    "locationId",
+    "procedureId",
+    "workCategory",
+    "completedAt",
+    "lastCompletedDate",
+    "updatedAt",
+  ];
+  const arrayFields = [
+    "checklist",
+    "photos",
+    "documents",
+    "serviceHistory",
+    "completionHistory",
+    "assignedPersonIds",
+    "assignedVendorIds",
+  ];
+  return (
+    scalarFields.reduce(
+      (score, field) => score + (String(record[field] || "").trim() ? 2 : 0),
+      0,
+    ) +
+    arrayFields.reduce(
+      (score, field) =>
+        score + (Array.isArray(record[field]) ? (record[field] as unknown[]).length : 0),
+      0,
+    )
+  );
+}
+
 export function byTitle<T extends { title: string }>(records: T[]): T[] {
-  return [...records].sort((a, b) => a.title.localeCompare(b.title));
+  const unique = new Map<string, T>();
+
+  records.forEach((item, index) => {
+    const record = item as T & Record<string, unknown>;
+    const fingerprint = normalizedWorkOrderFingerprint(record);
+    const id = String(record.id || "").trim();
+    const key = fingerprint || (id ? `id:${id}` : `row:${index}`);
+    const current = unique.get(key);
+
+    if (
+      !current ||
+      recordCompletenessScore(record) >
+        recordCompletenessScore(current as T & Record<string, unknown>)
+    ) {
+      unique.set(key, item);
+    }
+  });
+
+  return Array.from(unique.values()).sort((a, b) =>
+    a.title.localeCompare(b.title),
+  );
 }
 
 export function badgeStyle(value: string): React.CSSProperties {
@@ -5475,4 +5566,3 @@ export function CreatableRelationshipField({ label, value, options, emptyLabel, 
   };
   return <label style={{ ...fieldLabelStyle, display: "grid", gap: 5 }}><span>{label}</span><div style={{ display: "grid", gridTemplateColumns: clean && !exact ? "minmax(0,1fr) auto" : "1fr", gap: 6 }}><input list={listId} value={text} placeholder={emptyLabel} onChange={(event) => { const next = event.currentTarget.value; setText(next); const match = options.find((option) => option.label.trim().toLowerCase() === next.trim().toLowerCase()); onChange(match?.id || ""); }} onBlur={() => { if (exact) { setText(exact.label); onChange(exact.id); } }} onKeyDown={(event) => { if (event.key === "Enter" && clean && !exact) { event.preventDefault(); create(); } }} style={{ ...inputStyle, minHeight: compact ? 34 : undefined, padding: compact ? "5px 8px" : undefined, fontSize: compact ? 11 : undefined }}/><datalist id={listId}>{options.map((option) => <option key={option.id} value={option.label}/>)}</datalist>{clean && !exact ? <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={create} style={{ ...goldButtonStyle, width: "auto", minHeight: compact ? 34 : undefined, padding: compact ? "5px 9px" : undefined, fontSize: compact ? 11 : undefined, whiteSpace: "nowrap" }}>+ Add</button> : null}</div></label>;
 }
-
