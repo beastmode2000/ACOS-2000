@@ -7426,9 +7426,9 @@ export default function AtlasApp() {
             if (!sectionNotes.length) return null;
             return (
               <section key={section} style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 13px", background: "#F8FAFC", borderBottom: `1px solid ${colors.line}` }}>
-                  <strong style={{ color: colors.navy }}>{section}</strong>
-                  <span style={recurringBadgeStyle}>{sectionNotes.length}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 13px", background: colors.navy, borderBottom: `1px solid ${colors.navy}` }}>
+                  <strong style={{ color: "#FFFFFF" }}>{section}</strong>
+                  <span style={{ minWidth: 24, padding: "3px 7px", borderRadius: 999, background: "rgba(255,255,255,.16)", color: "#FFFFFF", fontSize: 11, fontWeight: 900, textAlign: "center" }}>{sectionNotes.length}</span>
                 </div>
                 <div style={{ display: "grid" }}>
                   {sectionNotes.map((note, index) => {
