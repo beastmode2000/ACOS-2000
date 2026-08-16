@@ -25592,6 +25592,11 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function renderPageVisualSummary() {
+    // Vendors uses the same clean list-and-information-card workspace as the
+    // other record pages. Do not render a separate command center, coverage
+    // cards, or snapshot above it.
+    if (screen === "vendors") return null;
+
     const openWorkOrders = serviceRecords.filter(
       (record) => record.status !== "Completed",
     ).length;
@@ -32596,5 +32601,3 @@ const photoStyle: React.CSSProperties = {
 
 
       
-
-    
