@@ -274,6 +274,11 @@ export default function AtlasAssetsWorkspace(props: any) {
     workPlanTasks
   } = props;
   const [assetVisibleSectionsExpanded, setAssetVisibleSectionsExpanded] = useState(false);
+  const [assetPdfPreview, setAssetPdfPreview] = useState<{
+    title: string;
+    source: string;
+  } | null>(null);
+  const [assetPdfZoom, setAssetPdfZoom] = useState(100);
   const assetSourceRecords = isSeanMarineUser ? seanVisibleAssetRecords : assetRecords;
   const assetWorkSourceRecords = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
   const attachedManuals = manualsForAsset(selectedAsset);
@@ -361,6 +366,16 @@ export default function AtlasAssetsWorkspace(props: any) {
     );
   };
 
+  const openAssetPdfPreview = (title: string, source: string) => {
+    const cleanSource = String(source || "").trim();
+    if (!cleanSource) return;
+    setAssetPdfZoom(100);
+    setAssetPdfPreview({
+      title: title || "PDF",
+      source: cleanSource,
+    });
+  };
+
   const openAssetDocumentImmediately = (document: DocumentRecord) => {
     const primaryFile = (document.files || []).find(
       (file) => file.url || file.dataUrl,
@@ -371,12 +386,12 @@ export default function AtlasAssetsWorkspace(props: any) {
       document.href ||
       "";
 
-    if (source && typeof window !== "undefined") {
-      window.open(source, "_blank", "noopener,noreferrer");
+    if (source) {
+      openAssetPdfPreview(document.title || "Document", source);
       return;
     }
 
-    // Only fall back to Documents when the record has no directly openable file.
+    // Keep the existing fallback only when the record truly has no file.
     setDocumentSearch(document.title || selectedAsset.name);
     setScreen("documents");
   };
@@ -2233,21 +2248,24 @@ export default function AtlasAssetsWorkspace(props: any) {
                             </span>
                           </div>
                           {href ? (
-                            <a
-                              href={href}
-                              target="_blank"
-                              rel="noreferrer"
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openAssetPdfPreview(
+                                  manual.title || "Manual PDF",
+                                  href,
+                                )
+                              }
                               style={{
                                 ...assetPrimaryActionButtonStyle,
                                 width: "auto",
                                 minHeight: 32,
                                 padding: "6px 10px",
-                                textDecoration: "none",
                                 whiteSpace: "nowrap",
                               }}
                             >
                               Open PDF
-                            </a>
+                            </button>
                           ) : (
                             <button
                               type="button"
@@ -3206,6 +3224,144 @@ export default function AtlasAssetsWorkspace(props: any) {
               </div>
             </section>
 
+            {assetPdfPreview ? (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label={assetPdfPreview.title}
+                onClick={() => setAssetPdfPreview(null)}
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 1000,
+                  background: "rgba(8, 21, 35, 0.62)",
+                  display: "grid",
+                  placeItems: "center",
+                  padding: isMobile ? 8 : 24,
+                }}
+              >
+                <div
+                  onClick={(event) => event.stopPropagation()}
+                  style={{
+                    width: isMobile ? "100%" : "min(1120px, 94vw)",
+                    height: isMobile ? "96dvh" : "92vh",
+                    background: "#FFFFFF",
+                    borderRadius: 12,
+                    boxShadow: "0 24px 70px rgba(0,0,0,0.28)",
+                    overflow: "hidden",
+                    display: "grid",
+                    gridTemplateRows: "auto minmax(0, 1fr)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      padding: "9px 10px",
+                      borderBottom: `1px solid ${colors.line}`,
+                      background: "#FFFFFF",
+                    }}
+                  >
+                    <strong
+                      style={{
+                        color: colors.navy,
+                        fontSize: 12,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {assetPdfPreview.title}
+                    </strong>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAssetPdfZoom((current) =>
+                            Math.max(50, current - 25),
+                          )
+                        }
+                        style={assetTinyButtonStyle}
+                        aria-label="Zoom out"
+                      >
+                        −
+                      </button>
+                      <span
+                        style={{
+                          minWidth: 44,
+                          textAlign: "center",
+                          color: colors.navy,
+                          fontSize: 11,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {assetPdfZoom}%
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAssetPdfZoom((current) =>
+                            Math.min(250, current + 25),
+                          )
+                        }
+                        style={assetTinyButtonStyle}
+                        aria-label="Zoom in"
+                      >
+                        +
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAssetPdfZoom(100)}
+                        style={assetTinyButtonStyle}
+                      >
+                        100%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAssetPdfPreview(null)}
+                        style={assetTinyButtonStyle}
+                        aria-label="Close PDF"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      minHeight: 0,
+                      overflow: "auto",
+                      background: "#E9EDF2",
+                    }}
+                  >
+                    <iframe
+                      key={`${assetPdfPreview.source}-${assetPdfZoom}`}
+                      src={assetPdfPreview.source}
+                      title={assetPdfPreview.title}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        height: "100%",
+                        minHeight: "100%",
+                        border: 0,
+                        background: "#FFFFFF",
+                        transform: `scale(${assetPdfZoom / 100})`,
+                        transformOrigin: "top left",
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
           </div>
         ) : (
