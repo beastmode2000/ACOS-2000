@@ -1505,18 +1505,30 @@ export function mergeUploadedFiles(
 
 export function normalizeAsset(record: Partial<AtlasAssetRecord>): AtlasAssetRecord {
   const name = String(record.name ?? "Unnamed Asset");
+  const rawPrimaryLocationId = String(record.locationId ?? "").trim();
+  const rawLocationIds = Array.from(
+    new Set(
+      [
+        rawPrimaryLocationId,
+        ...(Array.isArray(record.locationIds) ? record.locationIds.map(String) : []),
+      ].filter(Boolean),
+    ),
+  );
+  const specificLocationIds = rawLocationIds.filter((id) => id !== "general");
+  const normalizedLocationIds = specificLocationIds.length
+    ? specificLocationIds
+    : rawLocationIds;
+  const normalizedPrimaryLocationId = specificLocationIds.length
+    ? specificLocationIds.includes(rawPrimaryLocationId)
+      ? rawPrimaryLocationId
+      : specificLocationIds[0]
+    : rawPrimaryLocationId || normalizedLocationIds[0] || "";
+
   return {
     id: String(record.id || slugify(name)),
     name,
-    locationId: String(record.locationId ?? record.locationIds?.[0] ?? "general"),
-    locationIds: Array.from(
-      new Set(
-        (Array.isArray(record.locationIds) && record.locationIds.length
-          ? record.locationIds
-          : [String(record.locationId ?? "general")]
-        ).map(String).filter(Boolean),
-      ),
-    ),
+    locationId: normalizedPrimaryLocationId,
+    locationIds: normalizedLocationIds,
     category: String(record.category ?? "General"),
     status: isStatus(record.status) ? record.status : "Monitor",
     make: record.make || "",
@@ -1536,9 +1548,13 @@ export function normalizeAsset(record: Partial<AtlasAssetRecord>): AtlasAssetRec
 }
 
 export function assetLocationIds(asset: Partial<AtlasAssetRecord>) {
-  const ids = Array.isArray(asset.locationIds) ? asset.locationIds.map(String).filter(Boolean) : [];
+  const ids = Array.isArray(asset.locationIds)
+    ? asset.locationIds.map(String).filter(Boolean)
+    : [];
   const primary = String(asset.locationId || "").trim();
-  return Array.from(new Set([primary, ...ids].filter(Boolean)));
+  const combined = Array.from(new Set([primary, ...ids].filter(Boolean)));
+  const specific = combined.filter((id) => id !== "general");
+  return specific.length ? specific : combined;
 }
 
 export function assetHasLocation(asset: Partial<AtlasAssetRecord>, locationId: string) {
@@ -5034,6 +5050,112 @@ export function normalizeManualRecord(record: Partial<ManualRecord>): ManualReco
     createdAt: String(record.createdAt || new Date().toISOString()),
   };
 }
+
+const fieldLabelStyle: React.CSSProperties = {
+  color: colors.navy,
+  fontSize: 12,
+  fontWeight: 950,
+};
+
+const inputStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  width: "100%",
+  maxWidth: "100%",
+  boxSizing: "border-box",
+  borderRadius: 14,
+  padding: "12px 13px",
+  fontSize: 14,
+  color: colors.text,
+  background: "#FFFFFF",
+  outline: "none",
+  fontFamily: "inherit",
+  minWidth: 0,
+  fontWeight: 750,
+};
+
+const goldButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.gold}`,
+  background: colors.gold,
+  color: colors.navy,
+  borderRadius: 13,
+  padding: "10px 13px",
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
+const secondaryButtonStyle: React.CSSProperties = {
+  border: `1px solid ${colors.line}`,
+  background: "#FFFFFF",
+  color: colors.navy,
+  borderRadius: 13,
+  padding: "10px 13px",
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
+const sectionStyle: React.CSSProperties = {
+  background: colors.card,
+  width: "100%",
+  maxWidth: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
+  overflowWrap: "break-word",
+  border: `1px solid ${colors.line}`,
+  borderRadius: 16,
+  padding: 16,
+  boxShadow: "0 5px 18px rgba(15, 35, 55, 0.05)",
+};
+
+const drawerGridStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 16,
+  alignItems: "start",
+  overflow: "visible",
+};
+
+const listPanelStyle: React.CSSProperties = {
+  minWidth: 0,
+};
+
+const drawerStyle: React.CSSProperties = {
+  background: colors.panel,
+  border: `1px solid ${colors.line}`,
+  borderRadius: 24,
+  padding: 18,
+  position: "sticky",
+  top: 16,
+  alignSelf: "start",
+  maxHeight: "calc(100vh - 32px)",
+  overflowY: "auto",
+  overflowX: "hidden",
+  overscrollBehavior: "contain",
+  boxShadow: "0 16px 35px rgba(15,23,42,0.06)",
+  minWidth: 0,
+  wordBreak: "break-word",
+};
+
+const buttonRowStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const eyebrowStyle: React.CSSProperties = {
+  color: colors.gold,
+  fontSize: 12,
+  fontWeight: 950,
+  letterSpacing: 1.8,
+  textTransform: "uppercase",
+};
+
+const mutedSmallStyle: React.CSSProperties = {
+  color: colors.muted,
+  fontSize: 13,
+  margin: "4px 0 0",
+  lineHeight: 1.45,
+  wordBreak: "break-word",
+};
 
 export function ListDrawerLayout(props: {
   eyebrow?: string;
