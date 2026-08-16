@@ -363,6 +363,7 @@ export default function AtlasApp() {
     "Private",
   ];
   const [notesDraft, setNotesDraft] = useState("");
+  const [notesTitleDraft, setNotesTitleDraft] = useState("");
   const [notesSearch, setNotesSearch] = useState("");
   const [notesListening, setNotesListening] = useState(false);
   const [mobileNotesMoreOpen, setMobileNotesMoreOpen] = useState(false);
@@ -412,6 +413,15 @@ export default function AtlasApp() {
     try {
       const raw = window.localStorage.getItem("atlas-note-sections-v1");
       const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+  const [noteTitlesById, setNoteTitlesById] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem("atlas-note-titles-v1") || "{}");
       return parsed && typeof parsed === "object" ? parsed : {};
     } catch {
       return {};
@@ -828,10 +838,11 @@ export default function AtlasApp() {
     if (typeof window === "undefined") return;
     try {
       window.localStorage.setItem("atlas-note-sections-v1", JSON.stringify(notesSectionById));
+      window.localStorage.setItem("atlas-note-titles-v1", JSON.stringify(noteTitlesById));
     } catch {
       // Notes still work for the current session if browser storage is unavailable.
     }
-  }, [notesSectionById]);
+  }, [notesSectionById, noteTitlesById]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -6274,8 +6285,9 @@ export default function AtlasApp() {
   }
 
   function savePermanentNote() {
+    const noteTitle = notesTitleDraft.trim();
     const noteText = notesDraft.trim();
-    if (!noteText) return;
+    if (!noteTitle || !noteText) return;
     const noteId = uid("permanent-note");
     setTodayLogEntries((current) => [{
       id: noteId,
@@ -6286,6 +6298,8 @@ export default function AtlasApp() {
       createdAt: new Date().toISOString(),
     }, ...current]);
     setNotesSectionById((current) => ({ ...current, [noteId]: notesSection }));
+    setNoteTitlesById((current) => ({ ...current, [noteId]: noteTitle }));
+    setNotesTitleDraft("");
     setNotesDraft("");
     showSaveToast(`${notesSection} note saved.`);
   }
@@ -6293,6 +6307,11 @@ export default function AtlasApp() {
   function deletePermanentNote(noteId: string) {
     setTodayLogEntries((current) => current.filter((entry) => entry.id !== noteId));
     setNotesSectionById((current) => {
+      const next = { ...current };
+      delete next[noteId];
+      return next;
+    });
+    setNoteTitlesById((current) => {
       const next = { ...current };
       delete next[noteId];
       return next;
@@ -6323,6 +6342,10 @@ export default function AtlasApp() {
           : entry,
       ),
     );
+  }
+
+  function updatePermanentNoteTitle(noteId: string, value: string) {
+    setNoteTitlesById((current) => ({ ...current, [noteId]: value }));
   }
 
   function savePermanentNoteEdits(noteId: string) {
@@ -6939,10 +6962,16 @@ export default function AtlasApp() {
       .sort((a, b) => String(b.createdAt || b.date).localeCompare(String(a.createdAt || a.date)));
 
     const sectionFor = (noteId: string): NoteSection => notesSectionById[noteId] || "General";
+    const titleFor = (note: (typeof allPropertyNotes)[number]) => {
+      const savedTitle = String(noteTitlesById[note.id] || "").trim();
+      if (savedTitle) return savedTitle;
+      const firstLine = String(note.text || "").split(/\r?\n/).find((line) => line.trim())?.trim() || "Untitled Note";
+      return firstLine.length > 64 ? `${firstLine.slice(0, 61)}…` : firstLine;
+    };
 
     const notes = allPropertyNotes
       .filter((entry) => notesSectionFilter === "All" || sectionFor(entry.id) === notesSectionFilter)
-      .filter((entry) => !query || entry.text.toLowerCase().includes(query))
+      .filter((entry) => !query || `${titleFor(entry)} ${entry.text}`.toLowerCase().includes(query))
       .sort((a, b) => {
         const aPinned = pinnedNoteIds.includes(a.id) ? 1 : 0;
         const bPinned = pinnedNoteIds.includes(b.id) ? 1 : 0;
@@ -6970,12 +6999,6 @@ export default function AtlasApp() {
 
     return (
       <div style={{ display: "grid", gap: 14 }}>
-        <SectionHeader
-          eyebrow="PROPERTY RECORD"
-          title="Notes"
-          detail="A simple property notepad for things you want to remember."
-        />
-
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 16, borderColor: restrictedNotesUnlocked ? "#D7B45D" : colors.line }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div>
@@ -7301,6 +7324,12 @@ export default function AtlasApp() {
         </section>
 
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
+          <input
+            value={notesTitleDraft}
+            onChange={(event) => setNotesTitleDraft(event.currentTarget.value)}
+            placeholder="Note title"
+            style={{ ...inputStyle, width: "100%", minHeight: 42, marginBottom: 10, fontSize: 16, fontWeight: 850 }}
+          />
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 180px", gap: 10 }}>
             <textarea
               value={notesDraft}
@@ -7356,9 +7385,9 @@ export default function AtlasApp() {
               {noteSections.map((section) => <option key={section} value={section}>{section}</option>)}
             </select>
             <div style={{ display: "flex", gap: 7 }}>
-              {notesDraft ? <button type="button" onClick={() => setNotesDraft("")} style={secondaryButtonStyle}>Clear</button> : null}
+              {notesDraft || notesTitleDraft ? <button type="button" onClick={() => { setNotesDraft(""); setNotesTitleDraft(""); }} style={secondaryButtonStyle}>Clear</button> : null}
               <button type="button" onClick={() => void quickAddRestrictedNote()} disabled={!notesDraft.trim() || restrictedNotesBusy} style={secondaryButtonStyle}>Add to Restricted</button>
-              <button type="button" onClick={savePermanentNote} disabled={!notesDraft.trim()} style={goldButtonStyle}>Save Note</button>
+              <button type="button" onClick={savePermanentNote} disabled={!notesTitleDraft.trim() || !notesDraft.trim()} style={{ ...goldButtonStyle, opacity: notesTitleDraft.trim() && notesDraft.trim() ? 1 : .55 }}>Save Note</button>
             </div>
           </div>
         </section>
@@ -7395,49 +7424,37 @@ export default function AtlasApp() {
         </section>
         ) : null}
 
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 }}>
-          {notes.map((note) => {
-            const section = sectionFor(note.id);
-            const pinned = pinnedNoteIds.includes(note.id);
-            const followUp = noteFollowUpDates[note.id] || "";
-            const attachments = noteAttachments[note.id] || [];
+        <div style={{ display: "grid", gap: 12 }}>
+          {noteSections.map((section) => {
+            const sectionNotes = notes.filter((note) => sectionFor(note.id) === section);
+            if (!sectionNotes.length) return null;
             return (
-              <button
-                key={note.id}
-                type="button"
-                onClick={() => setSelectedNoteId(note.id)}
-                style={{
-                  textAlign: "left",
-                  border: `1px solid ${pinned ? "#E5C06B" : colors.line}`,
-                  borderRadius: 16,
-                  background: pinned ? "#FFFDF7" : "#FFFFFF",
-                  padding: 15,
-                  cursor: "pointer",
-                  minHeight: 145,
-                  boxShadow: pinned
-                    ? "0 8px 22px rgba(201,154,61,.12)"
-                    : "0 5px 16px rgba(7,27,47,.045)",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                  <span style={{ color: colors.navy3, fontSize: 11, fontWeight: 900 }}>
-                    {sectionGlyph(section)} {section}
-                  </span>
-                  {pinned ? <span style={{ color: "#9B742A", fontSize: 11, fontWeight: 900 }}>PINNED</span> : null}
+              <section key={section} style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 13px", background: "#F8FAFC", borderBottom: `1px solid ${colors.line}` }}>
+                  <strong style={{ color: colors.navy }}>{sectionGlyph(section)} {section}</strong>
+                  <span style={recurringBadgeStyle}>{sectionNotes.length}</span>
                 </div>
-                <div style={{ marginTop: 11, whiteSpace: "pre-wrap", lineHeight: 1.58, color: colors.text, fontSize: 14.5 }}>
-                  {note.text}
+                <div style={{ display: "grid" }}>
+                  {sectionNotes.map((note, index) => {
+                    const pinned = pinnedNoteIds.includes(note.id);
+                    const followUp = noteFollowUpDates[note.id] || "";
+                    const attachments = noteAttachments[note.id] || [];
+                    return (
+                      <button key={note.id} type="button" onClick={() => setSelectedNoteId(note.id)} style={{ border: 0, borderBottom: index < sectionNotes.length - 1 ? `1px solid ${colors.line}` : 0, background: pinned ? "#FFFDF7" : "#FFFFFF", padding: "12px 14px", cursor: "pointer", textAlign: "left", display: "grid", gap: 5 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                          <strong style={{ color: colors.navy, fontSize: 14 }}>{titleFor(note)}</strong>
+                          {pinned ? <span style={{ color: "#9B742A", fontSize: 10, fontWeight: 900 }}>PINNED</span> : null}
+                        </div>
+                        <span style={{ color: colors.muted, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(note.text || "").replace(/\s+/g, " ")}</span>
+                        <small style={mutedSmallStyle}>{note.createdAt ? new Date(note.createdAt).toLocaleDateString() : formatDate(note.date)}{followUp ? ` · Follow up ${formatDate(followUp)}` : ""}{attachments.length ? ` · ${attachments.length} linked` : ""}</small>
+                      </button>
+                    );
+                  })}
                 </div>
-                <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 12 }}>
-                  <small style={mutedSmallStyle}>
-                    {note.createdAt ? new Date(note.createdAt).toLocaleString() : formatDate(note.date)}
-                  </small>
-                  {followUp ? <small style={{ color: colors.navy3, fontWeight: 800 }}>Follow up {formatDate(followUp)}</small> : null}
-                  {attachments.slice(0, 3).map((attachment) => <small key={`${attachment.kind}-${attachment.id}`} style={{ color: colors.navy3, fontWeight: 800 }}>{attachment.kind}</small>)}{attachments.length > 3 ? <small style={{ color: colors.muted, fontWeight: 800 }}>+{attachments.length - 3} more</small> : null}
-                </div>
-              </button>
+              </section>
             );
           })}
+          {!notes.length ? <div style={noticeStyle}>No notes match this category or search.</div> : null}
         </div>
 
         {selectedNote ? (
@@ -7453,13 +7470,23 @@ export default function AtlasApp() {
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
                 <div>
-                  <div style={eyebrowStyle}>NOTE</div>
+                  <div style={eyebrowStyle}>{sectionFor(selectedNote.id)}</div>
+                  <strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>{titleFor(selectedNote)}</strong>
                   <small style={mutedSmallStyle}>
                     {selectedNote.createdAt ? new Date(selectedNote.createdAt).toLocaleString() : formatDate(selectedNote.date)}
                   </small>
                 </div>
                 <button type="button" onClick={() => setSelectedNoteId("")} style={compactUtilityButtonStyle}>Close</button>
               </div>
+
+              <label style={{ display: "grid", gap: 5, marginTop: 14 }}>
+                <span style={fieldLabelStyle}>TITLE</span>
+                <input
+                  value={noteTitlesById[selectedNote.id] || titleFor(selectedNote)}
+                  onChange={(event) => updatePermanentNoteTitle(selectedNote.id, event.currentTarget.value)}
+                  style={{ ...inputStyle, width: "100%", minHeight: 40, fontWeight: 850 }}
+                />
+              </label>
 
               <textarea
                 value={selectedNote.text}
