@@ -589,6 +589,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [newWorkOpen, setNewWorkOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [workEditorOpen, setWorkEditorOpen] = useState(false);
+  const [notesEditorOpen, setNotesEditorOpen] = useState(false);
   const [newWorkDraft, setNewWorkDraft] = useState<{
     title: string;
     workType: WorkItemType;
@@ -653,6 +654,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   useEffect(() => {
     if (!selectedService?.id) setDetailOpen(false);
     setWorkEditorOpen(false);
+    setNotesEditorOpen(false);
   }, [selectedService?.id]);
 
   useEffect(() => {
@@ -1777,6 +1779,97 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         title="Work Orders"
         detail=""
         isMobile={isMobile}
+        toolbar={
+          <div style={{ display: "grid", gap: 8, width: "100%" }}>
+            <input
+              type="search"
+              value={localSearch}
+              onChange={(event) => setLocalSearch(event.currentTarget.value)}
+              aria-label="Search work orders"
+              placeholder="Search work orders..."
+              style={{
+                ...controlStyle,
+                width: "100%",
+                minHeight: 38,
+                padding: "7px 10px",
+                border: "1px solid #0B2A44",
+                backgroundColor: "#FFFFFF",
+                boxShadow: "inset 0 0 0 1px rgba(11, 42, 68, 0.08)",
+              }}
+            />
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "repeat(2, minmax(0, 1fr))"
+                  : `repeat(${Math.max(1, visibleFilters.length + (visibleFilters.length < DEFAULT_VISIBLE_FILTERS.length ? 1 : 0))}, minmax(0, 1fr))`,
+                alignItems: "center",
+                gap: 7,
+                width: "100%",
+              }}
+            >
+              {visibleFilters.includes("assigned") ? (
+                <div style={{ display: "flex", minWidth: 0, border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
+                  <select value={assignedFilter} onChange={(event) => setAssignedFilter(event.currentTarget.value)} style={{ ...controlStyle, width: "100%", minWidth: 0, minHeight: 34, border: 0, borderRadius: 0 }} aria-label="Assigned to">
+                    <option value="All">Assigned To</option>
+                    <option value="None">Unassigned</option>
+                    {byName(contactRecords).map((contact: any) => <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>)}
+                  </select>
+                  <button type="button" onClick={() => removeFilter("assigned")} title="Remove Assigned To filter" aria-label="Remove Assigned To filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
+                </div>
+              ) : null}
+              {visibleFilters.includes("dueDate") ? (
+                <div style={{ display: "flex", minWidth: 0, border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
+                  <select value={dueDateFilter} onChange={(event) => setDueDateFilter(event.currentTarget.value)} style={{ ...controlStyle, width: "100%", minWidth: 0, minHeight: 34, border: 0, borderRadius: 0 }} aria-label="Due date">
+                    <option value="All">Due Date</option><option value="Overdue">Overdue</option><option value="Today">Today</option><option value="Next 7 Days">Next 7 Days</option><option value="This Month">This Month</option><option value="Next Month">Next Month</option><option value="No Due Date">No Due Date</option>
+                  </select>
+                  <button type="button" onClick={() => removeFilter("dueDate")} title="Remove Due Date filter" aria-label="Remove Due Date filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
+                </div>
+              ) : null}
+              {visibleFilters.includes("location") ? (
+                <div style={{ display: "flex", minWidth: 0, border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
+                  <select value={locationFilter} onChange={(event) => { setLocationFilter(event.currentTarget.value); setSubLocationFilter("All"); }} style={{ ...controlStyle, width: "100%", minWidth: 0, minHeight: 34, border: 0, borderRadius: 0 }} aria-label="Location">
+                    <option value="All">Location</option><option value="None">No Location</option>
+                    {topLevelLocations.map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}
+                  </select>
+                  <button type="button" onClick={() => removeFilter("location")} title="Remove Location filter" aria-label="Remove Location filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
+                </div>
+              ) : null}
+              {visibleFilters.includes("priority") ? (
+                <div style={{ display: "flex", minWidth: 0, border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
+                  <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.currentTarget.value)} style={{ ...controlStyle, width: "100%", minWidth: 0, minHeight: 34, border: 0, borderRadius: 0 }} aria-label="Priority">
+                    <option value="All">Priority</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option>
+                  </select>
+                  <button type="button" onClick={() => removeFilter("priority")} title="Remove Priority filter" aria-label="Remove Priority filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
+                </div>
+              ) : null}
+              {visibleFilters.includes("category") ? (
+                <div style={{ display: "flex", minWidth: 0, border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
+                  <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.currentTarget.value)} style={{ ...controlStyle, width: "100%", minWidth: 0, minHeight: 34, border: 0, borderRadius: 0 }} aria-label="Category">
+                    <option value="All">Category</option>
+                    {categories.filter((category) => category !== "All").map((category) => <option key={category} value={category}>{categoryDisplayLabel(category)}</option>)}
+                  </select>
+                  <button type="button" onClick={() => removeFilter("category")} title="Remove Category filter" aria-label="Remove Category filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
+                </div>
+              ) : null}
+              {visibleFilters.includes("view") ? (
+                <div style={{ display: "flex", minWidth: 0, border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
+                  <select value={activeSectionId} onChange={(event) => setActiveSectionId(event.currentTarget.value)} style={{ ...controlStyle, width: "100%", minWidth: 0, minHeight: 34, border: 0, borderRadius: 0 }} aria-label="Work view">
+                    {sections.map((section) => <option key={section.id} value={section.id}>{section.label === "Preventive Maintenance" ? "Recurring" : section.label}</option>)}
+                  </select>
+                  <button type="button" onClick={() => removeFilter("view")} title="Remove Work View filter" aria-label="Remove Work View filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
+                </div>
+              ) : null}
+              {visibleFilters.length < DEFAULT_VISIBLE_FILTERS.length ? (
+                <select value="" onChange={(event) => { const value = event.currentTarget.value as WorkFilterKey; if (value) restoreFilter(value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: "100%", minWidth: 0, minHeight: 34, borderRadius: 9, fontWeight: 700 }} aria-label="Add filter">
+                  <option value="">+ Add Filter</option>
+                  {DEFAULT_VISIBLE_FILTERS.filter((filter) => !visibleFilters.includes(filter)).map((filter) => <option key={filter} value={filter}>{WORK_FILTER_LABELS[filter]}</option>)}
+                </select>
+              ) : null}
+              {activeFilterCount ? <button type="button" onClick={clearFilters} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, padding: "6px 9px", fontWeight: 500 }}>Clear</button> : null}
+            </div>
+          </div>
+        }
         outerStyle={
           isMobile
             ? undefined
@@ -2083,177 +2176,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
             
 
-            <div style={{ display: "grid", gap: 8 }}>
-              <input
-                type="search"
-                value={localSearch}
-                onChange={(event) => setLocalSearch(event.currentTarget.value)}
-                aria-label="Search work orders"
-                placeholder="Search work orders..."
-                style={{
-                  ...controlStyle,
-                  width: "100%",
-                  minHeight: 38,
-                  padding: "7px 10px",
-                  border: "1px solid #0B2A44",
-                  backgroundColor: "#FFFFFF",
-                  boxShadow: "inset 0 0 0 1px rgba(11, 42, 68, 0.08)",
-                }}
-              />
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  flexWrap: "wrap",
-                }}
-              >
-                {visibleFilters.includes("assigned") ? <div style={{ display: "flex", alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
-                <select
-                  value={assignedFilter}
-                  onChange={(event) => setAssignedFilter(event.currentTarget.value)}
-                  style={{ ...controlStyle, width: "auto", minWidth: 118, minHeight: 34, border: 0, borderRadius: 0 }}
-                  aria-label="Assigned to"
-                >
-                  <option value="All">Assigned To</option>
-                  <option value="None">Unassigned</option>
-                  {byName(contactRecords).map((contact: any) => (
-                    <option key={contact.id || contact.name} value={contact.name}>
-                      {contact.name}
-                    </option>
-                  ))}
-                </select>
-                <button type="button" onClick={() => removeFilter("assigned")} title="Remove Assigned To filter" aria-label="Remove Assigned To filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
-                </div> : null}
-
-                {visibleFilters.includes("dueDate") ? <div style={{ display: "flex", alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
-                <select
-                  value={dueDateFilter}
-                  onChange={(event) => setDueDateFilter(event.currentTarget.value)}
-                  style={{ ...controlStyle, width: "auto", minWidth: 101, minHeight: 34, border: 0, borderRadius: 0 }}
-                  aria-label="Due date"
-                >
-                  <option value="All">Due Date</option>
-                  <option value="Overdue">Overdue</option>
-                  <option value="Today">Today</option>
-                  <option value="Next 7 Days">Next 7 Days</option>
-                  <option value="This Month">This Month</option>
-                  <option value="Next Month">Next Month</option>
-                  <option value="No Due Date">No Due Date</option>
-                </select>
-                <button type="button" onClick={() => removeFilter("dueDate")} title="Remove Due Date filter" aria-label="Remove Due Date filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
-                </div> : null}
-
-                {visibleFilters.includes("location") ? <div style={{ display: "flex", alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
-                <select
-                  value={locationFilter}
-                  onChange={(event) => {
-                    setLocationFilter(event.currentTarget.value);
-                    setSubLocationFilter("All");
-                  }}
-                  style={{ ...controlStyle, width: "auto", minWidth: 105, minHeight: 34, border: 0, borderRadius: 0 }}
-                  aria-label="Location"
-                >
-                  <option value="All">Location</option>
-                  <option value="None">No Location</option>
-                  {topLevelLocations.map((location: any) => (
-                    <option key={location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-                </select>
-                <button type="button" onClick={() => removeFilter("location")} title="Remove Location filter" aria-label="Remove Location filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
-                </div> : null}
-
-                {visibleFilters.includes("priority") ? <div style={{ display: "flex", alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
-                <select
-                  value={priorityFilter}
-                  onChange={(event) => setPriorityFilter(event.currentTarget.value)}
-                  style={{ ...controlStyle, width: "auto", minWidth: 92, minHeight: 34, border: 0, borderRadius: 0 }}
-                  aria-label="Priority"
-                >
-                  <option value="All">Priority</option>
-                  <option value="High">High</option>
-                  <option value="Medium">Medium</option>
-                  <option value="Low">Low</option>
-                </select>
-                <button type="button" onClick={() => removeFilter("priority")} title="Remove Priority filter" aria-label="Remove Priority filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
-                </div> : null}
-
-                {visibleFilters.includes("category") ? <div style={{ display: "flex", alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
-                <select
-                  value={categoryFilter}
-                  onChange={(event) => setCategoryFilter(event.currentTarget.value)}
-                  style={{ ...controlStyle, width: "auto", minWidth: 105, minHeight: 34, border: 0, borderRadius: 0 }}
-                  aria-label="Category"
-                >
-                  <option value="All">Category</option>
-                  {categories
-                    .filter((category) => category !== "All")
-                    .map((category) => (
-                      <option key={category} value={category}>
-                        {categoryDisplayLabel(category)}
-                      </option>
-                    ))}
-                </select>
-                <button type="button" onClick={() => removeFilter("category")} title="Remove Category filter" aria-label="Remove Category filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
-                </div> : null}
-
-                {visibleFilters.includes("view") ? <div style={{ display: "flex", alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
-                <select
-                  value={activeSectionId}
-                  onChange={(event) => setActiveSectionId(event.currentTarget.value)}
-                  style={{ ...controlStyle, width: "auto", minWidth: 105, minHeight: 34, border: 0, borderRadius: 0 }}
-                  aria-label="Work view"
-                >
-                  {sections.map((section) => (
-                    <option key={section.id} value={section.id}>
-                      {section.label === "Preventive Maintenance"
-                        ? "Recurring"
-                        : section.label}
-                    </option>
-                  ))}
-                </select>
-                <button type="button" onClick={() => removeFilter("view")} title="Remove Work View filter" aria-label="Remove Work View filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
-                </div> : null}
-
-                {visibleFilters.length < DEFAULT_VISIBLE_FILTERS.length ? (
-                  <select
-                    value=""
-                    onChange={(event) => {
-                      const value = event.currentTarget.value as WorkFilterKey;
-                      if (value) restoreFilter(value);
-                      event.currentTarget.value = "";
-                    }}
-                    style={{ ...controlStyle, width: "auto", minWidth: 105, minHeight: 34, borderRadius: 9, fontWeight: 700 }}
-                    aria-label="Add filter"
-                  >
-                    <option value="">+ Add Filter</option>
-                    {DEFAULT_VISIBLE_FILTERS.filter((filter) => !visibleFilters.includes(filter)).map((filter) => (
-                      <option key={filter} value={filter}>{WORK_FILTER_LABELS[filter]}</option>
-                    ))}
-                  </select>
-                ) : null}
-
-                {activeFilterCount ? (
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    style={{
-                      ...secondaryButtonStyle,
-                      width: "auto",
-                      minHeight: 34,
-                      padding: "6px 9px",
-                      fontWeight: 500,
-                    }}
-                  >
-                    Clear
-                  </button>
-                ) : null}
-              </div>
-            </div>
-
             {manageSectionsOpen ? (
               <section style={{ ...filterPanelStyle, background: "#FFFFFF" }}>
                 {sections.map((section) => (
@@ -2407,9 +2329,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                           <h2 style={{ margin: "10px 0 0", color: colors.text, fontSize: isMobile ? 23 : 29, lineHeight: 1.14, letterSpacing: "-.02em" }}>
                             {selectedService.title || "Untitled Work Order"}
                           </h2>
-                          {selectedService.notes ? (
-                            <p style={{ margin: "9px 0 0", color: colors.muted, fontSize: 14, lineHeight: 1.55, maxWidth: 760 }}>{selectedService.notes}</p>
-                          ) : null}
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
                           {selectedService.status !== "Completed" ? (
@@ -2472,7 +2391,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => void deleteWorkOrderRecord(selectedService)} title="Delete work order" aria-label="Delete work order" style={{ ...dangerButtonStyle, width: 34, minHeight: 32, padding: 0, display: "grid", placeItems: "center" }}><TrashIcon /></button><button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button></div>
                     </div>
                     <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, fontSize: 20, fontWeight: 800 }} />
-                    <textarea value={selectedService.notes || ""} onChange={(event) => updateWorkOrder({ notes: event.currentTarget.value })} rows={3} style={{ ...inputStyle, minHeight: 78, resize: "vertical" }} />
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))", gap: 9 }}>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due Date"}</span><input type="date" value={String(selectedService.date || "")} onChange={(event) => updateWorkOrder({ date: event.currentTarget.value })} style={inputStyle} /></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Estimated Time</span><select value={selectedService.effort || ""} onChange={(event) => updateWorkOrder({ effort: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No estimate</option>{["5 minutes","15 minutes","30 minutes","1 hour","Half Day","Full Day","Multi-Day"].map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label>
@@ -2498,11 +2416,35 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 )}
               </section>
 
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: selectedService.notes || notesEditorOpen ? 9 : 0 }}>
+                  <strong>Notes</strong>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <button type="button" onClick={() => setNotesEditorOpen((current) => !current)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 31, padding: "5px 9px", fontSize: 12 }}>{notesEditorOpen ? "Cancel" : "Edit"}</button>
+                    {selectedService.notes ? <button type="button" onClick={() => { if (!window.confirm("Delete these work order notes?")) return; updateWorkOrder({ notes: "" }); setNotesEditorOpen(false); window.setTimeout(() => void saveWorkOrderRecord(), 0); }} title="Delete notes" aria-label="Delete notes" style={{ ...dangerButtonStyle, width: 32, minHeight: 31, padding: 0, display: "grid", placeItems: "center" }}><TrashIcon /></button> : null}
+                  </div>
+                </div>
+                {notesEditorOpen ? (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <textarea value={selectedService.notes || ""} onChange={(event) => updateWorkOrder({ notes: event.currentTarget.value })} rows={4} style={{ ...inputStyle, minHeight: 92, resize: "vertical" }} />
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}><button type="button" onClick={async () => { await saveWorkOrderRecord(); setNotesEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto", minHeight: 34, padding: "6px 11px" }}>Save Notes</button></div>
+                  </div>
+                ) : selectedService.notes ? (
+                  <p style={{ margin: 0, color: colors.text, fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{selectedService.notes}</p>
+                ) : (
+                  <span style={mutedSmallStyle}>No notes added.</span>
+                )}
+              </section>
+
               {workEditorOpen || (selectedService.checklist || []).length ? <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 9 }}>
                   <div>
                     <div style={eyebrowStyle}>Procedure</div>
                     <strong>{(selectedService.checklist || []).length ? `${(selectedService.checklist || []).filter((item: ChecklistItem) => item.completed).length} of ${(selectedService.checklist || []).length} complete` : "Add procedure steps"}</strong>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button type="button" onClick={() => setWorkEditorOpen(true)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 31, padding: "5px 9px", fontSize: 12 }}>Edit</button>
+                    {(selectedService.checklist || []).length ? <button type="button" onClick={() => { if (!window.confirm("Delete all procedure steps from this work order?")) return; updateWorkOrder({ checklist: [] }); window.setTimeout(() => void saveWorkOrderRecord(), 0); }} title="Delete procedure" aria-label="Delete procedure" style={{ ...dangerButtonStyle, width: 32, minHeight: 31, padding: 0, display: "grid", placeItems: "center" }}><TrashIcon /></button> : null}
                   </div>
                 </div>
                 {(selectedService.checklist || []).length ? (
@@ -2544,7 +2486,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       </div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                         <a href={source || undefined} target="_blank" rel="noreferrer" style={{ color: colors.text, fontSize: 13, fontWeight: 700, textDecoration: "none" }}>{photo.name || "Work photo"}</a>
-                        <button type="button" onClick={() => { removePhoto(photo.id); setSelectedPhotoIndex(0); }} style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer", fontSize: 12 }}>Remove</button>
+                        <button type="button" onClick={() => { removePhoto(photo.id); setSelectedPhotoIndex(0); }} title="Delete photo" aria-label="Delete photo" style={{ ...dangerButtonStyle, width: 32, minHeight: 31, padding: 0, display: "grid", placeItems: "center" }}><TrashIcon /></button>
                       </div>
                     </div>
                   );
@@ -2556,25 +2498,15 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 {(selectedService.serviceHistory || []).length ? (
                   <div style={{ display: "grid", gap: 0, marginTop: 8 }}>
                     {(selectedService.serviceHistory || []).map((entry: any) => (
-                      <div key={entry.id} style={{ padding: "9px 0", borderBottom: `1px solid ${colors.line}` }}>
-                        <strong style={{ display: "block", fontSize: 13 }}>Completed {new Date(entry.completedAt).toLocaleDateString()}</strong>
+                      <div key={entry.id} style={{ padding: "9px 0", borderBottom: `1px solid ${colors.line}`, display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
+                        <div><strong style={{ display: "block", fontSize: 13 }}>Completed {new Date(entry.completedAt).toLocaleDateString()}</strong>
                         <span style={mutedSmallStyle}>{(entry.checklist || []).filter((item: any) => item.completed).length}/{(entry.checklist || []).length} steps · {(entry.photos || []).length} photos</span>
-                        {entry.notes ? <p style={{ margin: "5px 0 0", fontSize: 12 }}>{entry.notes}</p> : null}
+                        {entry.notes ? <p style={{ margin: "5px 0 0", fontSize: 12 }}>{entry.notes}</p> : null}</div>
+                        <button type="button" onClick={() => { if (!window.confirm("Delete this history entry?")) return; updateWorkOrder({ serviceHistory: (selectedService.serviceHistory || []).filter((item: any) => item.id !== entry.id) }); window.setTimeout(() => void saveWorkOrderRecord(), 0); }} title="Delete history entry" aria-label="Delete history entry" style={{ ...dangerButtonStyle, width: 32, minHeight: 31, padding: 0, display: "grid", placeItems: "center" }}><TrashIcon /></button>
                       </div>
                     ))}
                   </div>
                 ) : null}
-              </details> : null}
-
-              {workEditorOpen || selectedService.estimatedCost || selectedService.actualCost || selectedService.invoiceNumber || selectedService.internalNotes ? <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
-                <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Cost, Invoice & Notes</summary>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 9, marginTop: 9 }}>
-                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Estimated Cost</span><input type="number" min="0" step="0.01" value={selectedService.estimatedCost || ""} onChange={(event) => updateWorkOrder({ estimatedCost: Number(event.currentTarget.value || 0) })} style={inputStyle} /></label>
-                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Actual Cost</span><input type="number" min="0" step="0.01" value={selectedService.actualCost || ""} onChange={(event) => updateWorkOrder({ actualCost: Number(event.currentTarget.value || 0) })} style={inputStyle} /></label>
-                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Invoice</span><input value={selectedService.invoiceNumber || ""} onChange={(event) => updateWorkOrder({ invoiceNumber: event.currentTarget.value })} style={inputStyle} /></label>
-                </div>
-                <textarea value={selectedService.internalNotes || ""} onChange={(event) => updateWorkOrder({ internalNotes: event.currentTarget.value })} rows={3} style={{ ...inputStyle, minHeight: 78, resize: "vertical", marginTop: 9 }} />
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><button type="button" onClick={() => void saveWorkOrderRecord()} style={{ ...goldButtonStyle, width: "auto" }}>Save</button></div>
               </details> : null}
 
               <section style={{ ...detailSectionStyle, padding: 10, background: "#F8FAFC" }}>
