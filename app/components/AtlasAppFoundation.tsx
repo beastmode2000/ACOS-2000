@@ -5444,8 +5444,8 @@ export function ListDrawerLayout(props: {
           data-atlas-record-list
           style={
             props.listPanelStyleOverride
-              ? { ...desktopListStyle, ...props.listPanelStyleOverride }
-              : desktopListStyle
+              ? { ...desktopListStyle, ...props.listPanelStyleOverride, scrollbarGutter: "stable" }
+              : { ...desktopListStyle, scrollbarGutter: "stable" }
           }
         >
           {props.list}
@@ -5457,8 +5457,8 @@ export function ListDrawerLayout(props: {
             data-atlas-detail-panel
             style={
               props.drawerStyleOverride
-                ? { ...desktopDrawerStyle, ...props.drawerStyleOverride }
-                : desktopDrawerStyle
+                ? { ...desktopDrawerStyle, ...props.drawerStyleOverride, scrollbarGutter: "stable" }
+                : { ...desktopDrawerStyle, scrollbarGutter: "stable" }
             }
           >
             <div className="atlas-record-detail-content">{props.drawer}</div>
