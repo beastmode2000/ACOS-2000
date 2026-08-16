@@ -225,22 +225,14 @@ export type AtlasTaskMeta = {
   completedAt?: string;
   createdAt: string;
   projectId?: string;
-  projectIds?: string[];
   workOrderId?: string;
-  workOrderIds?: string[];
   assetId?: string;
-  assetIds?: string[];
   vehicleId?: string;
-  vehicleIds?: string[];
   routineTaskId?: string;
   routineDate?: string;
   vendorId?: string;
-  vendorIds?: string[];
   procedureId?: string;
-  procedureIds?: string[];
   contactId?: string;
-  contactIds?: string[];
-  locationIds?: string[];
   notes?: string;
   instructions?: string;
   addisonNote?: string;
@@ -423,6 +415,7 @@ export type PropertyProfile = {
 
 export type AtlasAssetRecord = AssetRecord & {
   locationIds?: string[];
+  serial2?: string;
   serialRequirement?: "Required" | "Not Required";
   manualRequirement?: "Required" | "Not Required";
   procedureRequirement?: "Required" | "Not Required";
@@ -1525,6 +1518,7 @@ export function normalizeAsset(record: Partial<AtlasAssetRecord>): AtlasAssetRec
     year: record.year || "",
     manufacturer: record.manufacturer || "",
     serial: record.serial || "",
+    serial2: record.serial2 || "",
     serialRequirement: record.serialRequirement === "Not Required" ? "Not Required" : "Required",
     manualRequirement: record.manualRequirement === "Not Required" ? "Not Required" : "Required",
     procedureRequirement: record.procedureRequirement === "Not Required" ? "Not Required" : "Required",
@@ -3116,26 +3110,7 @@ export const fallbackVendors: VendorRecord[] = [
   },
 ];
 
-export type ConfirmedAssetCatalogItem = {
-  sourceId: string;
-  propertyId: string;
-  name: string;
-  status: string;
-  location: string;
-  category: string;
-  year: string;
-  manufacturer: string;
-  model: string;
-  serial: string;
-  description: string;
-  vendors: string;
-  criticality: string;
-  controlNumber?: string;
-  unitNumber?: string;
-  maintenanceRecommendation?: string;
-};
-
-export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
+export const confirmedAssetCatalog = [
   {
     "sourceId": "4955454",
     "propertyId": "2000",
@@ -3149,10 +3124,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "4217D25175",
     "description": "",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Important",
-    "controlNumber": "1-1210",
-    "unitNumber": "DGH-1",
-    "maintenanceRecommendation": "Maintain a regular 1x year schedule for vendor service. Legacy register listed last service 5/1/2019."
+    "criticality": "Important"
   },
   {
     "sourceId": "4955473",
@@ -3167,10 +3139,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "15301R2L5G",
     "description": "West Bedroom (Elyse) Lower floor",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1226.2",
-    "unitNumber": "AH-4",
-    "maintenanceRecommendation": "Maintain a regular 2x year schedule for vendor service. Legacy register listed last service 1/13/2023."
+    "criticality": "Critical"
   },
   {
     "sourceId": "4955484",
@@ -3185,10 +3154,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "162944H5CG",
     "description": "Twinned with AH-2 Great Room",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1226",
-    "unitNumber": "AH-3",
-    "maintenanceRecommendation": "Maintain a regular 2x year schedule for vendor service. Legacy register listed last service 1/13/2023."
+    "criticality": "Critical"
   },
   {
     "sourceId": "4955500",
@@ -3203,10 +3169,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "763704480045219",
     "description": "",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1208.2",
-    "unitNumber": "HWT-2",
-    "maintenanceRecommendation": "Install a label with dates and records of service. Maintain once every 2 years schedule for vendor service."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5003953",
@@ -3221,10 +3184,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "153332BABG",
     "description": "Outside Theater Room Hallway Theatre Room Also goes to Micah's room but is blocked because he is on him own mini split",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1223",
-    "unitNumber": "AH-1",
-    "maintenanceRecommendation": "Maintain a regular 2x year schedule for vendor service. Legacy register listed last service 1/13/2023."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5003986",
@@ -3239,10 +3199,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "16035SHYAV",
     "description": "Twinned with AH-3 Great room",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1224",
-    "unitNumber": "AH-2",
-    "maintenanceRecommendation": "Maintain a regular 2x year schedule for vendor service. Legacy register listed last service 1/13/2023."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5004012",
@@ -3257,10 +3214,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "3118X76316",
     "description": "Zone 1- Nanny (New Gym) Zone 2-Bonus Zone 3-Kitchen Zone 4-Exercise",
     "vendors": "Amazon,P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1209",
-    "unitNumber": "AH-5",
-    "maintenanceRecommendation": "Install a label with dates and records of service. Maintain a regular 2x year schedule for vendor service."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5004033",
@@ -3275,10 +3229,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "767044800454103",
     "description": "",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1208",
-    "unitNumber": "HWT-1",
-    "maintenanceRecommendation": "Install a label with dates and records of service. Maintain once every 2 years schedule for vendor service."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5004054",
@@ -3293,10 +3244,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "",
     "description": "",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1206",
-    "unitNumber": "B-2",
-    "maintenanceRecommendation": "Maintain a regular 1x year schedule for vendor service. Legacy register listed last service 3/19/2019."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5004074",
@@ -3311,10 +3259,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "",
     "description": "",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1206",
-    "unitNumber": "B-1",
-    "maintenanceRecommendation": "Maintain a regular 1x year schedule for vendor service. Legacy register listed last service 3/19/2019."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5004097",
@@ -3329,10 +3274,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "7YU02384A",
     "description": "",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1200",
-    "unitNumber": "HP-123",
-    "maintenanceRecommendation": "Install a label with dates and records of service. Maintain a regular 2x year schedule for vendor service."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5004102",
@@ -3347,10 +3289,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "15284N3E2F",
     "description": "Outdoor Unit controls AH-1 Theater Hallway Micah's (blocked because he is on his own mini split)",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1158.2",
-    "unitNumber": "CU-1",
-    "maintenanceRecommendation": "Install a label with dates and records of service. Maintain a regular 2x year schedule for vendor service."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5004108",
@@ -3365,10 +3304,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "16112MRE2F",
     "description": "Outdoor unit controls AH-3 Twinned with AH-2 and CU-2 Great Room",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1158",
-    "unitNumber": "CU-3",
-    "maintenanceRecommendation": "Install a label with dates and records of service. Maintain a regular 2x year schedule for vendor service."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5004114",
@@ -3383,10 +3319,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "16112MR52F",
     "description": "Outdoor unit controls AH-2 Twinned with AH-3 and CU-3 Great Room",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1157.2",
-    "unitNumber": "CU-2",
-    "maintenanceRecommendation": "Install a label with dates and records of service. Maintain a regular 2x year schedule for vendor service."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5004115",
@@ -3401,10 +3334,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "15255T5Y2F",
     "description": "",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1156",
-    "unitNumber": "CU-4",
-    "maintenanceRecommendation": "Install a label with dates and records of service. Maintain a regular 2x year schedule for vendor service."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5004121",
@@ -3419,10 +3349,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "3417E25728",
     "description": "",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1156.2",
-    "unitNumber": "CU-5",
-    "maintenanceRecommendation": "Install a label with dates and records of service. Maintain a regular 2x year schedule for vendor service."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5004125",
@@ -3437,10 +3364,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "J1740000021",
     "description": "",
     "vendors": "P.S.F",
-    "criticality": "Important",
-    "controlNumber": "1-1157",
-    "unitNumber": "DHCU",
-    "maintenanceRecommendation": "Investigate the purpose of this unit and its maintenance requirements."
+    "criticality": "Important"
   },
   {
     "sourceId": "5004129",
@@ -3455,10 +3379,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "",
     "description": "",
     "vendors": "",
-    "criticality": "Important",
-    "controlNumber": "1-1026",
-    "unitNumber": "SG-1",
-    "maintenanceRecommendation": "Install leak detection."
+    "criticality": "Important"
   },
   {
     "sourceId": "5004131",
@@ -3473,10 +3394,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "78G00811",
     "description": "Master Bedroom Controlled by Mitsubishi mini split on roof (2024)",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1024.2",
-    "unitNumber": "HP-2",
-    "maintenanceRecommendation": "Maintain a regular 2x year schedule for vendor service. Legacy register: last filter date 8/27/2019; no trap-clean date; refrigerant lines were not completely insulated."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5004132",
@@ -3491,10 +3409,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "77G00385",
     "description": "Elliot Room Elans Room Boys Bathroom",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1024",
-    "unitNumber": "HP-1",
-    "maintenanceRecommendation": "Maintain a regular 2x year schedule for vendor service. Legacy register: last filter date 8/27/2019; no trap-clean date; refrigerant lines were not completely insulated."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5004135",
@@ -3509,10 +3424,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "78G00803",
     "description": "Evi's Room Upstairs Play Hallway",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-932",
-    "unitNumber": "HP-3",
-    "maintenanceRecommendation": "Install a label with dates and records of service. Maintain a regular 2x year schedule for vendor service. Install leak detection."
+    "criticality": "Critical"
   },
   {
     "sourceId": "5004136",
@@ -3527,10 +3439,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "1290880",
     "description": "",
     "vendors": "Electromatic Refrigeration",
-    "criticality": "",
-    "controlNumber": "1-1220",
-    "unitNumber": "WC-3456",
-    "maintenanceRecommendation": "Clean the condenser. Replace the filter. Check that the seals are in good condition."
+    "criticality": ""
   },
   {
     "sourceId": "5004137",
@@ -3545,10 +3454,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "1288614",
     "description": "",
     "vendors": "Electromatic Refrigeration",
-    "criticality": "",
-    "controlNumber": "1-1220",
-    "unitNumber": "WC-3456",
-    "maintenanceRecommendation": "Clean the condenser. Replace the filter. Check that the seals are in good condition."
+    "criticality": ""
   },
   {
     "sourceId": "5004141",
@@ -3563,10 +3469,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "1290879",
     "description": "",
     "vendors": "Electromatic Refrigeration",
-    "criticality": "",
-    "controlNumber": "1-1220",
-    "unitNumber": "WC-3456",
-    "maintenanceRecommendation": "Clean the condenser. Replace the filter. Check that the seals are in good condition."
+    "criticality": ""
   },
   {
     "sourceId": "5004142",
@@ -3581,10 +3484,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "1288605",
     "description": "",
     "vendors": "Electromatic Refrigeration",
-    "criticality": "",
-    "controlNumber": "1-1220",
-    "unitNumber": "WC-3456",
-    "maintenanceRecommendation": "Clean the condenser. Replace the filter. Check that the seals are in good condition."
+    "criticality": ""
   },
   {
     "sourceId": "5004153",
@@ -3599,10 +3499,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "1163025JUU",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-1126",
-    "unitNumber": "WC-2",
-    "maintenanceRecommendation": "Maintain schedule to clean the condenser coil and check gaskets 1x year."
+    "criticality": ""
   },
   {
     "sourceId": "5004159",
@@ -3617,10 +3514,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "G5701862",
     "description": "",
     "vendors": "Appliance Service Station",
-    "criticality": "",
-    "controlNumber": "1-1112.3",
-    "unitNumber": "FR-4",
-    "maintenanceRecommendation": "Maintain schedule to clean the condenser coil and check gaskets 1x year."
+    "criticality": ""
   },
   {
     "sourceId": "5004333",
@@ -3635,10 +3529,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "AAG868334",
     "description": "",
     "vendors": "Appliance Service Station",
-    "criticality": "",
-    "controlNumber": "2-915",
-    "unitNumber": "FR-3",
-    "maintenanceRecommendation": "Maintain schedule to clean the condenser coil and check gaskets 1x year."
+    "criticality": ""
   },
   {
     "sourceId": "5004336",
@@ -3653,10 +3544,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "AAG871957",
     "description": "",
     "vendors": "Appliance Service Station",
-    "criticality": "",
-    "controlNumber": "2-914",
-    "unitNumber": "FR-2",
-    "maintenanceRecommendation": "Maintain schedule to clean the condenser coil and check gaskets 1x year."
+    "criticality": ""
   },
   {
     "sourceId": "5004338",
@@ -3671,10 +3559,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "WB84468136",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-1103",
-    "unitNumber": "FR-1",
-    "maintenanceRecommendation": "Maintain schedule to clean the condenser coil and check gaskets 1x year."
+    "criticality": ""
   },
   {
     "sourceId": "5004342",
@@ -3689,10 +3574,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "G5726874",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-1110",
-    "unitNumber": "RF-12",
-    "maintenanceRecommendation": "Maintain schedule to clean the condenser coil and replace filters 1x year."
+    "criticality": ""
   },
   {
     "sourceId": "5004349",
@@ -3707,10 +3589,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "20180417053H",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-1039.2",
-    "unitNumber": "WC-1",
-    "maintenanceRecommendation": "Maintain schedule to clean the condenser coil and check gaskets 1x year."
+    "criticality": ""
   },
   {
     "sourceId": "5004353",
@@ -3725,10 +3604,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "339TGVFN0070",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-1201",
-    "unitNumber": "GEN-12",
-    "maintenanceRecommendation": "Maintain schedule to service 1x year. Legacy register listed last service 11/22/2022."
+    "criticality": ""
   },
   {
     "sourceId": "5004355",
@@ -3743,10 +3619,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "SGM3263PC",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-1201",
-    "unitNumber": "GEN-12",
-    "maintenanceRecommendation": "Maintain schedule to service 1x year. Legacy register listed last service 11/22/2022."
+    "criticality": ""
   },
   {
     "sourceId": "5004356",
@@ -3761,10 +3634,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-1100",
-    "unitNumber": "DR-34",
-    "maintenanceRecommendation": "Clean the vent at least once per year. Keep local service record label."
+    "criticality": ""
   },
   {
     "sourceId": "5004360",
@@ -3779,10 +3649,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "4D81008923",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-1046",
-    "unitNumber": "DR-2",
-    "maintenanceRecommendation": "Clean the vent at least once per year. Keep local service record label."
+    "criticality": ""
   },
   {
     "sourceId": "5004365",
@@ -3797,10 +3664,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "4d80932379",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-934",
-    "unitNumber": "DR-1",
-    "maintenanceRecommendation": "Clean the vent at least once per year. Keep local service record label."
+    "criticality": ""
   },
   {
     "sourceId": "5004377",
@@ -3815,10 +3679,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-1100",
-    "unitNumber": "WM-34",
-    "maintenanceRecommendation": "Date the age of the hoses. Replace every 5 years. Keep local service record label."
+    "criticality": ""
   },
   {
     "sourceId": "5004382",
@@ -3833,10 +3694,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-1046",
-    "unitNumber": "WM-2",
-    "maintenanceRecommendation": "Date the age of the hoses. Replace every 5 years. Keep local service record label."
+    "criticality": ""
   },
   {
     "sourceId": "5004389",
@@ -3851,10 +3709,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-933",
-    "unitNumber": "WM-1",
-    "maintenanceRecommendation": "Date the age of the hoses. Replace every 5 years. Keep local service record label."
+    "criticality": ""
   },
   {
     "sourceId": "5004397",
@@ -3869,10 +3724,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "FD980500530",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-1112.2",
-    "unitNumber": "DW-4",
-    "maintenanceRecommendation": "Maintain schedule to check and clean the interior filter at least 1x year."
+    "criticality": ""
   },
   {
     "sourceId": "5004399",
@@ -3887,10 +3739,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "FD981100351",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-1112",
-    "unitNumber": "DW-3",
-    "maintenanceRecommendation": "Maintain schedule to check and clean the interior filter at least 1x year."
+    "criticality": ""
   },
   {
     "sourceId": "5004400",
@@ -3905,10 +3754,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "1-1059",
-    "unitNumber": "DW-2",
-    "maintenanceRecommendation": "Maintain schedule to check and clean the interior filter at least 1x year."
+    "criticality": ""
   },
   {
     "sourceId": "5004402",
@@ -3923,10 +3769,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "",
     "description": "",
     "vendors": "",
-    "criticality": "",
-    "controlNumber": "2-936",
-    "unitNumber": "DW-1",
-    "maintenanceRecommendation": "Maintain schedule to check and clean the interior filter at least 1x year."
+    "criticality": ""
   },
   {
     "sourceId": "5088482",
@@ -4106,10 +3949,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "",
     "description": "Indoor Swimming Pool Krisco Pools",
     "vendors": "Amazon,Aqua Quip,Krisco Pool and Spas",
-    "criticality": "Important",
-    "controlNumber": "1-1215",
-    "unitNumber": "POOL",
-    "maintenanceRecommendation": "Written water quality test records should be kept regularly and available to view."
+    "criticality": "Important"
   },
   {
     "sourceId": "8002871",
@@ -4349,10 +4189,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "18370250",
     "description": "Wolf Stove Top",
     "vendors": "LUWA",
-    "criticality": "Normal",
-    "controlNumber": "1-1109",
-    "unitNumber": "",
-    "maintenanceRecommendation": "No maintenance recommendation was listed in the legacy register."
+    "criticality": "Normal"
   },
   {
     "sourceId": "15910478",
@@ -4367,10 +4204,7 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "serial": "758960507593",
     "description": "",
     "vendors": "P.S.F,Supply House",
-    "criticality": "Critical",
-    "controlNumber": "1-1206",
-    "unitNumber": "B-2",
-    "maintenanceRecommendation": "Maintain a regular 1x year schedule for vendor service. Legacy register listed last service 3/19/2019."
+    "criticality": "Critical"
   },
   {
     "sourceId": "15912110",
@@ -4431,114 +4265,6 @@ export const confirmedAssetCatalog: ConfirmedAssetCatalogItem[] = [
     "description": "",
     "vendors": "",
     "criticality": ""
-  },
-  {
-    "sourceId": "register-1-1039-er-1",
-    "propertyId": "2000",
-    "name": "Electric Range ER-1",
-    "status": "Online",
-    "location": "Fitness 2",
-    "category": "Appliance",
-    "year": "",
-    "manufacturer": "Blomberg",
-    "model": "BERU24202SS",
-    "serial": "",
-    "description": "Legacy control # 1-1039; unit ER-1.",
-    "vendors": "",
-    "criticality": "Important",
-    "controlNumber": "1-1039",
-    "unitNumber": "ER-1",
-    "maintenanceRecommendation": "Check for cleanliness and clean often."
-  },
-  {
-    "sourceId": "register-1-1107-coffee",
-    "propertyId": "2000",
-    "name": "Coffee Maker",
-    "status": "Online",
-    "location": "Kitchen",
-    "category": "Appliance",
-    "year": "",
-    "manufacturer": "Miele",
-    "model": "",
-    "serial": "",
-    "description": "Legacy control # 1-1107.",
-    "vendors": "",
-    "criticality": "Important",
-    "controlNumber": "1-1107",
-    "unitNumber": "",
-    "maintenanceRecommendation": "No maintenance recommendation was listed in the legacy register."
-  },
-  {
-    "sourceId": "register-1-1108-eo-12",
-    "propertyId": "2000",
-    "name": "Double Oven EO-12",
-    "status": "Online",
-    "location": "Kitchen",
-    "category": "Appliance",
-    "year": "",
-    "manufacturer": "Wolf",
-    "model": "SO30PE/S/H",
-    "serial": "17431346",
-    "description": "Legacy control # 1-1108; unit EO-12.",
-    "vendors": "",
-    "criticality": "Important",
-    "controlNumber": "1-1108",
-    "unitNumber": "EO-12",
-    "maintenanceRecommendation": "Check for cleanliness and clean often."
-  },
-  {
-    "sourceId": "register-1-1109-2-eh-1",
-    "propertyId": "2000",
-    "name": "Exhaust Hood EH-1",
-    "status": "Online",
-    "location": "Kitchen",
-    "category": "Appliance",
-    "year": "",
-    "manufacturer": "Wolf",
-    "model": "PL522212",
-    "serial": "14672728",
-    "description": "Legacy control # 1-1109.2; unit EH-1.",
-    "vendors": "",
-    "criticality": "Important",
-    "controlNumber": "1-1109.2",
-    "unitNumber": "EH-1",
-    "maintenanceRecommendation": "Maintain schedule to clean the fan and filters at least 1x year."
-  },
-  {
-    "sourceId": "register-1-1112-4-microwave",
-    "propertyId": "2000",
-    "name": "Drawer Microwave",
-    "status": "Online",
-    "location": "Kitchen",
-    "category": "Appliance",
-    "year": "",
-    "manufacturer": "Sharp",
-    "model": "",
-    "serial": "",
-    "description": "Legacy control # 1-1112.4.",
-    "vendors": "",
-    "criticality": "Important",
-    "controlNumber": "1-1112.4",
-    "unitNumber": "",
-    "maintenanceRecommendation": "No maintenance recommendation was listed in the legacy register."
-  },
-  {
-    "sourceId": "register-1-1110-rf-right",
-    "propertyId": "2000",
-    "name": "Refrigerator (Right)",
-    "status": "Online",
-    "location": "Kitchen",
-    "category": "Appliance",
-    "year": "",
-    "manufacturer": "Sub Zero",
-    "model": "IC-36R",
-    "serial": "G5708288",
-    "description": "Kitchen refrigerator right hand side. Legacy control # 1-1110; unit RF-12.",
-    "vendors": "",
-    "criticality": "Important",
-    "controlNumber": "1-1110",
-    "unitNumber": "RF-12",
-    "maintenanceRecommendation": "Maintain schedule to clean the condenser coil and replace filters 1x year."
   }
 ] as const;
 
@@ -5302,112 +5028,6 @@ export function normalizeManualRecord(record: Partial<ManualRecord>): ManualReco
     createdAt: String(record.createdAt || new Date().toISOString()),
   };
 }
-
-const fieldLabelStyle: React.CSSProperties = {
-  color: colors.navy,
-  fontSize: 12,
-  fontWeight: 950,
-};
-
-const inputStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  width: "100%",
-  maxWidth: "100%",
-  boxSizing: "border-box",
-  borderRadius: 14,
-  padding: "12px 13px",
-  fontSize: 14,
-  color: colors.text,
-  background: "#FFFFFF",
-  outline: "none",
-  fontFamily: "inherit",
-  minWidth: 0,
-  fontWeight: 750,
-};
-
-const goldButtonStyle: React.CSSProperties = {
-  border: `1px solid ${colors.gold}`,
-  background: colors.gold,
-  color: colors.navy,
-  borderRadius: 13,
-  padding: "10px 13px",
-  fontWeight: 950,
-  cursor: "pointer",
-};
-
-const secondaryButtonStyle: React.CSSProperties = {
-  border: `1px solid ${colors.line}`,
-  background: "#FFFFFF",
-  color: colors.navy,
-  borderRadius: 13,
-  padding: "10px 13px",
-  fontWeight: 950,
-  cursor: "pointer",
-};
-
-const sectionStyle: React.CSSProperties = {
-  background: colors.card,
-  width: "100%",
-  maxWidth: "100%",
-  minWidth: 0,
-  boxSizing: "border-box",
-  overflowWrap: "break-word",
-  border: `1px solid ${colors.line}`,
-  borderRadius: 16,
-  padding: 16,
-  boxShadow: "0 5px 18px rgba(15, 35, 55, 0.05)",
-};
-
-const drawerGridStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 16,
-  alignItems: "start",
-  overflow: "visible",
-};
-
-const listPanelStyle: React.CSSProperties = {
-  minWidth: 0,
-};
-
-const drawerStyle: React.CSSProperties = {
-  background: colors.panel,
-  border: `1px solid ${colors.line}`,
-  borderRadius: 24,
-  padding: 18,
-  position: "sticky",
-  top: 16,
-  alignSelf: "start",
-  maxHeight: "calc(100vh - 32px)",
-  overflowY: "auto",
-  overflowX: "hidden",
-  overscrollBehavior: "contain",
-  boxShadow: "0 16px 35px rgba(15,23,42,0.06)",
-  minWidth: 0,
-  wordBreak: "break-word",
-};
-
-const buttonRowStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-  flexWrap: "wrap",
-  alignItems: "center",
-};
-
-const eyebrowStyle: React.CSSProperties = {
-  color: colors.gold,
-  fontSize: 12,
-  fontWeight: 950,
-  letterSpacing: 1.8,
-  textTransform: "uppercase",
-};
-
-const mutedSmallStyle: React.CSSProperties = {
-  color: colors.muted,
-  fontSize: 13,
-  margin: "4px 0 0",
-  lineHeight: 1.45,
-  wordBreak: "break-word",
-};
 
 export function ListDrawerLayout(props: {
   eyebrow?: string;
