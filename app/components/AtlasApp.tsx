@@ -8271,8 +8271,10 @@ export default function AtlasApp() {
   async function uploadManualForAsset(
     asset: AssetRecord,
     fileList: FileList | null,
-  ) {
-    if (!asset.id || !fileList?.length) return;
+  ): Promise<{ ok: boolean; title?: string; message?: string }> {
+    if (!asset.id || !fileList?.length) {
+      return { ok: false, message: "No PDF selected." };
+    }
 
     const file = Array.from(fileList).find(
       (item) =>
@@ -8281,13 +8283,36 @@ export default function AtlasApp() {
     );
     if (!file) {
       showSaveToast("Choose a PDF manual.", "warning");
-      return;
+      return { ok: false, message: "Choose a PDF manual." };
     }
 
+    const title =
+      file.name.replace(/\.pdf$/i, "").trim() || "Equipment Manual";
+
     try {
-      const uploadedFile = await fileToUploadedRecord(file);
+      const safeName = (file.name || "manual.pdf")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+
+      const pathname = `atlas-documents/${activePropertyId}/${asset.id}/${Date.now()}-${safeName || "manual.pdf"}`;
+
+      const blob = await upload(pathname, file, {
+        access: "public",
+        handleUploadUrl: "/api/atlas-document-upload",
+        multipart: file.size > 20 * 1024 * 1024,
+        contentType: file.type || "application/pdf",
+      });
+
+      const uploadedFile: UploadedFileRecord = {
+        id: uid("upload"),
+        name: file.name || "manual.pdf",
+        type: file.type || blob.contentType || "application/pdf",
+        url: blob.url,
+        createdAt: new Date().toISOString(),
+      };
+
       const createdAt = new Date().toISOString();
-      const title = file.name.replace(/\.pdf$/i, "").trim() || "Equipment Manual";
 
       const manual = normalizeManualRecord({
         id: uid("manual"),
@@ -8299,16 +8324,10 @@ export default function AtlasApp() {
         linkedAssetId: asset.id,
         linkedAssetName: asset.name,
         sourceLabel: "Asset upload",
-        href: uploadedFile.url || uploadedFile.dataUrl || "",
+        href: blob.url,
         notes: "",
         files: [uploadedFile],
         createdAt,
-      });
-
-      setManualRecords((current) => {
-        const next = [manual, ...current];
-        saveStoredArray(storageKeys.manuals[0], next);
-        return next;
       });
 
       const documentRecord = normalizeDocument({
@@ -8321,29 +8340,32 @@ export default function AtlasApp() {
         targetName: asset.name,
         linkedAssetId: asset.id,
         notes: "",
-        href: manual.href,
+        href: blob.url,
         files: [uploadedFile],
         createdAt,
       });
 
+      // Save to the shared Atlas document vault first. The manual is not
+      // reported as saved until this completes successfully.
+      await postDocumentToAtlasVault(documentRecord);
+
       replaceDocumentInVault(documentRecord);
-      setIntakeDocs((current) => {
-        const next = mergeDocuments([documentRecord], current);
-        saveStoredArray(storageKeys.intakeDocs[0], next);
+
+      setManualRecords((current) => {
+        const next = [manual, ...current];
+        saveStoredArray(storageKeys.manuals[0], next);
         return next;
       });
 
-      try {
-        await postDocumentToAtlasVault(documentRecord);
-        showSaveToast(`${title} added to ${asset.name}.`);
-      } catch {
-        showSaveToast(
-          `${title} added to ${asset.name}; document sync is pending.`,
-          "warning",
-        );
-      }
-    } catch {
-      showSaveToast("Atlas could not add that manual.", "warning");
+      showSaveToast(`${title} saved to ${asset.name}.`);
+      return { ok: true, title };
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Atlas could not save that manual.";
+      showSaveToast(`Manual was not saved: ${message}`, "warning");
+      return { ok: false, title, message };
     }
   }
 
