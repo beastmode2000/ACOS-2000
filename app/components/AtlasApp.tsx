@@ -368,6 +368,7 @@ export default function AtlasApp() {
   ];
   const [notesDraft, setNotesDraft] = useState("");
   const [notesTitleDraft, setNotesTitleDraft] = useState("");
+  const [notesComposerOpen, setNotesComposerOpen] = useState(false);
   const [notesSearch, setNotesSearch] = useState("");
   const [notesListening, setNotesListening] = useState(false);
   const [mobileNotesMoreOpen, setMobileNotesMoreOpen] = useState(false);
@@ -6305,6 +6306,7 @@ export default function AtlasApp() {
     setNoteTitlesById((current) => ({ ...current, [noteId]: noteTitle }));
     setNotesTitleDraft("");
     setNotesDraft("");
+    setNotesComposerOpen(false);
     showSaveToast(`${notesSection} note saved.`);
   }
 
@@ -6987,22 +6989,6 @@ export default function AtlasApp() {
       ? allPropertyNotes.find((note) => note.id === selectedNoteId) || null
       : null;
 
-    const sectionGlyph = (section: NoteSection) => {
-      if (section === "Property") return "⌂";
-      if (section === "Maintenance") return "◇";
-      if (section === "Cleaning") return "○";
-      if (section === "Admin") return "A";
-      if (section === "Projects") return "▣";
-      if (section === "Vendors") return "V";
-      if (section === "Landscaping") return "⌁";
-      if (section === "Pool & Spa") return "≈";
-      if (section === "Garage / Vehicles") return "◆";
-      if (section === "Dock / Boats") return "≋";
-      if (section === "House") return "□";
-      if (section === "Private") return "●";
-      return "N";
-    };
-
     return (
       <div style={{ display: "grid", gap: 14 }}>
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 16, borderColor: restrictedNotesUnlocked ? "#D7B45D" : colors.line }}>
@@ -7329,6 +7315,7 @@ export default function AtlasApp() {
           {restrictedNotesError ? <div style={{ marginTop: 10, color: colors.red, fontSize: 12, fontWeight: 800 }}>{restrictedNotesError}</div> : null}
         </section>
 
+        {notesComposerOpen ? (
         <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
           <input
             value={notesTitleDraft}
@@ -7391,12 +7378,15 @@ export default function AtlasApp() {
               {noteSections.map((section) => <option key={section} value={section}>{section}</option>)}
             </select>
             <div style={{ display: "flex", gap: 7 }}>
-              {notesDraft || notesTitleDraft ? <button type="button" onClick={() => { setNotesDraft(""); setNotesTitleDraft(""); }} style={secondaryButtonStyle}>Clear</button> : null}
+              <button type="button" onClick={() => { setNotesDraft(""); setNotesTitleDraft(""); setNotesComposerOpen(false); }} style={secondaryButtonStyle}>Cancel</button>
               <button type="button" onClick={() => void quickAddRestrictedNote()} disabled={!notesDraft.trim() || restrictedNotesBusy} style={secondaryButtonStyle}>Add to Restricted</button>
               <button type="button" onClick={savePermanentNote} disabled={!notesTitleDraft.trim() || !notesDraft.trim()} style={{ ...goldButtonStyle, opacity: notesTitleDraft.trim() && notesDraft.trim() ? 1 : .55 }}>Save Note</button>
             </div>
           </div>
         </section>
+        ) : (
+          <button type="button" onClick={() => setNotesComposerOpen(true)} style={{ ...goldButtonStyle, width: "auto", justifySelf: "start" }}>+ New Note</button>
+        )}
 
         {isMobile ? (
           <button
@@ -7437,7 +7427,7 @@ export default function AtlasApp() {
             return (
               <section key={section} style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 13px", background: "#F8FAFC", borderBottom: `1px solid ${colors.line}` }}>
-                  <strong style={{ color: colors.navy }}>{sectionGlyph(section)} {section}</strong>
+                  <strong style={{ color: colors.navy }}>{section}</strong>
                   <span style={recurringBadgeStyle}>{sectionNotes.length}</span>
                 </div>
                 <div style={{ display: "grid" }}>
