@@ -196,6 +196,8 @@ export default function AtlasAssetsWorkspace(props: any) {
     assetVisibleSections,
     clearRecordDirty,
     dangerButtonStyle,
+    deleteManualRecord,
+    deleteSelectedDocument,
     deleteAssetPhoto,
     deleteAssetRecord,
     excludedAssetCategories,
@@ -257,6 +259,7 @@ export default function AtlasAssetsWorkspace(props: any) {
     setScreen,
     setSelectedAssetId,
     setSelectedAssetIds,
+    setSelectedDocumentId,
     setSelectedLocationId,
     setSelectedManualId,
     setSelectedPhotoProjectId,
@@ -2230,37 +2233,45 @@ export default function AtlasAssetsWorkspace(props: any) {
                               {manual.documentNumber ? ` · ${manual.documentNumber}` : ""}
                             </span>
                           </div>
-                          {href ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void openAssetPdfPreview(
-                                  manual.title || "Manual PDF",
-                                  href,
-                                )
-                              }
-                              style={{
-                                ...assetPrimaryActionButtonStyle,
-                                width: "auto",
-                                minHeight: 32,
-                                padding: "6px 10px",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              Open PDF
-                            </button>
-                          ) : (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                             <button
                               type="button"
                               onClick={() => {
-                                setDocumentSearch(selectedAsset.name);
-                                setScreen("documents");
+                                setSelectedManualId(manual.id);
+                                setScreen("manuals");
                               }}
                               style={assetTinyButtonStyle}
                             >
-                              Open
+                              Edit
                             </button>
-                          )}
+                            <button
+                              type="button"
+                              onClick={() => void deleteManualRecord(manual)}
+                              style={{ ...dangerButtonStyle, width: "auto", padding: "5px 8px" }}
+                            >
+                              Delete
+                            </button>
+                            {href ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void openAssetPdfPreview(
+                                    manual.title || "Manual PDF",
+                                    href,
+                                  )
+                                }
+                                style={{
+                                  ...assetPrimaryActionButtonStyle,
+                                  width: "auto",
+                                  minHeight: 32,
+                                  padding: "6px 10px",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                Open PDF
+                              </button>
+                            ) : null}
+                          </div>
                         </div>
                       );
                     })}
@@ -2301,24 +2312,44 @@ export default function AtlasAssetsWorkspace(props: any) {
                 {linkedAssetDocuments.length ? (
                   <div style={{ display: "grid", gap: 6 }}>
                     {linkedAssetDocuments.slice(0, 6).map((document) => (
-                      <button
+                      <div
                         key={document.id}
-                        type="button"
-                        onClick={() => openAssetDocumentImmediately(document)}
                         style={{
+                          display: "grid",
+                          gridTemplateColumns: "minmax(0, 1fr) auto auto",
+                          alignItems: "center",
+                          gap: 6,
                           border: `1px solid ${colors.line}`,
                           borderRadius: 9,
                           background: "#FFFFFF",
                           padding: "8px 9px",
-                          textAlign: "left",
-                          color: colors.navy,
-                          fontSize: 11,
-                          fontWeight: 800,
-                          cursor: "pointer",
                         }}
                       >
-                        {document.title || "Document"}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => openAssetDocumentImmediately(document)}
+                          style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", color: colors.navy, fontSize: 11, fontWeight: 800, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        >
+                          {document.title || "Document"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDocumentId(document.id);
+                            setScreen("documents");
+                          }}
+                          style={assetTinyButtonStyle}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteSelectedDocument(document)}
+                          style={{ ...dangerButtonStyle, width: "auto", padding: "5px 8px" }}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     ))}
                   </div>
                 ) : (
@@ -2500,7 +2531,7 @@ export default function AtlasAssetsWorkspace(props: any) {
             >
               <div style={assetCardHeaderStyle}>
                 <div>
-                  <strong>Maintenance Status</strong>
+                  <strong aria-hidden="true" />
                   <div style={assetCardHintStyle}>
                     Condition, open work, upcoming maintenance, and record readiness
                   </div>
@@ -2761,7 +2792,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
-                      <span style={assetInfoLabelStyle}>Connected Records</span>
+                      <span aria-hidden="true" />
                       <div style={assetCardHintStyle}>
                         Jump to the records connected to this equipment.
                       </div>
