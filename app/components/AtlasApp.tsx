@@ -4305,64 +4305,27 @@ export default function AtlasApp() {
         },
       ]
     : (() => {
-        const sections = atlasPrimaryNavigationSections.map((section) => ({
-          ...section,
-          items: section.items.filter(
-            (item) =>
-              item !== "manuals" &&
-              item !== "portfolio" &&
-              item !== "insights",
-          ),
-        }));
-
-        const overview = sections.find((section) => section.label === "Overview");
-        if (overview) {
-          overview.items = Array.from(
-            new Set([
-              "dashboard",
-              "notes",
-              ...overview.items.filter(
-                (item) => item !== "dashboard" && item !== "notes",
-              ),
-            ]),
-          ) as typeof overview.items;
-        }
-
-        const work = sections.find((section) => section.label === "Work");
-        if (work) {
-          const preferred = ["planner", "routines", "history", "calendar", "team"] as const;
-          work.items = [
-            ...preferred.filter((id) =>
-              (work.items as readonly string[]).includes(id),
-            ),
-            ...work.items.filter(
-              (id) => !(preferred as readonly string[]).includes(id),
-            ),
-          ] as typeof work.items;
-        }
-
-        const property = sections.find((section) => section.label === "Property");
-        if (property) {
-          const existingPropertyItems = property.items as AtlasScreen[];
-          property.items = Array.from(
-            new Set<AtlasScreen>([
-              ...existingPropertyItems.filter(
-                (item) => item !== "timeline" && item !== "portfolio",
-              ),
-              "timeline",
-              "portfolio",
-            ]),
-          ) as typeof property.items;
-        }
-
-        return sections.filter((section) => section.items.length > 0);
+        return [
+          { label: "Overview", items: ["dashboard", "notes"] as AtlasScreen[] },
+          { label: "Work", items: ["planner", "routines", "history"] as AtlasScreen[] },
+          { label: "Property", items: ["assets", "locations", "calendar"] as AtlasScreen[] },
+          { label: "People", items: ["contacts", "vendors", "team"] as AtlasScreen[] },
+          { label: "Intake", items: ["intake"] as AtlasScreen[] },
+        ];
       })();
 
   const visibleMoreToolsScreens = isTeamScopedUser
     ? ([] as AtlasScreen[])
-    : atlasMoreToolsScreens.filter(
-        (screenId) => screenId !== "manuals" && screenId !== "insights",
-      );
+    : (() => {
+        const primaryIds = new Set<AtlasScreen>([
+          "dashboard", "notes", "planner", "routines", "history", "assets",
+          "locations", "calendar", "contacts", "vendors", "team", "intake",
+        ]);
+        const remaining = screens
+          .map((item) => item.id)
+          .filter((screenId) => !primaryIds.has(screenId) && screenId !== "insights");
+        return ["manuals", ...remaining.filter((screenId) => screenId !== "manuals")] as AtlasScreen[];
+      })();
 
   useEffect(() => {
     if (isAddisonUser) {
@@ -28619,10 +28582,7 @@ ${notes.trim()}` : notes.trim(),
                         if (screenId === "planner") {
                           const workNavigation = isAddisonUser
                             ? [{ id: "tasks", label: "My Tasks", view: "tasks" as const }]
-                            : [
-                                { id: "tasks", label: "Tasks", view: "tasks" as const },
-                                { id: "lists", label: "Lists", view: "lists" as const },
-                              ];
+                            : [{ id: "tasks", label: "Tasks", view: "tasks" as const }];
                           return (
                             <React.Fragment key="work-navigation">
                               {workNavigation.map((entry) => {
@@ -28702,7 +28662,7 @@ ${notes.trim()}` : notes.trim(),
                 ))}
 
                 {!isTeamScopedUser ? (
-                  <div style={{ ...sidebarNavSectionStyle, order: 40 }}>
+                  <div style={{ ...sidebarNavSectionStyle, order: 60 }}>
                     <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>Departments</div>
                     <div style={sidebarNavItemsStyle}>
                       {([['house','⌂ House & Maintenance'],['garage','🚗 Garage'],['pool','💧 Pool & Spa'],['landscaping','🌿 Landscaping & Irrigation'],['marine','⚓ Dock & Waterfront']] as const).map(([id, label]) => (
