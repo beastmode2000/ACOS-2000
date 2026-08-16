@@ -776,6 +776,8 @@ export default function AtlasApp() {
   const atlasActionLocksRef = useRef<Set<string>>(new Set());
   const operationsSyncTimerRef = useRef<number | null>(null);
   const operationsSyncRunningRef = useRef(false);
+  const operationsRemoteRefreshRef = useRef(false);
+  const operationsRemoteRefreshTimerRef = useRef<number | null>(null);
   const fleetSetupRunningRef = useRef(false);
   const waterCareSetupRunningRef = useRef(false);
   const weeklyOperationsSetupRunningRef = useRef(false);
@@ -2054,6 +2056,11 @@ export default function AtlasApp() {
   }
   useEffect(() => {
     if (!operationsHydrated || !ready) return;
+    if (operationsRemoteRefreshRef.current) {
+      setOperationsSyncState("saved");
+      setOperationsSyncMessage("Shared Atlas is up to date");
+      return;
+    }
     setOperationsSyncState("saving");
     setOperationsSyncMessage("Saving Tasks, Plan Week, and Vehicle Care…");
     if (operationsSyncTimerRef.current) window.clearTimeout(operationsSyncTimerRef.current);
@@ -2151,6 +2158,16 @@ export default function AtlasApp() {
             : null;
         if (!remoteRecords) return;
 
+        // A shared-data refresh is read-only. Do not feed the records we just
+        // downloaded back into the autosave effect on every polling cycle.
+        operationsRemoteRefreshRef.current = true;
+        if (operationsRemoteRefreshTimerRef.current) {
+          window.clearTimeout(operationsRemoteRefreshTimerRef.current);
+        }
+        operationsRemoteRefreshTimerRef.current = window.setTimeout(() => {
+          operationsRemoteRefreshRef.current = false;
+        }, 250);
+
         const pendingDeleteIds = new Set(
           readStoredArray<{ table: string; id: string }>(
             [`atlas-operations-deletes-v1-${activePropertyId}`],
@@ -2220,6 +2237,11 @@ export default function AtlasApp() {
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      if (operationsRemoteRefreshTimerRef.current) {
+        window.clearTimeout(operationsRemoteRefreshTimerRef.current);
+        operationsRemoteRefreshTimerRef.current = null;
+      }
+      operationsRemoteRefreshRef.current = false;
       window.removeEventListener("focus", onFocus);
     };
   }, [ready, operationsHydrated, activePropertyId]);
