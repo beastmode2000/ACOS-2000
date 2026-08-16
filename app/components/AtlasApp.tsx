@@ -25709,6 +25709,8 @@ ${notes.trim()}` : notes.trim(),
       },
     };
 
+    if (screen === "assets") return null;
+
     const summary = summaryByScreen[screen];
     if (!summary) return null;
 
