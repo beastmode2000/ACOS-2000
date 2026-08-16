@@ -230,6 +230,8 @@ export default function AtlasAssetsWorkspace(props: any) {
     recentAssetIds,
     recordListIdentityStyle,
     recordListThumbImageStyle,
+    renameAssetDocument,
+    renameAssetManual,
     renameAssetPhoto,
     saveDirtyRecord,
     seanVisibleAssetRecords,
@@ -2238,10 +2240,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                             <button
                               type="button"
-                              onClick={() => {
-                                setSelectedManualId(manual.id);
-                                setScreen("manuals");
-                              }}
+                              onClick={() => void renameAssetManual(manual)}
                               style={assetTinyButtonStyle}
                             >
                               Edit
@@ -2336,10 +2335,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            setSelectedDocumentId(document.id);
-                            setScreen("documents");
-                          }}
+                          onClick={() => void renameAssetDocument(document)}
                           style={assetTinyButtonStyle}
                         >
                           Edit
