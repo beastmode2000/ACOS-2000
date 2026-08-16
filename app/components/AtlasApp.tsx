@@ -9761,6 +9761,48 @@ export default function AtlasApp() {
     );
   }
 
+  async function renameAssetManual(manual: ManualRecord) {
+    const nextTitle = window.prompt("Manual name", manual.title || "Manual PDF");
+    if (nextTitle === null) return;
+    const title = nextTitle.trim();
+    if (!title || title === manual.title) return;
+
+    const previousTitle = manual.title;
+    setManualRecords((current) => {
+      const next = current.map((item) =>
+        item.id === manual.id ? normalizeManualRecord({ ...item, title }) : item,
+      );
+      saveStoredArray(storageKeys.manuals[0], next);
+      return next;
+    });
+
+    const matchingDocument = intakeDocs.find((document) => {
+      const sameHref =
+        cleanManualOpenUrl(document.href || "") &&
+        cleanManualOpenUrl(document.href || "") === cleanManualOpenUrl(manual.href || "");
+      const sameRecord =
+        document.title.trim().toLowerCase() === previousTitle.trim().toLowerCase() &&
+        (document.targetId === manual.linkedAssetId ||
+          document.targetName === manual.linkedAssetName ||
+          (document as DocumentRecord & { linkedAssetId?: string }).linkedAssetId === manual.linkedAssetId);
+      return sameHref || sameRecord;
+    });
+
+    if (matchingDocument) {
+      await saveSelectedDocument(normalizeDocument({ ...matchingDocument, title }));
+    }
+    showSaveToast("Manual name saved.");
+  }
+
+  async function renameAssetDocument(document: DocumentRecord) {
+    const nextTitle = window.prompt("Document name", document.title || "Document");
+    if (nextTitle === null) return;
+    const title = nextTitle.trim();
+    if (!title || title === document.title) return;
+    await saveSelectedDocument(normalizeDocument({ ...document, title }));
+    showSaveToast("Document name saved.");
+  }
+
   function addVendor(name = "") {
     const record = normalizeVendor({
       id: uid("vendor"),
@@ -19106,6 +19148,8 @@ ${notes.trim()}` : notes.trim(),
       recentAssetIds,
       recordListIdentityStyle,
       recordListThumbImageStyle,
+      renameAssetDocument,
+      renameAssetManual,
       renameAssetPhoto,
       saveDirtyRecord,
       seanVisibleAssetRecords,
