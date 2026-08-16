@@ -277,8 +277,10 @@ export default function AtlasAssetsWorkspace(props: any) {
   const [assetPdfPreview, setAssetPdfPreview] = useState<{
     title: string;
     source: string;
+    originalSource: string;
   } | null>(null);
   const [assetPdfZoom, setAssetPdfZoom] = useState(100);
+  const [assetManualSaveStatus, setAssetManualSaveStatus] = useState("");
   const assetSourceRecords = isSeanMarineUser ? seanVisibleAssetRecords : assetRecords;
   const assetWorkSourceRecords = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
   const attachedManuals = manualsForAsset(selectedAsset);
@@ -366,14 +368,49 @@ export default function AtlasAssetsWorkspace(props: any) {
     );
   };
 
-  const openAssetPdfPreview = (title: string, source: string) => {
+  const closeAssetPdfPreview = () => {
+    setAssetPdfPreview((current) => {
+      if (current?.source?.startsWith("blob:")) {
+        URL.revokeObjectURL(current.source);
+      }
+      return null;
+    });
+  };
+
+  const openAssetPdfPreview = async (title: string, source: string) => {
     const cleanSource = String(source || "").trim();
     if (!cleanSource) return;
+
     setAssetPdfZoom(100);
-    setAssetPdfPreview({
-      title: title || "PDF",
-      source: cleanSource,
-    });
+
+    try {
+      const response = await fetch(cleanSource);
+      if (!response.ok) throw new Error(`PDF returned ${response.status}`);
+      const pdfBlob = await response.blob();
+      const localSource = URL.createObjectURL(
+        pdfBlob.type === "application/pdf"
+          ? pdfBlob
+          : new Blob([pdfBlob], { type: "application/pdf" }),
+      );
+
+      setAssetPdfPreview((current) => {
+        if (current?.source?.startsWith("blob:")) {
+          URL.revokeObjectURL(current.source);
+        }
+        return {
+          title: title || "PDF",
+          source: localSource,
+          originalSource: cleanSource,
+        };
+      });
+    } catch {
+      // Data URLs and same-origin PDF URLs can still be rendered directly.
+      setAssetPdfPreview({
+        title: title || "PDF",
+        source: cleanSource,
+        originalSource: cleanSource,
+      });
+    }
   };
 
   const openAssetDocumentImmediately = (document: DocumentRecord) => {
@@ -387,7 +424,7 @@ export default function AtlasAssetsWorkspace(props: any) {
       "";
 
     if (source) {
-      openAssetPdfPreview(document.title || "Document", source);
+      void openAssetPdfPreview(document.title || "Document", source);
       return;
     }
 
@@ -2187,27 +2224,44 @@ export default function AtlasAssetsWorkspace(props: any) {
                       type="file"
                       accept=".pdf,application/pdf"
                       style={{ display: "none" }}
-                      onChange={(event) => {
-                        void uploadManualForAsset(
+                      onChange={async (event) => {
+                        setAssetManualSaveStatus("Saving...");
+                        const result = await uploadManualForAsset(
                           selectedAsset,
                           event.currentTarget.files,
+                        );
+                        setAssetManualSaveStatus(
+                          result?.ok ? "Saved" : "Not saved",
                         );
                         event.currentTarget.value = "";
                       }}
                     />
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
+                        setAssetManualSaveStatus("");
                         document
                           .getElementById(
                             `asset-manual-upload-${selectedAsset.id}`,
                           )
-                          ?.click()
-                      }
+                          ?.click();
+                      }}
                       style={assetTinyButtonStyle}
                     >
                       Add Manual
                     </button>
+                    {assetManualSaveStatus ? (
+                      <span
+                        style={{
+                          ...assetTinyButtonStyle,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          cursor: "default",
+                        }}
+                      >
+                        {assetManualSaveStatus}
+                      </span>
+                    ) : null}
                   </>
                 </div>
 
@@ -2251,7 +2305,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                             <button
                               type="button"
                               onClick={() =>
-                                openAssetPdfPreview(
+                                void openAssetPdfPreview(
                                   manual.title || "Manual PDF",
                                   href,
                                 )
@@ -3229,7 +3283,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                 role="dialog"
                 aria-modal="true"
                 aria-label={assetPdfPreview.title}
-                onClick={() => setAssetPdfPreview(null)}
+                onClick={closeAssetPdfPreview}
                 style={{
                   position: "fixed",
                   inset: 0,
@@ -3326,7 +3380,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                         100%
                       </button>
                       <a
-                        href={assetPdfPreview.source}
+                        href={assetPdfPreview.originalSource}
                         target="_blank"
                         rel="noreferrer"
                         style={{
@@ -3340,7 +3394,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                       </a>
                       <button
                         type="button"
-                        onClick={() => setAssetPdfPreview(null)}
+                        onClick={closeAssetPdfPreview}
                         style={assetTinyButtonStyle}
                         aria-label="Close PDF"
                       >
@@ -3358,7 +3412,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                   >
                     <iframe
                       key={`${assetPdfPreview.source}-${assetPdfZoom}`}
-                      src={`${assetPdfPreview.source}${assetPdfPreview.source.includes("#") ? "&" : "#"}zoom=${assetPdfZoom}`}
+                      src={`${assetPdfPreview.source}#toolbar=1&navpanes=0&zoom=${assetPdfZoom}`}
                       title={assetPdfPreview.title}
                       style={{
                         display: "block",
