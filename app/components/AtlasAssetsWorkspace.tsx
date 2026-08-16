@@ -3325,6 +3325,19 @@ export default function AtlasAssetsWorkspace(props: any) {
                       >
                         100%
                       </button>
+                      <a
+                        href={assetPdfPreview.source}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          ...assetTinyButtonStyle,
+                          textDecoration: "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        Open Original
+                      </a>
                       <button
                         type="button"
                         onClick={() => setAssetPdfPreview(null)}
@@ -3345,7 +3358,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                   >
                     <iframe
                       key={`${assetPdfPreview.source}-${assetPdfZoom}`}
-                      src={assetPdfPreview.source}
+                      src={`${assetPdfPreview.source}${assetPdfPreview.source.includes("#") ? "&" : "#"}zoom=${assetPdfZoom}`}
                       title={assetPdfPreview.title}
                       style={{
                         display: "block",
@@ -3354,8 +3367,6 @@ export default function AtlasAssetsWorkspace(props: any) {
                         minHeight: "100%",
                         border: 0,
                         background: "#FFFFFF",
-                        transform: `scale(${assetPdfZoom / 100})`,
-                        transformOrigin: "top left",
                       }}
                     />
                   </div>
