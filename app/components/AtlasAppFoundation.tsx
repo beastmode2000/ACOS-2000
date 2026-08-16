@@ -5255,6 +5255,7 @@ export function ListDrawerLayout(props: {
   title?: string;
   detail?: string;
   right?: React.ReactNode;
+  toolbar?: React.ReactNode;
   list: React.ReactNode;
   drawer: React.ReactNode;
   isMobile: boolean;
@@ -5403,32 +5404,32 @@ export function ListDrawerLayout(props: {
         overflowX: props.isMobile ? "hidden" : "clip",
       }}
     >
-      {props.eyebrow || props.detail || props.right ? (
+      {props.eyebrow || props.detail || props.right || props.toolbar ? (
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
+            display: "grid",
+            gap: props.toolbar ? 8 : 0,
             paddingBottom: 9,
             marginBottom: 9,
             borderBottom: `1px solid ${colors.line}`,
-            flexWrap: "wrap",
           }}
         >
-          <div style={{ minWidth: 0 }}>
-            {props.eyebrow ? (
-              <div
-                style={{ ...eyebrowStyle, marginBottom: props.detail ? 4 : 0 }}
-              >
-                {props.eyebrow}
-              </div>
-            ) : null}
-            {props.detail ? (
-              <p style={{ ...mutedSmallStyle, margin: 0 }}>{props.detail}</p>
-            ) : null}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ minWidth: 0 }}>
+              {props.eyebrow ? (
+                <div
+                  style={{ ...eyebrowStyle, marginBottom: props.detail ? 4 : 0 }}
+                >
+                  {props.eyebrow}
+                </div>
+              ) : null}
+              {props.detail ? (
+                <p style={{ ...mutedSmallStyle, margin: 0 }}>{props.detail}</p>
+              ) : null}
+            </div>
+            {props.right ? <div style={buttonRowStyle}>{props.right}</div> : null}
           </div>
-          {props.right ? <div style={buttonRowStyle}>{props.right}</div> : null}
+          {props.toolbar ? <div style={{ minWidth: 0, width: "100%" }}>{props.toolbar}</div> : null}
         </div>
       ) : null}
       <div
