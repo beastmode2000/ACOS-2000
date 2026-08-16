@@ -7927,24 +7927,40 @@ export default function AtlasApp() {
   }
 
   async function filesFromClipboardPayload(files: File[], urls: string[]) {
-    const imported: File[] = [...files];
+    const directImages = files
+      .map(normalizeImageFile)
+      .filter((file) => file.type.startsWith("image/"));
 
-    for (const url of urls) {
+    // A browser clipboard often contains the same copied picture twice:
+    // once as the actual image file and again as an HTML/plain-text image URL.
+    // If we already have the real image bytes, use those only. Importing the
+    // URL as well creates a second Atlas photo for one paste.
+    if (directImages.length) {
+      const uniqueDirect = new Map<string, File>();
+      directImages.forEach((file) => {
+        const key = `${file.type}|${file.size}|${file.lastModified}`;
+        if (!uniqueDirect.has(key)) uniqueDirect.set(key, file);
+      });
+      return [...uniqueDirect.values()];
+    }
+
+    const imported: File[] = [];
+    for (const url of [...new Set(urls)]) {
       if (imported.length >= 10) break;
       try {
         imported.push(await importImageUrlAsFile(url));
       } catch {
-        // Continue because a direct clipboard image may already be present.
+        // Continue through the remaining clipboard URLs.
       }
     }
 
-    const unique = new Map<string, File>();
+    const uniqueImported = new Map<string, File>();
     imported.forEach((file) => {
       const key = `${file.name}|${file.type}|${file.size}`;
-      if (!unique.has(key)) unique.set(key, file);
+      if (!uniqueImported.has(key)) uniqueImported.set(key, file);
     });
 
-    return [...unique.values()];
+    return [...uniqueImported.values()];
   }
 
   async function readClipboardImageFiles() {
