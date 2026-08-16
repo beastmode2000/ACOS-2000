@@ -4311,6 +4311,7 @@ export default function AtlasApp() {
           { label: "Property", items: ["assets", "locations", "calendar"] as AtlasScreen[] },
           { label: "People", items: ["contacts", "vendors", "team"] as AtlasScreen[] },
           { label: "Intake", items: ["intake"] as AtlasScreen[] },
+          { label: "Knowledge", items: ["manuals"] as AtlasScreen[] },
         ];
       })();
 
@@ -4324,7 +4325,7 @@ export default function AtlasApp() {
         const remaining = screens
           .map((item) => item.id)
           .filter((screenId) => !primaryIds.has(screenId) && screenId !== "insights");
-        return ["manuals", ...remaining.filter((screenId) => screenId !== "manuals")] as AtlasScreen[];
+        return remaining.filter((screenId) => screenId !== "manuals") as AtlasScreen[];
       })();
 
   useEffect(() => {
