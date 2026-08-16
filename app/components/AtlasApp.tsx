@@ -341,6 +341,8 @@ export default function AtlasApp() {
     | "General"
     | "Property"
     | "Maintenance"
+    | "Cleaning"
+    | "Admin"
     | "Projects"
     | "Vendors"
     | "Landscaping"
@@ -353,6 +355,8 @@ export default function AtlasApp() {
     "General",
     "Property",
     "Maintenance",
+    "Cleaning",
+    "Admin",
     "Projects",
     "Vendors",
     "Landscaping",
@@ -6986,6 +6990,8 @@ export default function AtlasApp() {
     const sectionGlyph = (section: NoteSection) => {
       if (section === "Property") return "⌂";
       if (section === "Maintenance") return "◇";
+      if (section === "Cleaning") return "○";
+      if (section === "Admin") return "A";
       if (section === "Projects") return "▣";
       if (section === "Vendors") return "V";
       if (section === "Landscaping") return "⌁";
