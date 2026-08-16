@@ -28,6 +28,32 @@ type WorkSection = {
     | "completed";
 };
 
+type WorkFilterKey =
+  | "assigned"
+  | "dueDate"
+  | "location"
+  | "priority"
+  | "category"
+  | "view";
+
+const DEFAULT_VISIBLE_FILTERS: WorkFilterKey[] = [
+  "assigned",
+  "dueDate",
+  "location",
+  "priority",
+  "category",
+  "view",
+];
+
+const WORK_FILTER_LABELS: Record<WorkFilterKey, string> = {
+  assigned: "Assigned To",
+  dueDate: "Due Date",
+  location: "Location",
+  priority: "Priority",
+  category: "Category",
+  view: "My Work",
+};
+
 type PhotoLike = {
   id: string;
   name: string;
@@ -397,6 +423,17 @@ function photoSource(photo?: PhotoLike | null) {
   return String(photo?.dataUrl || photo?.url || "");
 }
 
+function TrashIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v5M14 11v5" />
+    </svg>
+  );
+}
+
 function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -527,6 +564,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [assignedFilter, setAssignedFilter] = useState("All");
   const [priorityFilter, setPriorityFilter] = useState("All");
+  const [visibleFilters, setVisibleFilters] = useState<WorkFilterKey[]>(
+    DEFAULT_VISIBLE_FILTERS,
+  );
   const [localSearch, setLocalSearch] = useState("");
   const [manageSectionsOpen, setManageSectionsOpen] = useState(false);
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
@@ -717,6 +757,25 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     setAssetFilter("All");
     setAssignedFilter("All");
     setPriorityFilter("All");
+  }
+
+  function removeFilter(filter: WorkFilterKey) {
+    setVisibleFilters((current) => current.filter((item) => item !== filter));
+    if (filter === "assigned") setAssignedFilter("All");
+    if (filter === "dueDate") setDueDateFilter("All");
+    if (filter === "location") {
+      setLocationFilter("All");
+      setSubLocationFilter("All");
+    }
+    if (filter === "priority") setPriorityFilter("All");
+    if (filter === "category") setCategoryFilter("All");
+    if (filter === "view") setActiveSectionId("my-work");
+  }
+
+  function restoreFilter(filter: WorkFilterKey) {
+    setVisibleFilters((current) =>
+      current.includes(filter) ? current : [...current, filter],
+    );
   }
 
   function addCategory() {
@@ -981,6 +1040,59 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   const favoriteRecords = useMemo(() => favoriteIds.map((id) => filteredServices.find((record: any) => record.id === id)).filter(Boolean), [favoriteIds, filteredServices]);
   const recentRecords = useMemo(() => recentIds.map((id) => filteredServices.find((record: any) => record.id === id)).filter(Boolean), [recentIds, filteredServices]);
+
+  const detailPhoto = useMemo(() => {
+    const directPhoto = (selectedService?.photos || []).find((photo: PhotoLike) =>
+      photoSource(photo),
+    );
+    if (directPhoto) return directPhoto;
+
+    const assetId = String(selectedService?.assetId || "");
+    const assetPhoto = assetPhotoRecords.find(
+      (photo: any) => String(photo.assetId || "") === assetId && photoSource(photo),
+    );
+    if (assetPhoto) return assetPhoto;
+
+    const linkedAsset = assetRecords.find((asset: any) => asset.id === assetId);
+    const linkedLocation = locationRecords.find(
+      (location: any) => location.id === selectedService?.locationId,
+    );
+    const linkedVendor = vendorRecords.find(
+      (vendor: any) => vendor.id === selectedService?.vendorId,
+    );
+
+    const sourceRecord = [linkedAsset, linkedLocation, linkedVendor].find(
+      (record: any) =>
+        record &&
+        (photoSource(record.photo) ||
+          photoSource(record.coverPhoto) ||
+          record.photoUrl ||
+          record.imageUrl ||
+          record.logoUrl),
+    );
+    if (!sourceRecord) return null;
+    return (
+      sourceRecord.photo ||
+      sourceRecord.coverPhoto || {
+        id: `${sourceRecord.id}-inherited-photo`,
+        name: `${sourceRecord.name || "Linked record"} photo`,
+        url:
+          sourceRecord.photoUrl ||
+          sourceRecord.imageUrl ||
+          sourceRecord.logoUrl,
+      }
+    );
+  }, [
+    selectedService?.id,
+    selectedService?.assetId,
+    selectedService?.locationId,
+    selectedService?.vendorId,
+    selectedService?.photos,
+    assetPhotoRecords,
+    assetRecords,
+    locationRecords,
+    vendorRecords,
+  ]);
 
   const workSummary = useMemo(() => {
     const openRecords = filteredServices.filter(
@@ -1681,7 +1793,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             ? isMobile
               ? undefined
               : {
-                  gridTemplateColumns: "minmax(330px, 36%) minmax(0, 64%)",
+                  gridTemplateColumns: "minmax(300px, 26%) minmax(0, 74%)",
                   height: "100%",
                   minHeight: 0,
                   overflow: "hidden",
@@ -1702,7 +1814,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 minHeight: 0,
                 overflowY: "auto",
                 overflowX: "hidden",
-                paddingRight: 8,
+              paddingRight: 10,
               }
         }
         drawerStyleOverride={
@@ -1971,7 +2083,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
             
 
-            <div style={{ display: "grid", gap: 7 }}>
+            <div style={{ display: "grid", gap: 8 }}>
               <input
                 type="search"
                 value={localSearch}
@@ -1997,10 +2109,11 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   flexWrap: "wrap",
                 }}
               >
+                {visibleFilters.includes("assigned") ? <div style={{ display: "flex", alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
                 <select
                   value={assignedFilter}
                   onChange={(event) => setAssignedFilter(event.currentTarget.value)}
-                  style={{ ...controlStyle, width: "auto", minWidth: 130, minHeight: 34 }}
+                  style={{ ...controlStyle, width: "auto", minWidth: 118, minHeight: 34, border: 0, borderRadius: 0 }}
                   aria-label="Assigned to"
                 >
                   <option value="All">Assigned To</option>
@@ -2011,11 +2124,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     </option>
                   ))}
                 </select>
+                <button type="button" onClick={() => removeFilter("assigned")} title="Remove Assigned To filter" aria-label="Remove Assigned To filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
+                </div> : null}
 
+                {visibleFilters.includes("dueDate") ? <div style={{ display: "flex", alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
                 <select
                   value={dueDateFilter}
                   onChange={(event) => setDueDateFilter(event.currentTarget.value)}
-                  style={{ ...controlStyle, width: "auto", minWidth: 110, minHeight: 34 }}
+                  style={{ ...controlStyle, width: "auto", minWidth: 101, minHeight: 34, border: 0, borderRadius: 0 }}
                   aria-label="Due date"
                 >
                   <option value="All">Due Date</option>
@@ -2026,14 +2142,17 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <option value="Next Month">Next Month</option>
                   <option value="No Due Date">No Due Date</option>
                 </select>
+                <button type="button" onClick={() => removeFilter("dueDate")} title="Remove Due Date filter" aria-label="Remove Due Date filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
+                </div> : null}
 
+                {visibleFilters.includes("location") ? <div style={{ display: "flex", alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
                 <select
                   value={locationFilter}
                   onChange={(event) => {
                     setLocationFilter(event.currentTarget.value);
                     setSubLocationFilter("All");
                   }}
-                  style={{ ...controlStyle, width: "auto", minWidth: 115, minHeight: 34 }}
+                  style={{ ...controlStyle, width: "auto", minWidth: 105, minHeight: 34, border: 0, borderRadius: 0 }}
                   aria-label="Location"
                 >
                   <option value="All">Location</option>
@@ -2044,11 +2163,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     </option>
                   ))}
                 </select>
+                <button type="button" onClick={() => removeFilter("location")} title="Remove Location filter" aria-label="Remove Location filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
+                </div> : null}
 
+                {visibleFilters.includes("priority") ? <div style={{ display: "flex", alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
                 <select
                   value={priorityFilter}
                   onChange={(event) => setPriorityFilter(event.currentTarget.value)}
-                  style={{ ...controlStyle, width: "auto", minWidth: 105, minHeight: 34 }}
+                  style={{ ...controlStyle, width: "auto", minWidth: 92, minHeight: 34, border: 0, borderRadius: 0 }}
                   aria-label="Priority"
                 >
                   <option value="All">Priority</option>
@@ -2056,11 +2178,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <option value="Medium">Medium</option>
                   <option value="Low">Low</option>
                 </select>
+                <button type="button" onClick={() => removeFilter("priority")} title="Remove Priority filter" aria-label="Remove Priority filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
+                </div> : null}
 
+                {visibleFilters.includes("category") ? <div style={{ display: "flex", alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
                 <select
                   value={categoryFilter}
                   onChange={(event) => setCategoryFilter(event.currentTarget.value)}
-                  style={{ ...controlStyle, width: "auto", minWidth: 115, minHeight: 34 }}
+                  style={{ ...controlStyle, width: "auto", minWidth: 105, minHeight: 34, border: 0, borderRadius: 0 }}
                   aria-label="Category"
                 >
                   <option value="All">Category</option>
@@ -2072,11 +2197,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       </option>
                     ))}
                 </select>
+                <button type="button" onClick={() => removeFilter("category")} title="Remove Category filter" aria-label="Remove Category filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
+                </div> : null}
 
+                {visibleFilters.includes("view") ? <div style={{ display: "flex", alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", overflow: "hidden" }}>
                 <select
                   value={activeSectionId}
                   onChange={(event) => setActiveSectionId(event.currentTarget.value)}
-                  style={{ ...controlStyle, width: "auto", minWidth: 115, minHeight: 34 }}
+                  style={{ ...controlStyle, width: "auto", minWidth: 105, minHeight: 34, border: 0, borderRadius: 0 }}
                   aria-label="Work view"
                 >
                   {sections.map((section) => (
@@ -2087,6 +2215,26 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     </option>
                   ))}
                 </select>
+                <button type="button" onClick={() => removeFilter("view")} title="Remove Work View filter" aria-label="Remove Work View filter" style={{ border: 0, borderLeft: `1px solid ${colors.line}`, background: "transparent", color: colors.muted, minHeight: 34, width: 31, cursor: "pointer", display: "grid", placeItems: "center" }}><TrashIcon /></button>
+                </div> : null}
+
+                {visibleFilters.length < DEFAULT_VISIBLE_FILTERS.length ? (
+                  <select
+                    value=""
+                    onChange={(event) => {
+                      const value = event.currentTarget.value as WorkFilterKey;
+                      if (value) restoreFilter(value);
+                      event.currentTarget.value = "";
+                    }}
+                    style={{ ...controlStyle, width: "auto", minWidth: 105, minHeight: 34, borderRadius: 9, fontWeight: 700 }}
+                    aria-label="Add filter"
+                  >
+                    <option value="">+ Add Filter</option>
+                    {DEFAULT_VISIBLE_FILTERS.filter((filter) => !visibleFilters.includes(filter)).map((filter) => (
+                      <option key={filter} value={filter}>{WORK_FILTER_LABELS[filter]}</option>
+                    ))}
+                  </select>
+                ) : null}
 
                 {activeFilterCount ? (
                   <button
@@ -2161,16 +2309,17 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         drawer={
           detailOpen && selectedService.id ? (
             <div style={{ ...stackStyle, gap: 12 }}>
+              {isMobile ? (
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
                   gap: 12,
-                  position: isMobile ? "sticky" : "relative",
+                  position: "sticky",
                   top: 0,
                   zIndex: 5,
-                  padding: isMobile ? "4px 0 12px" : "0 0 8px",
+                  padding: "4px 0 12px",
                   background: "#FFFFFF",
                   borderBottom: `1px solid ${colors.line}`,
                 }}
@@ -2192,7 +2341,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 >
                   {SYMBOL.back} Work Orders
                 </button>
-                {isMobile ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -2213,9 +2361,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   >
                     {SYMBOL.close}
                   </button>
-                ) : null}
                 </span>
               </div>
+              ) : null}
               <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16, borderRadius: 16 }}>
                 {!workEditorOpen ? (
                   <div style={{ display: "grid", gap: 14 }}>
@@ -2231,6 +2379,21 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                        <div style={{ position: "relative", width: isMobile ? 88 : 126, height: isMobile ? 88 : 126, flex: "0 0 auto", border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#F8FAFC", display: "grid", placeItems: "center" }}>
+                          {detailPhoto && photoSource(detailPhoto) ? (
+                            <img src={photoSource(detailPhoto)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            <span style={{ ...mutedSmallStyle, padding: 8, textAlign: "center" }}>No photo</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => quickPhotoInputRef.current?.click()}
+                            title="Edit work order photo"
+                            style={{ position: "absolute", right: 5, bottom: 5, border: `1px solid ${colors.line}`, borderRadius: 8, background: "rgba(255,255,255,.94)", color: colors.text, minHeight: 28, padding: "4px 7px", fontSize: 11, fontWeight: 800, cursor: "pointer" }}
+                          >
+                            Edit
+                          </button>
+                        </div>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "center" }}>
                             <span style={{ ...badgeStyle(selectedService.status || "Open"), fontWeight: 800 }}>
@@ -2306,7 +2469,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <div style={{ display: "grid", gap: 11 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                       <div style={eyebrowStyle}>Edit Work Order</div>
-                      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => void deleteWorkOrderRecord(selectedService)} style={{ ...dangerButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Delete</button><button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button></div>
+                      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => void deleteWorkOrderRecord(selectedService)} title="Delete work order" aria-label="Delete work order" style={{ ...dangerButtonStyle, width: 34, minHeight: 32, padding: 0, display: "grid", placeItems: "center" }}><TrashIcon /></button><button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button></div>
                     </div>
                     <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, fontSize: 20, fontWeight: 800 }} />
                     <textarea value={selectedService.notes || ""} onChange={(event) => updateWorkOrder({ notes: event.currentTarget.value })} rows={3} style={{ ...inputStyle, minHeight: 78, resize: "vertical" }} />
