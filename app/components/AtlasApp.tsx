@@ -8268,6 +8268,85 @@ export default function AtlasApp() {
     setSelectedManualId("");
   }
 
+  async function uploadManualForAsset(
+    asset: AssetRecord,
+    fileList: FileList | null,
+  ) {
+    if (!asset.id || !fileList?.length) return;
+
+    const file = Array.from(fileList).find(
+      (item) =>
+        item.type === "application/pdf" ||
+        item.name.toLowerCase().endsWith(".pdf"),
+    );
+    if (!file) {
+      showSaveToast("Choose a PDF manual.", "warning");
+      return;
+    }
+
+    try {
+      const uploadedFile = await fileToUploadedRecord(file);
+      const createdAt = new Date().toISOString();
+      const title = file.name.replace(/\.pdf$/i, "").trim() || "Equipment Manual";
+
+      const manual = normalizeManualRecord({
+        id: uid("manual"),
+        title,
+        category: inferManualCategory(title),
+        manufacturer: asset.make || "",
+        model: asset.model || "",
+        documentNumber: "",
+        linkedAssetId: asset.id,
+        linkedAssetName: asset.name,
+        sourceLabel: "Asset upload",
+        href: uploadedFile.url || uploadedFile.dataUrl || "",
+        notes: "",
+        files: [uploadedFile],
+        createdAt,
+      });
+
+      setManualRecords((current) => {
+        const next = [manual, ...current];
+        saveStoredArray(storageKeys.manuals[0], next);
+        return next;
+      });
+
+      const documentRecord = normalizeDocument({
+        id: uid("doc"),
+        title,
+        area: locationName(asset.locationId) || asset.name,
+        type: "Equipment Manual / PDF",
+        targetType: "Asset",
+        targetId: asset.id,
+        targetName: asset.name,
+        linkedAssetId: asset.id,
+        notes: "",
+        href: manual.href,
+        files: [uploadedFile],
+        createdAt,
+      });
+
+      replaceDocumentInVault(documentRecord);
+      setIntakeDocs((current) => {
+        const next = mergeDocuments([documentRecord], current);
+        saveStoredArray(storageKeys.intakeDocs[0], next);
+        return next;
+      });
+
+      try {
+        await postDocumentToAtlasVault(documentRecord);
+        showSaveToast(`${title} added to ${asset.name}.`);
+      } catch {
+        showSaveToast(
+          `${title} added to ${asset.name}; document sync is pending.`,
+          "warning",
+        );
+      }
+    } catch {
+      showSaveToast("Atlas could not add that manual.", "warning");
+    }
+  }
+
   function startManualForAsset(asset: AssetRecord) {
     if (!asset.id) return;
     setSelectedManualId("");
@@ -19040,6 +19119,7 @@ ${notes.trim()}` : notes.trim(),
       showSaveToast,
       staffVisibleServiceRecords,
       startManualForAsset,
+      uploadManualForAsset,
       taskDetails,
       updateAsset,
       vendorName,
