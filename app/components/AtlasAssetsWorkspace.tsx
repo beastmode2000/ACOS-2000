@@ -1259,105 +1259,36 @@ export default function AtlasAssetsWorkspace(props: any) {
               })();
             }}
           >
-            <div
-              style={{
-                ...assetPanelTitleRowStyle,
-                alignItems: "flex-start",
-                gap: 12,
-                flexWrap: "wrap",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 12,
-                  minWidth: 0,
-                  flex: "1 1 420px",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    selectedAssetCoverPhoto
-                      ? openPhotoPreview(selectedAssetCoverPhoto)
-                      : undefined
-                  }
+            <div style={assetPanelTitleRowStyle}>
+              <div>
+                <h3 style={assetPanelTitleStyle}>
+                  {selectedAsset.name.trim() || "Asset"}
+                </h3>
+                <div
                   style={{
-                    width: isMobile ? 82 : 96,
-                    height: isMobile ? 82 : 96,
-                    flex: "0 0 auto",
-                    border: `1px solid ${colors.line}`,
-                    borderRadius: 12,
-                    overflow: "hidden",
-                    padding: 0,
-                    background: colors.panel,
-                    cursor: selectedAssetCoverPhoto ? "pointer" : "default",
+                    display: "flex",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 6,
+                    marginTop: 4,
                   }}
                 >
-                  {selectedAssetCoverSource ? (
-                    <img
-                      src={selectedAssetCoverSource}
-                      alt={selectedAssetCoverPhoto?.name || selectedAsset.name}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        display: "block",
-                      }}
-                    />
-                  ) : (
-                    <span
-                      style={{
-                        display: "grid",
-                        placeItems: "center",
-                        width: "100%",
-                        height: "100%",
-                        color: colors.muted,
-                        fontSize: 10,
-                        fontWeight: 800,
-                      }}
-                    >
-                      No photo
-                    </span>
-                  )}
-                </button>
-
-                <div style={{ minWidth: 0, flex: "1 1 auto" }}>
-                  <h3 style={{ ...assetPanelTitleStyle, marginBottom: 7 }}>
-                    {selectedAsset.name.trim() || "Asset"}
-                  </h3>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: isMobile
-                        ? "1fr"
-                        : "repeat(2, minmax(0, 1fr))",
-                      gap: "5px 12px",
-                    }}
-                  >
+                  <span style={badgeStyle(assetConditionBadge)}>
+                    {assetConditionLabel}
+                  </span>
+                  {selectedAsset.category ? (
+                    <span style={mutedSmallStyle}>{selectedAsset.category}</span>
+                  ) : null}
+                  {selectedAsset.locationId && selectedAsset.locationId !== "general" ? (
+                    <span style={mutedSmallStyle}>· {locationName(selectedAsset.locationId)}</span>
+                  ) : null}
+                  {[selectedAsset.make, selectedAsset.model].filter(Boolean).length ? (
                     <span style={mutedSmallStyle}>
-                      <strong style={{ color: colors.navy }}>Make / Model:</strong>{" "}
-                      {[selectedAsset.make, selectedAsset.model].filter(Boolean).join(" ") || "Not recorded"}
+                      · {[selectedAsset.make, selectedAsset.model].filter(Boolean).join(" ")}
                     </span>
-                    <span style={mutedSmallStyle}>
-                      <strong style={{ color: colors.navy }}>Serial / VIN / HIN:</strong>{" "}
-                      {selectedAsset.serial || "Not recorded"}
-                    </span>
-                    <span style={mutedSmallStyle}>
-                      <strong style={{ color: colors.navy }}>Location:</strong>{" "}
-                      {selectedAsset.locationId && selectedAsset.locationId !== "general"
-                        ? locationName(selectedAsset.locationId)
-                        : "Not assigned"}
-                    </span>
-                    <span style={mutedSmallStyle}>
-                      <strong style={{ color: colors.navy }}>Category:</strong>{" "}
-                      {selectedAsset.category || "Not assigned"}
-                    </span>
-                  </div>
+                  ) : null}
                 </div>
               </div>
-
               <div style={assetActionRowStyle}>
                 {assetEditorOpen ? (
                   <>
@@ -1446,6 +1377,18 @@ export default function AtlasAssetsWorkspace(props: any) {
                     </button>
                     <button
                       type="button"
+                      onClick={() => setAssetPanelCustomizeOpen((current) => !current)}
+                      style={{
+                        ...assetActionButtonStyle,
+                        borderColor: assetPanelCustomizeOpen ? colors.gold : colors.line,
+                        background: assetPanelCustomizeOpen ? "#FFF8E6" : "#FFFFFF",
+                      }}
+                      aria-expanded={assetPanelCustomizeOpen}
+                    >
+                      Customize
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => void deleteAssetRecord(selectedAsset)}
                       style={{ ...dangerButtonStyle, width: "auto" }}
                     >
@@ -1458,62 +1401,849 @@ export default function AtlasAssetsWorkspace(props: any) {
 
             <div
               style={{
-                marginBottom: 12,
-                borderBottom: `1px solid ${colors.line}`,
-                display: "flex",
-                gap: 6,
+                marginBottom: isMobile ? 10 : 12,
+                position: isMobile ? "sticky" : "static",
+                top: isMobile ? 0 : undefined,
+                zIndex: isMobile ? 12 : undefined,
+                background: "#FFFFFF",
+                paddingTop: isMobile ? 4 : 0,
+                paddingBottom: isMobile ? 6 : 0,
               }}
-              role="tablist"
-              aria-label="Asset information tabs"
             >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={assetPanelSection === "overview"}
-                onClick={() => setAssetPanelSection("overview")}
-                style={{
-                  border: 0,
-                  borderBottom: `3px solid ${assetPanelSection === "overview" ? colors.gold : "transparent"}`,
-                  background: assetPanelSection === "overview" ? "#FFF9E8" : "transparent",
-                  color: assetPanelSection === "overview" ? colors.navy : colors.muted,
-                  padding: "8px 12px",
-                  fontSize: 11,
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
-                Asset Info
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={assetPanelSection !== "overview"}
-                onClick={() => setAssetPanelSection("work")}
-                style={{
-                  border: 0,
-                  borderBottom: `3px solid ${assetPanelSection !== "overview" ? colors.gold : "transparent"}`,
-                  background: assetPanelSection !== "overview" ? "#FFF9E8" : "transparent",
-                  color: assetPanelSection !== "overview" ? colors.navy : colors.muted,
-                  padding: "8px 12px",
-                  fontSize: 11,
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
-                Work & Service
-              </button>
+              {isMobile ? (
+                <select
+                  value={assetPanelSection}
+                  onChange={(event) =>
+                    setAssetPanelSection(event.target.value as typeof assetPanelSection)
+                  }
+                  style={{
+                    ...assetSortSelectStyle,
+                    width: "100%",
+                    minHeight: 42,
+                    fontSize: 13,
+                  }}
+                  aria-label="Asset information section"
+                >
+                  <option value="overview">Overview</option>
+                  <option value="work">Work Orders ({openAssetWorkOrders.length})</option>
+                  <option value="history">Service History ({assetHistory.length})</option>
+                  <option value="photos">Photos ({selectedAssetPhotos.length})</option>
+                  <option value="documents">Documents ({linkedAssetDocuments.length + attachedManuals.length})</option>
+                  <option value="procedures">Procedures ({linkedAssetProcedures.length})</option>
+                  <option value="notes">Notes</option>
+                </select>
+              ) : (
+                <div
+                  role="tablist"
+                  aria-label="Asset information sections"
+                  style={{
+                    display: "flex",
+                    gap: 4,
+                    overflowX: "auto",
+                    borderBottom: `1px solid ${colors.line}`,
+                  }}
+                >
+                  {[
+                    ["overview", "Overview", null],
+                    ["work", "Work Orders", openAssetWorkOrders.length],
+                    ["history", "Service History", assetHistory.length],
+                    ["photos", "Photos", selectedAssetPhotos.length],
+                    ["documents", "Documents", linkedAssetDocuments.length + attachedManuals.length],
+                    ["procedures", "Procedures", linkedAssetProcedures.length],
+                    ["notes", "Notes", null],
+                  ].map(([key, label, count]) => {
+                    const active = assetPanelSection === key;
+                    return (
+                      <button
+                        key={String(key)}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => setAssetPanelSection(key as typeof assetPanelSection)}
+                        style={{
+                          border: 0,
+                          borderBottom: `3px solid ${active ? colors.gold : "transparent"}`,
+                          borderRadius: "8px 8px 0 0",
+                          background: active ? "#FFF9E8" : "transparent",
+                          color: active ? colors.navy : colors.muted,
+                          padding: "8px 10px",
+                          fontSize: 11,
+                          fontWeight: 900,
+                          whiteSpace: "nowrap",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {String(label)}
+                        {typeof count === "number" ? ` (${count})` : ""}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
+            {!assetEditorOpen && assetPanelCustomizeOpen && assetPanelSection === "overview" ? (
+              <section
+                style={{
+                  border: `1px solid ${colors.gold}`,
+                  borderRadius: 12,
+                  background: "#FFF9E8",
+                  padding: 11,
+                  marginBottom: 12,
+                }}
+                aria-label="Visible asset information sections"
+              >
+                <div style={{ ...assetCardHeaderStyle, marginBottom: 8 }}>
+                  <div>
+                    <strong style={{ whiteSpace: "nowrap" }}>Visible Sections</strong>
+                    <div style={assetCardHintStyle}>
+                      Choose what appears in the asset information panel.
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAssetVisibleSections({
+                          overview: true,
+                          status: true,
+                          linkedRecords: true,
+                          recordSetup: true,
+                          costs: false,
+                        })
+                      }
+                      style={assetTinyButtonStyle}
+                    >
+                      Reset
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAssetVisibleSectionsExpanded((current) => !current)}
+                      style={assetTinyButtonStyle}
+                      aria-expanded={assetVisibleSectionsExpanded}
+                      aria-label={assetVisibleSectionsExpanded ? "Collapse Visible Sections" : "Expand Visible Sections"}
+                    >
+                      {assetVisibleSectionsExpanded ? "▲" : "▼"}
+                    </button>
+                  </div>
+                </div>
+                {assetVisibleSectionsExpanded ? <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(2, minmax(0, 1fr))",
+                    gap: 7,
+                  }}
+                >
+                  {[
+                    ["overview", "Asset Overview"],
+                    ["status", "Asset Status"],
+                    ["linkedRecords", "Linked Records"],
+                    ["recordSetup", "Record Setup"],
+                    ["costs", "Service Costs"],
+                  ].map(([key, label]) => (
+                    <label
+                      key={key}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        minWidth: 0,
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 9,
+                        background: "#FFFFFF",
+                        padding: "8px 9px",
+                        color: colors.navy,
+                        fontSize: 11,
+                        fontWeight: 850,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={assetVisibleSections[key] !== false}
+                        onChange={(event) =>
+                          setAssetVisibleSections((current) => ({
+                            ...current,
+                            [key]: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span
+                        style={{
+                          whiteSpace: "nowrap",
+                          wordBreak: "normal",
+                          overflowWrap: "normal",
+                        }}
+                      >
+                        {label}
+                      </span>
+                    </label>
+                  ))}
+                </div> : null}
+                <div style={{ ...assetCardHintStyle, marginTop: 8 }}>
+                  Service Costs are hidden by default because expenses are managed separately.
+                </div>
+              </section>
+            ) : null}
 
+            <section
+              style={{
+                display:
+                  assetPanelSection === "overview" &&
+                  assetVisibleSections.overview !== false
+                    ? "grid"
+                    : "none",
+                border: `1px solid ${colors.line}`,
+                borderRadius: 14,
+                background: "linear-gradient(135deg, #FFFFFF 0%, #F6F9FD 100%)",
+                padding: isMobile ? 12 : 14,
+                marginBottom: 12,
+                gridTemplateColumns: isMobile
+                  ? "repeat(2, minmax(0, 1fr))"
+                  : "repeat(4, minmax(0, 1fr))",
+                gap: 8,
+                boxShadow: "0 8px 22px rgba(24, 43, 77, 0.06)",
+              }}
+              aria-label="Asset overview"
+            >
+              {[
+                {
+                  label: "Make / Model",
+                  value:
+                    [selectedAsset.make, selectedAsset.model]
+                      .filter(Boolean)
+                      .join(" ") || "Not recorded",
+                },
+                {
+                  label: "Primary Location",
+                  value:
+                    selectedAsset.locationId &&
+                    selectedAsset.locationId !== "general"
+                      ? locationName(selectedAsset.locationId)
+                      : "Not assigned",
+                },
+                {
+                  label: "Serial / ID",
+                  value: selectedAsset.serial || (selectedAsset.serialRequirement === "Not Required" ? "Not required" : "Not recorded"),
+                },
+                {
+                  label: "Preferred Vendors",
+                  value: `${selectedVendors.length} linked`,
+                },
+              ].map((item) => (
+                <div
+                  key={((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}
+                  style={{
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 10,
+                    background: "#FFFFFF",
+                    padding: "9px 10px",
+                    minWidth: 0,
+                  }}
+                >
+                  <span style={assetInfoLabelStyle}>{((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}</span>
+                  <strong
+                    style={{
+                      display: "block",
+                      marginTop: 4,
+                      color: colors.navy,
+                      fontSize: 13,
+                      lineHeight: 1.3,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={item.value}
+                  >
+                    {item.value}
+                  </strong>
+                </div>
+              ))}
+            </section>
 
-            
+            <section
+              style={{
+                ...assetCardStyle,
+                display: assetPanelSection === "overview" ? "block" : "none",
+                marginBottom: 12,
+                background: "#FFFFFF",
+                borderLeft: `4px solid ${assetAttentionItems.length ? "#D92D20" : colors.gold}`,
+              }}
+              aria-label="Asset intelligence"
+            >
+              <div style={assetCardHeaderStyle}>
+                <div>
+                  <strong>Operations Snapshot</strong>
+                  <div style={assetCardHintStyle}>Current work, activity, and the next action that matters</div>
+                </div>
+                <span style={badgeStyle(assetAttentionItems.length ? "High" : "Online")}>
+                  {assetAttentionItems.length ? `${assetAttentionItems.length} attention` : "On track"}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))",
+                  gap: 8,
+                  marginTop: 10,
+                }}
+              >
+                {[
+                  ["Open Tasks", String(openAssetTasks.length)],
+                  ["Open Work Orders", String(openAssetWorkOrders.length)],
+                  ["Active Projects", String(activeAssetProjects.length)],
+                  ["Last Activity", assetLastActivityDate ? formatDate(assetLastActivityDate) : "None"],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: "8px 9px", minWidth: 0 }}>
+                    <span style={assetInfoLabelStyle}>{label}</span>
+                    <strong style={{ display: "block", marginTop: 3, color: colors.navy, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</strong>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 10, borderTop: `1px solid ${colors.line}`, paddingTop: 9 }}>
+                <span style={assetInfoLabelStyle}>Recommended next action</span>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 4 }}>
+                  <strong style={{ color: colors.navy, fontSize: 13, lineHeight: 1.35 }}>{assetRecommendedAction}</strong>
+                  {openAssetTasks[0] ? (
+                    <button type="button" style={assetTinyButtonStyle} onClick={() => { setSelectedTaskId(openAssetTasks[0].id); setTasksView("tasks"); setScreen("planner"); }}>Open Task</button>
+                  ) : openAssetWorkOrders[0] ? (
+                    <button type="button" style={assetTinyButtonStyle} onClick={() => { setSelectedServiceId(openAssetWorkOrders[0].id); setScreen("history"); }}>Open Work</button>
+                  ) : activeAssetProjects[0] ? (
+                    <button type="button" style={assetTinyButtonStyle} onClick={() => { setSelectedPhotoProjectId(activeAssetProjects[0].id); setPhotoTimelineView("projects"); setScreen("timeline"); }}>Open Project</button>
+                  ) : null}
+                </div>
+              </div>
+              {assetAttentionItems.length ? (
+                <div style={{ marginTop: 9, display: "grid", gap: 5 }}>
+                  {assetAttentionItems.slice(0, 4).map((item) => (
+                    <div key={item} style={{ fontSize: 11, color: "#B42318", fontWeight: 800 }}>• {item}</div>
+                  ))}
+                </div>
+              ) : null}
+            </section>
 
-            
+            <section
+              style={{
+                ...assetCardStyle,
+                display:
+                  assetPanelSection === "overview" &&
+                  assetVisibleSections.status !== false
+                    ? "block"
+                    : "none",
+                marginBottom: 12,
+                background: "#F8FAFD",
+              }}
+            >
+              <div style={assetCardHeaderStyle}>
+                <div>
+                  <strong>Maintenance Status</strong>
+                  <div style={assetCardHintStyle}>
+                    Condition, open work, upcoming maintenance, and record readiness
+                  </div>
+                </div>
+                <span style={badgeStyle(assetConditionBadge)}>
+                  {assetConditionLabel}
+                </span>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "repeat(2, minmax(0, 1fr))"
+                    : "repeat(3, minmax(0, 1fr))",
+                  gap: 8,
+                  marginTop: 10,
+                }}
+              >
+                {[
+                  {
+                    label: "Condition",
+                    value: assetConditionLabel,
+                    detail:
+                      assetServiceIssues.length > 0
+                        ? `${assetServiceIssues.length} service issue${assetServiceIssues.length === 1 ? "" : "s"}`
+                        : selectedAsset.status === "Monitor"
+                          ? "Condition has not been assessed"
+                          : "No active condition warning",
+                    hoverTitle: "Asset condition",
+                    hoverLines: assetServiceIssues.length
+                      ? assetServiceIssues
+                      : [
+                          `Status: ${assetConditionLabel}`,
+                          selectedAsset.status === "Monitor"
+                            ? "Missing records do not mean the asset is not working"
+                            : "No overdue or high-priority service issue detected",
+                        ],
+                    action: () => undefined,
+                  },
+                  {
+                    label: "Open Work",
+                    value: String(openAssetWorkOrders.length),
+                    detail: openAssetWorkOrders[0]?.title || "No open work orders",
+                    hoverTitle: "Open-work summary",
+                    hoverLines: openAssetWorkOrders.length
+                      ? [
+                          `Next: ${openAssetWorkOrders[0]?.title || "Untitled work order"}`,
+                          openAssetWorkOrders[0]?.date
+                            ? `Due ${formatDate(openAssetWorkOrders[0].date)}`
+                            : "No due date recorded",
+                          `${assetEstimatedCost.toLocaleString(undefined, {
+                            style: "currency",
+                            currency: "USD",
+                            maximumFractionDigits: 0,
+                          })} estimated open-work cost`,
+                        ]
+                      : ["No active work orders", "Create a work order to begin tracking service"],
+                    action: () => {
+                      if (openAssetWorkOrders[0]) {
+                        setSelectedServiceId(openAssetWorkOrders[0].id);
+                        setScreen("history");
+                      }
+                    },
+                  },
+                  {
+                    label: "Next Maintenance",
+                    value: nextAssetMaintenance?.date
+                      ? formatDate(nextAssetMaintenance.date)
+                      : "None scheduled",
+                    detail: nextAssetMaintenance?.title || "Add preventive maintenance",
+                    hoverTitle: "Maintenance details",
+                    hoverLines: nextAssetMaintenance
+                      ? [
+                          nextAssetMaintenance.title || "Preventive maintenance",
+                          nextAssetMaintenance.date
+                            ? `Scheduled ${formatDate(nextAssetMaintenance.date)}`
+                            : "No scheduled date",
+                          `Priority: ${nextAssetMaintenance.priority || "Not recorded"}`,
+                        ]
+                      : [
+                          "No preventive maintenance is scheduled",
+                          "Click to create a recurring maintenance work order",
+                        ],
+                    action: () => {
+                      if (nextAssetMaintenance) {
+                        setSelectedServiceId(nextAssetMaintenance.id);
+                        setScreen("history");
+                      } else {
+                        addWorkOrder({
+                          assetId: selectedAsset.id,
+                          locationId: selectedAsset.locationId || "",
+                          workType: "Preventive Maintenance",
+                          recurring: true,
+                        });
+                      }
+                    },
+                  },
+                  {
+                    label: "Last Service",
+                    value: lastCompletedAssetWork?.date
+                      ? formatDate(lastCompletedAssetWork.date)
+                      : "No history",
+                    detail: lastCompletedAssetWork?.title || "Completed work will appear here",
+                    hoverTitle: "Most recent completed service",
+                    hoverLines: lastCompletedAssetWork
+                      ? [
+                          lastCompletedAssetWork.title || "Completed service",
+                          lastCompletedAssetWork.date
+                            ? `Completed ${formatDate(lastCompletedAssetWork.date)}`
+                            : "Completion date not recorded",
+                          "Click to open the full service record",
+                        ]
+                      : ["No completed service has been recorded for this asset"],
+                    action: () => {
+                      if (lastCompletedAssetWork) {
+                        setSelectedServiceId(lastCompletedAssetWork.workOrderId);
+                        setScreen("history");
+                      }
+                    },
+                  },
+                  {
+                    label: "Location",
+                    value: selectedAsset.locationId
+                      ? locationName(selectedAsset.locationId)
+                      : "Not assigned",
+                    detail: `${assetLocationIds(selectedAsset).length} linked location${assetLocationIds(selectedAsset).length === 1 ? "" : "s"}`,
+                    hoverTitle: "Location assignment",
+                    hoverLines: selectedAsset.locationId
+                      ? [
+                          locationName(selectedAsset.locationId),
+                          `${assetLocationIds(selectedAsset).length} linked location${assetLocationIds(selectedAsset).length === 1 ? "" : "s"}`,
+                          "Click to open the location record",
+                        ]
+                      : ["This asset is not assigned to a primary location"],
+                    action: () => {
+                      if (selectedAsset.locationId) {
+                        setSelectedLocationId(selectedAsset.locationId);
+                        setScreen("locations");
+                      }
+                    },
+                  },
+                  {
+                    label: "Service Cost",
+                    value: assetActualCost
+                      ? assetActualCost.toLocaleString(undefined, {
+                          style: "currency",
+                          currency: "USD",
+                          maximumFractionDigits: 0,
+                        })
+                      : "$0",
+                    detail: assetEstimatedCost
+                      ? `${assetEstimatedCost.toLocaleString(undefined, {
+                          style: "currency",
+                          currency: "USD",
+                          maximumFractionDigits: 0,
+                        })} estimated open work`
+                      : "No estimated open-work cost",
+                    hoverTitle: "Cost breakdown",
+                    hoverLines: [
+                      `${assetActualCost.toLocaleString(undefined, {
+                        style: "currency",
+                        currency: "USD",
+                        maximumFractionDigits: 0,
+                      })} completed-service cost`,
+                      `${assetEstimatedCost.toLocaleString(undefined, {
+                        style: "currency",
+                        currency: "USD",
+                        maximumFractionDigits: 0,
+                      })} estimated open-work cost`,
+                      "Click to review service history",
+                    ],
+                    action: () => setScreen("history"),
+                  },
+                ]
+                  .filter(
+                    (item) =>
+                      item.label !== "Service Cost" ||
+                      assetVisibleSections.costs !== false,
+                  )
+                  .map((item) => (
+                  <button
+                    key={((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}
+                    type="button"
+                    className="atlas-gold-hover-card"
+                    onClick={item.action}
+                    style={{
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 10,
+                      background: "#FFFFFF",
+                      padding: 10,
+                      minWidth: 0,
+                      textAlign: "left",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span className="atlas-gold-hover-card-accent" aria-hidden="true" />
+                    <span style={assetInfoLabelStyle}>{((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}</span>
+                    <strong
+                      style={{
+                        display: "block",
+                        marginTop: 4,
+                        color: colors.navy,
+                        fontSize: 14,
+                        lineHeight: 1.25,
+                      }}
+                    >
+                      {item.value}
+                    </strong>
+                    <span
+                      style={{
+                        ...assetCardHintStyle,
+                        display: "block",
+                        marginTop: 3,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {item.detail}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <div
+                style={{
+                  display: assetPanelSection === "overview" ? "grid" : "none",
+                  paddingBottom: isMobile ? 8 : 0,
+                  gridTemplateColumns: isMobile
+                    ? "minmax(0, 1fr)"
+                    : "repeat(auto-fit, minmax(250px, 1fr))",
+                  gap: isMobile ? 8 : 10,
+                  width: "100%",
+                  minWidth: 0,
+                  marginTop: 10,
+                  alignItems: "start",
+                }}
+              >
+                <div
+                  style={{
+                    display: assetVisibleSections.linkedRecords === false ? "none" : "block",
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 12,
+                    background: "#FFFFFF",
+                    padding: isMobile ? 9 : 10,
+                    minWidth: 0,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <span style={assetInfoLabelStyle}>Connected Records</span>
+                      <div style={assetCardHintStyle}>
+                        Jump to the records connected to this equipment.
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 999,
+                        background: colors.panel,
+                        color: colors.navy,
+                        padding: "4px 8px",
+                        fontSize: 9,
+                        fontWeight: 900,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {selectedVendors.length +
+                        linkedAssetProcedures.length +
+                        attachedManuals.length +
+                        linkedAssetDocuments.length +
+                        selectedAssetPhotos.length +
+                        linkedAssetParts.length +
+                        openAssetWorkOrders.length} linked
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: isMobile
+                        ? "repeat(2, minmax(0, 1fr))"
+                        : "repeat(auto-fit, minmax(118px, 1fr))",
+                      gap: 7,
+                      marginTop: 10,
+                    }}
+                  >
+                    {[
+                      {
+                        label: "Work Orders",
+                        count: openAssetWorkOrders.length,
+                        action: () => setAssetPanelSection("work"),
+                      },
+                      {
+                        label: "Vendors",
+                        count: selectedVendors.length,
+                        action: () => setScreen("vendors"),
+                      },
+                      {
+                        label: "Procedures",
+                        count: linkedAssetProcedures.length,
+                        action: () => setAssetPanelSection("procedures"),
+                      },
+                      {
+                        label: "Documents",
+                        count: linkedAssetDocuments.length + attachedManuals.length,
+                        action: () => setAssetPanelSection("documents"),
+                      },
+                      {
+                        label: "Photos",
+                        count: selectedAssetPhotos.length,
+                        action: () => setAssetPanelSection("photos"),
+                      },
+                      {
+                        label: "Parts",
+                        count: linkedAssetParts.length,
+                        action: () => setScreen("parts"),
+                      },
+                      {
+                        label: "Location",
+                        count:
+                          selectedAsset.locationId &&
+                          selectedAsset.locationId !== "general"
+                            ? 1
+                            : 0,
+                        action: () => setScreen("locations"),
+                      },
+                    ].map((relationship) => (
+                      <button
+                        key={relationship.label}
+                        type="button"
+                        onClick={relationship.action}
+                        style={{
+                          border: `1px solid ${colors.line}`,
+                          borderRadius: 10,
+                          background:
+                            relationship.count > 0 ? "#F8FAFD" : "#FFFFFF",
+                          padding: isMobile ? "9px 8px" : "8px 9px",
+                          minHeight: isMobile ? 54 : 50,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 7,
+                          textAlign: "left",
+                          cursor: "pointer",
+                          minWidth: 0,
+                        }}
+                      >
+                        <span
+                          style={{
+                            color: colors.navy,
+                            fontSize: 10,
+                            fontWeight: 850,
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {relationship.label}
+                        </span>
+                        <strong
+                          style={{
+                            color:
+                              relationship.count > 0 ? colors.navy : colors.muted,
+                            fontSize: 15,
+                            lineHeight: 1,
+                            flex: "0 0 auto",
+                          }}
+                        >
+                          {relationship.count}
+                        </strong>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 6,
+                      marginTop: 9,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDocumentSearch(selectedAsset.name);
+                        setScreen("documents");
+                      }}
+                      style={{
+                        ...assetTinyButtonStyle,
+                        flex: isMobile ? "1 1 140px" : undefined,
+                        minHeight: isMobile ? 36 : undefined,
+                      }}
+                    >
+                      Search All Documents
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAssetEditorOpen(true)}
+                      style={{
+                        ...assetTinyButtonStyle,
+                        flex: isMobile ? "1 1 140px" : undefined,
+                        minHeight: isMobile ? 36 : undefined,
+                      }}
+                    >
+                      Manage Relationships
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: assetVisibleSections.recordSetup === false ? "none" : "block",
+                    border: `1px solid ${assetSetupItems.length ? "#D8B45C" : colors.line}`,
+                    borderRadius: 10,
+                    background: assetSetupItems.length ? "#FFF9E8" : "#FFFFFF",
+                    padding: 10,
+                    minWidth: 0,
+                    width: "100%",
+                    boxSizing: "border-box",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                      gap: 8,
+                      minWidth: 0,
+                    }}
+                  >
+                    <span
+                      style={{
+                        ...assetInfoLabelStyle,
+                        whiteSpace: "nowrap",
+                        wordBreak: "normal",
+                        overflowWrap: "normal",
+                        flex: "1 1 130px",
+                      }}
+                    >
+                      Record Setup
+                    </span>
+                    <span
+                      style={{
+                        ...badgeStyle(assetSetupItems.length ? "Monitor" : "Online"),
+                        whiteSpace: "nowrap",
+                        wordBreak: "normal",
+                        overflowWrap: "normal",
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      {assetSetupItems.length
+                        ? `${assetSetupCompleted} / 5 complete`
+                        : "Complete"}
+                    </span>
+                  </div>
+                  {assetSetupItems.length ? (
+                    <div style={{ display: "grid", gap: 5, marginTop: 7 }}>
+                      {assetSetupItems.map((item) => (
+                        <div
+                          key={item}
+                          style={{
+                            color: colors.navy,
+                            fontSize: 11,
+                            lineHeight: 1.4,
+                            fontWeight: 800,
+                            whiteSpace: "normal",
+                            wordBreak: "normal",
+                            overflowWrap: "break-word",
+                            minWidth: 0,
+                          }}
+                        >
+                          ○ {item}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ ...assetCardHintStyle, marginTop: 7 }}>
+                      Core asset records are complete.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
 
             <div
               style={{
                 ...assetTopGridStyle,
-                gridTemplateColumns: "1fr",
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "minmax(190px, 30%) minmax(0, 1fr)",
               }}
             >
               <button
@@ -1522,7 +2252,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                   selectedAssetCoverPhoto &&
                   openPhotoPreview(selectedAssetCoverPhoto)
                 }
-                style={{ ...assetHeroPhotoStyle, display: "none" }}
+                style={assetHeroPhotoStyle}
                 disabled={!selectedAssetCoverSource}
               >
                 {selectedAssetCoverSource ? (
@@ -1536,7 +2266,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                 )}
               </button>
 
-              <section style={{ ...assetCardStyle, display: assetPanelSection === "overview" ? "block" : "none" }}>
+              <section style={assetCardStyle}>
                 <div style={assetCardHeaderStyle}>
                   <strong>Asset Information</strong>
                   {!assetEditorOpen ? (
@@ -1712,7 +2442,9 @@ export default function AtlasAssetsWorkspace(props: any) {
                     () => updateAsset({ manufacturer: "" }),
                   )}
                   {infoValue(
-                    "Serial / VIN / HIN",
+                    /hot water storage|vitocell/i.test(selectedAsset.name || "")
+                      ? "Serial Number 1"
+                      : "Serial / VIN / HIN",
                     selectedAsset.serial || (selectedAsset.serialRequirement === "Not Required" ? "Not required" : ""),
                     <div style={{ display: "grid", gap: 6 }}>
                       <select
@@ -1726,12 +2458,27 @@ export default function AtlasAssetsWorkspace(props: any) {
                       {selectedAsset.serialRequirement !== "Not Required" ? <input
                         value={selectedAsset.serial || ""}
                         onChange={(event) => updateAsset({ serial: event.currentTarget.value })}
-                        placeholder="Serial / VIN / HIN"
+                        placeholder={/hot water storage|vitocell/i.test(selectedAsset.name || "") ? "Serial Number 1" : "Serial / VIN / HIN"}
                         style={assetCompactInputStyle}
                       /> : null}
                     </div>,
                     () => updateAsset({ serial: "" }),
                   )}
+                  {/hot water storage|vitocell/i.test(selectedAsset.name || "")
+                    ? infoValue(
+                        "Serial Number 2",
+                        (selectedAsset as AtlasAssetRecord).serial2 || "",
+                        <input
+                          value={(selectedAsset as AtlasAssetRecord).serial2 || ""}
+                          onChange={(event) =>
+                            updateAsset({ serial2: event.currentTarget.value })
+                          }
+                          placeholder="Serial Number 2"
+                          style={assetCompactInputStyle}
+                        />,
+                        () => updateAsset({ serial2: "" }),
+                      )
+                    : null}
                 </div>
 
                 <div style={assetVendorBlockStyle}>
@@ -1784,12 +2531,15 @@ export default function AtlasAssetsWorkspace(props: any) {
             <div
               style={{
                 ...assetMiddleGridStyle,
-                display: assetPanelSection === "overview" ? "grid" : "none",
+                display:
+                  assetPanelSection === "notes" || assetPanelSection === "photos"
+                    ? "grid"
+                    : "none",
                 gridTemplateColumns: "minmax(0, 1fr)",
                 alignItems: "start",
               }}
             >
-              <section style={{ ...assetCardStyle, display: assetPanelSection === "overview" ? "block" : "none" }}>
+              <section style={{ ...assetCardStyle, display: assetPanelSection === "notes" ? "block" : "none" }}>
                 <div style={assetCardHeaderStyle}>
                   <strong>Notes</strong>
                   {!assetEditorOpen ? (
@@ -1818,7 +2568,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                 )}
               </section>
 
-              <section style={{ ...assetCardStyle, display: assetPanelSection === "overview" ? "block" : "none" }}>
+              <section style={{ ...assetCardStyle, display: assetPanelSection === "photos" ? "block" : "none" }}>
                 <div
                   style={{
                     ...assetCardHeaderStyle,
@@ -1974,7 +2724,7 @@ export default function AtlasAssetsWorkspace(props: any) {
               </section>
             </div>
 
-            {assetPanelSection !== "overview" ? (
+            {assetPanelSection === "work" ? (
               <section style={{ ...assetCardStyle, marginBottom: 12 }}>
                 <div style={{ ...assetCardHeaderStyle, marginBottom: 8 }}>
                   <strong>Open Work Orders</strong>
@@ -2033,7 +2783,7 @@ export default function AtlasAssetsWorkspace(props: any) {
               </section>
             ) : null}
 
-            {assetPanelSection !== "overview" ? (
+            {assetPanelSection === "procedures" ? (
               <section style={{ ...assetCardStyle, marginBottom: 12 }}>
                 <div style={{ ...assetCardHeaderStyle, marginBottom: 8 }}>
                   <strong>Procedures</strong>
@@ -2063,9 +2813,135 @@ export default function AtlasAssetsWorkspace(props: any) {
               </section>
             ) : null}
 
-            
+            <section
+              className="atlas-asset-timeline-card"
+              style={{ ...assetCardStyle, display: assetPanelSection === "history" ? "block" : "none" }}
+            >
+              <div style={assetCardHeaderStyle}>
+                <div>
+                  <strong>Asset Timeline</strong>
+                  <div style={assetCardHintStyle}>
+                    Hover an event for service details, cost, vendor, and notes
+                  </div>
+                </div>
+                <div style={assetHistoryHeaderActionsStyle}>
+                  <span style={assetHistoryOrderStyle}>
+                    {assetHistory.length} event{assetHistory.length === 1 ? "" : "s"} · Newest first
+                  </span>
+                  <button type="button" onClick={() => setScreen("history")} style={assetTinyButtonStyle}>
+                    View All History
+                  </button>
+                </div>
+              </div>
 
-            {assetPanelSection === "overview" ? (
+              {assetHistory.length ? (
+                <div className="atlas-asset-timeline">
+                  {assetHistory.slice(0, isMobile ? 6 : 5).map((entry, index) => {
+                    const workOrder = relatedWorkOrders.find(
+                      (record) => record.id === entry.workOrderId,
+                    );
+                    const vendor = workOrder?.vendorId
+                      ? vendorRecords.find((record) => record.id === workOrder.vendorId)
+                      : undefined;
+                    const cost =
+                      Number(workOrder?.actualCost || 0) ||
+                      Number(workOrder?.estimatedCost || 0);
+                    const notes = String(workOrder?.notes || "").trim();
+
+                    return (
+                      <div
+                        key={entry.id}
+                        className="atlas-asset-timeline-item"
+                        style={{ animationDelay: `${index * 55}ms` }}
+                      >
+                        <div className="atlas-asset-timeline-rail" aria-hidden="true">
+                          <span className="atlas-asset-timeline-dot" />
+                          {index < Math.min(assetHistory.length, isMobile ? 6 : 5) - 1 ? (
+                            <span className="atlas-asset-timeline-line" />
+                          ) : null}
+                        </div>
+
+                        <button
+                          type="button"
+                          className="atlas-asset-timeline-row"
+                          onClick={() => {
+                            setSelectedServiceId(entry.workOrderId);
+                            setScreen("history");
+                          }}
+                          aria-label={`Open ${entry.title} from ${formatDate(entry.date)}`}
+                        >
+                          <span className="atlas-asset-timeline-date">
+                            {formatDate(entry.date)}
+                          </span>
+
+                          <span className="atlas-asset-timeline-main">
+                            <strong className="atlas-asset-timeline-title">
+                              {entry.title || "Asset service event"}
+                            </strong>
+                            <span className="atlas-asset-timeline-summary">
+                              {workOrder?.workType || "Service"}
+                              {vendor?.name ? ` · ${vendor.name}` : ""}
+                              {cost > 0 ? ` · $${cost.toLocaleString()}` : ""}
+                            </span>
+                          </span>
+
+                          <span className="atlas-asset-timeline-status">
+                            <span style={badgeStyle(entry.status)}>{entry.status}</span>
+                            <span className="atlas-asset-timeline-arrow" aria-hidden="true">→</span>
+                          </span>
+
+                          <span className="atlas-asset-timeline-hover-panel" aria-hidden="true">
+                            <span className="atlas-asset-timeline-hover-grid">
+                              <span>
+                                <small>Work type</small>
+                                <strong>{workOrder?.workType || "Service"}</strong>
+                              </span>
+                              <span>
+                                <small>Vendor</small>
+                                <strong>{vendor?.name || "Not assigned"}</strong>
+                              </span>
+                              <span>
+                                <small>Cost</small>
+                                <strong>{cost > 0 ? `$${cost.toLocaleString()}` : "Not recorded"}</strong>
+                              </span>
+                              <span>
+                                <small>Priority</small>
+                                <strong>{workOrder?.priority || "Not recorded"}</strong>
+                              </span>
+                            </span>
+                            <span className="atlas-asset-timeline-hover-notes">
+                              {notes || "No notes were recorded for this event."}
+                            </span>
+                            <span className="atlas-asset-timeline-hover-action">
+                              Open full work-order history →
+                            </span>
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  {assetHistory.length > (isMobile ? 6 : 5) ? (
+                    <button
+                      type="button"
+                      className="atlas-asset-timeline-more"
+                      onClick={() => setScreen("history")}
+                    >
+                      View {assetHistory.length - (isMobile ? 6 : 5)} more event
+                      {assetHistory.length - (isMobile ? 6 : 5) === 1 ? "" : "s"} →
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="atlas-asset-timeline-empty">
+                  <span className="atlas-asset-timeline-empty-icon">↻</span>
+                  <strong>No timeline events yet</strong>
+                  <span>Completed service and work orders will appear here.</span>
+                </div>
+              )}
+            </section>
+
+            {assetPanelSection === "documents" ? (
               <section
                 style={{
                   ...assetCardStyle,
