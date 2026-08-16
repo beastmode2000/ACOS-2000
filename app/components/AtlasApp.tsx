@@ -2056,6 +2056,17 @@ export default function AtlasApp() {
   }
   useEffect(() => {
     if (!operationsHydrated || !ready) return;
+    // Work Orders save through their own record API. Background Tasks/Plan
+    // synchronization must never toggle the Work Orders header or relayout it.
+    if (screen === "history") {
+      if (operationsSyncTimerRef.current) {
+        window.clearTimeout(operationsSyncTimerRef.current);
+        operationsSyncTimerRef.current = null;
+      }
+      setOperationsSyncState("saved");
+      setOperationsSyncMessage("Shared Atlas is up to date");
+      return;
+    }
     if (operationsRemoteRefreshRef.current) {
       setOperationsSyncState("saved");
       setOperationsSyncMessage("Shared Atlas is up to date");
@@ -2066,7 +2077,7 @@ export default function AtlasApp() {
     if (operationsSyncTimerRef.current) window.clearTimeout(operationsSyncTimerRef.current);
     operationsSyncTimerRef.current = window.setTimeout(() => { void syncOperationalData(); }, 700);
     return () => { if (operationsSyncTimerRef.current) window.clearTimeout(operationsSyncTimerRef.current); };
-  }, [operationsHydrated, ready, activePropertyId, workPlanTasks, taskMeta, vehicleCare, daySessions]);
+  }, [operationsHydrated, ready, screen, activePropertyId, workPlanTasks, taskMeta, vehicleCare, daySessions]);
 
   useEffect(() => {
     const retry = () => { if (operationsSyncState === "failed") void syncOperationalData(); };
@@ -2105,6 +2116,13 @@ export default function AtlasApp() {
             !pendingTaskDeleteIds.has(String(record.id || "")) &&
             !taskTombstones.has(String(record.id || "")),
         );
+        operationsRemoteRefreshRef.current = true;
+        if (operationsRemoteRefreshTimerRef.current) {
+          window.clearTimeout(operationsRemoteRefreshTimerRef.current);
+        }
+        operationsRemoteRefreshTimerRef.current = window.setTimeout(() => {
+          operationsRemoteRefreshRef.current = false;
+        }, 2000);
         setWorkPlanTasks((current) => {
           const nonRoutine = current.filter((item) => !item.id.startsWith(`routine-assignment-${activePropertyId}-`));
           const remote = remoteRoutineTasks.map((record: Record<string, unknown>) => ({ id: String(record.id || ""), title: String(record.title || "Routine assignment"), minutes: Math.max(5, Number(record.minutes || 30)), priority: (record.priority || "Medium") as WorkPlanTask["priority"], category: String(record.category || "Routine"), locationId: String(record.locationId || "general"), preferredDay: (record.preferredDay || "Auto") as WorkPlanTask["preferredDay"], locked: Boolean(record.locked), recurring: Boolean(record.recurring), fixedTime: String(record.fixedTime || ""), notes: String(record.notes || "") }));
@@ -2166,7 +2184,7 @@ export default function AtlasApp() {
         }
         operationsRemoteRefreshTimerRef.current = window.setTimeout(() => {
           operationsRemoteRefreshRef.current = false;
-        }, 250);
+        }, 2000);
 
         const pendingDeleteIds = new Set(
           readStoredArray<{ table: string; id: string }>(
