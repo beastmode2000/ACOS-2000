@@ -28595,8 +28595,7 @@ ${notes.trim()}` : notes.trim(),
                                     className="atlas-sidebar-nav-button"
                                     title={sidebarCollapsed ? entry.label : undefined}
                                     onClick={() => {
-                                      if (entry.view === "lists") openGraduationPartyChecklist();
-                                      else setTasksView(entry.view);
+                                      setTasksView(entry.view);
                                       setScreen("planner");
                                     }}
                                     style={{
