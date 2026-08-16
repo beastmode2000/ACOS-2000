@@ -266,6 +266,7 @@ export default function AtlasAssetsWorkspace(props: any) {
     showSaveToast,
     staffVisibleServiceRecords,
     startManualForAsset,
+    uploadManualForAsset,
     taskDetails,
     updateAsset,
     vendorName,
@@ -1534,7 +1535,6 @@ export default function AtlasAssetsWorkspace(props: any) {
                     ["overview", "Asset Overview"],
                     ["status", "Asset Status"],
                     ["linkedRecords", "Linked Records"],
-                    ["recordSetup", "Record Setup"],
                     ["costs", "Service Costs"],
                   ].map(([key, label]) => (
                     <label
@@ -2166,16 +2166,34 @@ export default function AtlasAssetsWorkspace(props: any) {
                   <strong style={{ color: colors.navy, fontSize: 12 }}>
                     Manuals
                   </strong>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDocumentSearch(selectedAsset.name);
-                      setScreen("documents");
-                    }}
-                    style={assetTinyButtonStyle}
-                  >
-                    Add / Link Manual PDF
-                  </button>
+                  <>
+                    <input
+                      id={`asset-manual-upload-${selectedAsset.id}`}
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      style={{ display: "none" }}
+                      onChange={(event) => {
+                        void uploadManualForAsset(
+                          selectedAsset,
+                          event.currentTarget.files,
+                        );
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        document
+                          .getElementById(
+                            `asset-manual-upload-${selectedAsset.id}`,
+                          )
+                          ?.click()
+                      }
+                      style={assetTinyButtonStyle}
+                    >
+                      Add Manual
+                    </button>
+                  </>
                 </div>
 
                 {attachedManuals.length ? (
@@ -2491,7 +2509,7 @@ export default function AtlasAssetsWorkspace(props: any) {
 
             <section
               className="atlas-asset-timeline-card"
-              style={{ ...assetCardStyle, display: assetPanelTab === "overview" ? "block" : "none", marginBottom: 12 }}
+              style={{ ...assetCardStyle, display: "none", marginBottom: 12 }}
             >
               <div style={assetCardHeaderStyle}>
                 <div>
@@ -2620,7 +2638,7 @@ export default function AtlasAssetsWorkspace(props: any) {
             <section
               style={{
                 ...assetCardStyle,
-                display: assetPanelTab === "overview" ? "block" : "none",
+                display: "none",
                 marginBottom: 12,
                 background: "#FFFFFF",
                 borderLeft: `4px solid ${assetAttentionItems.length ? "#D92D20" : colors.gold}`,
@@ -2681,11 +2699,7 @@ export default function AtlasAssetsWorkspace(props: any) {
             <section
               style={{
                 ...assetCardStyle,
-                display:
-                  assetPanelTab === "overview" &&
-                  assetVisibleSections.status !== false
-                    ? "block"
-                    : "none",
+                display: "none",
                 marginBottom: 12,
                 background: "#F8FAFD",
               }}
@@ -3117,7 +3131,7 @@ export default function AtlasAssetsWorkspace(props: any) {
 
                 <div
                   style={{
-                    display: assetVisibleSections.recordSetup === false ? "none" : "block",
+                    display: "none",
                     border: `1px solid ${assetSetupItems.length ? "#D8B45C" : colors.line}`,
                     borderRadius: 10,
                     background: assetSetupItems.length ? "#FFF9E8" : "#FFFFFF",
