@@ -2690,11 +2690,20 @@ export default function AtlasApp() {
           : activePropertyId === "2000"
             ? mergeLocationRecords(fallbackLocations, [])
             : [];
-        const assetDeleteTombstones = readAssetDeleteTombstones(activePropertyId);
+        const assetDeleteTombstones =
+          readAssetDeleteTombstones(activePropertyId);
+        const assetDeleteNameTombstones =
+          readAssetDeleteNameTombstones(activePropertyId);
         const nextAssets = byName(
           apiAssets
             .map(normalizeAsset)
-            .filter((asset) => !assetDeleteTombstones.has(String(asset.id))),
+            .filter(
+              (asset) =>
+                !assetDeleteTombstones.has(String(asset.id)) &&
+                !assetDeleteNameTombstones.has(
+                  normalizeLocationName(asset.name),
+                ),
+            ),
         );
         const nextVendors = byName(apiVendors.map(normalizeVendor));
         const nextContacts = byName(apiContacts.map(normalizeContact));
@@ -3342,9 +3351,18 @@ export default function AtlasApp() {
   useEffect(() => {
     if (!ready) return;
     const tombstones = readAssetDeleteTombstones(activePropertyId);
-    const visibleAssets = tombstones.size
-      ? assetRecords.filter((asset) => !tombstones.has(String(asset.id)))
-      : assetRecords;
+    const generatedNameTombstones =
+      readAssetDeleteNameTombstones(activePropertyId);
+    const visibleAssets =
+      tombstones.size || generatedNameTombstones.size
+        ? assetRecords.filter(
+            (asset) =>
+              !tombstones.has(String(asset.id)) &&
+              !generatedNameTombstones.has(
+                normalizeLocationName(asset.name),
+              ),
+          )
+        : assetRecords;
 
     if (visibleAssets.length !== assetRecords.length) {
       setAssetRecords(visibleAssets);
@@ -8091,10 +8109,23 @@ export default function AtlasApp() {
 
       // Block every later asset save before DELETE is sent.
       rememberDeletedAssetId(record.id, activePropertyId);
+      const generatedAsset = isCodeGeneratedAsset(record);
+      if (generatedAsset) {
+        rememberDeletedGeneratedAssetName(
+          record.name || "",
+          activePropertyId,
+        );
+      }
 
       const deleted = await deleteAtlasRecord("assets", record.id);
       if (!deleted) {
         forgetDeletedAssetId(record.id, activePropertyId);
+        if (generatedAsset) {
+          forgetDeletedGeneratedAssetName(
+            record.name || "",
+            activePropertyId,
+          );
+        }
         showSaveToast(`Atlas could not delete ${record.name || "that asset"}.`, "warning");
         return;
       }
@@ -9064,17 +9095,86 @@ export default function AtlasApp() {
     );
   }
 
+  function assetDeleteNameTombstoneKey(propertyId = activePropertyId) {
+    return `atlas-generated-asset-name-deletes-v1-${propertyId}`;
+  }
+
+  function readAssetDeleteNameTombstones(propertyId = activePropertyId) {
+    return new Set(
+      readStoredArray<string>(
+        [assetDeleteNameTombstoneKey(propertyId)],
+        [],
+      ).map((name) => normalizeLocationName(String(name))),
+    );
+  }
+
+  function rememberDeletedGeneratedAssetName(
+    name: string,
+    propertyId = activePropertyId,
+  ) {
+    const normalizedName = normalizeLocationName(name);
+    if (!normalizedName) return;
+    const key = assetDeleteNameTombstoneKey(propertyId);
+    const current = readStoredArray<string>([key], []).map(String);
+    if (
+      !current.some(
+        (item) => normalizeLocationName(item) === normalizedName,
+      )
+    ) {
+      saveStoredArray(key, [...current, name]);
+    }
+  }
+
+  function forgetDeletedGeneratedAssetName(
+    name: string,
+    propertyId = activePropertyId,
+  ) {
+    const normalizedName = normalizeLocationName(name);
+    if (!normalizedName) return;
+    const key = assetDeleteNameTombstoneKey(propertyId);
+    const current = readStoredArray<string>([key], []).map(String);
+    saveStoredArray(
+      key,
+      current.filter(
+        (item) => normalizeLocationName(item) !== normalizedName,
+      ),
+    );
+  }
+
+  function isCodeGeneratedAsset(record: Partial<AssetRecord>) {
+    const id = String(record.id || "");
+    const notes = String(record.notes || "").toLowerCase();
+    return (
+      id.startsWith("asset-house-") ||
+      id.startsWith("asset-sundance-") ||
+      id.startsWith("asset-main-pool") ||
+      id.startsWith("catalog-asset-") ||
+      notes.includes("created from garage care") ||
+      notes.includes("care, treatment, cleaning, and service history") ||
+      notes.includes("preventive-maintenance history")
+    );
+  }
+
   async function postAtlasRecord(table: AtlasTable, record: unknown) {
     const normalizedRecord = normalizeAtlasSaveRecord(table, record);
 
-    if (
-      table === "assets" &&
-      normalizedRecord.id &&
-      readAssetDeleteTombstones(
-        String(normalizedRecord.propertyId || activePropertyId),
-      ).has(String(normalizedRecord.id))
-    ) {
-      return true;
+    if (table === "assets" && normalizedRecord.id) {
+      const propertyId = String(
+        normalizedRecord.propertyId || activePropertyId,
+      );
+      const deletedIds = readAssetDeleteTombstones(propertyId);
+      const deletedGeneratedNames =
+        readAssetDeleteNameTombstones(propertyId);
+      const normalizedName = normalizeLocationName(
+        String(normalizedRecord.name || ""),
+      );
+
+      if (
+        deletedIds.has(String(normalizedRecord.id)) ||
+        (normalizedName && deletedGeneratedNames.has(normalizedName))
+      ) {
+        return true;
+      }
     }
 
     const key = atlasRecordKey(table, normalizedRecord);
@@ -9092,14 +9192,23 @@ export default function AtlasApp() {
 
     const queuedSave = priorSave.then(async () => {
       try {
-        if (
-          table === "assets" &&
-          normalizedRecord.id &&
-          readAssetDeleteTombstones(
-            String(normalizedRecord.propertyId || activePropertyId),
-          ).has(String(normalizedRecord.id))
-        ) {
-          return true;
+        if (table === "assets" && normalizedRecord.id) {
+          const propertyId = String(
+            normalizedRecord.propertyId || activePropertyId,
+          );
+          const deletedIds = readAssetDeleteTombstones(propertyId);
+          const deletedGeneratedNames =
+            readAssetDeleteNameTombstones(propertyId);
+          const normalizedName = normalizeLocationName(
+            String(normalizedRecord.name || ""),
+          );
+
+          if (
+            deletedIds.has(String(normalizedRecord.id)) ||
+            (normalizedName && deletedGeneratedNames.has(normalizedName))
+          ) {
+            return true;
+          }
         }
 
         setDatabaseStatus(`Saving ${table.replaceAll("_", " ")}...`);
