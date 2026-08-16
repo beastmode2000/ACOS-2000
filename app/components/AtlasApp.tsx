@@ -2690,7 +2690,12 @@ export default function AtlasApp() {
           : activePropertyId === "2000"
             ? mergeLocationRecords(fallbackLocations, [])
             : [];
-        const nextAssets = byName(apiAssets.map(normalizeAsset));
+        const assetDeleteTombstones = readAssetDeleteTombstones(activePropertyId);
+        const nextAssets = byName(
+          apiAssets
+            .map(normalizeAsset)
+            .filter((asset) => !assetDeleteTombstones.has(String(asset.id))),
+        );
         const nextVendors = byName(apiVendors.map(normalizeVendor));
         const nextContacts = byName(apiContacts.map(normalizeContact));
         const nextServices = byTitle(apiServices.map(normalizeService));
@@ -3336,8 +3341,19 @@ export default function AtlasApp() {
 
   useEffect(() => {
     if (!ready) return;
+    const tombstones = readAssetDeleteTombstones(activePropertyId);
+    const visibleAssets = tombstones.size
+      ? assetRecords.filter((asset) => !tombstones.has(String(asset.id)))
+      : assetRecords;
+
+    if (visibleAssets.length !== assetRecords.length) {
+      setAssetRecords(visibleAssets);
+      saveStoredArray(storageKeys.assets[0], visibleAssets);
+      return;
+    }
+
     saveStoredArray(storageKeys.assets[0], assetRecords);
-  }, [ready, assetRecords]);
+  }, [ready, assetRecords, activePropertyId]);
 
   useEffect(() => {
     if (!ready) return;
@@ -8043,25 +8059,48 @@ export default function AtlasApp() {
   }
 
   async function deleteAssetRecord(record: AssetRecord) {
+    if (!record.id) return;
     if (!window.confirm(`Delete asset ${record.name || "this asset"}?`)) return;
-    const relatedPhotos = photos.filter((photo) => photo.assetId === record.id);
-    for (const photo of relatedPhotos) {
-      await deleteAtlasRecord("asset_photos", photo.id);
+
+    const actionKey = `delete-asset:${record.id}`;
+    if (atlasActionLocksRef.current.has(actionKey)) {
+      showSaveToast("This asset is already being deleted.", "warning");
+      return;
     }
-    const deleted = await deleteAtlasRecord("assets", record.id);
-    if (!deleted) return;
-    await Promise.all(
-      relatedPhotos.map((photo) => deleteCachedPhoto(photo.id)),
-    );
-    setAssetRecords((current) =>
-      current.filter((item) => item.id !== record.id),
-    );
-    setPhotos((current) => {
-      const next = current.filter((photo) => photo.assetId !== record.id);
-      persistPhotoRecords(next);
-      return next;
-    });
-    setSelectedAssetId("");
+
+    atlasActionLocksRef.current.add(actionKey);
+    const relatedPhotos = photos.filter((photo) => photo.assetId === record.id);
+
+    try {
+      const deleted = await deleteAtlasRecord("assets", record.id);
+      if (!deleted) {
+        showSaveToast(`Atlas could not delete ${record.name || "that asset"}.`, "warning");
+        return;
+      }
+
+      rememberDeletedAssetId(record.id, activePropertyId);
+
+      await Promise.all(
+        relatedPhotos.map((photo) => deleteCachedPhoto(photo.id)),
+      );
+
+      setAssetRecords((current) =>
+        current.filter((item) => item.id !== record.id),
+      );
+      setPhotos((current) => {
+        const next = current.filter((photo) => photo.assetId !== record.id);
+        persistPhotoRecords(next);
+        return next;
+      });
+      setFavoriteAssetIds((current) => current.filter((id) => id !== record.id));
+      setRecentAssetIds((current) => current.filter((id) => id !== record.id));
+      setSelectedAssetIds((current) => current.filter((id) => id !== record.id));
+      setSelectedAssetId("");
+      setAssetEditorOpen(false);
+      showSaveToast(`${record.name || "Asset"} deleted.`);
+    } finally {
+      atlasActionLocksRef.current.delete(actionKey);
+    }
   }
 
   async function deleteVendorRecord(record: VendorRecord) {
@@ -8976,8 +9015,36 @@ export default function AtlasApp() {
     throw lastError || new Error(`${operationLabel} failed.`);
   }
 
+  function assetDeleteTombstoneKey(propertyId = activePropertyId) {
+    return `atlas-asset-deletes-v1-${propertyId}`;
+  }
+
+  function readAssetDeleteTombstones(propertyId = activePropertyId) {
+    return new Set(
+      readStoredArray<string>([assetDeleteTombstoneKey(propertyId)], []).map(String),
+    );
+  }
+
+  function rememberDeletedAssetId(id: string, propertyId = activePropertyId) {
+    if (!id) return;
+    const key = assetDeleteTombstoneKey(propertyId);
+    const current = readStoredArray<string>([key], []).map(String);
+    if (!current.includes(id)) saveStoredArray(key, [...current, id]);
+  }
+
   async function postAtlasRecord(table: AtlasTable, record: unknown) {
     const normalizedRecord = normalizeAtlasSaveRecord(table, record);
+
+    if (
+      table === "assets" &&
+      normalizedRecord.id &&
+      readAssetDeleteTombstones(
+        String(normalizedRecord.propertyId || activePropertyId),
+      ).has(String(normalizedRecord.id))
+    ) {
+      return true;
+    }
+
     const key = atlasRecordKey(table, normalizedRecord);
     const serialized = JSON.stringify(normalizedRecord);
 
@@ -14246,7 +14313,11 @@ ${notes.trim()}` : notes.trim(),
         return location.id;
       };
       const normalizedIdentifier = (value: string) => String(value || "").toLowerCase().replace(/^hin\s*/i, "").replace(/[^a-z0-9]/g, "");
+      const assetDeleteTombstones = readAssetDeleteTombstones(activePropertyId);
       for (const definition of catalog) {
+        const catalogAssetId = `catalog-asset-${definition.sourceId}`;
+        if (assetDeleteTombstones.has(catalogAssetId)) continue;
+
         const serialKey = normalizedIdentifier(definition.serial);
         let existingIndex = nextAssets.findIndex((asset) => Boolean(serialKey) && normalizedIdentifier(asset.serial) === serialKey);
         if (existingIndex < 0) existingIndex = nextAssets.findIndex((asset) => normalizeLocationName(asset.name) === normalizeLocationName(definition.name));
@@ -14275,7 +14346,7 @@ ${notes.trim()}` : notes.trim(),
           }
           continue;
         }
-        const asset = normalizeAsset({ id: `catalog-asset-${definition.sourceId}`, name: definition.name, category: definition.category, status: definition.status as AtlasAssetRecord["status"], locationId, locationIds: [locationId], make: definition.manufacturer, manufacturer: definition.manufacturer, model: definition.model, year: definition.year, serial: definition.serial, notes: importedNotes, vendorIds: [] });
+        const asset = normalizeAsset({ id: catalogAssetId, name: definition.name, category: definition.category, status: definition.status as AtlasAssetRecord["status"], locationId, locationIds: [locationId], make: definition.manufacturer, manufacturer: definition.manufacturer, model: definition.model, year: definition.year, serial: definition.serial, notes: importedNotes, vendorIds: [] });
         nextAssets.push(asset);
         recordsToSave.push({ table: "assets", record: { ...asset, propertyId: activePropertyId } });
       }
