@@ -170,6 +170,158 @@ function writeAtlasNavigationState(
   } catch {}
 }
 
+function normalizedWorkOrderText(value: unknown) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function workOrderDatabaseDuplicateKey(record: AtlasServiceRecord) {
+  const title = normalizedWorkOrderText(record.title);
+  if (!title || title === "untitled work" || title === "untitled work order") {
+    return `id:${record.id}`;
+  }
+
+  const recurring = Boolean(record.recurring);
+  return [
+    title,
+    normalizedWorkOrderText(record.assetId),
+    normalizedWorkOrderText(record.locationId),
+    normalizedWorkOrderText(
+      (record as AtlasServiceRecord & { subLocationId?: string; subLocation?: string })
+        .subLocationId ||
+        (record as AtlasServiceRecord & { subLocationId?: string; subLocation?: string })
+          .subLocation,
+    ),
+    normalizedWorkOrderText(record.workCategory),
+    recurring ? "recurring" : "one-time",
+    recurring ? String(Math.max(1, Number(record.recurrenceInterval || 1))) : "",
+    recurring ? normalizedWorkOrderText(record.recurrenceUnit || "Weeks") : "",
+    recurring ? normalizedWorkOrderText(record.assignedTo) : "",
+    recurring ? "" : String(record.date || ""),
+  ].join("|");
+}
+
+function workOrderDatabaseCompleteness(record: AtlasServiceRecord) {
+  return (
+    [
+      record.notes,
+      record.assignedTo,
+      record.vendorId,
+      record.assetId,
+      record.locationId,
+      record.procedureId,
+      record.workCategory,
+      record.lastCompletedDate,
+    ].filter((value) => String(value || "").trim()).length * 3 +
+    (record.checklist || []).length +
+    (record.photos || []).length +
+    (record.documents || []).length +
+    (record.serviceHistory || []).length +
+    (record.completionHistory || []).length
+  );
+}
+
+function mergeWorkOrderArrayValues(values: unknown[][]) {
+  const merged = new Map<string, unknown>();
+  values.flat().forEach((item) => {
+    const record = item as Record<string, unknown> | null;
+    const id = record && typeof record === "object" ? String(record.id || "") : "";
+    const key = id ? `id:${id}` : `value:${JSON.stringify(item)}`;
+    if (!merged.has(key)) merged.set(key, item);
+  });
+  return Array.from(merged.values());
+}
+
+function mergeDuplicateWorkOrderGroup(records: AtlasServiceRecord[]) {
+  const ranked = [...records].sort((left, right) => {
+    const scoreDifference =
+      workOrderDatabaseCompleteness(right) -
+      workOrderDatabaseCompleteness(left);
+    if (scoreDifference) return scoreDifference;
+    return String(
+      (right as AtlasServiceRecord & { updatedAt?: string; createdAt?: string })
+        .updatedAt ||
+        (right as AtlasServiceRecord & { updatedAt?: string; createdAt?: string })
+          .createdAt ||
+        "",
+    ).localeCompare(
+      String(
+        (left as AtlasServiceRecord & { updatedAt?: string; createdAt?: string })
+          .updatedAt ||
+          (left as AtlasServiceRecord & { updatedAt?: string; createdAt?: string })
+            .createdAt ||
+          "",
+      ),
+    );
+  });
+  const keeper = ranked[0];
+  const longestNotes = ranked
+    .map((record) => String(record.notes || ""))
+    .sort((left, right) => right.length - left.length)[0] || "";
+  const activeRecord = ranked.find((record) => record.status !== "Completed");
+  const latestRecurringDate = ranked
+    .map((record) => String(record.date || ""))
+    .filter(Boolean)
+    .sort()
+    .pop() || String(keeper.date || "");
+
+  return normalizeService({
+    ...keeper,
+    propertyId: keeper.propertyId,
+    status: activeRecord?.status || keeper.status,
+    date: keeper.recurring ? latestRecurringDate : keeper.date,
+    notes: longestNotes,
+    assignedTo:
+      keeper.assignedTo || ranked.find((record) => record.assignedTo)?.assignedTo || "",
+    vendorId:
+      keeper.vendorId || ranked.find((record) => record.vendorId)?.vendorId || "",
+    assetId:
+      keeper.assetId || ranked.find((record) => record.assetId)?.assetId || "",
+    locationId:
+      keeper.locationId || ranked.find((record) => record.locationId)?.locationId || "",
+    checklist: mergeWorkOrderArrayValues(
+      ranked.map((record) => record.checklist || []),
+    ) as AtlasServiceRecord["checklist"],
+    photos: mergeWorkOrderArrayValues(
+      ranked.map((record) => record.photos || []),
+    ) as AtlasServiceRecord["photos"],
+    documents: mergeWorkOrderArrayValues(
+      ranked.map((record) => record.documents || []),
+    ) as AtlasServiceRecord["documents"],
+    serviceHistory: mergeWorkOrderArrayValues(
+      ranked.map((record) => record.serviceHistory || []),
+    ) as AtlasServiceRecord["serviceHistory"],
+    completionHistory: Array.from(
+      new Set(ranked.flatMap((record) => record.completionHistory || []).map(String)),
+    ),
+  });
+}
+
+function planWorkOrderDatabaseCleanup(records: AtlasServiceRecord[]) {
+  const groups = new Map<string, AtlasServiceRecord[]>();
+  records.forEach((record) => {
+    const key = workOrderDatabaseDuplicateKey(record);
+    groups.set(key, [...(groups.get(key) || []), record]);
+  });
+
+  const keepers: AtlasServiceRecord[] = [];
+  const changedKeepers: AtlasServiceRecord[] = [];
+  const duplicateIds: string[] = [];
+  groups.forEach((group) => {
+    const merged = mergeDuplicateWorkOrderGroup(group);
+    keepers.push(merged);
+    if (group.length > 1) changedKeepers.push(merged);
+    group.forEach((record) => {
+      if (record.id !== merged.id) duplicateIds.push(record.id);
+    });
+  });
+
+  return { keepers: byTitle(keepers), changedKeepers, duplicateIds };
+}
+
 export default function AtlasApp() {
   const [ready, setReady] = useState(false);
   const [syncState, setSyncState] = useState<
@@ -734,6 +886,7 @@ export default function AtlasApp() {
   const [contactMessage, setContactMessage] = useState("");
   const [serviceRecords, setServiceRecords] =
     useState<AtlasServiceRecord[]>(fallbackWorkOrders);
+  const workOrderDatabaseCleanupRunningRef = useRef(false);
   const [workOrderSeasonFilter, setWorkOrderSeasonFilter] = useState<
     WorkSeason | "All"
   >("All");
@@ -2707,7 +2860,57 @@ export default function AtlasApp() {
         );
         const nextVendors = byName(apiVendors.map(normalizeVendor));
         const nextContacts = byName(apiContacts.map(normalizeContact));
-        const nextServices = byTitle(apiServices.map(normalizeService));
+        const normalizedApiServices = apiServices.map(normalizeService);
+        const workOrderCleanup = planWorkOrderDatabaseCleanup(
+          normalizedApiServices,
+        );
+        const nextServices = workOrderCleanup.keepers;
+
+        if (
+          workOrderCleanup.duplicateIds.length &&
+          !workOrderDatabaseCleanupRunningRef.current
+        ) {
+          workOrderDatabaseCleanupRunningRef.current = true;
+          try {
+            const keeperSaveResults = await Promise.all(
+              workOrderCleanup.changedKeepers.map((record) =>
+                postAtlasRecord("work_orders", {
+                  ...record,
+                  propertyId: activePropertyId,
+                  updatedAt: new Date().toISOString(),
+                }),
+              ),
+            );
+
+            if (keeperSaveResults.every(Boolean)) {
+              let deletedCount = 0;
+              for (
+                let index = 0;
+                index < workOrderCleanup.duplicateIds.length;
+                index += 10
+              ) {
+                const batch = workOrderCleanup.duplicateIds.slice(
+                  index,
+                  index + 10,
+                );
+                const results = await Promise.all(
+                  batch.map((id) => deleteAtlasRecord("work_orders", id)),
+                );
+                deletedCount += results.filter(Boolean).length;
+              }
+              showSaveToast(
+                `Removed ${deletedCount} duplicate work order${deletedCount === 1 ? "" : "s"}.`,
+              );
+            } else {
+              showSaveToast(
+                "Duplicate cleanup paused because Atlas could not preserve every keeper record.",
+                "warning",
+              );
+            }
+          } finally {
+            workOrderDatabaseCleanupRunningRef.current = false;
+          }
+        }
 
         const normalizedApiProcedures = apiProcedures.map(normalizeProcedure);
         const nextProcedures =
@@ -8268,107 +8471,6 @@ export default function AtlasApp() {
     setSelectedManualId("");
   }
 
-  async function uploadManualForAsset(
-    asset: AssetRecord,
-    fileList: FileList | null,
-  ): Promise<{ ok: boolean; title?: string; message?: string }> {
-    if (!asset.id || !fileList?.length) {
-      return { ok: false, message: "No PDF selected." };
-    }
-
-    const file = Array.from(fileList).find(
-      (item) =>
-        item.type === "application/pdf" ||
-        item.name.toLowerCase().endsWith(".pdf"),
-    );
-    if (!file) {
-      showSaveToast("Choose a PDF manual.", "warning");
-      return { ok: false, message: "Choose a PDF manual." };
-    }
-
-    const title =
-      file.name.replace(/\.pdf$/i, "").trim() || "Equipment Manual";
-
-    try {
-      const safeName = (file.name || "manual.pdf")
-        .replace(/[^a-zA-Z0-9._-]+/g, "-")
-        .replace(/-+/g, "-")
-        .replace(/^-|-$/g, "");
-
-      const pathname = `atlas-documents/${activePropertyId}/${asset.id}/${Date.now()}-${safeName || "manual.pdf"}`;
-
-      const blob = await upload(pathname, file, {
-        access: "public",
-        handleUploadUrl: "/api/atlas-document-upload",
-        multipart: file.size > 20 * 1024 * 1024,
-        contentType: file.type || "application/pdf",
-      });
-
-      const uploadedFile: UploadedFileRecord = {
-        id: uid("upload"),
-        name: file.name || "manual.pdf",
-        type: file.type || blob.contentType || "application/pdf",
-        url: blob.url,
-        createdAt: new Date().toISOString(),
-      };
-
-      const createdAt = new Date().toISOString();
-
-      const manual = normalizeManualRecord({
-        id: uid("manual"),
-        title,
-        category: inferManualCategory(title),
-        manufacturer: asset.make || "",
-        model: asset.model || "",
-        documentNumber: "",
-        linkedAssetId: asset.id,
-        linkedAssetName: asset.name,
-        sourceLabel: "Asset upload",
-        href: blob.url,
-        notes: "",
-        files: [uploadedFile],
-        createdAt,
-      });
-
-      const documentRecord = normalizeDocument({
-        id: uid("doc"),
-        title,
-        area: locationName(asset.locationId) || asset.name,
-        type: "Equipment Manual / PDF",
-        targetType: "Asset",
-        targetId: asset.id,
-        targetName: asset.name,
-        linkedAssetId: asset.id,
-        notes: "",
-        href: blob.url,
-        files: [uploadedFile],
-        createdAt,
-      });
-
-      // Save to the shared Atlas document vault first. The manual is not
-      // reported as saved until this completes successfully.
-      await postDocumentToAtlasVault(documentRecord);
-
-      replaceDocumentInVault(documentRecord);
-
-      setManualRecords((current) => {
-        const next = [manual, ...current];
-        saveStoredArray(storageKeys.manuals[0], next);
-        return next;
-      });
-
-      showSaveToast(`${title} saved to ${asset.name}.`);
-      return { ok: true, title };
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Atlas could not save that manual.";
-      showSaveToast(`Manual was not saved: ${message}`, "warning");
-      return { ok: false, title, message };
-    }
-  }
-
   function startManualForAsset(asset: AssetRecord) {
     if (!asset.id) return;
     setSelectedManualId("");
@@ -9759,48 +9861,6 @@ export default function AtlasApp() {
       saved ? "Photo label saved." : "Photo label changed here; Atlas sync did not finish.",
       saved ? "success" : "warning",
     );
-  }
-
-  async function renameAssetManual(manual: ManualRecord) {
-    const nextTitle = window.prompt("Manual name", manual.title || "Manual PDF");
-    if (nextTitle === null) return;
-    const title = nextTitle.trim();
-    if (!title || title === manual.title) return;
-
-    const previousTitle = manual.title;
-    setManualRecords((current) => {
-      const next = current.map((item) =>
-        item.id === manual.id ? normalizeManualRecord({ ...item, title }) : item,
-      );
-      saveStoredArray(storageKeys.manuals[0], next);
-      return next;
-    });
-
-    const matchingDocument = intakeDocs.find((document) => {
-      const sameHref =
-        cleanManualOpenUrl(document.href || "") &&
-        cleanManualOpenUrl(document.href || "") === cleanManualOpenUrl(manual.href || "");
-      const sameRecord =
-        document.title.trim().toLowerCase() === previousTitle.trim().toLowerCase() &&
-        (document.targetId === manual.linkedAssetId ||
-          document.targetName === manual.linkedAssetName ||
-          (document as DocumentRecord & { linkedAssetId?: string }).linkedAssetId === manual.linkedAssetId);
-      return sameHref || sameRecord;
-    });
-
-    if (matchingDocument) {
-      await saveSelectedDocument(normalizeDocument({ ...matchingDocument, title }));
-    }
-    showSaveToast("Manual name saved.");
-  }
-
-  async function renameAssetDocument(document: DocumentRecord) {
-    const nextTitle = window.prompt("Document name", document.title || "Document");
-    if (nextTitle === null) return;
-    const title = nextTitle.trim();
-    if (!title || title === document.title) return;
-    await saveSelectedDocument(normalizeDocument({ ...document, title }));
-    showSaveToast("Document name saved.");
   }
 
   function addVendor(name = "") {
@@ -19114,8 +19174,6 @@ ${notes.trim()}` : notes.trim(),
       assetVisibleSections,
       clearRecordDirty,
       dangerButtonStyle,
-      deleteManualRecord,
-      deleteSelectedDocument,
       deleteAssetPhoto,
       deleteAssetRecord,
       excludedAssetCategories,
@@ -19136,9 +19194,7 @@ ${notes.trim()}` : notes.trim(),
       manualsForAsset,
       mutedSmallStyle,
       noticeStyle,
-      openFileInBrowser,
       openPhotoPreview,
-      openUploadedFile,
       partRecords,
       pasteAssetPhoto,
       photoTimelineProjects,
@@ -19148,8 +19204,6 @@ ${notes.trim()}` : notes.trim(),
       recentAssetIds,
       recordListIdentityStyle,
       recordListThumbImageStyle,
-      renameAssetDocument,
-      renameAssetManual,
       renameAssetPhoto,
       saveDirtyRecord,
       seanVisibleAssetRecords,
@@ -19180,7 +19234,6 @@ ${notes.trim()}` : notes.trim(),
       setScreen,
       setSelectedAssetId,
       setSelectedAssetIds,
-      setSelectedDocumentId,
       setSelectedLocationId,
       setSelectedManualId,
       setSelectedPhotoProjectId,
@@ -19190,7 +19243,6 @@ ${notes.trim()}` : notes.trim(),
       showSaveToast,
       staffVisibleServiceRecords,
       startManualForAsset,
-      uploadManualForAsset,
       taskDetails,
       updateAsset,
       vendorName,
@@ -26113,7 +26165,7 @@ ${notes.trim()}` : notes.trim(),
       },
     };
 
-    if (screen === "assets") return null;
+    if (screen === "assets" || screen === "history") return null;
 
     const summary = summaryByScreen[screen];
     if (!summary) return null;
@@ -26537,6 +26589,13 @@ ${notes.trim()}` : notes.trim(),
   return (
     <main className="atlas-app-shell" style={isMobile ? appStyle : desktopAppStyle}>
       <div style={{ position: "fixed", top: 10, right: 10, zIndex: 12050, display: "grid", gap: 6, justifyItems: "end", pointerEvents: "none" }}>
+        <div style={{ pointerEvents: "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", background: "rgba(255,255,255,.96)", border: `1px solid ${/failed|error|offline/i.test(databaseStatus) ? "#E6AAAA" : colors.line}`, borderRadius: 12, padding: "6px 8px", boxShadow: "0 8px 24px rgba(15,23,42,.12)" }}>
+          <button type="button" title={databaseStatus} onClick={() => { if (/failed|error|offline/i.test(databaseStatus)) window.alert(databaseStatus); }} style={{ border: 0, background: "transparent", padding: "2px 4px", fontSize: 11, fontWeight: 900, cursor: /failed|error|offline/i.test(databaseStatus) ? "pointer" : "default", color: /failed|error|offline/i.test(databaseStatus) ? colors.red : colors.navy }}>
+            {/loading/i.test(databaseStatus) ? "Loading…" : /saving|deleting/i.test(databaseStatus) ? "Saving…" : /failed|error|offline/i.test(databaseStatus) ? "Save failed" : "Saved ✓"}
+          </button>
+          {canUseAdminTools ? <button type="button" onClick={() => setAdminPreviewMode((current) => current === "addison" ? "none" : "addison")} style={{ ...compactUtilityButtonStyle, minHeight: 27 }}>{adminPreviewMode === "addison" ? "Exit Addison Preview" : "Preview Addison"}</button> : null}
+          {canUseAdminTools && adminPreviewMode === "none" ? <button type="button" onClick={exportAtlasBackup} style={{ ...compactUtilityButtonStyle, minHeight: 27 }}>Backup</button> : null}
+        </div>
         {taskUndo ? <div style={{ pointerEvents: "auto", display: "flex", gap: 8, alignItems: "center", background: colors.navy, color: "#FFFFFF", borderRadius: 11, padding: "8px 10px", boxShadow: "0 8px 24px rgba(15,23,42,.18)" }}><span style={{ fontSize: 12, fontWeight: 800 }}>Deleted {taskUndo.task.title}</span><button type="button" onClick={restoreDeletedTask} style={{ ...compactUtilityButtonStyle, background: "#FFFFFF" }}>Undo</button></div> : null}
       </div>
       <button
