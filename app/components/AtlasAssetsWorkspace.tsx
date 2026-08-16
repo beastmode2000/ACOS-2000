@@ -2359,11 +2359,17 @@ export default function AtlasAssetsWorkspace(props: any) {
                         compact
                         onCreate={createLocationFromAsset}
                         onChange={(locationId) => {
+                          const currentIds = assetLocationIds(selectedAsset);
+                          const locationIds = locationId === "general"
+                            ? ["general"]
+                            : locationId
+                              ? Array.from(
+                                  new Set([locationId, ...currentIds.filter((id) => id !== "general")]),
+                                )
+                              : currentIds.filter((id) => id !== "general");
                           updateAsset({
-                            locationId: locationId || "general",
-                            locationIds: Array.from(
-                              new Set([locationId, ...assetLocationIds(selectedAsset)].filter(Boolean)),
-                            ),
+                            locationId: locationId || locationIds[0] || "",
+                            locationIds,
                           } as Partial<AtlasAssetRecord>);
                         }}
                       />
@@ -2378,11 +2384,18 @@ export default function AtlasAssetsWorkspace(props: any) {
                                 onChange={(event) => {
                                   const currentIds = assetLocationIds(selectedAsset);
                                   const locationIds = event.currentTarget.checked
-                                    ? Array.from(new Set([...currentIds, location.id]))
+                                    ? location.id === "general"
+                                      ? ["general"]
+                                      : Array.from(
+                                          new Set([
+                                            ...currentIds.filter((id) => id !== "general"),
+                                            location.id,
+                                          ]),
+                                        )
                                     : currentIds.filter((id) => id !== location.id);
                                   const locationId = locationIds.includes(selectedAsset.locationId)
                                     ? selectedAsset.locationId
-                                    : locationIds[0] || "general";
+                                    : locationIds[0] || "";
                                   updateAsset({ locationId, locationIds } as Partial<AtlasAssetRecord>);
                                 }}
                               />
