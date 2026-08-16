@@ -688,7 +688,7 @@ export default function AtlasAssetsWorkspace(props: any) {
     <ListDrawerLayout
       eyebrow="Property Equipment"
       title="Assets"
-      detail="Equipment, service history, documents, procedures, vendors, and maintenance in one place."
+      detail=""
       isMobile={isMobile}
       drawerResetKey={selectedAssetId || "asset-empty"}
       mobileDrawerOpen={isMobile && Boolean(selectedAssetId)}
@@ -723,13 +723,16 @@ export default function AtlasAssetsWorkspace(props: any) {
               width: "100%",
               minWidth: 0,
               boxSizing: "border-box",
-              height: "calc(100vh - 24px)",
-              maxHeight: "calc(100vh - 24px)",
+              height: "calc(100dvh - 190px)",
+              maxHeight: "calc(100dvh - 190px)",
               minHeight: 0,
               overflowY: "auto",
               overflowX: "hidden",
               overscrollBehavior: "contain",
               scrollbarGutter: "stable",
+              scrollPaddingTop: 8,
+              scrollPaddingBottom: 28,
+              paddingBottom: 20,
               alignSelf: "start",
               zIndex: 2,
             }
@@ -1349,6 +1352,13 @@ export default function AtlasAssetsWorkspace(props: any) {
               <div style={assetActionRowStyle}>
                 {assetEditorOpen ? (
                   <>
+                    <button
+                      type="button"
+                      onClick={() => void deleteAssetRecord(selectedAsset)}
+                      style={{ ...dangerButtonStyle, width: "auto" }}
+                    >
+                      Delete Asset
+                    </button>
                     <button
                       type="button"
                       onClick={() => setAssetEditorOpen(false)}
