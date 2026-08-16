@@ -8071,14 +8071,36 @@ export default function AtlasApp() {
     atlasActionLocksRef.current.add(actionKey);
     const relatedPhotos = photos.filter((photo) => photo.assetId === record.id);
 
+    const normalizedRecord = normalizeAtlasSaveRecord("assets", {
+      ...record,
+      propertyId: activePropertyId,
+    });
+    const saveKey = atlasRecordKey("assets", normalizedRecord);
+
     try {
+      // If this asset is currently being saved, let that save finish first.
+      // Otherwise the late POST can recreate the row after DELETE succeeds.
+      const pendingSave = atlasSaveQueueRef.current.get(saveKey);
+      if (pendingSave) {
+        try {
+          await pendingSave;
+        } catch {
+          // The delete below is still authoritative.
+        }
+      }
+
+      // Block every later asset save before DELETE is sent.
+      rememberDeletedAssetId(record.id, activePropertyId);
+
       const deleted = await deleteAtlasRecord("assets", record.id);
       if (!deleted) {
+        forgetDeletedAssetId(record.id, activePropertyId);
         showSaveToast(`Atlas could not delete ${record.name || "that asset"}.`, "warning");
         return;
       }
 
-      rememberDeletedAssetId(record.id, activePropertyId);
+      atlasLastSaveRef.current.delete(saveKey);
+      atlasSaveQueueRef.current.delete(saveKey);
 
       await Promise.all(
         relatedPhotos.map((photo) => deleteCachedPhoto(photo.id)),
@@ -9032,6 +9054,16 @@ export default function AtlasApp() {
     if (!current.includes(id)) saveStoredArray(key, [...current, id]);
   }
 
+  function forgetDeletedAssetId(id: string, propertyId = activePropertyId) {
+    if (!id) return;
+    const key = assetDeleteTombstoneKey(propertyId);
+    const current = readStoredArray<string>([key], []).map(String);
+    saveStoredArray(
+      key,
+      current.filter((item) => item !== id),
+    );
+  }
+
   async function postAtlasRecord(table: AtlasTable, record: unknown) {
     const normalizedRecord = normalizeAtlasSaveRecord(table, record);
 
@@ -9060,6 +9092,16 @@ export default function AtlasApp() {
 
     const queuedSave = priorSave.then(async () => {
       try {
+        if (
+          table === "assets" &&
+          normalizedRecord.id &&
+          readAssetDeleteTombstones(
+            String(normalizedRecord.propertyId || activePropertyId),
+          ).has(String(normalizedRecord.id))
+        ) {
+          return true;
+        }
+
         setDatabaseStatus(`Saving ${table.replaceAll("_", " ")}...`);
 
         const payload = await atlasApiRequest(
