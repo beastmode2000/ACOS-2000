@@ -231,6 +231,7 @@ export type AtlasTaskMeta = {
   assetId?: string;
   assetIds?: string[];
   vehicleId?: string;
+  vehicleIds?: string[];
   routineTaskId?: string;
   routineDate?: string;
   vendorId?: string;
@@ -239,6 +240,7 @@ export type AtlasTaskMeta = {
   procedureIds?: string[];
   contactId?: string;
   contactIds?: string[];
+  locationIds?: string[];
   notes?: string;
   instructions?: string;
   addisonNote?: string;
