@@ -218,7 +218,9 @@ export default function AtlasAssetsWorkspace(props: any) {
     manualsForAsset,
     mutedSmallStyle,
     noticeStyle,
+    openFileInBrowser,
     openPhotoPreview,
+    openUploadedFile,
     partRecords,
     pasteAssetPhoto,
     photoTimelineProjects,
@@ -420,14 +422,14 @@ export default function AtlasAssetsWorkspace(props: any) {
     const primaryFile = (document.files || []).find(
       (file) => file.url || file.dataUrl,
     );
-    const source =
-      primaryFile?.url ||
-      primaryFile?.dataUrl ||
-      document.href ||
-      "";
 
-    if (source) {
-      void openAssetPdfPreview(document.title || "Document", source);
+    if (primaryFile) {
+      openUploadedFile(primaryFile);
+      return;
+    }
+
+    if (document.href) {
+      openFileInBrowser(null, document.href);
       return;
     }
 
@@ -2521,6 +2523,7 @@ export default function AtlasAssetsWorkspace(props: any) {
               </section>
             ) : null}
 
+            {false ? (
             <section
               style={{
                 ...assetCardStyle,
@@ -3030,6 +3033,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                 </div>
               </div>
             </section>
+            ) : null}
 
             {assetPdfPreview ? (
               <div
