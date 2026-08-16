@@ -26201,7 +26201,7 @@ ${notes.trim()}` : notes.trim(),
       },
     };
 
-    if (screen === "assets" || screen === "history") return null;
+    if (screen === "assets" || screen === "history" || screen === "locations") return null;
 
     const summary = summaryByScreen[screen];
     if (!summary) return null;
