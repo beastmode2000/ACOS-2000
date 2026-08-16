@@ -9548,10 +9548,20 @@ export default function AtlasApp() {
     const asset = assetRecords.find((item) => item.id === assetId);
     if (!asset) return;
 
-    const nextLocationIds = Array.from(new Set([...assetLocationIds(asset), selectedLocation.id]));
+    const nextLocationIds = selectedLocation.id === "general"
+      ? ["general"]
+      : Array.from(
+          new Set([
+            ...assetLocationIds(asset).filter((id) => id !== "general"),
+            selectedLocation.id,
+          ]),
+        );
     const updated = normalizeAsset({
       ...asset,
-      locationId: asset.locationId || selectedLocation.id,
+      locationId:
+        asset.locationId && asset.locationId !== "general"
+          ? asset.locationId
+          : selectedLocation.id,
       locationIds: nextLocationIds,
     });
     setAssetRecords((current) =>
@@ -9570,14 +9580,19 @@ export default function AtlasApp() {
     const asset = assetRecords.find((item) => item.id === assetId);
     if (!asset) return;
 
-    const remainingLocationIds = assetLocationIds(asset).filter((id) => id !== selectedLocation.id);
-    const nextPrimary = asset.locationId === selectedLocation.id
-      ? remainingLocationIds[0] || "general"
-      : asset.locationId || remainingLocationIds[0] || "general";
+    const remainingLocationIds = assetLocationIds(asset).filter(
+      (id) => id !== selectedLocation.id,
+    );
+    const nextPrimary =
+      asset.locationId === selectedLocation.id
+        ? remainingLocationIds[0] || ""
+        : asset.locationId && asset.locationId !== "general"
+          ? asset.locationId
+          : remainingLocationIds[0] || "";
     const updated = normalizeAsset({
       ...asset,
       locationId: nextPrimary,
-      locationIds: remainingLocationIds.length ? remainingLocationIds : [nextPrimary],
+      locationIds: remainingLocationIds,
     });
     setAssetRecords((current) =>
       byName(current.map((item) => (item.id === assetId ? updated : item))),
