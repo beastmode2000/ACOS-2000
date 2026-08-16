@@ -1059,6 +1059,7 @@ export default function AtlasApp() {
     useState<ManualRecord[]>(defaultManuals);
   const [selectedManualId, setSelectedManualId] = useState("");
   const [manualAddOpen, setManualAddOpen] = useState(false);
+  const [manualEditingId, setManualEditingId] = useState("");
   const [manualDraft, setManualDraft] = useState<ManualRecord>(() =>
     blankManual(),
   );
@@ -19909,19 +19910,18 @@ ${notes.trim()}` : notes.trim(),
         return a.title.localeCompare(b.title);
       });
 
-    const linkedManualCount = allManualRecords.filter(
-      (manual) => manual.linkedAssetId || manual.linkedAssetName,
-    ).length;
-    const openableManualCount = allManualRecords.filter((manual) =>
-      Boolean(openManualUrl(manual)),
-    ).length;
-    const categoryCount = new Set(
-      allManualRecords.map((manual) => manual.category),
-    ).size;
-
     function startNewManual() {
       setSelectedManualId("");
+      setManualEditingId("");
       setManualDraft(blankManual());
+      setManualAddOpen(true);
+      setManualMessage("");
+    }
+
+    function startEditingManual(manual: ManualRecord) {
+      setSelectedManualId(manual.id);
+      setManualEditingId(manual.id);
+      setManualDraft(normalizeManualRecord(manual));
       setManualAddOpen(true);
       setManualMessage("");
     }
@@ -19933,9 +19933,13 @@ ${notes.trim()}` : notes.trim(),
     }
 
     async function saveManual() {
+      const existing = manualEditingId
+        ? manualRecords.find((manual) => manual.id === manualEditingId)
+        : undefined;
       const prepared = normalizeManualRecord({
         ...manualDraft,
-        id: `manual-${Date.now()}`,
+        id: existing?.id || `manual-${Date.now()}`,
+        createdAt: existing?.createdAt || manualDraft.createdAt,
         linkedAssetName:
           assetRecords.find((asset) => asset.id === manualDraft.linkedAssetId)
             ?.name ||
@@ -19948,7 +19952,11 @@ ${notes.trim()}` : notes.trim(),
         return;
       }
 
-      const next = [prepared, ...manualRecords];
+      const next = existing
+        ? manualRecords.map((manual) =>
+            manual.id === existing.id ? prepared : manual,
+          )
+        : [prepared, ...manualRecords];
       setManualRecords(next);
       saveStoredArray(storageKeys.manuals[0], next);
 
@@ -19985,7 +19993,11 @@ ${notes.trim()}` : notes.trim(),
       replaceDocumentInVault(documentRecord);
       try {
         await postDocumentToAtlasVault(documentRecord);
-        setManualMessage("Manual saved and synced to Atlas.");
+        setManualMessage(
+          existing
+            ? "Manual updated and synced to Atlas."
+            : "Manual saved and synced to Atlas.",
+        );
       } catch {
         setManualMessage(
           "Manual saved on this browser. Atlas document sync did not complete.",
@@ -19993,6 +20005,7 @@ ${notes.trim()}` : notes.trim(),
       }
 
       setSelectedManualId(prepared.id);
+      setManualEditingId("");
       setManualDraft(blankManual());
       setManualAddOpen(false);
     }
@@ -20018,20 +20031,17 @@ ${notes.trim()}` : notes.trim(),
 
     return (
       <ListDrawerLayout
-        eyebrow="Manual Library"
-        title="Browse Manuals"
-        detail="Search, filter, preview, and open equipment manuals without leaving the Atlas record structure."
         isMobile={isMobile}
         drawerResetKey={selectedManualId || "manual-new"}
+        outerStyle={{ minHeight: isMobile ? undefined : "calc(100vh - 150px)" }}
+        gridStyleOverride={{
+          gridTemplateColumns: isMobile
+            ? "minmax(0, 1fr)"
+            : "minmax(270px, 32%) minmax(0, 68%)",
+          gap: 12,
+        }}
         right={
           <>
-            <button
-              type="button"
-              onClick={() => setScreen("documents")}
-              style={secondaryButtonStyle}
-            >
-              Documents
-            </button>
             <button
               type="button"
               onClick={startNewManual}
@@ -20045,58 +20055,10 @@ ${notes.trim()}` : notes.trim(),
           <div style={{ ...stackStyle, minWidth: 0 }}>
             <section
               style={{
-                display: "grid",
-                gridTemplateColumns: isMobile
-                  ? "repeat(2, minmax(0, 1fr))"
-                  : "repeat(4, minmax(0, 1fr))",
-                gap: 8,
-              }}
-            >
-              {[
-                ["Manuals", allManualRecords.length, "Total records"],
-                ["Openable", openableManualCount, "PDF or web link"],
-                ["Linked", linkedManualCount, "Attached to assets"],
-                ["Categories", categoryCount, "Manual types"],
-              ].map(([label, value, note]) => (
-                <div
-                  key={String(label)}
-                  style={{
-                    border: `1px solid ${colors.line}`,
-                    borderRadius: 14,
-                    background: "#FFFFFF",
-                    padding: 10,
-                    minWidth: 0,
-                    boxShadow: "0 4px 14px rgba(15, 42, 67, 0.05)",
-                  }}
-                >
-                  <span style={fieldLabelStyle}>{label}</span>
-                  <strong
-                    style={{
-                      display: "block",
-                      color: colors.navy,
-                      fontSize: 21,
-                      lineHeight: 1,
-                      marginTop: 4,
-                    }}
-                  >
-                    {value}
-                  </strong>
-                  <span
-                    style={{
-                      ...mutedSmallStyle,
-                      display: "block",
-                      marginTop: 5,
-                    }}
-                  >
-                    {note}
-                  </span>
-                </div>
-              ))}
-            </section>
-
-            <section
-              style={{
-                ...cardStyle,
+                border: `1px solid ${colors.line}`,
+                borderRadius: 12,
+                background: "#FFFFFF",
+                padding: 8,
                 position: isMobile ? "static" : "sticky",
                 top: isMobile ? undefined : 0,
                 zIndex: 4,
@@ -20107,16 +20069,14 @@ ${notes.trim()}` : notes.trim(),
               <input
                 value={manualSearch}
                 onChange={(event) => setManualSearch(event.currentTarget.value)}
-                placeholder="Search title, asset, manufacturer, model, file name, or notes..."
+                placeholder="Search manuals..."
                 style={{ ...inputStyle, minHeight: isMobile ? 42 : undefined }}
               />
 
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "1fr"
-                    : "repeat(3, minmax(0, 1fr))",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                   gap: 7,
                 }}
               >
@@ -20206,15 +20166,18 @@ ${notes.trim()}` : notes.trim(),
               <section style={{ ...cardStyle, display: "grid", gap: 10 }}>
                 <div style={manualInlineFormHeaderStyle}>
                   <div>
-                    <strong>Add Manual</strong>
+                    <strong>{manualEditingId ? "Edit Manual" : "Add Manual"}</strong>
                     <div style={mutedSmallStyle}>
-                      Upload a PDF or paste an official manual link.
+                      {manualEditingId
+                        ? "Update the selected manual record."
+                        : "Upload a PDF or paste an official manual link."}
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
                       setManualAddOpen(false);
+                      setManualEditingId("");
                       setManualDraft(blankManual());
                       setManualMessage("");
                     }}
@@ -20355,7 +20318,7 @@ ${notes.trim()}` : notes.trim(),
                     onClick={() => void saveManual()}
                     style={goldButtonStyle}
                   >
-                    Save Manual
+                    {manualEditingId ? "Save Changes" : "Save Manual"}
                   </button>
                 </div>
               </section>
@@ -20365,9 +20328,7 @@ ${notes.trim()}` : notes.trim(),
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "minmax(0, 1fr)"
-                    : "repeat(2, minmax(0, 1fr))",
+                  gridTemplateColumns: "minmax(0, 1fr)",
                   gap: 9,
                 }}
               >
@@ -20532,9 +20493,17 @@ ${notes.trim()}` : notes.trim(),
                           <button
                             type="button"
                             onClick={() => void deleteManualRecord(manual)}
-                            style={manualDeleteButtonStyle}
+                            style={{
+                              ...manualDeleteButtonStyle,
+                              width: 30,
+                              minWidth: 30,
+                              padding: 0,
+                              fontSize: 15,
+                            }}
+                            title="Delete manual"
+                            aria-label={`Delete ${manual.title}`}
                           >
-                            Delete
+                            🗑
                           </button>
                         </div>
                       </div>
@@ -20592,30 +20561,53 @@ ${notes.trim()}` : notes.trim(),
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <div style={eyebrowStyle}>Selected Manual</div>
                     <h3
                       style={{
                         ...editorHeaderStyle,
-                        margin: "3px 0 0",
+                        margin: 0,
                         overflowWrap: "anywhere",
                       }}
                     >
                       {selectedManual.title}
                     </h3>
                   </div>
-                  <span
-                    style={{
-                      border: `1px solid ${colors.line}`,
-                      borderRadius: 999,
-                      background: colors.panel,
-                      padding: "4px 8px",
-                      fontSize: 9,
-                      fontWeight: 850,
-                      color: colors.navy,
-                    }}
-                  >
-                    {selectedManual.category}
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span
+                      style={{
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 999,
+                        background: colors.panel,
+                        padding: "4px 8px",
+                        fontSize: 9,
+                        fontWeight: 850,
+                        color: colors.navy,
+                      }}
+                    >
+                      {selectedManual.category}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => startEditingManual(selectedManual)}
+                      style={smallSubtleButtonStyle}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteManualRecord(selectedManual)}
+                      style={{
+                        ...manualDeleteButtonStyle,
+                        width: 30,
+                        minWidth: 30,
+                        padding: 0,
+                        fontSize: 15,
+                      }}
+                      title="Delete manual"
+                      aria-label={`Delete ${selectedManual.title}`}
+                    >
+                      🗑
+                    </button>
+                  </div>
                 </div>
 
                 <div
@@ -32604,3 +32596,5 @@ const photoStyle: React.CSSProperties = {
 
 
       
+
+    
