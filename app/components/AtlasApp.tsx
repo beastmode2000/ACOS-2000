@@ -4320,7 +4320,7 @@ export default function AtlasApp() {
               assignmentAliases: [currentStaffFirstName, normalizedCurrentUserName].filter(Boolean),
             };
 
-  const marineDepartmentPattern = /marine|dock|boat|cobalt|sea.?doo|jet.?ski|pwc|lift|water trampoline|sean/i;
+  const marineDepartmentPattern = /marine|dock|boat|cobalt|sea[\s-]?doo|jet[\s-]?ski|pwc|lift|lift\s*box|liftbox|dock\s*box|sunstream|water trampoline|sean/i;
   const recordSearchText = (...values: unknown[]) =>
     values.map((value) => {
       if (typeof value === "string" || typeof value === "number") return String(value);
@@ -4344,6 +4344,10 @@ export default function AtlasApp() {
   const marineAssetIds = new Set(
     assetRecords.filter((asset) => isMarineAssetRecord(asset)).map((asset) => asset.id),
   );
+  const marineAssetNames = assetRecords
+    .filter((asset) => marineAssetIds.has(asset.id))
+    .map((asset) => normalizeLocationName(asset.name))
+    .filter((name) => name.length >= 3);
 
   assetRecords.forEach((asset) => {
     if (!marineAssetIds.has(asset.id)) return;
@@ -4354,15 +4358,23 @@ export default function AtlasApp() {
 
   const isMarineServiceRecord = (record: ServiceRecord) => {
     const atlasRecord = record as AtlasServiceRecord;
-    return marineAssetIds.has(String(record.assetId || "")) ||
+    const linkedAssetIds = [
+      String(record.assetId || ""),
+      ...(((atlasRecord as AtlasServiceRecord & { assetIds?: string[] }).assetIds || []).map(String)),
+      ...(((atlasRecord as AtlasServiceRecord & { linkedAssetIds?: string[] }).linkedAssetIds || []).map(String)),
+    ].filter(Boolean);
+    const serviceText = recordSearchText(
+      atlasRecord.workCategory,
+      atlasRecord.responsibilityArea,
+      atlasRecord.assignedTo,
+      record.title,
+      record.notes,
+    );
+    const normalizedServiceText = normalizeLocationName(serviceText);
+    return linkedAssetIds.some((assetId) => marineAssetIds.has(assetId)) ||
       marineLocationIds.has(String(atlasRecord.locationId || "")) ||
-      marineDepartmentPattern.test(recordSearchText(
-        atlasRecord.workCategory,
-        atlasRecord.responsibilityArea,
-        atlasRecord.assignedTo,
-        record.title,
-        record.notes,
-      ));
+      marineAssetNames.some((assetName) => normalizedServiceText.includes(assetName)) ||
+      marineDepartmentPattern.test(serviceText);
   };
 
   const isMarineDocumentRecord = (document: DocumentRecord) => {
@@ -26575,7 +26587,7 @@ ${notes.trim()}` : notes.trim(),
             ? matches(record) && !isMarineServiceRecord(record)
             : matchesDepartmentRecord(record),
     );
-    const departmentWork = kind === "garage"
+    const departmentWork = kind === "garage" || isMarine
       ? planWorkOrderDatabaseCleanup(rawDepartmentWork).keepers
       : rawDepartmentWork;
     const openWork = departmentWork.filter((item) => !["Completed"].includes(String(item.status || "")));
