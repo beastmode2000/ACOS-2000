@@ -26980,6 +26980,11 @@ ${notes.trim()}` : notes.trim(),
       const vehiclePhotos = vehicleDocuments
         .flatMap((document) => document.files || [])
         .filter((file) => String(file.type || "").startsWith("image/") || String(file.dataUrl || "").startsWith("data:image/"));
+      const garageAssetPhotos = selectedGarageAsset
+        ? photos
+            .filter((photo) => photo.assetId === selectedGarageAsset.id && Boolean(photoSource(photo)))
+            .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
+        : [];
       const cleaningHistory = [...(selectedGarageVehicle?.history || [])]
         .filter((entry) => entry.type === "Cleaned" || (entry.type === "Note" && /^Skipped\b/i.test(entry.notes || "")))
         .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
@@ -27106,9 +27111,12 @@ ${notes.trim()}` : notes.trim(),
                   const interval = Math.max(1, Number(vehicle.cleaningIntervalDays || 7));
                   const due = !vehicle.lastCleaned || addDays(vehicle.lastCleaned, interval) <= todayISO();
                   const asset = departmentAssets.find((item) => item.id === vehicle.assetId || item.name.toLowerCase().includes(vehicle.name.toLowerCase()));
+                  const assetPhoto = asset
+                    ? photos.find((photo) => photo.assetId === asset.id && Boolean(photoSource(photo)))
+                    : undefined;
                   return (
                     <button key={vehicle.id} type="button" onClick={() => { setSelectedVehicleId(vehicle.id); setGarageVehicleTab("Overview"); setGarageVehicleEditing(false); }} style={{ width: "100%", border: 0, borderBottom: `1px solid ${colors.line}`, borderLeft: selected ? `3px solid ${colors.navy}` : "3px solid transparent", background: selected ? "#F0F6FC" : "#FFFFFF", padding: "12px 13px", textAlign: "left", cursor: "pointer", display: "grid", gridTemplateColumns: "36px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
-                      <span style={{ width: 36, height: 36, borderRadius: 9, display: "grid", placeItems: "center", background: "#E2ECF5", color: colors.navy, fontWeight: 900 }}>{vehicle.name.slice(0, 1).toUpperCase()}</span>
+                      <span style={{ width: 36, height: 36, borderRadius: 9, display: "grid", placeItems: "center", background: "#E2ECF5", color: colors.navy, fontWeight: 900, overflow: "hidden" }}>{assetPhoto ? <img src={photoSource(assetPhoto)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : vehicle.name.slice(0, 1).toUpperCase()}</span>
                       <span style={{ minWidth: 0 }}>
                         <strong style={{ color: colors.navy, display: "block" }}>{vehicle.name}</strong>
                         <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>{[asset?.year, asset?.make, asset?.model, locationName(vehicle.locationId)].filter(Boolean).join(" · ") || "Vehicle"}</small>
@@ -27137,7 +27145,7 @@ ${notes.trim()}` : notes.trim(),
             {selectedGarageVehicle ? (
               <section style={{ ...centerCardStyle, padding: 0, overflow: "hidden", position: isMobile ? "static" : "sticky", top: 88, maxHeight: isMobile ? "none" : "calc(100vh - 110px)" }}>
                 <div style={{ padding: 16, display: "grid", gridTemplateColumns: "52px minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
-                  <span style={{ width: 52, height: 52, borderRadius: 11, display: "grid", placeItems: "center", background: "#E2ECF5", color: colors.navy, fontSize: 20, fontWeight: 900 }}>{selectedGarageVehicle.name.slice(0, 1).toUpperCase()}</span>
+                  <span style={{ width: 52, height: 52, borderRadius: 11, display: "grid", placeItems: "center", background: "#E2ECF5", color: colors.navy, fontSize: 20, fontWeight: 900, overflow: "hidden" }}>{garageAssetPhotos[0] ? <img src={photoSource(garageAssetPhotos[0])} alt={selectedGarageVehicle.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : selectedGarageVehicle.name.slice(0, 1).toUpperCase()}</span>
                   <span><span style={eyebrowStyle}>{[assetData.year, assetData.make, assetData.model].filter(Boolean).join(" · ") || "Vehicle"}</span><strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>{selectedGarageVehicle.name}</strong><small style={mutedSmallStyle}>{selectedGarageVehicle.onsite ? "Ready" : "Away"} · {locationName(selectedGarageVehicle.locationId) || "Garage"}</small></span>
                   <span style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     {selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={secondaryButtonStyle}>Open Asset</button> : null}
@@ -27177,7 +27185,7 @@ ${notes.trim()}` : notes.trim(),
 
                   {garageVehicleTab === "Documents" ? <div style={{ display: "grid", gap: 8 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Documents</strong>{selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={goldButtonStyle}>+ Add document</button> : null}</div>{vehicleDocuments.map((document) => <button key={document.id} type="button" onClick={() => { setSelectedDocumentId(document.id); openCenter("documents"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{document.title}</strong><small style={mutedSmallStyle}>{document.type || "Document"}</small></span><span>Open ›</span></button>)}{!vehicleDocuments.length ? <div style={noticeStyle}>No documents attached to this vehicle.</div> : null}</div> : null}
 
-                  {garageVehicleTab === "Photos" ? <div style={{ display: "grid", gap: 10 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Photos</strong>{selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={goldButtonStyle}>+ Add photos</button> : null}</div>{vehiclePhotos.length ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 8 }}>{vehiclePhotos.map((photo) => <button key={photo.id} type="button" onClick={() => setPreviewFile(photo)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 0, overflow: "hidden", background: "#FFFFFF" }}><img src={photo.dataUrl || photo.url} alt={photo.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} /></button>)}</div> : <div style={noticeStyle}>No photos attached to this vehicle.</div>}</div> : null}
+                  {garageVehicleTab === "Photos" ? <div style={{ display: "grid", gap: 10 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Photos</strong>{selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={goldButtonStyle}>+ Add photos</button> : null}</div>{garageAssetPhotos.length || vehiclePhotos.length ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 8 }}>{garageAssetPhotos.map((photo) => <button key={`asset-${photo.id}`} type="button" onClick={() => openPhotoPreview(photo)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 0, overflow: "hidden", background: "#FFFFFF" }}><img src={photoSource(photo)} alt={photo.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} /></button>)}{vehiclePhotos.map((photo) => <button key={`document-${photo.id}`} type="button" onClick={() => setPreviewFile(photo)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 0, overflow: "hidden", background: "#FFFFFF" }}><img src={photo.dataUrl || photo.url} alt={photo.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} /></button>)}</div> : <div style={noticeStyle}>No photos attached to this vehicle asset.</div>}</div> : null}
                 </div>
               </section>
             ) : <div style={noticeStyle}>Select a vehicle.</div>}
