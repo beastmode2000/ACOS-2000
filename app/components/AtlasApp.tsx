@@ -184,7 +184,21 @@ function workOrderDatabaseDuplicateKey(record: AtlasServiceRecord) {
     return `id:${record.id}`;
   }
 
-  const recurring = Boolean(record.recurring);
+  const generatedVehicleMaintenance =
+    /^(clean|wash) (mercedes|rivian|porsche|lucid|ford|f 150|raptor|kia|honda|subaru)\b/.test(
+      title,
+    ) ||
+    /^(mercedes|rivian|porsche|lucid|ford|f 150|raptor|kia|honda|subaru) .*\b(recurring service|maintenance|cleaning)\b/.test(
+      title,
+    );
+  if (generatedVehicleMaintenance) {
+    const vehicleName =
+      title.match(
+        /\b(mercedes|rivian|porsche|lucid|ford|f 150|raptor|kia|honda|subaru)\b/,
+      )?.[0] || "vehicle";
+    return `generated-vehicle-maintenance|${vehicleName}|${title}`;
+  }
+  const recurring = Boolean(record.recurring || generatedVehicleMaintenance);
   return [
     title,
     normalizedWorkOrderText(record.assetId),
@@ -310,8 +324,19 @@ function planWorkOrderDatabaseCleanup(records: AtlasServiceRecord[]) {
   const keepers: AtlasServiceRecord[] = [];
   const changedKeepers: AtlasServiceRecord[] = [];
   const duplicateIds: string[] = [];
-  groups.forEach((group) => {
-    const merged = mergeDuplicateWorkOrderGroup(group);
+  groups.forEach((group, key) => {
+    const baseMerged = mergeDuplicateWorkOrderGroup(group);
+    const merged = key.startsWith("generated-vehicle-maintenance|")
+      ? normalizeService({
+          ...baseMerged,
+          recurring: true,
+          recurrenceInterval: Math.max(
+            1,
+            Number(baseMerged.recurrenceInterval || 7),
+          ),
+          recurrenceUnit: baseMerged.recurrenceUnit || "Days",
+        })
+      : baseMerged;
     keepers.push(merged);
     if (group.length > 1) changedKeepers.push(merged);
     group.forEach((record) => {
@@ -26587,9 +26612,36 @@ ${notes.trim()}` : notes.trim(),
             ? matches(record) && !isMarineServiceRecord(record)
             : matchesDepartmentRecord(record),
     );
-    const departmentWork = kind === "garage" || isMarine
-      ? planWorkOrderDatabaseCleanup(rawDepartmentWork).keepers
-      : rawDepartmentWork;
+    const departmentWork = kind === "garage"
+      ? (() => {
+          // Garage maintenance was historically generated as separate dated
+          // records. Collapse exact car/title repeats into one live record so
+          // hundreds of old occurrences do not render as current work.
+          const groups = new Map<string, AtlasServiceRecord[]>();
+          rawDepartmentWork.forEach((record) => {
+            const linkedCar = assetRecords.find(
+              (asset) => asset.id === String(record.assetId || ""),
+            );
+            const text = recordSearchText(record);
+            const namedCar =
+              linkedCar?.name ||
+              text.match(
+                /\b(mercedes|rivian|porsche|lucid|ford|f-?150|raptor|kia|honda|subaru)\b/i,
+              )?.[0] ||
+              "car";
+            const key = `${normalizedWorkOrderText(record.title)}|${normalizedWorkOrderText(namedCar)}`;
+            groups.set(key, [
+              ...(groups.get(key) || []),
+              record as AtlasServiceRecord,
+            ]);
+          });
+          return Array.from(groups.values()).map((group) =>
+            mergeDuplicateWorkOrderGroup(group),
+          );
+        })()
+      : isMarine
+        ? planWorkOrderDatabaseCleanup(rawDepartmentWork).keepers
+        : rawDepartmentWork;
     const openWork = departmentWork.filter((item) => !["Completed"].includes(String(item.status || "")));
     const completedWork = departmentWork.filter((item) => String(item.status || "") === "Completed");
     const departmentAssets = kind === "garage"
