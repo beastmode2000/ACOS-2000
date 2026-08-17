@@ -26519,7 +26519,7 @@ ${notes.trim()}` : notes.trim(),
   function renderDepartmentCenter(kind: DepartmentKind) {
     const departmentConfig: Record<DepartmentKind, { title: string; short: string; icon: string; matcher: RegExp; detail: string; people: string[] }> = {
       house: { title: "House & Maintenance", short: "House", icon: "⌂", matcher: /house|interior|exterior|room|appliance|boiler|hvac|mechanical|pump|electrical|plumbing|lighting|door|gate|alarm/i, detail: "House systems, mechanical equipment, inspections, repairs, procedures, service history, and current work.", people: ["Nick", "Vendors"] },
-      garage: { title: "Garage", short: "Garage", icon: "🚗", matcher: /garage|vehicle|car|mercedes|rivian|porsche|lucid|ford|kia|honda|subaru|charging|tire|fuel/i, detail: "Cars, weekly cleaning, inspections, charging, service, documents, photos, and connected work.", people: ["Nick", "Addison"] },
+      garage: { title: "Garage", short: "Garage", icon: "", matcher: /vehicle|car|mercedes|rivian|porsche|lucid|ford|f-?150|kia|honda|subaru|charging|tire|fuel/i, detail: "Cars and their work orders and tasks.", people: ["Nick", "Addison"] },
       pool: { title: "Pool & Spa", short: "Pool & Spa", icon: "💧", matcher: /pool|spa|hot tub|sundance|fountain|filter|backwash|oxy|phosphate|vacuum/i, detail: "Pool, Spa, Fountain, water treatment, cleaning rotation, filter readings, equipment, procedures, and service history.", people: ["Nick", "Addison", "Vendors"] },
       landscaping: { title: "Landscaping & Irrigation", short: "Landscaping", icon: "🌿", matcher: /landscap|garden|lawn|weed|irrigation|tree|grounds|bed|courtyard|waterside|veggie/i, detail: "Landscaping, irrigation, crew visits, areas, progress photos, tasks, work orders, and follow-up.", people: ["Pat", "Lanken Landscaping", "Addison"] },
       marine: { title: "Dock & Waterfront", short: "Dock", icon: "⚓", matcher: /marine|dock|boat|cobalt|sea.?doo|lift|water trampoline|pwc|shoreline|waterfront/i, detail: "Dock, waterfront, boats, lifts, recreation equipment, service, procedures, documents, and photos.", people: ["Nick", "Vendors"] },
@@ -26544,27 +26544,72 @@ ${notes.trim()}` : notes.trim(),
     };
     const matchesDepartmentRecord = (value: unknown) =>
       matches(value) && (kind !== "pool" || !isConventionalApplianceRecord(value));
-    const departmentWork = serviceRecords.filter((record) =>
-      isMarine ? isMarineServiceRecord(record) : isLandscape ? matches(record) && !isMarineServiceRecord(record) : matchesDepartmentRecord(record),
+    const garageCarAssetPattern =
+      /\b(vehicle|car|automobile|mercedes|rivian|porsche|lucid|ford|f-?150|raptor|kia|honda|subaru)\b/i;
+    const garageSpecificCarPattern =
+      /\b(mercedes|rivian|porsche|lucid|ford|f-?150|raptor|kia|honda|subaru)\b/i;
+    const garageExcludedPattern =
+      /\b(golf simulator|simulator|boat|marine|watercraft|sea.?doo|cobalt|pwc|dock|lift|equipment)\b/i;
+    const isGarageCarAsset = (asset: AssetRecord) => {
+      const text = recordSearchText(asset);
+      return garageCarAssetPattern.test(text) && !garageExcludedPattern.test(text);
+    };
+    const garageCarAssetIds = new Set(
+      assetRecords.filter(isGarageCarAsset).map((asset) => asset.id),
     );
+    const isGarageCarRecord = (value: unknown) => {
+      const record = (value || {}) as Record<string, unknown>;
+      const linkedAssetId = String(record.assetId || "");
+      const text = recordSearchText(value);
+      return (
+        (garageCarAssetIds.has(linkedAssetId) || garageSpecificCarPattern.test(text)) &&
+        !garageExcludedPattern.test(text)
+      );
+    };
+    const rawDepartmentWork = serviceRecords.filter((record) =>
+      kind === "garage"
+        ? isGarageCarRecord(record)
+        : isMarine
+          ? isMarineServiceRecord(record)
+          : isLandscape
+            ? matches(record) && !isMarineServiceRecord(record)
+            : matchesDepartmentRecord(record),
+    );
+    const departmentWork = kind === "garage"
+      ? planWorkOrderDatabaseCleanup(rawDepartmentWork).keepers
+      : rawDepartmentWork;
     const openWork = departmentWork.filter((item) => !["Completed"].includes(String(item.status || "")));
     const completedWork = departmentWork.filter((item) => String(item.status || "") === "Completed");
-    const departmentAssets = isMarine ? assetRecords.filter((asset) => marineAssetIds.has(asset.id)) : assetRecords.filter((asset) => matchesDepartmentRecord(asset) && (!isLandscape || !isMarineAssetRecord(asset)));
-    const departmentLocations = isMarine ? locations.filter((location) => marineLocationIds.has(location.id)) : locations.filter((location) => matches(location) && (!isLandscape || !marineLocationIds.has(location.id)));
-    const departmentVendors = vendorRecords.filter(matches);
-    const departmentDocuments = mergeDocuments(documents, intakeDocs).filter((document) =>
+    const departmentAssets = kind === "garage"
+      ? assetRecords.filter(isGarageCarAsset)
+      : isMarine
+        ? assetRecords.filter((asset) => marineAssetIds.has(asset.id))
+        : assetRecords.filter((asset) => matchesDepartmentRecord(asset) && (!isLandscape || !isMarineAssetRecord(asset)));
+    const departmentLocations = kind === "garage"
+      ? []
+      : isMarine
+        ? locations.filter((location) => marineLocationIds.has(location.id))
+        : locations.filter((location) => matches(location) && (!isLandscape || !marineLocationIds.has(location.id)));
+    const departmentVendors = kind === "garage" ? [] : vendorRecords.filter(matches);
+    const departmentDocuments = kind === "garage" ? [] : mergeDocuments(documents, intakeDocs).filter((document) =>
       isMarine ? isMarineDocumentRecord(document) : matchesDepartmentRecord(document) && (!isLandscape || !isMarineDocumentRecord(document)),
     );
-    const departmentProcedures = procedureRecords.filter((procedure) =>
+    const departmentProcedures = kind === "garage" ? [] : procedureRecords.filter((procedure) =>
       isMarine
         ? marineDepartmentPattern.test(recordSearchText(procedure)) ||
           (procedure.linkedAssetIds || []).some((id) => marineAssetIds.has(id)) ||
           (procedure.linkedLocationIds || []).some((id) => marineLocationIds.has(id))
         : matchesDepartmentRecord(procedure) && (!isLandscape || !marineDepartmentPattern.test(recordSearchText(procedure))),
     );
-    const departmentRequests = requestRecords.filter((request) =>
+    const departmentRequests = kind === "garage" ? [] : requestRecords.filter((request) =>
       isMarine ? matches(request) : matchesDepartmentRecord(request) && (!isLandscape || !marineDepartmentPattern.test(recordSearchText(request))),
     );
+    const departmentTasks = kind === "garage"
+      ? workPlanTasks.filter((task) => {
+          const meta = taskDetails(task.id);
+          return isGarageCarRecord({ ...task, ...meta });
+        })
+      : [];
     const assignedNames = config.people;
 
     const openCenter = (next: AtlasScreen) => {
@@ -26623,6 +26668,164 @@ ${notes.trim()}` : notes.trim(),
       gap: 12,
       minWidth: 0,
     };
+
+    if (kind === "garage") {
+      const sortedCars = [...departmentAssets].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      );
+      const sortedCarWork = [...departmentWork].sort((a, b) =>
+        String(a.date || "9999-12-31").localeCompare(
+          String(b.date || "9999-12-31"),
+        ),
+      );
+      const sortedCarTasks = [...departmentTasks].sort((a, b) =>
+        String(taskDetails(a.id).dueDate || "9999-12-31").localeCompare(
+          String(taskDetails(b.id).dueDate || "9999-12-31"),
+        ),
+      );
+
+      return (
+        <section style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => addDashboardWorkOrder("Garage")}
+              style={goldButtonStyle}
+            >
+              New Car Work Order
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "minmax(260px, 31%) minmax(0, 69%)",
+              gap: 12,
+              alignItems: "start",
+            }}
+          >
+            <div style={centerCardStyle}>
+              <strong style={{ color: colors.navy, fontSize: 16 }}>Cars</strong>
+              <div style={{ display: "grid", gap: 8 }}>
+                {sortedCars.map((asset) => (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() => {
+                      setDepartmentCenter("");
+                      setSelectedAssetId(asset.id);
+                      setScreen("assets");
+                    }}
+                    style={{
+                      ...compactLinkedRowStyle,
+                      width: "100%",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span>
+                      <strong>{asset.name}</strong>
+                      <small style={mutedSmallStyle}>
+                        {[asset.make, asset.model].filter(Boolean).join(" · ") ||
+                          "Vehicle"}
+                      </small>
+                    </span>
+                    <span style={badgeStyle(asset.status || "Active")}>
+                      {asset.status || "Active"}
+                    </span>
+                  </button>
+                ))}
+                {!sortedCars.length ? (
+                  <div style={noticeStyle}>No cars are saved.</div>
+                ) : null}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={centerCardStyle}>
+                <strong style={{ color: colors.navy, fontSize: 16 }}>
+                  Car Work Orders
+                </strong>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {sortedCarWork.map((record) => (
+                    <button
+                      key={record.id}
+                      type="button"
+                      onClick={() => {
+                        setDepartmentCenter("");
+                        openWorkOrderById(record.id);
+                      }}
+                      style={{
+                        ...compactLinkedRowStyle,
+                        width: "100%",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span>
+                        <strong>{record.title || "Untitled work order"}</strong>
+                        <small style={mutedSmallStyle}>
+                          {record.date ? formatDate(record.date) : "No due date"}
+                        </small>
+                      </span>
+                      <span style={badgeStyle(record.status || "Open")}>
+                        {record.status || "Open"}
+                      </span>
+                    </button>
+                  ))}
+                  {!sortedCarWork.length ? (
+                    <div style={noticeStyle}>No car work orders.</div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div style={centerCardStyle}>
+                <strong style={{ color: colors.navy, fontSize: 16 }}>
+                  Car Tasks
+                </strong>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {sortedCarTasks.map((task) => {
+                    const meta = taskDetails(task.id);
+                    return (
+                      <button
+                        key={task.id}
+                        type="button"
+                        onClick={() => {
+                          setDepartmentCenter("");
+                          setSelectedTaskId(task.id);
+                          setTasksView("tasks");
+                          setScreen("planner");
+                        }}
+                        style={{
+                          ...compactLinkedRowStyle,
+                          width: "100%",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <span>
+                          <strong>{task.title}</strong>
+                          <small style={mutedSmallStyle}>
+                            {meta.dueDate
+                              ? formatDate(meta.dueDate)
+                              : "No due date"}
+                          </small>
+                        </span>
+                        <span style={badgeStyle(meta.status || "Open")}>
+                          {meta.status || "Open"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {!sortedCarTasks.length ? (
+                    <div style={noticeStyle}>No car tasks.</div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      );
+    }
 
     return (
       <section style={{ display: "grid", gap: 18 }}>
