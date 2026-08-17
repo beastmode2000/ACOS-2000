@@ -191,12 +191,19 @@ function workOrderDatabaseDuplicateKey(record: AtlasServiceRecord) {
     /^(mercedes|rivian|porsche|lucid|ford|f 150|raptor|kia|honda|subaru) .*\b(recurring service|maintenance|cleaning)\b/.test(
       title,
     );
-  if (generatedVehicleMaintenance) {
-    const vehicleName =
+  const generatedMarineMaintenance =
+    /^(clean|wash|inspect|service) (cobalt|sea doo|seadoo|boat|dock|lift box|dock box|sunstream)\b/.test(
+      title,
+    ) ||
+    /^(cobalt|sea doo|seadoo|boat|dock|lift box|dock box|sunstream) .*\b(recurring service|maintenance|cleaning|inspection)\b/.test(
+      title,
+    );
+  if (generatedVehicleMaintenance || generatedMarineMaintenance) {
+    const equipmentName =
       title.match(
-        /\b(mercedes|rivian|porsche|lucid|ford|f 150|raptor|kia|honda|subaru)\b/,
-      )?.[0] || "vehicle";
-    return `generated-vehicle-maintenance|${vehicleName}|${title}`;
+        /\b(mercedes|rivian|porsche|lucid|ford|f 150|raptor|kia|honda|subaru|cobalt|sea doo|seadoo|boat|dock|lift box|dock box|sunstream)\b/,
+      )?.[0] || "equipment";
+    return `${generatedVehicleMaintenance ? "generated-vehicle-maintenance" : "generated-marine-maintenance"}|${equipmentName}|${title}`;
   }
   const recurring = Boolean(record.recurring || generatedVehicleMaintenance);
   return [
@@ -326,7 +333,9 @@ function planWorkOrderDatabaseCleanup(records: AtlasServiceRecord[]) {
   const duplicateIds: string[] = [];
   groups.forEach((group, key) => {
     const baseMerged = mergeDuplicateWorkOrderGroup(group);
-    const merged = key.startsWith("generated-vehicle-maintenance|")
+    const merged =
+      key.startsWith("generated-vehicle-maintenance|") ||
+      key.startsWith("generated-marine-maintenance|")
       ? normalizeService({
           ...baseMerged,
           recurring: true,
@@ -26579,6 +26588,14 @@ ${notes.trim()}` : notes.trim(),
         .join(" ");
       return /\bappliances?\b/i.test(classificationText) || conventionalAppliancePattern.test(identityText);
     };
+    const isAnnualApplianceServiceRecord = (value: unknown) => {
+      const text = recordSearchText(value);
+      return (
+        /\bannual\b/.test(text) &&
+        /\b(service|maintenance|inspection)\b/.test(text) &&
+        isConventionalApplianceRecord(value)
+      );
+    };
     const matchesDepartmentRecord = (value: unknown) =>
       matches(value) && (kind !== "pool" || !isConventionalApplianceRecord(value));
     const garageCarAssetPattern =
@@ -26606,8 +26623,11 @@ ${notes.trim()}` : notes.trim(),
     const rawDepartmentWork = serviceRecords.filter((record) =>
       kind === "garage"
         ? isGarageCarRecord(record)
+        : kind === "house" && isAnnualApplianceServiceRecord(record)
+          ? true
         : isMarine
-          ? isMarineServiceRecord(record)
+          ? !isAnnualApplianceServiceRecord(record) &&
+            isMarineServiceRecord(record)
           : isLandscape
             ? matches(record) && !isMarineServiceRecord(record)
             : matchesDepartmentRecord(record),
@@ -26673,7 +26693,25 @@ ${notes.trim()}` : notes.trim(),
           const meta = taskDetails(task.id);
           return isGarageCarRecord({ ...task, ...meta });
         })
-      : [];
+      : isMarine
+        ? workPlanTasks.filter((task) => {
+            const meta = taskDetails(task.id);
+            const linkedAssetIds = [
+              meta.assetId,
+              ...(meta.assetIds || []),
+            ].filter(Boolean).map(String);
+            const taskText = recordSearchText(task, meta);
+            const normalizedTaskText = normalizeLocationName(taskText);
+            return (
+              linkedAssetIds.some((assetId) => marineAssetIds.has(assetId)) ||
+              marineLocationIds.has(String(task.locationId || "")) ||
+              marineAssetNames.some((assetName) =>
+                normalizedTaskText.includes(assetName),
+              ) ||
+              marineDepartmentPattern.test(taskText)
+            );
+          })
+        : [];
     const assignedNames = config.people;
 
     const openCenter = (next: AtlasScreen) => {
@@ -26882,6 +26920,165 @@ ${notes.trim()}` : notes.trim(),
                   })}
                   {!sortedCarTasks.length ? (
                     <div style={noticeStyle}>No car tasks.</div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    if (isMarine) {
+      const sortedMarineAssets = [...departmentAssets].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      );
+      const sortedMarineWork = [...departmentWork].sort((a, b) =>
+        String(a.date || "9999-12-31").localeCompare(
+          String(b.date || "9999-12-31"),
+        ),
+      );
+      const sortedMarineTasks = [...departmentTasks].sort((a, b) =>
+        String(taskDetails(a.id).dueDate || "9999-12-31").localeCompare(
+          String(taskDetails(b.id).dueDate || "9999-12-31"),
+        ),
+      );
+
+      return (
+        <section style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => addDashboardWorkOrder("Dock & Waterfront")}
+              style={goldButtonStyle}
+            >
+              New Marine Work Order
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "minmax(270px, 32%) minmax(0, 68%)",
+              gap: 12,
+              alignItems: "start",
+            }}
+          >
+            <div style={centerCardStyle}>
+              <strong style={{ color: colors.navy, fontSize: 16 }}>
+                Dock & Marine Assets
+              </strong>
+              <div style={{ display: "grid", gap: 8 }}>
+                {sortedMarineAssets.map((asset) => (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() => {
+                      setDepartmentCenter("");
+                      setSelectedAssetId(asset.id);
+                      setScreen("assets");
+                    }}
+                    style={{
+                      ...compactLinkedRowStyle,
+                      width: "100%",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span>
+                      <strong>{asset.name}</strong>
+                      <small style={mutedSmallStyle}>
+                        {asset.category || "Marine asset"}
+                      </small>
+                    </span>
+                    <span style={badgeStyle(asset.status || "Active")}>
+                      {asset.status || "Active"}
+                    </span>
+                  </button>
+                ))}
+                {!sortedMarineAssets.length ? (
+                  <div style={noticeStyle}>No Dock or Marine assets.</div>
+                ) : null}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={centerCardStyle}>
+                <strong style={{ color: colors.navy, fontSize: 16 }}>
+                  Dock & Marine Work Orders
+                </strong>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {sortedMarineWork.map((record) => (
+                    <button
+                      key={record.id}
+                      type="button"
+                      onClick={() => {
+                        setDepartmentCenter("");
+                        openWorkOrderById(record.id);
+                      }}
+                      style={{
+                        ...compactLinkedRowStyle,
+                        width: "100%",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span>
+                        <strong>{record.title || "Untitled work order"}</strong>
+                        <small style={mutedSmallStyle}>
+                          {record.date ? formatDate(record.date) : "No due date"}
+                        </small>
+                      </span>
+                      <span style={badgeStyle(record.status || "Open")}>
+                        {record.status || "Open"}
+                      </span>
+                    </button>
+                  ))}
+                  {!sortedMarineWork.length ? (
+                    <div style={noticeStyle}>No Dock or Marine work orders.</div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div style={centerCardStyle}>
+                <strong style={{ color: colors.navy, fontSize: 16 }}>
+                  Dock & Marine Tasks
+                </strong>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {sortedMarineTasks.map((task) => {
+                    const meta = taskDetails(task.id);
+                    return (
+                      <button
+                        key={task.id}
+                        type="button"
+                        onClick={() => {
+                          setDepartmentCenter("");
+                          setSelectedTaskId(task.id);
+                          setTasksView("tasks");
+                          setScreen("planner");
+                        }}
+                        style={{
+                          ...compactLinkedRowStyle,
+                          width: "100%",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <span>
+                          <strong>{task.title}</strong>
+                          <small style={mutedSmallStyle}>
+                            {meta.dueDate
+                              ? formatDate(meta.dueDate)
+                              : "No due date"}
+                          </small>
+                        </span>
+                        <span style={badgeStyle(meta.status || "Open")}>
+                          {meta.status || "Open"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {!sortedMarineTasks.length ? (
+                    <div style={noticeStyle}>No Dock or Marine tasks.</div>
                   ) : null}
                 </div>
               </div>
