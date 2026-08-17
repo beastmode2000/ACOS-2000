@@ -652,7 +652,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }, [openResetKey]);
 
   useEffect(() => {
-    if (!selectedService?.id) setDetailOpen(false);
+    if (selectedService?.id) setDetailOpen(true);
+    else setDetailOpen(false);
     setWorkEditorOpen(false);
     setNotesEditorOpen(false);
   }, [selectedService?.id]);
