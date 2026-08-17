@@ -1955,6 +1955,8 @@ export default function AtlasApp() {
     history: [],
   }))));
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
+  const [garageVehicleTab, setGarageVehicleTab] = useState<"Overview" | "Maintenance" | "Cleaning" | "Documents" | "Photos">("Overview");
+  const [garageVehicleEditing, setGarageVehicleEditing] = useState(false);
   const [newVehicleName, setNewVehicleName] = useState("");
   const [seasonalItems, setSeasonalItems] = useState<AtlasSeasonalItem[]>(() => readStoredArray<AtlasSeasonalItem>(["atlas-seasonal-work-v1"], [
     { id: "annual-appliance-service", title: "Annual appliance service", season: "Fall", windowStart: `${new Date().getFullYear()}-10-01`, targetDate: `${new Date().getFullYear()}-11-15`, deadline: `${new Date().getFullYear()}-12-15`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Complete during the colder months and before year end." },
@@ -26845,6 +26847,192 @@ ${notes.trim()}` : notes.trim(),
     };
 
     if (kind === "garage") {
+      const garageVehicles = vehicleCare
+        .filter((vehicle) => vehicle.kind === "Vehicle" && !garageExcludedPattern.test(vehicle.name))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const selectedGarageVehicle =
+        garageVehicles.find((vehicle) => vehicle.id === selectedVehicleId) || garageVehicles[0];
+      const selectedGarageAsset = selectedGarageVehicle
+        ? departmentAssets.find((asset) =>
+            asset.id === selectedGarageVehicle.assetId ||
+            asset.name.toLowerCase().includes(selectedGarageVehicle.name.toLowerCase()) ||
+            selectedGarageVehicle.name.toLowerCase().includes(asset.name.toLowerCase()),
+          )
+        : undefined;
+      const vehicleData = (selectedGarageVehicle || {}) as AtlasVehicleCare & Record<string, any>;
+      const assetData = (selectedGarageAsset || {}) as Record<string, any>;
+      const vehicleWork = selectedGarageVehicle
+        ? departmentWork.filter((record) =>
+            Boolean(selectedGarageVehicle.assetId && record.assetId === selectedGarageVehicle.assetId) ||
+            recordSearchText(record).toLowerCase().includes(selectedGarageVehicle.name.toLowerCase()),
+          )
+        : [];
+      const vehicleTasks = selectedGarageVehicle
+        ? departmentTasks.filter((task) => {
+            const meta = taskDetails(task.id);
+            return meta.vehicleId === selectedGarageVehicle.id ||
+              Boolean(selectedGarageVehicle.assetId && meta.assetId === selectedGarageVehicle.assetId) ||
+              recordSearchText(task).toLowerCase().includes(selectedGarageVehicle.name.toLowerCase());
+          })
+        : [];
+      const vehicleDocuments = selectedGarageVehicle
+        ? mergeDocuments(documents, intakeDocs).filter((document) =>
+            Boolean(selectedGarageVehicle.assetId && (document.linkedAssetId === selectedGarageVehicle.assetId || document.targetId === selectedGarageVehicle.assetId)) ||
+            document.targetName === selectedGarageVehicle.name,
+          )
+        : [];
+      const vehiclePhotos = vehicleDocuments
+        .flatMap((document) => document.files || [])
+        .filter((file) => String(file.type || "").startsWith("image/") || String(file.dataUrl || "").startsWith("data:image/"));
+      const cleaningHistory = [...(selectedGarageVehicle?.history || [])]
+        .filter((entry) => entry.type === "Cleaned")
+        .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+      const serviceHistory = [...(selectedGarageVehicle?.history || [])]
+        .filter((entry) => entry.type === "Serviced" || entry.type === "Issue")
+        .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+      const cleaningDueCount = garageVehicles.filter((vehicle) =>
+        !vehicle.lastCleaned || addDays(vehicle.lastCleaned, Math.max(1, Number(vehicle.cleaningIntervalDays || 7))) <= todayISO(),
+      ).length;
+      const serviceDueCount = garageVehicles.filter((vehicle) => vehicle.nextServiceDate && vehicle.nextServiceDate <= todayISO()).length;
+      const openGarageWork = departmentWork.filter((record) => record.status !== "Completed");
+      const updateSpec = (field: string, value: string) => {
+        if (!selectedGarageVehicle) return;
+        updateVehicleCareRecord(selectedGarageVehicle.id, { [field]: value } as Partial<AtlasVehicleCare>);
+      };
+      const linkedAssetValue = (...keys: string[]) => {
+        for (const key of keys) {
+          const value = assetData[key] ?? vehicleData[key];
+          if (value !== undefined && value !== null && String(value).trim()) return String(value);
+        }
+        return "Not recorded";
+      };
+      const nextCleaning = selectedGarageVehicle?.lastCleaned
+        ? addDays(selectedGarageVehicle.lastCleaned, Math.max(1, Number(selectedGarageVehicle.cleaningIntervalDays || 7)))
+        : todayISO();
+      const infoTile = (label: string, value: string, field?: string) => (
+        <div style={{ ...recordInfoItemStyle, minHeight: 82, display: "grid", alignContent: "space-between", gap: 7 }}>
+          <span style={fieldLabelStyle}>{label}</span>
+          {garageVehicleEditing && field ? (
+            <input value={value === "Not recorded" ? "" : value} onChange={(event) => updateSpec(field, event.currentTarget.value)} style={inputStyle} />
+          ) : (
+            <strong style={{ color: colors.navy, fontSize: 14 }}>{value}</strong>
+          )}
+        </div>
+      );
+
+      return (
+        <section style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => addDashboardWorkOrder("Garage")} style={goldButtonStyle}>+ Add</button>
+            <button type="button" onClick={() => setGarageVehicleEditing((current) => !current)} style={secondaryButtonStyle}>
+              {garageVehicleEditing ? "Done" : "Edit"}
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#FFFFFF" }}>
+            {[
+              ["Vehicles", garageVehicles.length],
+              ["Due this week", cleaningDueCount + serviceDueCount],
+              ["Open work orders", openGarageWork.length],
+              ["Warnings", serviceHistory.filter((entry) => entry.type === "Issue").length],
+            ].map(([label, value], index) => (
+              <div key={String(label)} style={{ padding: "11px 14px", borderRight: !isMobile && index < 3 ? `1px solid ${colors.line}` : undefined, borderBottom: isMobile && index < 2 ? `1px solid ${colors.line}` : undefined }}>
+                <strong style={{ color: colors.navy, fontSize: 20, marginRight: 7 }}>{value}</strong>
+                <span style={mutedSmallStyle}>{label}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(300px,38%) minmax(0,62%)", gap: 12, alignItems: "start" }}>
+            <section style={{ ...centerCardStyle, padding: 0, overflow: "hidden" }}>
+              <div style={{ padding: "14px 16px", borderBottom: `1px solid ${colors.line}` }}>
+                <div style={eyebrowStyle}>Vehicles</div>
+                <strong style={{ color: colors.navy, fontSize: 16 }}>Garage vehicles</strong>
+              </div>
+              <div style={{ maxHeight: isMobile ? "none" : "50vh", overflowY: "auto" }}>
+                {garageVehicles.map((vehicle) => {
+                  const selected = vehicle.id === selectedGarageVehicle?.id;
+                  const interval = Math.max(1, Number(vehicle.cleaningIntervalDays || 7));
+                  const due = !vehicle.lastCleaned || addDays(vehicle.lastCleaned, interval) <= todayISO();
+                  const asset = departmentAssets.find((item) => item.id === vehicle.assetId || item.name.toLowerCase().includes(vehicle.name.toLowerCase()));
+                  return (
+                    <button key={vehicle.id} type="button" onClick={() => { setSelectedVehicleId(vehicle.id); setGarageVehicleTab("Overview"); setGarageVehicleEditing(false); }} style={{ width: "100%", border: 0, borderBottom: `1px solid ${colors.line}`, borderLeft: selected ? `3px solid ${colors.navy}` : "3px solid transparent", background: selected ? "#F0F6FC" : "#FFFFFF", padding: "12px 13px", textAlign: "left", cursor: "pointer", display: "grid", gridTemplateColumns: "36px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+                      <span style={{ width: 36, height: 36, borderRadius: 9, display: "grid", placeItems: "center", background: "#E2ECF5", color: colors.navy, fontWeight: 900 }}>{vehicle.name.slice(0, 1).toUpperCase()}</span>
+                      <span style={{ minWidth: 0 }}>
+                        <strong style={{ color: colors.navy, display: "block" }}>{vehicle.name}</strong>
+                        <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>{[asset?.year, asset?.make, asset?.model, locationName(vehicle.locationId)].filter(Boolean).join(" · ") || "Vehicle"}</small>
+                        <small style={{ display: "block", marginTop: 3, color: due ? colors.red : colors.green, fontWeight: 800 }}>{due ? "Cleaning due" : `Cleaned ${formatDate(vehicle.lastCleaned)}`}</small>
+                      </span>
+                      <span style={{ color: colors.muted, fontSize: 20 }}>›</span>
+                    </button>
+                  );
+                })}
+                {!garageVehicles.length ? <div style={noticeStyle}>No vehicles are saved.</div> : null}
+              </div>
+
+              <div style={{ borderTop: `8px solid ${colors.panel}`, padding: "13px 15px" }}>
+                <div style={eyebrowStyle}>This week</div>
+                <strong style={{ color: colors.navy }}>Garage schedule</strong>
+              </div>
+              <div style={{ display: "grid" }}>
+                {departmentTasks.slice(0, 4).map((task) => {
+                  const meta = taskDetails(task.id);
+                  return <button key={task.id} type="button" onClick={() => { setDepartmentCenter(""); setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...compactLinkedRowStyle, width: "100%", borderRadius: 0, borderLeft: 0, borderRight: 0, borderBottom: 0 }}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>{meta.dueDate ? formatDate(meta.dueDate) : "No due date"} · {meta.assignee || "Unassigned"}</small></span><span>›</span></button>;
+                })}
+                {!departmentTasks.length ? <div style={{ ...noticeStyle, margin: 10 }}>No garage tasks scheduled.</div> : null}
+              </div>
+            </section>
+
+            {selectedGarageVehicle ? (
+              <section style={{ ...centerCardStyle, padding: 0, overflow: "hidden", position: isMobile ? "static" : "sticky", top: 88, maxHeight: isMobile ? "none" : "calc(100vh - 110px)" }}>
+                <div style={{ padding: 16, display: "grid", gridTemplateColumns: "52px minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
+                  <span style={{ width: 52, height: 52, borderRadius: 11, display: "grid", placeItems: "center", background: "#E2ECF5", color: colors.navy, fontSize: 20, fontWeight: 900 }}>{selectedGarageVehicle.name.slice(0, 1).toUpperCase()}</span>
+                  <span><span style={eyebrowStyle}>{[assetData.year, assetData.make, assetData.model].filter(Boolean).join(" · ") || "Vehicle"}</span><strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>{selectedGarageVehicle.name}</strong><small style={mutedSmallStyle}>{selectedGarageVehicle.onsite ? "Ready" : "Away"} · {locationName(selectedGarageVehicle.locationId) || "Garage"}</small></span>
+                  {selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={secondaryButtonStyle}>Open Asset</button> : null}
+                </div>
+
+                <div style={{ display: "flex", gap: 4, padding: "0 12px", borderTop: `1px solid ${colors.line}`, borderBottom: `1px solid ${colors.line}`, overflowX: "auto" }}>
+                  {(["Overview", "Maintenance", "Cleaning", "Documents", "Photos"] as const).map((tab) => (
+                    <button key={tab} type="button" onClick={() => setGarageVehicleTab(tab)} style={{ border: 0, borderBottom: garageVehicleTab === tab ? `2px solid ${colors.navy}` : "2px solid transparent", background: "transparent", color: garageVehicleTab === tab ? colors.navy : colors.muted, padding: "11px 9px", fontSize: 11, fontWeight: garageVehicleTab === tab ? 900 : 700, cursor: "pointer", whiteSpace: "nowrap" }}>{tab}</button>
+                  ))}
+                </div>
+
+                <div style={{ padding: 16, overflowY: "auto" }}>
+                  {garageVehicleTab === "Overview" ? <div style={{ display: "grid", gap: 14 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
+                      {infoTile("Mileage", linkedAssetValue("mileage", "odometer"), "mileage")}
+                      {infoTile("Tire pressure", linkedAssetValue("tirePressure"), "tirePressure")}
+                      {infoTile(/rivian|lucid|electric/i.test(selectedGarageVehicle.name) ? "Charging" : "Oil / fuel", linkedAssetValue("oilChargeRecommendation", "chargingRecommendation", "oilRecommendation"), "oilChargeRecommendation")}
+                    </div>
+                    <section style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 13 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9 }}><strong style={{ color: colors.navy }}>Vehicle information</strong><button type="button" onClick={() => setGarageVehicleEditing((current) => !current)} style={smallSubtleButtonStyle}>{garageVehicleEditing ? "Done" : "Edit"}</button></div>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8 }}>
+                        {infoTile("Tire size / type", linkedAssetValue("tireSizeType", "tireSize", "tires"), "tireSizeType")}
+                        {infoTile("VIN", linkedAssetValue("vin", "serial"), "vin")}
+                        {infoTile("Registration / plate", linkedAssetValue("registrationPlate", "plate"), "registrationPlate")}
+                        {infoTile("Stored at", locationName(selectedGarageVehicle.locationId) || "Not linked")}
+                      </div>
+                    </section>
+                    <section style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 13 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}><strong style={{ color: colors.navy }}>Next up</strong><button type="button" onClick={() => setGarageVehicleTab("Cleaning")} style={smallSubtleButtonStyle}>View all</button></div><div style={{ ...recordInfoItemStyle, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><span><strong style={{ display: "block" }}>Cleaning {nextCleaning <= todayISO() ? "due" : formatDate(nextCleaning)}</strong><small style={mutedSmallStyle}>{selectedGarageVehicle.assignedTo || "Unassigned"}</small></span><button type="button" onClick={() => createVehicleCleaningTask(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Open</button></div></section>
+                    <section style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 13 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}><strong style={{ color: colors.navy }}>Recent maintenance</strong><button type="button" onClick={() => setGarageVehicleTab("Maintenance")} style={smallSubtleButtonStyle}>Full history</button></div>{vehicleWork.slice(0, 3).map((record) => <button key={record.id} type="button" onClick={() => { setDepartmentCenter(""); openWorkOrderById(record.id); }} style={{ ...compactLinkedRowStyle, width: "100%", marginBottom: 7 }}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "No date"}</small></span><span style={badgeStyle(record.status || "Open")}>{record.status || "Open"}</span></button>)}{!vehicleWork.length ? <div style={noticeStyle}>No maintenance records yet.</div> : null}</section>
+                  </div> : null}
+
+                  {garageVehicleTab === "Maintenance" ? <div style={{ display: "grid", gap: 8 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Maintenance history</strong><button type="button" onClick={() => createVehicleWorkOrder(selectedGarageVehicle)} style={goldButtonStyle}>+ Add record</button></div>{vehicleWork.map((record) => <button key={record.id} type="button" onClick={() => { setDepartmentCenter(""); openWorkOrderById(record.id); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "No date"}</small></span><span style={badgeStyle(record.status || "Open")}>{record.status || "Open"}</span></button>)}{serviceHistory.map((entry) => <div key={entry.id} style={recordInfoItemStyle}><strong>{entry.type}</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{formatDate(String(entry.date || "").slice(0, 10))}{entry.notes ? ` · ${entry.notes}` : ""}</small></div>)}{!vehicleWork.length && !serviceHistory.length ? <div style={noticeStyle}>No maintenance history recorded.</div> : null}</div> : null}
+
+                  {garageVehicleTab === "Cleaning" ? <div style={{ display: "grid", gap: 10 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Cleaning schedule & history</strong><button type="button" onClick={() => markVehicleCleaned(selectedGarageVehicle)} style={goldButtonStyle}>Mark Cleaned</button></div><div style={{ ...recordInfoItemStyle, background: "#F0F6FC", display: "grid", gap: 8 }}><span style={fieldLabelStyle}>NEXT CLEANING</span><strong style={{ color: colors.navy, fontSize: 16 }}>{formatDate(nextCleaning)}</strong><small style={mutedSmallStyle}>Exterior wash · Interior tidy · Glass · Check supplies</small><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => markVehicleCleaned(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Complete</button><button type="button" onClick={() => updateVehicleCareRecord(selectedGarageVehicle.id, { assignedTo: "Addison" })} style={smallSubtleButtonStyle}>Assign to Addison</button><button type="button" onClick={() => createVehicleCleaningTask(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Create Task</button><button type="button" onClick={() => createVehicleWorkOrder(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Create Work Order</button></div></div>{cleaningHistory.map((entry) => <div key={entry.id} style={recordInfoItemStyle}><strong>Vehicle cleaning</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{formatDate(String(entry.date || "").slice(0, 10))}{entry.notes ? ` · ${entry.notes}` : ""}</small></div>)}{!cleaningHistory.length ? <div style={noticeStyle}>No cleaning history recorded yet.</div> : null}</div> : null}
+
+                  {garageVehicleTab === "Documents" ? <div style={{ display: "grid", gap: 8 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Documents</strong>{selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={goldButtonStyle}>+ Add document</button> : null}</div>{vehicleDocuments.map((document) => <button key={document.id} type="button" onClick={() => { setSelectedDocumentId(document.id); openCenter("documents"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{document.title}</strong><small style={mutedSmallStyle}>{document.type || "Document"}</small></span><span>Open ›</span></button>)}{!vehicleDocuments.length ? <div style={noticeStyle}>No documents attached to this vehicle.</div> : null}</div> : null}
+
+                  {garageVehicleTab === "Photos" ? <div style={{ display: "grid", gap: 10 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Photos</strong>{selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={goldButtonStyle}>+ Add photos</button> : null}</div>{vehiclePhotos.length ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 8 }}>{vehiclePhotos.map((photo) => <button key={photo.id} type="button" onClick={() => setPreviewFile(photo)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 0, overflow: "hidden", background: "#FFFFFF" }}><img src={photo.dataUrl || photo.url} alt={photo.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} /></button>)}</div> : <div style={noticeStyle}>No photos attached to this vehicle.</div>}</div> : null}
+                </div>
+              </section>
+            ) : <div style={noticeStyle}>Select a vehicle.</div>}
+          </div>
+        </section>
+      );
+    }
+
+    if (false && kind === "garage") {
       const sortedCars = [...departmentAssets].sort((a, b) =>
         a.name.localeCompare(b.name),
       );
