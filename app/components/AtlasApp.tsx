@@ -2103,11 +2103,15 @@ export default function AtlasApp() {
     hondaSchoolYearCleanupRef.current = true;
     const hondaTasks = workPlanTasks.filter((task) => /\bhonda\b/i.test(recordSearchText(task)));
     const hondaWorkOrders = serviceRecords.filter((record) => /\bhonda\b/i.test(recordSearchText(record)));
-    const removedIds = new Set([...hondaTasks.map((task) => task.id), ...hondaWorkOrders.map((record) => record.id)]);
-    if (hondaTasks.length) {
+    const generatedKiaPorscheTasks = workPlanTasks.filter((task) =>
+      /^clean\s+(kia|porsche)$/i.test(String(task.title || "").trim()),
+    );
+    const removedTasks = [...hondaTasks, ...generatedKiaPorscheTasks];
+    const removedIds = new Set([...removedTasks.map((task) => task.id), ...hondaWorkOrders.map((record) => record.id)]);
+    if (removedTasks.length) {
       setWorkPlanTasks((current) => current.filter((task) => !removedIds.has(task.id)));
       setTaskMeta((current) => Object.fromEntries(Object.entries(current).filter(([taskId]) => !removedIds.has(taskId))));
-      hondaTasks.forEach((task) => void deleteOperationalRecord("tasks" as AtlasTable, task.id));
+      removedTasks.forEach((task) => void deleteOperationalRecord("tasks" as AtlasTable, task.id));
     }
     if (hondaWorkOrders.length) {
       setServiceRecords((current) => current.filter((record) => !removedIds.has(record.id)));
@@ -2117,6 +2121,14 @@ export default function AtlasApp() {
     if (linkedCalendar.length) {
       setCalendarItems((current) => current.filter((item) => !item.linkedId || !removedIds.has(item.linkedId)));
       linkedCalendar.forEach((item) => void deleteAtlasRecord("calendar", item.id));
+    }
+    const generatedKiaPorscheVehicles = vehicleCare.filter(
+      (vehicle) => !vehicle.assetId && /^(kia|porsche)$/i.test(vehicle.name.trim()),
+    );
+    if (generatedKiaPorscheVehicles.length) {
+      const generatedIds = new Set(generatedKiaPorscheVehicles.map((vehicle) => vehicle.id));
+      setVehicleCare((current) => current.filter((vehicle) => !generatedIds.has(vehicle.id)));
+      generatedKiaPorscheVehicles.forEach((vehicle) => void deleteOperationalRecord("vehicle_care" as AtlasTable, vehicle.id));
     }
   }, [ready, operationsHydrated, activePropertyId]);
 
@@ -26906,62 +26918,32 @@ ${notes.trim()}` : notes.trim(),
     };
 
     if (kind === "garage") {
-      const garageVehicleMap = new Map<string, AtlasVehicleCare>();
-      vehicleCare
-        .filter((vehicle) => vehicle.kind === "Vehicle" && !garageExcludedPattern.test(vehicle.name))
-        .forEach((vehicle) => garageVehicleMap.set(normalizeLocationName(vehicle.name), vehicle));
-      departmentAssets.forEach((asset) => {
-        const key = normalizeLocationName(asset.name);
-        if (!key || garageVehicleMap.has(key)) return;
-        garageVehicleMap.set(key, {
-          id: slugify(`vehicle-${asset.name}`),
-          name: asset.name,
-          onsite: true,
-          lastCleaned: "",
-          priority: "Normal",
-          notes: "",
-          kind: "Vehicle",
-          assignedTo: "Nick",
-          cleaningIntervalDays: 7,
-          lastServiced: "",
-          nextServiceDate: "",
-          serviceIntervalDays: 180,
-          history: [],
-          assetId: asset.id,
-          locationId: asset.locationId || "",
-        });
-      });
-      departmentTasks.forEach((task) => {
-        const match = String(task.title || "").match(/^clean\s+(.+)$/i);
-        const name = match?.[1]?.trim() || "";
-        const key = normalizeLocationName(name);
-        if (!key || garageExcludedPattern.test(name) || garageVehicleMap.has(key)) return;
-        const meta = taskDetails(task.id);
-        const asset = departmentAssets.find((item) =>
-          normalizeLocationName(item.name) === key ||
-          normalizeLocationName(item.name).includes(key) ||
-          key.includes(normalizeLocationName(item.name)),
-        );
-        const completedDates = [...(meta.completionHistory || [])].sort();
-        garageVehicleMap.set(key, {
-          id: slugify(`vehicle-${name}`),
-          name,
-          onsite: true,
-          lastCleaned: meta.lastCompletedDate || completedDates[completedDates.length - 1] || "",
-          priority: task.priority === "High" ? "High" : "Normal",
-          notes: task.notes || "",
-          kind: "Vehicle",
-          assignedTo: meta.assignee === "Addison" ? "Addison" : "Nick",
-          cleaningIntervalDays: 7,
-          lastServiced: "",
-          nextServiceDate: "",
-          serviceIntervalDays: 180,
-          history: completedDates.map((date) => ({ id: `cleaned-${slugify(name)}-${date}`, type: "Cleaned", date })),
-          assetId: asset?.id || meta.assetId || "",
-          locationId: asset?.locationId || task.locationId || "",
-        });
-      });
-      const garageVehicles = Array.from(garageVehicleMap.values())
+      const garageVehicles = departmentAssets
+        .map((asset) => {
+          const linkedCare = vehicleCare.find((vehicle) => vehicle.assetId === asset.id);
+          const exactNameCare = vehicleCare.find(
+            (vehicle) => !vehicle.assetId && normalizeLocationName(vehicle.name) === normalizeLocationName(asset.name),
+          );
+          const savedCare = linkedCare || exactNameCare;
+          return {
+            id: savedCare?.id || slugify(`vehicle-${asset.name}`),
+            name: asset.name,
+            onsite: savedCare?.onsite ?? true,
+            lastCleaned: savedCare?.lastCleaned || "",
+            priority: savedCare?.priority || "Normal",
+            notes: savedCare?.notes || "",
+            kind: "Vehicle" as const,
+            assignedTo: savedCare?.assignedTo || "Nick",
+            cleaningIntervalDays: savedCare?.cleaningIntervalDays || 7,
+            lastServiced: savedCare?.lastServiced || "",
+            nextServiceDate: savedCare?.nextServiceDate || "",
+            serviceIntervalDays: savedCare?.serviceIntervalDays || 180,
+            history: savedCare?.history || [],
+            assetId: asset.id,
+            locationId: asset.locationId || savedCare?.locationId || "",
+            updatedAt: savedCare?.updatedAt,
+          } satisfies AtlasVehicleCare;
+        })
         .filter((vehicle) => !garageHiddenVehicleIds.includes(vehicle.id))
         .sort((a, b) => a.name.localeCompare(b.name));
       const selectedGarageVehicle =
