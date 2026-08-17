@@ -2267,7 +2267,7 @@ export default function AtlasApp() {
     setVehicleCare((current) => {
       const existing = current.find((item) => item.id === vehicleId);
       const matchingAsset = assetRecords.find(
-        (asset) => slugify(`vehicle-${asset.name}`) === vehicleId,
+        (asset) => `asset-${asset.id}` === vehicleId || slugify(`vehicle-${asset.name}`) === vehicleId,
       );
       const matchingTask = workPlanTasks.find(
         (task) =>
@@ -26757,7 +26757,10 @@ ${notes.trim()}` : notes.trim(),
         asset.make,
         asset.model,
       );
-      const assignedLocation = locationName(asset.locationId);
+      const assignedLocation = assetLocationIds(asset)
+        .map((locationId) => locationName(locationId))
+        .filter(Boolean)
+        .join(" ") || locationName(asset.locationId);
       const isVehicle = garageCarAssetPattern.test(assetIdentity);
       const isAssignedToGarage = /\bgarage\b/i.test(assignedLocation);
       const knownVehicle =
@@ -26765,7 +26768,7 @@ ${notes.trim()}` : notes.trim(),
         (garageSpecificCarPattern.test(assetIdentity) || /\b(vehicle|car|automobile)\b/i.test(assetIdentity));
       const garageLocationVehicle =
         isAssignedToGarage && !garageNonVehicleAssetPattern.test(assetIdentity);
-      return (knownVehicle || garageLocationVehicle) && !garageExcludedPattern.test(assetIdentity);
+      return knownVehicle || (garageLocationVehicle && !garageExcludedPattern.test(assetIdentity));
     };
     const garageCarAssetIds = new Set(
       assetRecords.filter(isGarageCarAsset).map((asset) => asset.id),
@@ -26941,7 +26944,7 @@ ${notes.trim()}` : notes.trim(),
           );
           const savedCare = linkedCare || exactNameCare;
           return {
-            id: savedCare?.id || slugify(`vehicle-${asset.name}`),
+            id: savedCare?.id || `asset-${asset.id}`,
             name: asset.name,
             onsite: savedCare?.onsite ?? true,
             lastCleaned: savedCare?.lastCleaned || "",
@@ -26955,7 +26958,7 @@ ${notes.trim()}` : notes.trim(),
             serviceIntervalDays: savedCare?.serviceIntervalDays || 180,
             history: savedCare?.history || [],
             assetId: asset.id,
-            locationId: asset.locationId || savedCare?.locationId || "",
+            locationId: assetLocationIds(asset)[0] || asset.locationId || savedCare?.locationId || "",
             updatedAt: savedCare?.updatedAt,
           } satisfies AtlasVehicleCare;
         })
