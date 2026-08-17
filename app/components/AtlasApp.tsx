@@ -2054,6 +2054,133 @@ export default function AtlasApp() {
     saveStoredArray(`atlas-vehicle-care-v1-${activePropertyId}`, vehicleCare);
     if (activePropertyId === "2000") saveStoredArray("atlas-vehicle-care-v1", vehicleCare);
   }, [activePropertyId, vehicleCare]);
+
+  useEffect(() => {
+    if (!ready || !operationsHydrated || activePropertyId !== "2000") return;
+    const migrationKey =
+      "atlas-porsche-rivian-cleaned-2026-08-17-v1-2000";
+    if (window.localStorage.getItem(migrationKey) === "done") return;
+
+    const completedDate = "2026-08-17";
+    const nextDate = addDays(completedDate, 7);
+    const targetVehicles = vehicleCare.filter((vehicle) =>
+      /^(porsche|rivian)$/i.test(vehicle.name.trim()),
+    );
+    if (targetVehicles.length < 2) return;
+    window.localStorage.setItem(migrationKey, "done");
+
+    setVehicleCare((current) =>
+      current.map((vehicle) => {
+        if (!/^(porsche|rivian)$/i.test(vehicle.name.trim())) return vehicle;
+        const alreadyRecorded = (vehicle.history || []).some(
+          (entry) =>
+            entry.type === "Cleaned" &&
+            String(entry.date || "").slice(0, 10) === completedDate,
+        );
+        return {
+          ...vehicle,
+          lastCleaned: completedDate,
+          cleaningIntervalDays: 7,
+          history: alreadyRecorded
+            ? vehicle.history || []
+            : [
+                {
+                  id: uid("fleet-history"),
+                  type: "Cleaned" as const,
+                  date: `${completedDate}T12:00:00.000Z`,
+                },
+                ...(vehicle.history || []),
+              ],
+          updatedAt: new Date().toISOString(),
+        };
+      }),
+    );
+
+    const taskByVehicle = new Map<string, WorkPlanTask>();
+    const addedTasks: WorkPlanTask[] = [];
+    targetVehicles.forEach((vehicle) => {
+      const existing = workPlanTasks.find(
+        (task) =>
+          taskMeta[task.id]?.vehicleId === vehicle.id ||
+          normalizeLocationName(task.title) ===
+            normalizeLocationName(`Clean ${vehicle.name}`),
+      );
+      const task = existing || {
+        id: `fleet-cleaning-task-${vehicle.id}`,
+        title: `Clean ${vehicle.name}`,
+        minutes: 45,
+        priority: "Medium" as const,
+        category: "Garage",
+        locationId: vehicle.locationId || "general",
+        preferredDay: "Thursday" as const,
+        locked: false,
+        recurring: true,
+        fixedTime: "",
+        notes: `Weekly Garage cleaning for ${vehicle.name}.`,
+      };
+      taskByVehicle.set(vehicle.id, task);
+      if (!existing) addedTasks.push(task);
+    });
+
+    setWorkPlanTasks((current) => {
+      const targetIds = new Set(Array.from(taskByVehicle.values()).map((task) => task.id));
+      const updated = current.map((task) =>
+        targetIds.has(task.id) ? { ...task, recurring: true } : task,
+      );
+      return [...addedTasks, ...updated];
+    });
+    setTaskMeta((current) => {
+      const next = { ...current };
+      targetVehicles.forEach((vehicle) => {
+        const task = taskByVehicle.get(vehicle.id)!;
+        const existing = next[task.id] || taskDetails(task.id);
+        next[task.id] = {
+          ...existing,
+          status: "Open",
+          dueDate: nextDate,
+          assetId: vehicle.assetId || existing.assetId,
+          vehicleId: vehicle.id,
+          recurrenceInterval: 7,
+          recurrenceUnit: "Days",
+          lastCompletedDate: completedDate,
+          completionHistory: Array.from(
+            new Set([...(existing.completionHistory || []), completedDate]),
+          ).sort(),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+      return next;
+    });
+
+    setCalendarItems((current) => {
+      const next = [...current];
+      targetVehicles.forEach((vehicle) => {
+        const task = taskByVehicle.get(vehicle.id)!;
+        const calendarRecord = normalizeCalendar({
+          id: `fleet-clean-${vehicle.id}`,
+          propertyId: activePropertyId,
+          date: nextDate,
+          title: `Clean ${vehicle.name}`,
+          area: "Garage",
+          categoryLabel: "Garage",
+          allDay: true,
+          repeat: "Weekly",
+          reminder: "Morning of",
+          notes: `Last cleaned ${completedDate}. Next cleaning ${nextDate}.`,
+          linkedType: "Task",
+          linkedId: task.id,
+          linkedName: task.title,
+          source: "task",
+          status: "Scheduled",
+        });
+        const index = next.findIndex((item) => item.id === calendarRecord.id);
+        if (index >= 0) next[index] = calendarRecord;
+        else next.push(calendarRecord);
+        void postAtlasRecord("calendar", calendarRecord);
+      });
+      return next;
+    });
+  }, [ready, operationsHydrated, activePropertyId, vehicleCare.length]);
   useEffect(() => { saveStoredArray("atlas-seasonal-work-v1", seasonalItems); }, [seasonalItems]);
 
   function updateVehicleCareRecord(
@@ -7967,6 +8094,14 @@ export default function AtlasApp() {
   function restoreDeletedTask() {
     if (!taskUndo) return;
     const { task, meta } = taskUndo;
+    clearTaskTombstone(task.id);
+    const pendingDeleteKey = `atlas-operations-deletes-v1-${activePropertyId}`;
+    saveStoredArray(
+      pendingDeleteKey,
+      readStoredArray<{ table: string; id: string }>([pendingDeleteKey], []).filter(
+        (item) => item.table !== "tasks" || item.id !== task.id,
+      ),
+    );
     setWorkPlanTasks((current) => current.some((item) => item.id === task.id) ? current : [task, ...current]);
     setTaskMeta((current) => ({ ...current, [task.id]: meta }));
     void postAtlasRecord("tasks" as AtlasTable, { ...task, ...meta, taskMeta: meta, propertyId: activePropertyId, updatedAt: new Date().toISOString() });
@@ -14034,7 +14169,10 @@ export default function AtlasApp() {
     const completedDate = todayISO();
     const interval = Math.max(1, Number(meta.recurrenceInterval || 1));
     const unit = meta.recurrenceUnit || "Weeks";
-    const nextDate = nextRecurrenceDate(meta.dueDate || completedDate, interval, unit);
+    // The next occurrence starts from the actual completion date. This keeps
+    // overdue recurring maintenance from immediately remaining overdue after
+    // it is completed.
+    const nextDate = nextRecurrenceDate(completedDate, interval, unit);
     const recurrenceEnded = Boolean(meta.recurrenceEndDate && nextDate > meta.recurrenceEndDate);
     const history = Array.from(new Set([...(meta.completionHistory || []), completedDate])).sort();
 
@@ -14074,6 +14212,7 @@ export default function AtlasApp() {
       assignmentScope: meta.assignmentScope === "This occurrence" ? undefined : meta.assignmentScope,
       needsReview: meta.assignee === "Addison" || meta.assignee === "Pat",
     });
+    recordVehicleCleaningFromTask(task, meta, completedDate, nextDate);
     recordConnectedProjectCompletion({
       projectId: meta.projectId,
       title: task.title,
@@ -14109,6 +14248,16 @@ export default function AtlasApp() {
       completionHistory: Array.from(new Set([...(meta.completionHistory || []), todayISO()])).sort(),
       needsReview: meta.assignee === "Addison" || meta.assignee === "Pat",
     });
+    if (meta.vehicleId || /^clean\s+/i.test(task.title)) {
+      const interval = Math.max(1, Number(meta.recurrenceInterval || 7));
+      const unit = meta.recurrenceUnit || "Days";
+      recordVehicleCleaningFromTask(
+        task,
+        meta,
+        todayISO(),
+        nextRecurrenceDate(todayISO(), interval, unit),
+      );
+    }
     recordConnectedProjectCompletion({
       projectId: meta.projectId,
       title: task.title,
@@ -14239,25 +14388,31 @@ export default function AtlasApp() {
       taskUndoTimerRef.current = null;
     }, 8000);
 
-    const nextTasks = workPlanTasks.filter((item) => item.id !== taskId);
-    const nextMeta = { ...taskMeta };
-    delete nextMeta[taskId];
-
-    setWorkPlanTasks(nextTasks);
-    setTaskMeta(nextMeta);
-    saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, nextTasks);
-    if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", nextTasks);
-    try {
-      window.localStorage.setItem(
-        `atlas-task-meta-v1-${activePropertyId}`,
-        JSON.stringify(nextMeta),
-      );
-      if (activePropertyId === "2000") {
-        window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(nextMeta));
+    // Always remove from the latest state. Using the render-time arrays here
+    // caused consecutive deletes to overwrite one another and made earlier
+    // deletions briefly reappear.
+    setWorkPlanTasks((current) => {
+      const next = current.filter((item) => item.id !== taskId);
+      saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, next);
+      if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", next);
+      return next;
+    });
+    setTaskMeta((current) => {
+      const next = { ...current };
+      delete next[taskId];
+      try {
+        window.localStorage.setItem(
+          `atlas-task-meta-v1-${activePropertyId}`,
+          JSON.stringify(next),
+        );
+        if (activePropertyId === "2000") {
+          window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
+        }
+      } catch {
+        // The normal persistence effect will retry when browser storage is available.
       }
-    } catch {
-      // The normal persistence effect will retry when browser storage is available.
-    }
+      return next;
+    });
 
     setSelectedTaskId("");
     void deleteOperationalRecord("tasks" as AtlasTable, taskId);
@@ -14346,6 +14501,63 @@ export default function AtlasApp() {
     return daysSince(vehicle.lastCleaned) + (vehicle.priority === "High" ? 30 : 0);
   }
 
+  function recordVehicleCleaningFromTask(
+    task: WorkPlanTask,
+    meta: AtlasTaskMeta,
+    completedDate: string,
+    nextDate: string,
+  ) {
+    const cleanTitle = String(task.title || "")
+      .replace(/^clean\s+/i, "")
+      .trim()
+      .toLowerCase();
+    const vehicle = vehicleCare.find(
+      (item) =>
+        (meta.vehicleId && item.id === meta.vehicleId) ||
+        item.name.trim().toLowerCase() === cleanTitle,
+    );
+    if (!vehicle) return;
+
+    const alreadyRecorded = (vehicle.history || []).some(
+      (entry) =>
+        entry.type === "Cleaned" && String(entry.date || "").slice(0, 10) === completedDate,
+    );
+    const completedAt = new Date().toISOString();
+    updateVehicleCareRecord(vehicle.id, {
+      lastCleaned: completedDate,
+      history: alreadyRecorded
+        ? vehicle.history || []
+        : [
+            { id: uid("fleet-history"), type: "Cleaned", date: completedAt },
+            ...(vehicle.history || []),
+          ],
+    });
+
+    setCalendarItems((current) => {
+      const next = current.map((item) =>
+        item.id === `fleet-clean-${vehicle.id}` ||
+        item.linkedId === task.id
+          ? {
+              ...item,
+              date: nextDate,
+              status: "Scheduled" as const,
+              linkedId: task.id,
+              linkedName: task.title,
+            }
+          : item,
+      );
+      next
+        .filter(
+          (item) =>
+            item.id === `fleet-clean-${vehicle.id}` || item.linkedId === task.id,
+        )
+        .forEach((item) => {
+          void postAtlasRecord("calendar", item);
+        });
+      return next;
+    });
+  }
+
   function createVehicleCleaningTask(vehicle: AtlasVehicleCare) {
     const task: WorkPlanTask = {
       id: uid("plan-task"),
@@ -14377,6 +14589,8 @@ export default function AtlasApp() {
 
   function markVehicleCleaned(vehicle: AtlasVehicleCare) {
     const now = new Date().toISOString();
+    const interval = Math.max(1, Number(vehicle.cleaningIntervalDays || 7));
+    const nextDate = addDays(todayISO(), interval);
     updateVehicleCareRecord(vehicle.id, {
       lastCleaned: todayISO(),
       history: [
@@ -14384,7 +14598,34 @@ export default function AtlasApp() {
         ...(vehicle.history || []),
       ],
     });
-    showSaveToast(`${vehicle.name} marked cleaned.`);
+    const linkedTask = workPlanTasks.find(
+      (task) =>
+        taskDetails(task.id).vehicleId === vehicle.id ||
+        normalizeLocationName(task.title) ===
+          normalizeLocationName(`Clean ${vehicle.name}`),
+    );
+    if (linkedTask) {
+      const meta = taskDetails(linkedTask.id);
+      updateTaskDetails(linkedTask.id, {
+        status: "Open",
+        dueDate: nextDate,
+        lastCompletedDate: todayISO(),
+        completionHistory: Array.from(
+          new Set([...(meta.completionHistory || []), todayISO()]),
+        ).sort(),
+      });
+    }
+    setCalendarItems((current) =>
+      current.map((item) =>
+        item.id === `fleet-clean-${vehicle.id}` ||
+        (linkedTask && item.linkedId === linkedTask.id)
+          ? { ...item, date: nextDate, status: "Scheduled" as const }
+          : item,
+      ),
+    );
+    showSaveToast(
+      `${vehicle.name} marked cleaned. Next cleaning ${formatDate(nextDate)}.`,
+    );
   }
 
   function markVehicleServiced(vehicle: AtlasVehicleCare) {
