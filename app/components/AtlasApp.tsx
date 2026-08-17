@@ -26749,8 +26749,20 @@ ${notes.trim()}` : notes.trim(),
     const garageExcludedPattern =
       /\b(golf simulator|simulator|boat|marine|watercraft|sea.?doo|cobalt|pwc|dock|lift|equipment)\b/i;
     const isGarageCarAsset = (asset: AssetRecord) => {
-      const text = recordSearchText(asset);
-      return garageCarAssetPattern.test(text) && !garageExcludedPattern.test(text);
+      const assetIdentity = recordSearchText(
+        asset.name,
+        asset.category,
+        asset.make,
+        asset.model,
+      );
+      const assignedLocation = locationName(asset.locationId);
+      const isVehicle = garageCarAssetPattern.test(assetIdentity);
+      const isAssignedToGarage = /\bgarage\b/i.test(assignedLocation);
+      return (
+        isVehicle &&
+        (isAssignedToGarage || garageSpecificCarPattern.test(assetIdentity) || /\b(vehicle|car|automobile)\b/i.test(assetIdentity)) &&
+        !garageExcludedPattern.test(assetIdentity)
+      );
     };
     const garageCarAssetIds = new Set(
       assetRecords.filter(isGarageCarAsset).map((asset) => asset.id),
