@@ -10,7 +10,7 @@ import { upload } from "@vercel/blob/client";
 import AtlasCalendar from "./AtlasCalendar";
 import AtlasRoutines from "./AtlasRoutines";
 import AtlasTeamWork from "./AtlasTeamWork";
-import { AtlasWorkOrders } from "./AtlasWorkOrders";
+import AtlasWorkOrders from "./AtlasWorkOrders";
 import ReportsAccessCenter from "./ReportsAccessCenter";
 import {
   Field,
@@ -4354,7 +4354,7 @@ export default function AtlasApp() {
               assignmentAliases: [currentStaffFirstName, normalizedCurrentUserName].filter(Boolean),
             };
 
-  const marineDepartmentPattern = /marine|dock|craft|boat|cobalt|sea[\s-]?doo|jet[\s-]?ski|pwc|lift|lift\s*box|liftbox|dock\s*box|sunstream|water trampoline|sean/i;
+  const marineDepartmentPattern = /marine|dock|craft|boat|cobalt|sea[\s-]?doo|jet[\s-]?ski|pwc|lift|lift\s*box|liftbox|dock\s*box|sunstream|124[\s-]*(?:inch|in|\")?\s*roller|water trampoline|sean/i;
   const recordSearchText = (...values: unknown[]) =>
     values.map((value) => {
       if (typeof value === "string" || typeof value === "number") return String(value);
@@ -26632,7 +26632,7 @@ ${notes.trim()}` : notes.trim(),
       return primary || classify(recordSearchText(record.responsibilityArea));
     };
     const strictDockPattern =
-      /\b(dock|craft|boat|cobalt|sea[\s-]?doo|jet[\s-]?ski|pwc|lift\s*box|liftbox|dock\s*box|boat\s*lift|sunstream)\b/i;
+      /\b(dock|craft|boat|cobalt|sea[\s-]?doo|jet[\s-]?ski|pwc|lift\s*box|liftbox|dock\s*box|boat\s*lift|sunstream|124[\s-]*(?:inch|in|\")?\s*roller)\b/i;
     const isStrictDockAsset = (asset: AssetRecord) =>
       strictDockPattern.test(
         recordSearchText(
@@ -26858,6 +26858,15 @@ ${notes.trim()}` : notes.trim(),
           String(taskDetails(b.id).dueDate || "9999-12-31"),
         ),
       );
+      const sortedGarageVehicles = vehicleCare
+        .filter(
+          (vehicle) =>
+            vehicle.kind !== "Boat" &&
+            vehicle.kind !== "Watercraft" &&
+            vehicle.kind !== "Equipment" &&
+            !garageExcludedPattern.test(vehicle.name),
+        )
+        .sort((a, b) => a.name.localeCompare(b.name));
 
       return (
         <section style={{ display: "grid", gap: 12 }}>
@@ -26914,6 +26923,135 @@ ${notes.trim()}` : notes.trim(),
             </div>
 
             <div style={{ display: "grid", gap: 12 }}>
+              <div style={centerCardStyle}>
+                <strong style={{ color: colors.navy, fontSize: 16 }}>
+                  Cleaning Schedule
+                </strong>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {sortedGarageVehicles.map((vehicle) => {
+                    const interval = Math.max(
+                      1,
+                      Number(vehicle.cleaningIntervalDays || 7),
+                    );
+                    const nextCleaning = vehicle.lastCleaned
+                      ? addDays(vehicle.lastCleaned, interval)
+                      : todayISO();
+                    const cleaningStatus = !vehicle.lastCleaned
+                      ? "No history"
+                      : nextCleaning < todayISO()
+                        ? "Overdue"
+                        : nextCleaning === todayISO()
+                          ? "Due today"
+                          : "On schedule";
+                    const cleaningHistory = (vehicle.history || [])
+                      .filter((entry) => entry.type === "Cleaned")
+                      .sort((a, b) =>
+                        String(b.date || "").localeCompare(
+                          String(a.date || ""),
+                        ),
+                      );
+                    return (
+                      <div
+                        key={vehicle.id}
+                        style={{
+                          border: `1px solid ${colors.line}`,
+                          borderRadius: 12,
+                          background: "#FFFFFF",
+                          padding: 10,
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: 8,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <strong style={{ color: colors.navy }}>
+                            {vehicle.name}
+                          </strong>
+                          <span style={badgeStyle(cleaningStatus)}>
+                            {cleaningStatus}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: isMobile
+                              ? "1fr"
+                              : "repeat(2, minmax(0, 1fr))",
+                            gap: 7,
+                          }}
+                        >
+                          <div style={recordInfoItemStyle}>
+                            <span style={fieldLabelStyle}>Last cleaned</span>
+                            <strong>
+                              {vehicle.lastCleaned
+                                ? formatDate(vehicle.lastCleaned)
+                                : "Not recorded"}
+                            </strong>
+                          </div>
+                          <div style={recordInfoItemStyle}>
+                            <span style={fieldLabelStyle}>Next cleaning</span>
+                            <strong>{formatDate(nextCleaning)}</strong>
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: 8,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          {cleaningHistory.length ? (
+                            <details>
+                              <summary
+                                style={{
+                                  color: colors.navy,
+                                  fontSize: 11,
+                                  fontWeight: 850,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Cleaning history ({cleaningHistory.length})
+                              </summary>
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gap: 3,
+                                  marginTop: 6,
+                                }}
+                              >
+                                {cleaningHistory.slice(0, 8).map((entry) => (
+                                  <span key={entry.id} style={mutedSmallStyle}>
+                                    {formatDate(String(entry.date || "").slice(0, 10))}
+                                  </span>
+                                ))}
+                              </div>
+                            </details>
+                          ) : (
+                            <span style={mutedSmallStyle}>No cleaning history</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => markVehicleCleaned(vehicle)}
+                            style={smallSubtleButtonStyle}
+                          >
+                            Mark Cleaned
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div style={centerCardStyle}>
                 <strong style={{ color: colors.navy, fontSize: 16 }}>
                   Car Work Orders
