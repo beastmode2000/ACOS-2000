@@ -10,7 +10,7 @@ import { upload } from "@vercel/blob/client";
 import AtlasCalendar from "./AtlasCalendar";
 import AtlasRoutines from "./AtlasRoutines";
 import AtlasTeamWork from "./AtlasTeamWork";
-import { AtlasWorkOrders } from "./AtlasWorkOrders";
+import AtlasWorkOrders from "./AtlasWorkOrders";
 import ReportsAccessCenter from "./ReportsAccessCenter";
 import {
   Field,
