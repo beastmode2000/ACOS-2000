@@ -517,6 +517,9 @@ export default function AtlasApp() {
   const [departmentDrilldown, setDepartmentDrilldown] = useState<
     "open" | "completed" | "assets" | "requests" | "vendors" | "documents" | "procedures" | ""
   >("");
+  const [departmentWorkspaceCategory, setDepartmentWorkspaceCategory] = useState("All");
+  const [departmentWorkspaceSelectedKind, setDepartmentWorkspaceSelectedKind] = useState<"asset" | "work" | "task" | "">("");
+  const [departmentWorkspaceSelectedId, setDepartmentWorkspaceSelectedId] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileFieldMoreOpen, setMobileFieldMoreOpen] = useState(false);
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
@@ -26934,6 +26937,87 @@ ${notes.trim()}` : notes.trim(),
       gap: 12,
       minWidth: 0,
     };
+
+    if (kind === "house" || kind === "pool" || kind === "landscaping") {
+      const categorySets: Record<"house" | "pool" | "landscaping", Array<{ label: string; pattern: RegExp }>> = {
+        house: [
+          { label: "HVAC", pattern: /\b(hvac|heating|cooling|furnace|air handler|heat pump|thermostat|boiler|radiant|dehumidif)/i },
+          { label: "Plumbing", pattern: /\b(plumb|water heater|hot water|pump|recirc|drain|toilet|faucet|sink|leak|flologic|backflow)/i },
+          { label: "Electrical", pattern: /\b(electric|lighting|light|generator|panel|outlet|switch|battery)/i },
+          { label: "Cleaning", pattern: /\b(clean|housekeep|laundry|wash|window|glass|carpet|floor)/i },
+          { label: "Annual Service", pattern: /\b(annual|yearly|seasonal service|preventive service)/i },
+          { label: "Appliances", pattern: /\b(appliance|refrigerator|freezer|dishwasher|washer|dryer|range|oven|microwave|ice maker)/i },
+          { label: "General Maintenance", pattern: /[\s\S]*/i },
+        ],
+        pool: [
+          { label: "Pool", pattern: /\b(pool|swim)/i },
+          { label: "Spa & Hot Tub", pattern: /\b(spa|hot tub|sundance)/i },
+          { label: "Fountain", pattern: /\bfountain\b/i },
+          { label: "Water Care", pattern: /\b(chemical|chlorine|ph|alkalinity|oxy|phosphate|water test|water care)/i },
+          { label: "Equipment", pattern: /\b(filter|pump|heater|uv|ozone|backwash|vacuum|dehumidif|equipment)/i },
+          { label: "Cleaning", pattern: /\b(clean|brush|vacuum|skim)/i },
+          { label: "General", pattern: /[\s\S]*/i },
+        ],
+        landscaping: [
+          { label: "Irrigation", pattern: /\b(irrigation|hydrawise|zone|sprinkler|controller|backflow|watering)/i },
+          { label: "Lawns", pattern: /\b(lawn|mow|edge|turf|grass)/i },
+          { label: "Gardens & Beds", pattern: /\b(garden|bed|weed|veggie|plant|flower|pot)/i },
+          { label: "Trees & Shrubs", pattern: /\b(tree|shrub|hedge|yew|prune|trim)/i },
+          { label: "Grounds", pattern: /\b(grounds|courtyard|walkway|driveway|waterside|patio|cleanup|geese)/i },
+          { label: "Seasonal", pattern: /\b(season|spring|summer|fall|winter|fertiliz|mulch)/i },
+          { label: "General", pattern: /[\s\S]*/i },
+        ],
+      };
+      const categories = categorySets[kind];
+      const activeCategory = departmentWorkspaceCategory === "All" || categories.some((category) => category.label === departmentWorkspaceCategory)
+        ? departmentWorkspaceCategory
+        : "All";
+      const categoryFor = (value: unknown) => {
+        const text = recordSearchText(value);
+        const specific = categories.find((category) => category.label !== "General Maintenance" && category.label !== "General" && category.pattern.test(text));
+        return specific?.label || (kind === "house" ? "General Maintenance" : categories[categories.length - 1].label);
+      };
+      const categoryMatches = (value: unknown) => activeCategory === "All" || categoryFor(value) === activeCategory;
+      const visibleAssets = departmentAssets.filter(categoryMatches).sort((a, b) => a.name.localeCompare(b.name));
+      const visibleWork = departmentWork.filter(categoryMatches).sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")));
+      const visibleTasks = departmentTasks.filter(categoryMatches).sort((a, b) => String(taskDetails(a.id).dueDate || "9999-12-31").localeCompare(String(taskDetails(b.id).dueDate || "9999-12-31")));
+      const selectedAsset = departmentWorkspaceSelectedKind === "asset" ? departmentAssets.find((asset) => asset.id === departmentWorkspaceSelectedId) : undefined;
+      const selectedWork = departmentWorkspaceSelectedKind === "work" ? departmentWork.find((record) => record.id === departmentWorkspaceSelectedId) : undefined;
+      const selectedTask = departmentWorkspaceSelectedKind === "task" ? departmentTasks.find((task) => task.id === departmentWorkspaceSelectedId) : undefined;
+      const selectedTitle = selectedAsset?.name || selectedWork?.title || selectedTask?.title || "";
+      const selectedCategory = selectedAsset ? categoryFor(selectedAsset) : selectedWork ? categoryFor(selectedWork) : selectedTask ? categoryFor(selectedTask) : "";
+      const selectedAssetPhotos = selectedAsset ? photos.filter((photo) => photo.assetId === selectedAsset.id && Boolean(photoSource(photo))) : [];
+      const selectedAssetWork = selectedAsset ? departmentWork.filter((record) => record.assetId === selectedAsset.id) : [];
+      const selectRecord = (recordKind: "asset" | "work" | "task", id: string) => {
+        setDepartmentWorkspaceSelectedKind(recordKind);
+        setDepartmentWorkspaceSelectedId(id);
+      };
+      const categoryCount = (label: string) => [...departmentAssets, ...departmentWork, ...departmentTasks].filter((record) => categoryFor(record) === label).length;
+
+      return <section style={{ display: "grid", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}><button type="button" onClick={() => addDashboardWorkOrder(config.title)} style={goldButtonStyle}>+ Add</button><button type="button" onClick={() => selectedAsset ? openAssetById(selectedAsset.id) : selectedWork ? (setDepartmentCenter(""), openWorkOrderById(selectedWork.id)) : selectedTask ? (setDepartmentCenter(""), setSelectedTaskId(selectedTask.id), setTasksView("tasks"), setScreen("planner")) : showSaveToast("Select a record to edit.")} style={secondaryButtonStyle}>Edit</button></div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#FFFFFF" }}>{[["Open work", openWork.length],["Assets",departmentAssets.length],["Tasks",departmentTasks.length],["Completed",completedWork.length]].map(([label,value],index)=><div key={String(label)} style={{ padding: "11px 14px", borderRight: !isMobile && index < 3 ? `1px solid ${colors.line}` : undefined }}><strong style={{ color: colors.navy, fontSize: 20, marginRight: 7 }}>{value}</strong><span style={mutedSmallStyle}>{label}</span></div>)}</div>
+        <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2 }}><button type="button" onClick={() => setDepartmentWorkspaceCategory("All")} style={activeCategory === "All" ? goldButtonStyle : secondaryButtonStyle}>All</button>{categories.map((category)=><button key={category.label} type="button" onClick={() => { setDepartmentWorkspaceCategory(category.label); setDepartmentWorkspaceSelectedKind(""); setDepartmentWorkspaceSelectedId(""); }} style={activeCategory === category.label ? goldButtonStyle : secondaryButtonStyle}>{category.label} ({categoryCount(category.label)})</button>)}</div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(330px,40%) minmax(0,60%)", gap: 12, alignItems: "start" }}>
+          <section style={{ ...centerCardStyle, padding: 0, overflow: "hidden" }}>
+            <div style={{ padding: "14px 16px", borderBottom: `1px solid ${colors.line}` }}><div style={eyebrowStyle}>{activeCategory === "All" ? config.short : activeCategory}</div><strong style={{ color: colors.navy, fontSize: 16 }}>Assets and work</strong></div>
+            <div style={{ maxHeight: isMobile ? "none" : "calc(100vh - 300px)", overflowY: "auto" }}>
+              {visibleAssets.length ? <div style={{ padding: "9px 12px 5px", ...fieldLabelStyle }}>ASSETS</div> : null}{visibleAssets.map((asset)=>{const photo=photos.find((item)=>item.assetId===asset.id&&Boolean(photoSource(item)));return <button key={asset.id} type="button" onClick={()=>selectRecord("asset",asset.id)} style={{ width:"100%",border:0,borderBottom:`1px solid ${colors.line}`,background:selectedAsset?.id===asset.id?"#F0F6FC":"#FFFFFF",padding:"10px 12px",display:"grid",gridTemplateColumns:"36px minmax(0,1fr) auto",gap:9,alignItems:"center",textAlign:"left",cursor:"pointer" }}><span style={{width:36,height:36,borderRadius:9,background:"#E2ECF5",display:"grid",placeItems:"center",overflow:"hidden",fontWeight:900,color:colors.navy}}>{photo?<img src={photoSource(photo)} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:asset.name.slice(0,1)}</span><span><strong style={{display:"block",color:colors.navy}}>{asset.name}</strong><small style={mutedSmallStyle}>{categoryFor(asset)} · {locationName(asset.locationId)||"No location"}</small></span><span>›</span></button>})}
+              {visibleWork.length ? <div style={{ padding: "12px 12px 5px", ...fieldLabelStyle }}>WORK ORDERS</div> : null}{visibleWork.map((record)=><button key={record.id} type="button" onClick={()=>selectRecord("work",record.id)} style={{...compactLinkedRowStyle,width:"100%",borderRadius:0,borderLeft:0,borderRight:0,borderBottom:0,background:selectedWork?.id===record.id?"#F0F6FC":"#FFFFFF"}}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.date?formatDate(record.date):"No date"} · {categoryFor(record)}</small></span><span style={badgeStyle(record.status||"Open")}>{record.status||"Open"}</span></button>)}
+              {visibleTasks.length ? <div style={{ padding: "12px 12px 5px", ...fieldLabelStyle }}>TASKS</div> : null}{visibleTasks.map((task)=>{const meta=taskDetails(task.id);return <button key={task.id} type="button" onClick={()=>selectRecord("task",task.id)} style={{...compactLinkedRowStyle,width:"100%",borderRadius:0,borderLeft:0,borderRight:0,borderBottom:0,background:selectedTask?.id===task.id?"#F0F6FC":"#FFFFFF"}}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>{meta.dueDate?formatDate(meta.dueDate):"No date"} · {meta.assignee}</small></span><span style={badgeStyle(meta.status||"Open")}>{meta.status||"Open"}</span></button>})}
+              {!visibleAssets.length&&!visibleWork.length&&!visibleTasks.length?<div style={{...noticeStyle,margin:10}}>No records in this category.</div>:null}
+            </div>
+          </section>
+          <section style={{ ...centerCardStyle, padding: 0, overflow: "hidden", position: isMobile ? "static" : "sticky", top: 88, maxHeight: isMobile ? "none" : "calc(100vh - 110px)" }}>
+            {selectedTitle ? <><div style={{ padding:16,display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start" }}><span><span style={eyebrowStyle}>{selectedCategory}</span><strong style={{display:"block",fontSize:18,color:colors.navy}}>{selectedTitle}</strong><small style={mutedSmallStyle}>{selectedAsset?"Asset":selectedWork?"Work Order":"Task"}</small></span><button type="button" onClick={()=>selectedAsset?openAssetById(selectedAsset.id):selectedWork?(setDepartmentCenter(""),openWorkOrderById(selectedWork.id)):(setDepartmentCenter(""),setSelectedTaskId(selectedTask!.id),setTasksView("tasks"),setScreen("planner"))} style={goldButtonStyle}>Open</button></div><div style={{padding:16,borderTop:`1px solid ${colors.line}`,overflowY:"auto"}}>
+              {selectedAsset?<div style={{display:"grid",gap:12}}><div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(2,minmax(0,1fr))",gap:8}}>{[["Make / model",[selectedAsset.make,selectedAsset.model].filter(Boolean).join(" · ")||"Not recorded"],["Location",locationName(selectedAsset.locationId)||"Not linked"],["Status",selectedAsset.status||"Active"],["Open work",selectedAssetWork.filter((record)=>record.status!=="Completed").length]].map(([label,value])=><div key={String(label)} style={recordInfoItemStyle}><small style={fieldLabelStyle}>{label}</small><strong style={{display:"block",marginTop:5}}>{value}</strong></div>)}</div>{selectedAssetPhotos.length?<div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:7}}>{selectedAssetPhotos.slice(0,6).map((photo)=><button key={photo.id} type="button" onClick={()=>openPhotoPreview(photo)} style={{border:`1px solid ${colors.line}`,borderRadius:9,padding:0,overflow:"hidden"}}><img src={photoSource(photo)} alt={photo.name} style={{width:"100%",aspectRatio:"4 / 3",objectFit:"cover",display:"block"}}/></button>)}</div>:null}<button type="button" onClick={()=>addDashboardWorkOrder(config.title)} style={secondaryButtonStyle}>New Work Order</button></div>:null}
+              {selectedWork?<div style={{display:"grid",gap:8}}>{[["Status",selectedWork.status||"Open"],["Due date",selectedWork.date?formatDate(selectedWork.date):"Not scheduled"],["Assigned",selectedWork.assignedTo||"Unassigned"],["Location",locationName(selectedWork.locationId)||"Not linked"]].map(([label,value])=><div key={String(label)} style={recordInfoItemStyle}><small style={fieldLabelStyle}>{label}</small><strong style={{display:"block",marginTop:5}}>{value}</strong></div>)}</div>:null}
+              {selectedTask?(()=>{const meta=taskDetails(selectedTask.id);return <div style={{display:"grid",gap:8}}>{[["Status",meta.status],["Due date",meta.dueDate?formatDate(meta.dueDate):"Not scheduled"],["Assigned",meta.assignee],["Category",categoryFor(selectedTask)]].map(([label,value])=><div key={String(label)} style={recordInfoItemStyle}><small style={fieldLabelStyle}>{label}</small><strong style={{display:"block",marginTop:5}}>{value}</strong></div>)}</div>})():null}
+            </div></>:<div style={noticeStyle}>Select an asset, work order, or task.</div>}
+          </section>
+        </div>
+      </section>;
+    }
 
     if (kind === "garage") {
       const garageVehicles = departmentAssets
