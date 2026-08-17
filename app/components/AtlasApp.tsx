@@ -26748,6 +26748,8 @@ ${notes.trim()}` : notes.trim(),
       /\b(mercedes|rivian|porsche|lucid|ford|f-?150|raptor|kia|honda|subaru)\b/i;
     const garageExcludedPattern =
       /\b(golf simulator|simulator|boat|marine|watercraft|sea.?doo|cobalt|pwc|dock|lift|equipment)\b/i;
+    const garageNonVehicleAssetPattern =
+      /\b(garage door|door opener|opener|keypad|charging station|ev charger|wall charger|cabinet|tool|supply|storage|shelving)\b/i;
     const isGarageCarAsset = (asset: AssetRecord) => {
       const assetIdentity = recordSearchText(
         asset.name,
@@ -26758,11 +26760,12 @@ ${notes.trim()}` : notes.trim(),
       const assignedLocation = locationName(asset.locationId);
       const isVehicle = garageCarAssetPattern.test(assetIdentity);
       const isAssignedToGarage = /\bgarage\b/i.test(assignedLocation);
-      return (
+      const knownVehicle =
         isVehicle &&
-        (isAssignedToGarage || garageSpecificCarPattern.test(assetIdentity) || /\b(vehicle|car|automobile)\b/i.test(assetIdentity)) &&
-        !garageExcludedPattern.test(assetIdentity)
-      );
+        (garageSpecificCarPattern.test(assetIdentity) || /\b(vehicle|car|automobile)\b/i.test(assetIdentity));
+      const garageLocationVehicle =
+        isAssignedToGarage && !garageNonVehicleAssetPattern.test(assetIdentity);
+      return (knownVehicle || garageLocationVehicle) && !garageExcludedPattern.test(assetIdentity);
     };
     const garageCarAssetIds = new Set(
       assetRecords.filter(isGarageCarAsset).map((asset) => asset.id),
