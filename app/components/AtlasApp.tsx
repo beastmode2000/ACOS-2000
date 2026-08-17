@@ -4354,7 +4354,7 @@ export default function AtlasApp() {
               assignmentAliases: [currentStaffFirstName, normalizedCurrentUserName].filter(Boolean),
             };
 
-  const marineDepartmentPattern = /marine|dock|boat|cobalt|sea[\s-]?doo|jet[\s-]?ski|pwc|lift|lift\s*box|liftbox|dock\s*box|sunstream|water trampoline|sean/i;
+  const marineDepartmentPattern = /marine|dock|craft|boat|cobalt|sea[\s-]?doo|jet[\s-]?ski|pwc|lift|lift\s*box|liftbox|dock\s*box|sunstream|water trampoline|sean/i;
   const recordSearchText = (...values: unknown[]) =>
     values.map((value) => {
       if (typeof value === "string" || typeof value === "number") return String(value);
@@ -10236,6 +10236,8 @@ export default function AtlasApp() {
     if (!recordId) return;
 
     // A direct record link must never inherit a dashboard category filter.
+    setDepartmentCenter("");
+    setDepartmentDrilldown("");
     setDashboardWorkFilter("");
     setScreen("history");
     setSelectedServiceId(recordId);
@@ -10245,6 +10247,22 @@ export default function AtlasApp() {
     if (typeof window !== "undefined") {
       window.requestAnimationFrame(() => {
         setSelectedServiceId(recordId);
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+      });
+    }
+  }
+
+  function openAssetById(assetId: string) {
+    if (!assetId) return;
+    setDepartmentCenter("");
+    setDepartmentDrilldown("");
+    setScreen("assets");
+    setSelectedAssetId(assetId);
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        setSelectedAssetId(assetId);
         window.requestAnimationFrame(() => {
           window.scrollTo({ top: 0, behavior: "smooth" });
         });
@@ -26596,6 +26614,59 @@ ${notes.trim()}` : notes.trim(),
         isConventionalApplianceRecord(value)
       );
     };
+    const savedDepartmentFor = (value: unknown): DepartmentKind | "" => {
+      const record = (value || {}) as Record<string, unknown>;
+      const classify = (saved: string): DepartmentKind | "" => {
+        if (/dock|marine|waterfront|boat|watercraft/.test(saved)) return "marine";
+        if (/garage|vehicle|automobile|car care/.test(saved)) return "garage";
+        if (/pool|spa|hot tub|water care/.test(saved)) return "pool";
+        if (/landscap|irrigation|garden|grounds|lawn/.test(saved)) return "landscaping";
+        if (/house|maintenance|appliance|cleaning|hvac|mechanical|plumbing|electrical/.test(saved)) return "house";
+        return "";
+      };
+      const primary = classify(recordSearchText(
+        record.workCategory,
+        record.category,
+        record.department,
+      ));
+      return primary || classify(recordSearchText(record.responsibilityArea));
+    };
+    const strictDockPattern =
+      /\b(dock|craft|boat|cobalt|sea[\s-]?doo|jet[\s-]?ski|pwc|lift\s*box|liftbox|dock\s*box|boat\s*lift|sunstream)\b/i;
+    const isStrictDockAsset = (asset: AssetRecord) =>
+      strictDockPattern.test(
+        recordSearchText(
+          asset.name,
+          asset.category,
+          asset.make,
+          asset.model,
+        ),
+      ) && !isConventionalApplianceRecord(asset);
+    const strictDockAssetIds = new Set(
+      assetRecords.filter(isStrictDockAsset).map((asset) => asset.id),
+    );
+    const isStrictDockRecord = (value: unknown) => {
+      const record = (value || {}) as Record<string, unknown>;
+      const linkedIds = [
+        record.assetId,
+        ...(Array.isArray(record.assetIds) ? record.assetIds : []),
+        ...(Array.isArray(record.linkedAssetIds) ? record.linkedAssetIds : []),
+      ].filter(Boolean).map(String);
+      const explicitDepartment = savedDepartmentFor(value);
+      if (explicitDepartment && explicitDepartment !== "marine") return false;
+      const identityText = recordSearchText(
+        record.title,
+        record.name,
+        record.label,
+        record.workCategory,
+        record.category,
+        record.responsibilityArea,
+      );
+      return (
+        linkedIds.some((assetId) => strictDockAssetIds.has(assetId)) ||
+        strictDockPattern.test(identityText)
+      );
+    };
     const matchesDepartmentRecord = (value: unknown) =>
       matches(value) && (kind !== "pool" || !isConventionalApplianceRecord(value));
     const garageCarAssetPattern =
@@ -26620,18 +26691,23 @@ ${notes.trim()}` : notes.trim(),
         !garageExcludedPattern.test(text)
       );
     };
-    const rawDepartmentWork = serviceRecords.filter((record) =>
-      kind === "garage"
-        ? isGarageCarRecord(record)
-        : kind === "house" && isAnnualApplianceServiceRecord(record)
-          ? true
-        : isMarine
-          ? !isAnnualApplianceServiceRecord(record) &&
-            isMarineServiceRecord(record)
-          : isLandscape
-            ? matches(record) && !isMarineServiceRecord(record)
-            : matchesDepartmentRecord(record),
-    );
+    const rawDepartmentWork = serviceRecords.filter((record) => {
+      if (isAnnualApplianceServiceRecord(record)) return kind === "house";
+      const explicitDepartment = savedDepartmentFor(record);
+      if (explicitDepartment) {
+        if (kind === "marine") {
+          return explicitDepartment === "marine" && isStrictDockRecord(record);
+        }
+        if (kind === "garage") {
+          return explicitDepartment === "garage" && isGarageCarRecord(record);
+        }
+        return explicitDepartment === kind;
+      }
+      if (kind === "garage") return isGarageCarRecord(record);
+      if (kind === "marine") return isStrictDockRecord(record);
+      if (isLandscape) return matches(record) && !isMarineServiceRecord(record);
+      return matchesDepartmentRecord(record);
+    });
     const departmentWork = kind === "garage"
       ? (() => {
           // Garage maintenance was historically generated as separate dated
@@ -26667,8 +26743,13 @@ ${notes.trim()}` : notes.trim(),
     const departmentAssets = kind === "garage"
       ? assetRecords.filter(isGarageCarAsset)
       : isMarine
-        ? assetRecords.filter((asset) => marineAssetIds.has(asset.id))
-        : assetRecords.filter((asset) => matchesDepartmentRecord(asset) && (!isLandscape || !isMarineAssetRecord(asset)));
+        ? assetRecords.filter(isStrictDockAsset)
+        : assetRecords.filter((asset) => {
+            const explicitDepartment = savedDepartmentFor(asset);
+            if (explicitDepartment) return explicitDepartment === kind;
+            return matchesDepartmentRecord(asset) &&
+              (!isLandscape || !isMarineAssetRecord(asset));
+          });
     const departmentLocations = kind === "garage"
       ? []
       : isMarine
@@ -26691,25 +26772,17 @@ ${notes.trim()}` : notes.trim(),
     const departmentTasks = kind === "garage"
       ? workPlanTasks.filter((task) => {
           const meta = taskDetails(task.id);
-          return isGarageCarRecord({ ...task, ...meta });
+          const combined = { ...task, ...meta };
+          const explicitDepartment = savedDepartmentFor(combined);
+          return (
+            (!explicitDepartment || explicitDepartment === "garage") &&
+            isGarageCarRecord(combined)
+          );
         })
       : isMarine
         ? workPlanTasks.filter((task) => {
             const meta = taskDetails(task.id);
-            const linkedAssetIds = [
-              meta.assetId,
-              ...(meta.assetIds || []),
-            ].filter(Boolean).map(String);
-            const taskText = recordSearchText(task, meta);
-            const normalizedTaskText = normalizeLocationName(taskText);
-            return (
-              linkedAssetIds.some((assetId) => marineAssetIds.has(assetId)) ||
-              marineLocationIds.has(String(task.locationId || "")) ||
-              marineAssetNames.some((assetName) =>
-                normalizedTaskText.includes(assetName),
-              ) ||
-              marineDepartmentPattern.test(taskText)
-            );
+            return isStrictDockRecord({ ...task, ...meta });
           })
         : [];
     const assignedNames = config.people;
@@ -26815,11 +26888,7 @@ ${notes.trim()}` : notes.trim(),
                   <button
                     key={asset.id}
                     type="button"
-                    onClick={() => {
-                      setDepartmentCenter("");
-                      setSelectedAssetId(asset.id);
-                      setScreen("assets");
-                    }}
+                    onClick={() => openAssetById(asset.id)}
                     style={{
                       ...compactLinkedRowStyle,
                       width: "100%",
@@ -26975,11 +27044,7 @@ ${notes.trim()}` : notes.trim(),
                   <button
                     key={asset.id}
                     type="button"
-                    onClick={() => {
-                      setDepartmentCenter("");
-                      setSelectedAssetId(asset.id);
-                      setScreen("assets");
-                    }}
+                    onClick={() => openAssetById(asset.id)}
                     style={{
                       ...compactLinkedRowStyle,
                       width: "100%",
@@ -27144,7 +27209,7 @@ ${notes.trim()}` : notes.trim(),
               {departmentDrilldown === "assets" ? (
                 <>
                   {departmentAssets.map((asset) => (
-                    <button key={`asset-${asset.id}`} type="button" onClick={() => { setSelectedAssetId(asset.id); openCenter("assets"); }} style={{ ...compactLinkedRowStyle, width: "100%", cursor: "pointer" }}>
+                    <button key={`asset-${asset.id}`} type="button" onClick={() => openAssetById(asset.id)} style={{ ...compactLinkedRowStyle, width: "100%", cursor: "pointer" }}>
                       <span><strong>{asset.name || "Unnamed asset"}</strong><small style={mutedSmallStyle}>{asset.category || "Marine asset"}</small></span>
                       <span style={badgeStyle(asset.status || "Active")}>{asset.status || "Active"}</span>
                     </button>
