@@ -1957,6 +1957,10 @@ export default function AtlasApp() {
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [garageVehicleTab, setGarageVehicleTab] = useState<"Overview" | "Maintenance" | "Cleaning" | "Documents" | "Photos">("Overview");
   const [garageVehicleEditing, setGarageVehicleEditing] = useState(false);
+  const [garageHiddenVehicleIds, setGarageHiddenVehicleIds] = useState<string[]>(() =>
+    readStoredArray<string>(["atlas-garage-hidden-vehicles-v1"], []),
+  );
+  const hondaSchoolYearCleanupRef = useRef(false);
   const [newVehicleName, setNewVehicleName] = useState("");
   const [seasonalItems, setSeasonalItems] = useState<AtlasSeasonalItem[]>(() => readStoredArray<AtlasSeasonalItem>(["atlas-seasonal-work-v1"], [
     { id: "annual-appliance-service", title: "Annual appliance service", season: "Fall", windowStart: `${new Date().getFullYear()}-10-01`, targetDate: `${new Date().getFullYear()}-11-15`, deadline: `${new Date().getFullYear()}-12-15`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Complete during the colder months and before year end." },
@@ -2090,6 +2094,31 @@ export default function AtlasApp() {
     saveStoredArray(`atlas-vehicle-care-v1-${activePropertyId}`, vehicleCare);
     if (activePropertyId === "2000") saveStoredArray("atlas-vehicle-care-v1", vehicleCare);
   }, [activePropertyId, vehicleCare]);
+  useEffect(() => {
+    saveStoredArray(`atlas-garage-hidden-vehicles-v1-${activePropertyId}`, garageHiddenVehicleIds);
+    if (activePropertyId === "2000") saveStoredArray("atlas-garage-hidden-vehicles-v1", garageHiddenVehicleIds);
+  }, [activePropertyId, garageHiddenVehicleIds]);
+  useEffect(() => {
+    if (!ready || !operationsHydrated || activePropertyId !== "2000" || hondaSchoolYearCleanupRef.current) return;
+    hondaSchoolYearCleanupRef.current = true;
+    const hondaTasks = workPlanTasks.filter((task) => /\bhonda\b/i.test(recordSearchText(task)));
+    const hondaWorkOrders = serviceRecords.filter((record) => /\bhonda\b/i.test(recordSearchText(record)));
+    const removedIds = new Set([...hondaTasks.map((task) => task.id), ...hondaWorkOrders.map((record) => record.id)]);
+    if (hondaTasks.length) {
+      setWorkPlanTasks((current) => current.filter((task) => !removedIds.has(task.id)));
+      setTaskMeta((current) => Object.fromEntries(Object.entries(current).filter(([taskId]) => !removedIds.has(taskId))));
+      hondaTasks.forEach((task) => void deleteOperationalRecord("tasks" as AtlasTable, task.id));
+    }
+    if (hondaWorkOrders.length) {
+      setServiceRecords((current) => current.filter((record) => !removedIds.has(record.id)));
+      hondaWorkOrders.forEach((record) => void deleteAtlasRecord("work_orders", record.id));
+    }
+    const linkedCalendar = calendarItems.filter((item) => item.linkedId && removedIds.has(item.linkedId));
+    if (linkedCalendar.length) {
+      setCalendarItems((current) => current.filter((item) => !item.linkedId || !removedIds.has(item.linkedId)));
+      linkedCalendar.forEach((item) => void deleteAtlasRecord("calendar", item.id));
+    }
+  }, [ready, operationsHydrated, activePropertyId]);
 
   useEffect(() => {
     if (!ready || !operationsHydrated || activePropertyId !== "2000") return;
@@ -26932,7 +26961,9 @@ ${notes.trim()}` : notes.trim(),
           locationId: asset?.locationId || task.locationId || "",
         });
       });
-      const garageVehicles = Array.from(garageVehicleMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+      const garageVehicles = Array.from(garageVehicleMap.values())
+        .filter((vehicle) => !garageHiddenVehicleIds.includes(vehicle.id))
+        .sort((a, b) => a.name.localeCompare(b.name));
       const selectedGarageVehicle =
         garageVehicles.find((vehicle) => vehicle.id === selectedVehicleId) || garageVehicles[0];
       const selectedGarageAsset = selectedGarageVehicle
@@ -27037,6 +27068,16 @@ ${notes.trim()}` : notes.trim(),
         if (selectedCleaningTask) updateTaskDetails(selectedCleaningTask.id, { notes: [taskDetails(selectedCleaningTask.id).notes, note.trim()].filter(Boolean).join("\n") });
         showSaveToast(`Cleaning note added to ${selectedGarageVehicle.name}.`);
       };
+      const deleteSelectedGarageVehicle = () => {
+        if (!selectedGarageVehicle || !window.confirm(`Delete ${selectedGarageVehicle.name} from Garage?`)) return;
+        setGarageHiddenVehicleIds((current) => Array.from(new Set([...current, selectedGarageVehicle.id])));
+        setVehicleCare((current) => current.filter((vehicle) => vehicle.id !== selectedGarageVehicle.id));
+        void deleteOperationalRecord("vehicle_care" as AtlasTable, selectedGarageVehicle.id);
+        setSelectedVehicleId("");
+        setGarageVehicleTab("Overview");
+        setGarageVehicleEditing(false);
+        showSaveToast(`${selectedGarageVehicle.name} removed from Garage.`);
+      };
       const infoTile = (label: string, value: string, field?: string) => (
         <div style={{ ...recordInfoItemStyle, minHeight: 82, display: "grid", alignContent: "space-between", gap: 7 }}>
           <span style={fieldLabelStyle}>{label}</span>
@@ -27116,7 +27157,10 @@ ${notes.trim()}` : notes.trim(),
                 <div style={{ padding: 16, display: "grid", gridTemplateColumns: "52px minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
                   <span style={{ width: 52, height: 52, borderRadius: 11, display: "grid", placeItems: "center", background: "#E2ECF5", color: colors.navy, fontSize: 20, fontWeight: 900 }}>{selectedGarageVehicle.name.slice(0, 1).toUpperCase()}</span>
                   <span><span style={eyebrowStyle}>{[assetData.year, assetData.make, assetData.model].filter(Boolean).join(" · ") || "Vehicle"}</span><strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>{selectedGarageVehicle.name}</strong><small style={mutedSmallStyle}>{selectedGarageVehicle.onsite ? "Ready" : "Away"} · {locationName(selectedGarageVehicle.locationId) || "Garage"}</small></span>
-                  {selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={secondaryButtonStyle}>Open Asset</button> : null}
+                  <span style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={secondaryButtonStyle}>Open Asset</button> : null}
+                    <button type="button" onClick={deleteSelectedGarageVehicle} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
+                  </span>
                 </div>
 
                 <div style={{ display: "flex", gap: 4, padding: "0 12px", borderTop: `1px solid ${colors.line}`, borderBottom: `1px solid ${colors.line}`, overflowX: "auto" }}>
