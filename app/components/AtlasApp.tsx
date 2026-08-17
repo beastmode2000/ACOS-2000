@@ -2224,9 +2224,39 @@ export default function AtlasApp() {
     patch: Partial<AtlasVehicleCare>,
   ) {
     setVehicleCare((current) => {
-      const next = current.map((item) =>
-        item.id === vehicleId ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item,
+      const existing = current.find((item) => item.id === vehicleId);
+      const matchingAsset = assetRecords.find(
+        (asset) => slugify(`vehicle-${asset.name}`) === vehicleId,
       );
+      const matchingTask = workPlanTasks.find(
+        (task) =>
+          slugify(`vehicle-${String(task.title || "").replace(/^clean\s+/i, "").trim()}`) === vehicleId,
+      );
+      const inferredName =
+        matchingAsset?.name ||
+        String(matchingTask?.title || "").replace(/^clean\s+/i, "").trim() ||
+        "Vehicle";
+      const base: AtlasVehicleCare = existing || {
+        id: vehicleId,
+        name: inferredName,
+        onsite: true,
+        lastCleaned: matchingTask ? taskDetails(matchingTask.id).lastCompletedDate || "" : "",
+        priority: "Normal",
+        notes: "",
+        kind: "Vehicle",
+        assignedTo: matchingTask?.id && taskDetails(matchingTask.id).assignee === "Addison" ? "Addison" : "Nick",
+        cleaningIntervalDays: 7,
+        lastServiced: "",
+        nextServiceDate: "",
+        serviceIntervalDays: 180,
+        history: [],
+        assetId: matchingAsset?.id || "",
+        locationId: matchingAsset?.locationId || matchingTask?.locationId || "",
+      };
+      const updated = { ...base, ...patch, updatedAt: new Date().toISOString() };
+      const next = existing
+        ? current.map((item) => item.id === vehicleId ? updated : item)
+        : [updated, ...current];
       // Save the exact edited value immediately. This prevents a first edit
       // made just after opening Atlas from being replaced by delayed startup work.
       saveStoredArray(`atlas-vehicle-care-v1-${activePropertyId}`, next);
@@ -26847,9 +26877,62 @@ ${notes.trim()}` : notes.trim(),
     };
 
     if (kind === "garage") {
-      const garageVehicles = vehicleCare
+      const garageVehicleMap = new Map<string, AtlasVehicleCare>();
+      vehicleCare
         .filter((vehicle) => vehicle.kind === "Vehicle" && !garageExcludedPattern.test(vehicle.name))
-        .sort((a, b) => a.name.localeCompare(b.name));
+        .forEach((vehicle) => garageVehicleMap.set(normalizeLocationName(vehicle.name), vehicle));
+      departmentAssets.forEach((asset) => {
+        const key = normalizeLocationName(asset.name);
+        if (!key || garageVehicleMap.has(key)) return;
+        garageVehicleMap.set(key, {
+          id: slugify(`vehicle-${asset.name}`),
+          name: asset.name,
+          onsite: true,
+          lastCleaned: "",
+          priority: "Normal",
+          notes: "",
+          kind: "Vehicle",
+          assignedTo: "Nick",
+          cleaningIntervalDays: 7,
+          lastServiced: "",
+          nextServiceDate: "",
+          serviceIntervalDays: 180,
+          history: [],
+          assetId: asset.id,
+          locationId: asset.locationId || "",
+        });
+      });
+      departmentTasks.forEach((task) => {
+        const match = String(task.title || "").match(/^clean\s+(.+)$/i);
+        const name = match?.[1]?.trim() || "";
+        const key = normalizeLocationName(name);
+        if (!key || garageExcludedPattern.test(name) || garageVehicleMap.has(key)) return;
+        const meta = taskDetails(task.id);
+        const asset = departmentAssets.find((item) =>
+          normalizeLocationName(item.name) === key ||
+          normalizeLocationName(item.name).includes(key) ||
+          key.includes(normalizeLocationName(item.name)),
+        );
+        const completedDates = [...(meta.completionHistory || [])].sort();
+        garageVehicleMap.set(key, {
+          id: slugify(`vehicle-${name}`),
+          name,
+          onsite: true,
+          lastCleaned: meta.lastCompletedDate || completedDates[completedDates.length - 1] || "",
+          priority: task.priority === "High" ? "High" : "Normal",
+          notes: task.notes || "",
+          kind: "Vehicle",
+          assignedTo: meta.assignee === "Addison" ? "Addison" : "Nick",
+          cleaningIntervalDays: 7,
+          lastServiced: "",
+          nextServiceDate: "",
+          serviceIntervalDays: 180,
+          history: completedDates.map((date) => ({ id: `cleaned-${slugify(name)}-${date}`, type: "Cleaned", date })),
+          assetId: asset?.id || meta.assetId || "",
+          locationId: asset?.locationId || task.locationId || "",
+        });
+      });
+      const garageVehicles = Array.from(garageVehicleMap.values()).sort((a, b) => a.name.localeCompare(b.name));
       const selectedGarageVehicle =
         garageVehicles.find((vehicle) => vehicle.id === selectedVehicleId) || garageVehicles[0];
       const selectedGarageAsset = selectedGarageVehicle
@@ -26885,7 +26968,7 @@ ${notes.trim()}` : notes.trim(),
         .flatMap((document) => document.files || [])
         .filter((file) => String(file.type || "").startsWith("image/") || String(file.dataUrl || "").startsWith("data:image/"));
       const cleaningHistory = [...(selectedGarageVehicle?.history || [])]
-        .filter((entry) => entry.type === "Cleaned")
+        .filter((entry) => entry.type === "Cleaned" || (entry.type === "Note" && /^Skipped\b/i.test(entry.notes || "")))
         .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
       const serviceHistory = [...(selectedGarageVehicle?.history || [])]
         .filter((entry) => entry.type === "Serviced" || entry.type === "Issue")
@@ -26909,6 +26992,51 @@ ${notes.trim()}` : notes.trim(),
       const nextCleaning = selectedGarageVehicle?.lastCleaned
         ? addDays(selectedGarageVehicle.lastCleaned, Math.max(1, Number(selectedGarageVehicle.cleaningIntervalDays || 7)))
         : todayISO();
+      const selectedCleaningTask = vehicleTasks.find((task) => /^clean\s+/i.test(task.title)) || vehicleTasks[0];
+      const nearestThursday = (() => {
+        const base = new Date(`${todayISO()}T12:00:00`);
+        const daysAhead = (4 - base.getDay() + 7) % 7;
+        return addDays(todayISO(), daysAhead || 7);
+      })();
+      const ensureSelectedVehicleSaved = () => {
+        if (!selectedGarageVehicle) return;
+        if (!vehicleCare.some((vehicle) => vehicle.id === selectedGarageVehicle.id)) {
+          updateVehicleCareRecord(selectedGarageVehicle.id, selectedGarageVehicle);
+        }
+      };
+      const skipSelectedCleaning = () => {
+        if (!selectedGarageVehicle) return;
+        ensureSelectedVehicleSaved();
+        const nextDate = addDays(nextCleaning > todayISO() ? nextCleaning : todayISO(), 7);
+        if (selectedCleaningTask) updateTaskDetails(selectedCleaningTask.id, { status: "Open", dueDate: nextDate });
+        updateVehicleCareRecord(selectedGarageVehicle.id, {
+          history: [{ id: uid("fleet-history"), type: "Note", date: new Date().toISOString(), notes: `Skipped · Moved to ${nextDate}` }, ...(selectedGarageVehicle.history || [])],
+        });
+        showSaveToast(`${selectedGarageVehicle.name} cleaning skipped. Next date ${formatDate(nextDate)}.`);
+      };
+      const moveSelectedCleaningToThursday = () => {
+        if (!selectedGarageVehicle) return;
+        ensureSelectedVehicleSaved();
+        if (selectedCleaningTask) updateTaskDetails(selectedCleaningTask.id, { status: "Open", dueDate: nearestThursday });
+        else createVehicleCleaningTask({ ...selectedGarageVehicle, assignedTo: selectedGarageVehicle.assignedTo || "Nick" });
+        showSaveToast(`${selectedGarageVehicle.name} cleaning moved to Thursday, ${formatDate(nearestThursday)}.`);
+      };
+      const assignSelectedCleaningToAddison = () => {
+        if (!selectedGarageVehicle) return;
+        ensureSelectedVehicleSaved();
+        updateVehicleCareRecord(selectedGarageVehicle.id, { assignedTo: "Addison" });
+        if (selectedCleaningTask) updateTaskDetails(selectedCleaningTask.id, { assignee: "Addison", assignmentScope: "This occurrence" });
+        showSaveToast(`${selectedGarageVehicle.name} cleaning assigned to Addison.`);
+      };
+      const addSelectedCleaningNote = () => {
+        if (!selectedGarageVehicle) return;
+        const note = window.prompt(`Add a cleaning note for ${selectedGarageVehicle.name}:`, "");
+        if (!note?.trim()) return;
+        ensureSelectedVehicleSaved();
+        updateVehicleCareRecord(selectedGarageVehicle.id, { notes: selectedGarageVehicle.notes ? `${selectedGarageVehicle.notes}\n${note.trim()}` : note.trim() });
+        if (selectedCleaningTask) updateTaskDetails(selectedCleaningTask.id, { notes: [taskDetails(selectedCleaningTask.id).notes, note.trim()].filter(Boolean).join("\n") });
+        showSaveToast(`Cleaning note added to ${selectedGarageVehicle.name}.`);
+      };
       const infoTile = (label: string, value: string, field?: string) => (
         <div style={{ ...recordInfoItemStyle, minHeight: 82, display: "grid", alignContent: "space-between", gap: 7 }}>
           <span style={fieldLabelStyle}>{label}</span>
@@ -27019,7 +27147,7 @@ ${notes.trim()}` : notes.trim(),
 
                   {garageVehicleTab === "Maintenance" ? <div style={{ display: "grid", gap: 8 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Maintenance history</strong><button type="button" onClick={() => createVehicleWorkOrder(selectedGarageVehicle)} style={goldButtonStyle}>+ Add record</button></div>{vehicleWork.map((record) => <button key={record.id} type="button" onClick={() => { setDepartmentCenter(""); openWorkOrderById(record.id); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "No date"}</small></span><span style={badgeStyle(record.status || "Open")}>{record.status || "Open"}</span></button>)}{serviceHistory.map((entry) => <div key={entry.id} style={recordInfoItemStyle}><strong>{entry.type}</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{formatDate(String(entry.date || "").slice(0, 10))}{entry.notes ? ` · ${entry.notes}` : ""}</small></div>)}{!vehicleWork.length && !serviceHistory.length ? <div style={noticeStyle}>No maintenance history recorded.</div> : null}</div> : null}
 
-                  {garageVehicleTab === "Cleaning" ? <div style={{ display: "grid", gap: 10 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Cleaning schedule & history</strong><button type="button" onClick={() => markVehicleCleaned(selectedGarageVehicle)} style={goldButtonStyle}>Mark Cleaned</button></div><div style={{ ...recordInfoItemStyle, background: "#F0F6FC", display: "grid", gap: 8 }}><span style={fieldLabelStyle}>NEXT CLEANING</span><strong style={{ color: colors.navy, fontSize: 16 }}>{formatDate(nextCleaning)}</strong><small style={mutedSmallStyle}>Exterior wash · Interior tidy · Glass · Check supplies</small><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => markVehicleCleaned(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Complete</button><button type="button" onClick={() => updateVehicleCareRecord(selectedGarageVehicle.id, { assignedTo: "Addison" })} style={smallSubtleButtonStyle}>Assign to Addison</button><button type="button" onClick={() => createVehicleCleaningTask(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Create Task</button><button type="button" onClick={() => createVehicleWorkOrder(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Create Work Order</button></div></div>{cleaningHistory.map((entry) => <div key={entry.id} style={recordInfoItemStyle}><strong>Vehicle cleaning</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{formatDate(String(entry.date || "").slice(0, 10))}{entry.notes ? ` · ${entry.notes}` : ""}</small></div>)}{!cleaningHistory.length ? <div style={noticeStyle}>No cleaning history recorded yet.</div> : null}</div> : null}
+                  {garageVehicleTab === "Cleaning" ? <div style={{ display: "grid", gap: 10 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Cleaning schedule & history</strong><span style={badgeStyle(nextCleaning <= todayISO() ? "Open" : "Scheduled")}>{nextCleaning <= todayISO() ? "Due" : "Scheduled"}</span></div><div style={{ ...recordInfoItemStyle, background: "#F0F6FC", display: "grid", gap: 9 }}><span style={fieldLabelStyle}>NEXT CLEANING</span><strong style={{ color: colors.navy, fontSize: 16 }}>{formatDate(nextCleaning)}</strong><small style={mutedSmallStyle}>Exterior wash · Interior tidy · Glass · Check supplies · Tire pressure</small><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 6 }}><button type="button" onClick={() => { ensureSelectedVehicleSaved(); markVehicleCleaned(selectedGarageVehicle); }} style={goldButtonStyle}>Complete</button><button type="button" onClick={skipSelectedCleaning} style={smallSubtleButtonStyle}>Skip</button><button type="button" onClick={moveSelectedCleaningToThursday} style={smallSubtleButtonStyle}>Move to Thursday</button><button type="button" onClick={assignSelectedCleaningToAddison} style={smallSubtleButtonStyle}>Assign to Addison</button><button type="button" onClick={addSelectedCleaningNote} style={smallSubtleButtonStyle}>Add Note</button><button type="button" onClick={() => selectedGarageAsset ? openAssetById(selectedGarageAsset.id) : showSaveToast("Link this vehicle to an Asset before adding photos.")} style={smallSubtleButtonStyle}>Add Photo</button><button type="button" onClick={() => createVehicleCleaningTask(selectedGarageVehicle)} style={smallSubtleButtonStyle}>{selectedCleaningTask ? "Open Task" : "Create Task"}</button><button type="button" onClick={() => createVehicleWorkOrder(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Create Work Order</button></div><small style={mutedSmallStyle}>Assigned to {selectedGarageVehicle.assignedTo || "Nick"}{selectedCleaningTask && taskDetails(selectedCleaningTask.id).dueDate ? ` · Task due ${formatDate(taskDetails(selectedCleaningTask.id).dueDate)}` : ""}</small></div>{cleaningHistory.map((entry) => { const skipped = entry.type === "Note" && /^Skipped\b/i.test(entry.notes || ""); return <div key={entry.id} style={{ ...recordInfoItemStyle, display: "grid", gridTemplateColumns: "90px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}><small style={mutedSmallStyle}>{formatDate(String(entry.date || "").slice(0, 10))}</small><span><strong style={{ display: "block" }}>{skipped ? "Cleaning skipped" : "Vehicle cleaning"}</strong>{entry.notes ? <small style={mutedSmallStyle}>{entry.notes}</small> : null}</span><span style={badgeStyle(skipped ? "Monitor" : "Completed")}>{skipped ? "Skipped" : "Completed"}</span></div>; })}{!cleaningHistory.length ? <div style={noticeStyle}>No cleaning history recorded yet.</div> : null}</div> : null}
 
                   {garageVehicleTab === "Documents" ? <div style={{ display: "grid", gap: 8 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Documents</strong>{selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={goldButtonStyle}>+ Add document</button> : null}</div>{vehicleDocuments.map((document) => <button key={document.id} type="button" onClick={() => { setSelectedDocumentId(document.id); openCenter("documents"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{document.title}</strong><small style={mutedSmallStyle}>{document.type || "Document"}</small></span><span>Open ›</span></button>)}{!vehicleDocuments.length ? <div style={noticeStyle}>No documents attached to this vehicle.</div> : null}</div> : null}
 
