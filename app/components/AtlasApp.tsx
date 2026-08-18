@@ -978,6 +978,7 @@ export default function AtlasApp() {
   const operationsSyncRunningRef = useRef(false);
   const operationsRemoteRefreshRef = useRef(false);
   const operationsRemoteRefreshTimerRef = useRef<number | null>(null);
+  const calendarSourceSyncRunningRef = useRef(false);
   const fleetSetupRunningRef = useRef(false);
   const waterCareSetupRunningRef = useRef(false);
   const weeklyOperationsSetupRunningRef = useRef(false);
@@ -2668,6 +2669,187 @@ export default function AtlasApp() {
       window.removeEventListener("focus", onFocus);
     };
   }, [ready, operationsHydrated, activePropertyId]);
+
+  useEffect(() => {
+    if (
+      !ready ||
+      !operationsHydrated ||
+      syncState !== "synced" ||
+      calendarSourceSyncRunningRef.current
+    ) return;
+
+    let cancelled = false;
+
+    const syncScheduledWorkToCalendar = async () => {
+      calendarSourceSyncRunningRef.current = true;
+      try {
+        type DesiredCalendarSource = {
+          preferredId: string;
+          linkedType: "Task" | "Work Order";
+          linkedId: string;
+          date: string;
+          time: string;
+          title: string;
+          area: string;
+          notes: string;
+          completed: boolean;
+          recurring: boolean;
+        };
+
+        const desired: DesiredCalendarSource[] = [];
+
+        workPlanTasks.forEach((task) => {
+          const meta = taskMeta[task.id] || taskDetails(task.id);
+          const dueDate = String(meta.dueDate || "").slice(0, 10);
+          if (!dueDate) return;
+          desired.push({
+            preferredId: `atlas-auto-task-${activePropertyId}-${task.id}`,
+            linkedType: "Task",
+            linkedId: task.id,
+            date: dueDate,
+            time: String(task.fixedTime || ""),
+            title: task.title,
+            area: task.category || "Tasks",
+            notes: String(meta.notes || task.notes || ""),
+            completed: meta.status === "Completed",
+            recurring: Boolean(task.recurring),
+          });
+        });
+
+        serviceRecords.forEach((workOrder) => {
+          const scheduledDate = String(workOrder.date || "").slice(0, 10);
+          if (!scheduledDate) return;
+          desired.push({
+            preferredId: `atlas-auto-work-order-${activePropertyId}-${workOrder.id}`,
+            linkedType: "Work Order",
+            linkedId: workOrder.id,
+            date: scheduledDate,
+            time: "",
+            title: workOrder.title,
+            area: String(workOrder.workCategory || "Work Orders"),
+            notes: String(workOrder.notes || ""),
+            completed: workOrder.status === "Completed",
+            recurring: Boolean(workOrder.recurring),
+          });
+        });
+
+        const nextCalendar = [...calendarItems];
+        const changedRecords: AtlasCalendarItem[] = [];
+        const retainedAutoIds = new Set<string>();
+
+        desired.forEach((source) => {
+          let recordIndex = nextCalendar.findIndex(
+            (item) => item.id === source.preferredId,
+          );
+
+          if (recordIndex < 0) {
+            recordIndex = nextCalendar.findIndex(
+              (item) =>
+                item.linkedType === source.linkedType &&
+                item.linkedId === source.linkedId &&
+                String(item.propertyId || activePropertyId) === activePropertyId,
+            );
+          }
+
+          const existing = recordIndex >= 0 ? nextCalendar[recordIndex] : undefined;
+          const recordId = existing?.id || source.preferredId;
+          if (recordId.startsWith(`atlas-auto-`)) retainedAutoIds.add(recordId);
+
+          const nextRecord = normalizeCalendar({
+            ...(existing || {}),
+            id: recordId,
+            propertyId: activePropertyId,
+            date: source.date,
+            time: source.time,
+            title: source.title,
+            area: source.area,
+            categoryLabel: existing?.categoryLabel || source.area,
+            allDay: !source.time,
+            repeat: existing?.repeat || (source.recurring ? "Custom" : "None"),
+            reminder: existing?.reminder || "Morning of",
+            notes: source.notes,
+            linkedType: source.linkedType,
+            linkedId: source.linkedId,
+            linkedName: source.title,
+            source: source.linkedType === "Task" ? "task" : "work-order",
+            completed: source.completed,
+            status: source.completed ? "Completed" : "Scheduled",
+          });
+
+          const comparable = (item?: AtlasCalendarItem) => item ? JSON.stringify({
+            propertyId: item.propertyId,
+            date: item.date,
+            time: item.time,
+            title: item.title,
+            area: item.area,
+            categoryLabel: item.categoryLabel,
+            allDay: item.allDay,
+            repeat: item.repeat,
+            reminder: item.reminder,
+            notes: item.notes,
+            linkedType: item.linkedType,
+            linkedId: item.linkedId,
+            linkedName: item.linkedName,
+            source: item.source,
+            completed: item.completed,
+            status: item.status,
+          }) : "";
+
+          if (comparable(existing) === comparable(nextRecord)) return;
+          if (recordIndex >= 0) nextCalendar[recordIndex] = nextRecord;
+          else nextCalendar.push(nextRecord);
+          changedRecords.push(nextRecord);
+        });
+
+        const staleAutoRecords = nextCalendar.filter(
+          (item) =>
+            item.id.startsWith(`atlas-auto-task-${activePropertyId}-`) ||
+            item.id.startsWith(`atlas-auto-work-order-${activePropertyId}-`),
+        ).filter((item) => !retainedAutoIds.has(item.id));
+
+        const staleIds = new Set(staleAutoRecords.map((item) => item.id));
+        const finalCalendar = staleIds.size
+          ? nextCalendar.filter((item) => !staleIds.has(item.id))
+          : nextCalendar;
+
+        if (cancelled) return;
+
+        if (changedRecords.length || staleIds.size) {
+          const sortedCalendar = byTitle(finalCalendar);
+          setCalendarItems(sortedCalendar);
+          saveStoredArray(storageKeys.calendar[0], sortedCalendar);
+        }
+
+        if (changedRecords.length) {
+          await Promise.all(
+            changedRecords.map((record) =>
+              postAtlasRecord("calendar", { ...record, propertyId: activePropertyId }),
+            ),
+          );
+        }
+
+        if (staleAutoRecords.length) {
+          await Promise.all(
+            staleAutoRecords.map((record) => deleteAtlasRecord("calendar", record.id)),
+          );
+        }
+      } finally {
+        calendarSourceSyncRunningRef.current = false;
+      }
+    };
+
+    void syncScheduledWorkToCalendar();
+    return () => { cancelled = true; };
+  }, [
+    ready,
+    operationsHydrated,
+    syncState,
+    activePropertyId,
+    workPlanTasks,
+    taskMeta,
+    serviceRecords,
+    calendarItems,
+  ]);
 
   useEffect(() => {
     if (!ready || !operationsHydrated || syncState !== "synced" || !vehicleCare.length) return;
@@ -19714,6 +19896,7 @@ ${notes.trim()}` : notes.trim(),
 
   function renderAssets() {
     return <AtlasAssetsWorkspace {...{
+      activePropertyId,
       addAsset,
       addAssetPhotoFiles,
       addWorkOrder,
@@ -19778,6 +19961,8 @@ ${notes.trim()}` : notes.trim(),
       assetVisibleSections,
       clearRecordDirty,
       dangerButtonStyle,
+      deleteManualRecord,
+      deleteSelectedDocument,
       deleteAssetPhoto,
       deleteAssetRecord,
       excludedAssetCategories,
@@ -19799,6 +19984,8 @@ ${notes.trim()}` : notes.trim(),
       mutedSmallStyle,
       noticeStyle,
       openPhotoPreview,
+      openFileInBrowser,
+      openUploadedFile,
       partRecords,
       pasteAssetPhoto,
       photoTimelineProjects,
@@ -19835,9 +20022,11 @@ ${notes.trim()}` : notes.trim(),
       setFavoriteAssetIds,
       setPhotoTimelineView,
       setRecentAssetIds,
+      setLocations,
       setScreen,
       setSelectedAssetId,
       setSelectedAssetIds,
+      setSelectedDocumentId,
       setSelectedLocationId,
       setSelectedManualId,
       setSelectedPhotoProjectId,
