@@ -19719,7 +19719,15 @@ ${notes.trim()}` : notes.trim(),
     return (
       <AtlasContacts
         selectedContactId={selectedContactId}
+        setSelectedContactId={setSelectedContactId}
         contactRecords={contactRecords}
+        vendorRecords={vendorRecords}
+        teamDirectory={teamDirectory}
+        activePropertyId={activePropertyId}
+        openVendor={(vendorId: string) => {
+          setSelectedVendorId(vendorId);
+          setScreen("vendors");
+        }}
         isMobile={isMobile}
         startNewContact={startNewContact}
         goldButtonStyle={goldButtonStyle}
@@ -19739,6 +19747,7 @@ ${notes.trim()}` : notes.trim(),
         contactSecondaryLineStyle={contactSecondaryLineStyle}
         noticeStyle={noticeStyle}
         contactEditorOpen={contactEditorOpen}
+        setContactEditorOpen={setContactEditorOpen}
         stackStyle={stackStyle}
         contactDetailHeaderStyle={contactDetailHeaderStyle}
         contactDraft={contactDraft}
@@ -29901,8 +29910,9 @@ ${notes.trim()}` : notes.trim(),
           .atlas-mobile-content span,
           .atlas-mobile-content small,
           .atlas-mobile-content label {
-            overflow-wrap: anywhere;
+            overflow-wrap: normal;
             word-break: normal;
+            hyphens: none;
           }
           .atlas-mobile-content button {
             white-space: normal !important;
@@ -29924,7 +29934,7 @@ ${notes.trim()}` : notes.trim(),
           }
           .atlas-dashboard-hero h1 {
             font-size: clamp(25px, 8vw, 32px) !important;
-            overflow-wrap: anywhere;
+            overflow-wrap: normal;
           }
           .atlas-dashboard-command {
             width: 100% !important;
@@ -29987,6 +29997,34 @@ ${notes.trim()}` : notes.trim(),
           .atlas-app-shell .atlas-sidebar-nav-button {
             min-height: 36px !important;
           }
+        }
+        .atlas-app-shell,
+        .atlas-app-shell section,
+        .atlas-app-shell main,
+        .atlas-app-shell nav,
+        .atlas-app-shell form {
+          min-width: 0;
+        }
+        .atlas-app-shell button,
+        .atlas-app-shell select,
+        .atlas-app-shell input,
+        .atlas-app-shell textarea {
+          box-sizing: border-box;
+          max-width: 100%;
+        }
+        .atlas-app-shell button {
+          overflow-wrap: normal;
+          word-break: normal;
+          hyphens: none;
+        }
+        .atlas-record-detail-content,
+        .atlas-record-detail-content > * {
+          min-width: 0;
+          max-width: 100%;
+        }
+        .atlas-notifications-panel {
+          box-sizing: border-box;
+          overscroll-behavior: contain;
         }
       `}</style>
       <div
@@ -30053,7 +30091,7 @@ ${notes.trim()}` : notes.trim(),
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(0, 1fr) auto auto",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                 gap: 8,
                 alignItems: "center",
                 width: "100%",
@@ -30068,6 +30106,7 @@ ${notes.trim()}` : notes.trim(),
                   width: "100%",
                   minWidth: 0,
                   minHeight: 42,
+                  gridColumn: "1 / -1",
                 }}
               >
                 {atlasProperties
@@ -30080,15 +30119,49 @@ ${notes.trim()}` : notes.trim(),
               </select>
               <button
                 type="button"
+                onClick={() => setMobileFieldMoreOpen(true)}
+                aria-haspopup="dialog"
+                aria-expanded={mobileFieldMoreOpen}
+                style={{
+                  ...secondaryButtonStyle,
+                  width: "100%",
+                  minWidth: 0,
+                  minHeight: 42,
+                  padding: "7px 8px",
+                  borderColor: "rgba(255,255,255,.22)",
+                  background: "rgba(255,255,255,.10)",
+                  color: "#FFFFFF",
+                }}
+              >
+                Menu
+              </button>
+              <div style={{ minWidth: 0, width: "100%" }}>
+                <AtlasNotifications
+                  propertyId={activePropertyId}
+                  propertyName={atlasProperties.find((property) => property.id === activePropertyId)?.name || activePropertyId}
+                  workOrders={serviceRecords}
+                  parts={partRecords}
+                  inboxItems={inboxItems}
+                  requests={requestRecords}
+                  colors={colors}
+                  isMobile={true}
+                  onOpenWork={(id) => { setSelectedServiceId(id); setScreen("history"); }}
+                  onOpenInbox={(id) => { setSelectedInboxId(id); setScreen("inbox"); }}
+                  onOpenRequest={(id) => { setSelectedRequestId(id); setScreen("requests"); }}
+                  onOpenParts={() => setScreen("parts")}
+                />
+              </div>
+              <button
+                type="button"
                 onClick={() => setDashboardAssistantOpen(true)}
                 aria-label="Athena"
                 title="Athena"
                 style={{
                   ...secondaryButtonStyle,
-                  width: 42,
-                  minWidth: 42,
+                  width: "100%",
+                  minWidth: 0,
                   minHeight: 42,
-                  padding: 0,
+                  padding: "7px 8px",
                   display: "grid",
                   placeItems: "center",
                   borderColor: "rgba(255,255,255,.22)",
@@ -30096,7 +30169,7 @@ ${notes.trim()}` : notes.trim(),
                   color: "#FFFFFF",
                 }}
               >
-                <span aria-hidden="true" style={{ fontSize: 17 }}>✦</span>
+                <span>Athena</span>
               </button>
             </div>
           ) : (
@@ -30202,7 +30275,7 @@ ${notes.trim()}` : notes.trim(),
                   <div style={{ ...sidebarNavSectionStyle, order: 60 }}>
                     <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>Departments</div>
                     <div style={sidebarNavItemsStyle}>
-                      {([['house','⌂ House & Maintenance'],['garage','🚗 Garage'],['pool','💧 Pool & Spa'],['landscaping','🌿 Landscaping & Irrigation'],['marine','⚓ Dock & Waterfront']] as const).map(([id, label]) => (
+                      {([['house','House & Maintenance'],['garage','Garage'],['pool','Pool & Spa'],['landscaping','Landscaping & Irrigation'],['marine','Dock & Waterfront']] as const).map(([id, label]) => (
                         <button
                           key={id}
                           type="button"
@@ -30624,25 +30697,25 @@ ${notes.trim()}` : notes.trim(),
             <div
               role="dialog"
               aria-modal="true"
-              aria-label="More Atlas field tools"
+              aria-label="All Atlas sections"
               onMouseDown={(event) => {
                 if (event.currentTarget === event.target) setMobileFieldMoreOpen(false);
               }}
               style={{
                 position: "fixed",
                 inset: 0,
-                zIndex: 8990,
+                zIndex: 12020,
                 display: "grid",
-                alignItems: "end",
+                alignItems: "start",
                 background: "rgba(7,27,47,.36)",
-                padding: "12px 12px calc(82px + env(safe-area-inset-bottom))",
+                padding: "max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom))",
               }}
             >
               <section
                 onMouseDown={(event) => event.stopPropagation()}
                 style={{
                   width: "100%",
-                  maxHeight: "72dvh",
+                  maxHeight: "calc(100dvh - max(16px, env(safe-area-inset-top)) - max(8px, env(safe-area-inset-bottom)))",
                   overflowY: "auto",
                   borderRadius: 20,
                   background: "#FFFFFF",
@@ -30661,54 +30734,82 @@ ${notes.trim()}` : notes.trim(),
                   }}
                 >
                   <div>
-                    <div style={eyebrowStyle}>Field Mode</div>
-                    <strong style={{ color: colors.navy, fontSize: 17 }}>More</strong>
+                    <strong style={{ color: colors.navy, fontSize: 19 }}>All Atlas Sections</strong>
                   </div>
                   <button
                     type="button"
                     onClick={() => setMobileFieldMoreOpen(false)}
                     style={{ ...secondaryButtonStyle, width: "auto", minHeight: 36, padding: "6px 10px" }}
                   >
-                    Close
+                    <span aria-hidden="true" style={{ fontSize: 22, lineHeight: 1 }}>×</span>
                   </button>
                 </div>
 
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gridTemplateColumns: "minmax(0, 1fr)",
                     gap: 8,
                   }}
                 >
-                  {[
-                    ["Tasks", () => { setTasksView("tasks"); setScreen("planner"); }],
-                    ["Calendar", () => setScreen("calendar")],
-                    ["Locations", () => setScreen("locations")],
-                    ["Vendors", () => setScreen("vendors")],
-                    ["Documents", () => setScreen("documents")],
-                    ["Requests", () => setScreen("requests")],
-                    ["Procedures", () => setScreen("procedures")],
-                    ["Inbox", () => setScreen("inbox")],
-                    ["QR / Scan", () => setScreen("scan")],
-                  ].map(([label, action]) => (
-                    <button
-                      key={label as string}
-                      type="button"
-                      onClick={() => {
-                        setMobileFieldMoreOpen(false);
-                        (action as () => void)();
-                      }}
-                      style={{
-                        ...secondaryButtonStyle,
-                        minHeight: 48,
-                        padding: "9px 10px",
-                        justifyContent: "flex-start",
-                        textAlign: "left",
-                      }}
-                    >
-                      {label as string}
-                    </button>
+                  {visiblePrimaryNavigationSections.map((section) => (
+                    <section key={section.label} style={{ display: "grid", gap: 7 }}>
+                      <div style={{ ...eyebrowStyle, marginTop: 4 }}>{section.label}</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 8 }}>
+                        {section.items.map((screenId) => {
+                          const item = screens.find((candidate) => candidate.id === screenId);
+                          if (!item) return null;
+                          const label = screenId === "planner"
+                            ? (isAddisonUser ? "My Tasks" : "Tasks")
+                            : screenId === "timeline"
+                              ? "Projects"
+                              : item.label;
+                          return (
+                            <button
+                              key={screenId}
+                              type="button"
+                              onClick={() => {
+                                setMobileFieldMoreOpen(false);
+                                if (screenId === "planner") setTasksView("tasks");
+                                if (screenId === "history") {
+                                  setSelectedServiceId("");
+                                  setWorkOrdersOpenKey((current) => current + 1);
+                                }
+                                setScreen(screenId);
+                              }}
+                              style={{
+                                ...secondaryButtonStyle,
+                                minHeight: 48,
+                                padding: "9px 10px",
+                                justifyContent: "flex-start",
+                                textAlign: "left",
+                                whiteSpace: "normal",
+                                wordBreak: "normal",
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
                   ))}
+                  {visibleMoreToolsScreens.length ? (
+                    <section style={{ display: "grid", gap: 7 }}>
+                      <div style={{ ...eyebrowStyle, marginTop: 4 }}>More Tools</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 8 }}>
+                        {visibleMoreToolsScreens.map((screenId) => {
+                          const item = screens.find((candidate) => candidate.id === screenId);
+                          if (!item) return null;
+                          return (
+                            <button key={screenId} type="button" onClick={() => { setMobileFieldMoreOpen(false); setScreen(screenId); }} style={{ ...secondaryButtonStyle, minHeight: 48, padding: "9px 10px", justifyContent: "flex-start", textAlign: "left", whiteSpace: "normal", wordBreak: "normal" }}>
+                              {screenId === "timeline" ? "Projects" : item.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ) : null}
                 </div>
 
                 {!isTeamScopedUser ? (
