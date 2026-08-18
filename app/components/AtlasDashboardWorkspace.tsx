@@ -279,7 +279,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     workPlanTasks
   } = props;
   const [dashboardRoutinePerson, setDashboardRoutinePerson] = useState<"Nick" | "Addison">("Nick");
-  const [dashboardNotesOpen, setDashboardNotesOpen] = useState(false);
+  const [dashboardNotesOpen, setDashboardNotesOpen] = useState(true);
 
   const teamSectionStyle: React.CSSProperties = {
     width: "100%",
@@ -1954,6 +1954,12 @@ export default function AtlasDashboardWorkspace(props: any) {
     return meta.status === "Blocked" || meta.status === "Waiting" || (Boolean(meta.dueDate) && meta.dueDate < today) || (task.priority === "High" && (!meta.dueDate || meta.dueDate <= today));
   }).slice(0, 8);
   const dashboardAttentionNotes = dashboardReminders.filter((note) => !note.done && Boolean(note.dueDate) && String(note.dueDate) <= today);
+  const openDashboardNotes = [...dashboardReminders]
+    .filter((note) => !note.done)
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  const completedDashboardNotes = [...dashboardReminders]
+    .filter((note) => note.done)
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   const dashboardHasSaveFailure = /failed|error|offline/i.test(databaseStatus) || operationsSyncState === "failed";
   const dashboardAttentionCount = dashboardAttentionTasks.length + dashboardAttentionNotes.length + (dashboardHasSaveFailure ? 1 : 0);
 
@@ -2064,6 +2070,34 @@ export default function AtlasDashboardWorkspace(props: any) {
     setDashboardReminders((current) => current.filter((item) => item.id !== noteId));
     setTodayLogEntries((current) => current.filter((entry: any) => entry.id !== noteId));
   };
+  const toggleDashboardNoteDone = (noteId: string) => {
+    const note = dashboardReminders.find((item) => item.id === noteId);
+    if (!note) return;
+    const done = !note.done;
+    const updatedAt = new Date().toISOString();
+    setDashboardReminders((current) =>
+      current.map((item) => (item.id === noteId ? { ...item, done } : item)),
+    );
+    setTodayLogEntries((current) =>
+      current.map((entry: any) =>
+        entry.id === noteId ? { ...entry, done, updatedAt } : entry,
+      ),
+    );
+    const storedEntry = todayLogEntries.find((entry: any) => entry.id === noteId) as any;
+    void postAtlasRecord("notes", {
+      ...(storedEntry || {}),
+      id: noteId,
+      propertyId: activePropertyId,
+      date: storedEntry?.date || today,
+      category: "Note",
+      text: note.text,
+      createdAt: storedEntry?.createdAt || note.createdAt || updatedAt,
+      updatedAt,
+      dashboard: true,
+      dueDate: note.dueDate || "",
+      done,
+    });
+  };
   const addDashboardReminder = () => {
     const text = dashboardReminderDraft.trim();
     if (!text) return;
@@ -2136,50 +2170,50 @@ export default function AtlasDashboardWorkspace(props: any) {
           type="button"
           onClick={() => setDashboardNotesOpen((current) => !current)}
           aria-expanded={dashboardNotesOpen}
-          aria-controls="atlas-dashboard-notes"
-          style={{
-            width: "100%",
-            minHeight: 42,
-            border: 0,
-            background: "transparent",
-            padding: 0,
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 10,
-            alignItems: "center",
-            textAlign: "left",
-            color: colors.navy,
-            cursor: "pointer",
-          }}
+          style={{ display: "flex", width: "100%", justifyContent: "space-between", gap: 8, alignItems: "center", border: 0, background: "transparent", padding: 0, cursor: "pointer", textAlign: "left" }}
         >
-          <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <strong style={{ fontSize: 18 }}>Notes</strong>
-            <span style={badgeStyle("Monitor")}>{dashboardReminders.filter((note) => !note.done).length} open</span>
+          <h2 style={{ margin: 0, color: colors.navy, fontSize: 18 }}>Notes</h2>
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={badgeStyle("Monitor")}>{openDashboardNotes.length} open</span>
+            <span aria-hidden="true" style={{ color: colors.navy, fontWeight: 900 }}>{dashboardNotesOpen ? "−" : "+"}</span>
           </span>
-          <span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>{dashboardNotesOpen ? "−" : "+"}</span>
         </button>
         {dashboardNotesOpen ? (
-          <div id="atlas-dashboard-notes">
+          <>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 150px auto", gap: 7, marginTop: 8 }}>
-              <input value={dashboardReminderDraft} onChange={(event) => setDashboardReminderDraft(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addDashboardReminder(); }} placeholder="Add a note, reminder, or follow-up…" style={inputStyle}/>
-              <input type="date" value={dashboardReminderDate} onChange={(event) => setDashboardReminderDate(event.currentTarget.value)} aria-label="Reminder date" style={inputStyle}/>
-              <button type="button" onClick={addDashboardReminder} style={goldButtonStyle}>Add</button>
+              <input value={dashboardReminderDraft} onChange={(event) => setDashboardReminderDraft(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addDashboardReminder(); }} placeholder="Add a note, reminder, or follow-up…" style={{ ...inputStyle, minWidth: 0 }}/>
+              <input type="date" value={dashboardReminderDate} onChange={(event) => setDashboardReminderDate(event.currentTarget.value)} aria-label="Reminder date" style={{ ...inputStyle, minWidth: 0 }}/>
+              <button type="button" onClick={addDashboardReminder} style={{ ...goldButtonStyle, width: isMobile ? "100%" : "auto" }}>Add</button>
             </div>
-            <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: 320, overflowY: "auto" }}>
-              {[...dashboardReminders]
-                .sort((a, b) => Number(a.done) - Number(b.done))
-                .map((note) => <div key={note.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: note.done ? "#F5F7F9" : "#FFFFFF" }}>
+            <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: 360, overflowY: "auto", overflowX: "hidden" }}>
+              {openDashboardNotes.map((note) => <div key={note.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF", minWidth: 0 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 7, alignItems: "start" }}>
-                  <input type="checkbox" checked={note.done} onChange={() => setDashboardReminders((current) => current.map((item) => item.id === note.id ? { ...item, done: !item.done } : item))}/>
-                  <button type="button" onClick={() => { const text = window.prompt("Edit quick note", note.text)?.trim(); if (text) saveDashboardNote(text, note.dueDate, note.id); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, color: colors.navy, fontWeight: 800, textDecoration: note.done ? "line-through" : "none", opacity: note.done ? .6 : 1 }}><span style={{ display: "block" }}>{note.text}</span>{note.dueDate ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Remind {formatDate(note.dueDate)}</small> : null}</button>
+                  <input type="checkbox" checked={false} onChange={() => toggleDashboardNoteDone(note.id)} aria-label={`Complete ${note.text}`}/>
+                  <button type="button" onClick={() => { const text = window.prompt("Edit quick note", note.text)?.trim(); if (text) saveDashboardNote(text, note.dueDate, note.id); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, color: colors.navy, fontWeight: 800, minWidth: 0, overflowWrap: "anywhere" }}><span style={{ display: "block" }}>{note.text}</span>{note.dueDate ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Remind {formatDate(note.dueDate)}</small> : null}</button>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7, paddingLeft: 24 }}>
-                  {!note.done ? <><button type="button" onClick={() => convertDashboardReminderToTask(note.id, "Nick")} style={compactUtilityButtonStyle}>→ Nick</button><button type="button" onClick={() => convertDashboardReminderToTask(note.id, "Addison")} style={compactUtilityButtonStyle}>→ Addison</button></> : null}
+                  <button type="button" onClick={() => convertDashboardReminderToTask(note.id, "Nick")} style={compactUtilityButtonStyle}>Nick</button>
+                  <button type="button" onClick={() => convertDashboardReminderToTask(note.id, "Addison")} style={compactUtilityButtonStyle}>Addison</button>
                   <button type="button" onClick={() => deleteDashboardNote(note.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
                 </div>
               </div>)}
+              {!openDashboardNotes.length ? <div style={noticeStyle}>No open notes.</div> : null}
+              {completedDashboardNotes.length ? (
+                <details style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 8 }}>
+                  <summary style={{ cursor: "pointer", color: colors.muted, fontWeight: 800 }}>Completed ({completedDashboardNotes.length})</summary>
+                  <div style={{ display: "grid", gap: 6, marginTop: 7 }}>
+                    {completedDashboardNotes.map((note) => <div key={note.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#F5F7F9", minWidth: 0 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 7, alignItems: "start" }}>
+                        <input type="checkbox" checked onChange={() => toggleDashboardNoteDone(note.id)} aria-label={`Reopen ${note.text}`}/>
+                        <span style={{ color: colors.navy, fontWeight: 800, textDecoration: "line-through", opacity: .6, overflowWrap: "anywhere" }}>{note.text}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, marginTop: 7, paddingLeft: 24 }}><button type="button" onClick={() => deleteDashboardNote(note.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button></div>
+                    </div>)}
+                  </div>
+                </details>
+              ) : null}
             </div>
-          </div>
+          </>
         ) : null}
       </section>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.35fr) minmax(300px,.65fr)", gap: 12, alignItems: "start" }}>
