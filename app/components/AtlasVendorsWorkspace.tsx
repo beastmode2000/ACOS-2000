@@ -245,10 +245,16 @@ export default function AtlasVendorsWorkspace(props: any) {
 
   return (
     <ListDrawerLayout
-      eyebrow="Property Records"
+      eyebrow=""
       title="Vendors"
       isMobile={isMobile}
       drawerResetKey={selectedVendorId || "vendor-new"}
+      mobileDrawerOpen={isMobile && Boolean(selectedVendorId)}
+      onMobileDrawerClose={() => setSelectedVendorId("")}
+      mobileDrawerTitle={selectedVendor.name || "Vendor"}
+      gridStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
+      listPanelStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden", padding: 0 } : undefined}
+      drawerStyleOverride={isMobile ? { minWidth: 0, overflowX: "visible" } : undefined}
       right={
         <button type="button" onClick={() => addVendor()} style={goldButtonStyle}>
           Add Vendor
