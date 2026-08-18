@@ -607,7 +607,7 @@ export const builtInDashboardLayouts: DashboardSavedLayout[] = [
   { id: "mobile", name: "Mobile", widgets: makeDashboardWidgets({ hero: { size: "full" }, "today-upcoming": { size: "full" }, "property-status": { size: "full" }, routine: { size: "full" }, "atlas-brief": { size: "full" }, "recent-activity": { size: "full" }, weather: { size: "full" } }) },
 ];
 
-export function loadDashboardRoutineItems(): DashboardRoutineItem[] {
+export function loadDashboardRoutineItems(propertyId = "2000"): DashboardRoutineItem[] {
   if (typeof window === "undefined") return [];
 
   const results: DashboardRoutineItem[] = [];
@@ -616,6 +616,11 @@ export function loadDashboardRoutineItems(): DashboardRoutineItem[] {
   const childKeys = ["items", "tasks", "checklist", "steps", "entries", "routineItems"];
 
   const addItem = (value: Record<string, unknown>, path: string, storageKey: string) => {
+    const itemPropertyId = typeof value.propertyId === "string" ? value.propertyId.trim() : "";
+    // Older routine records did not carry a property id. Those records belong to
+    // the original 2000 workspace only; every newer record must match explicitly.
+    if (itemPropertyId ? itemPropertyId !== propertyId : propertyId !== "2000") return;
+
     const title = textKeys
       .map((key) => value[key])
       .find((candidate) => typeof candidate === "string" && candidate.trim()) as string | undefined;
