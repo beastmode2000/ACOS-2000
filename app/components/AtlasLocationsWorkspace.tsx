@@ -214,8 +214,8 @@ export default function AtlasLocationsWorkspace(props: any) {
     workPlanTasks
   } = props;
   const locationSourceRecords: AtlasLocationRecord[] = (isSeanMarineUser ? seanVisibleLocationRecords : locations) as AtlasLocationRecord[];
-  const locationAssetSourceRecords = isSeanMarineUser ? seanVisibleAssetRecords : assetRecords;
-  const locationWorkSourceRecords = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
+  const locationAssetSourceRecords: AtlasAssetRecord[] = (isSeanMarineUser ? seanVisibleAssetRecords : assetRecords) as AtlasAssetRecord[];
+  const locationWorkSourceRecords: AtlasServiceRecord[] = (isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords) as AtlasServiceRecord[];
   const locationAssetCount = (locationId: string) =>
     locationAssetSourceRecords.filter((asset) => assetHasLocation(asset, locationId)).length;
   const locationWorkCount = (locationId: string) => {
@@ -320,7 +320,7 @@ export default function AtlasLocationsWorkspace(props: any) {
   };
   const possibleAssetLocations = locationSourceRecords.filter(locationLooksLikeAsset);
   const childLocationsFor = (parentId: string) =>
-    byName(locationSourceRecords.filter((location) => location.parentId === parentId));
+    byName(locationSourceRecords.filter((location) => location.parentId === parentId)) as AtlasLocationRecord[];
   const normalizedLocationSearch = locationSearch.trim().toLowerCase();
   const locationMatchesSearch = (location: AtlasLocationRecord) =>
     !normalizedLocationSearch ||
@@ -361,13 +361,13 @@ export default function AtlasLocationsWorkspace(props: any) {
     depth: number;
     hasChildren: boolean;
   }[] =>
-    byName(
+    (byName(
       locationSourceRecords.filter((location) =>
         parentId
           ? location.parentId === parentId
           : !location.parentId,
       ),
-    ).flatMap((location) => {
+    ) as AtlasLocationRecord[]).flatMap((location) => {
       const children = childLocationsFor(location.id);
       const row = {
         location,
@@ -398,7 +398,7 @@ export default function AtlasLocationsWorkspace(props: any) {
         locationAssetSourceRecords.filter(
           (asset) => assetHasLocation(asset, selectedLocation.id),
         ),
-      )
+      ) as AtlasAssetRecord[]
     : [];
   const locationAssetIds = new Set(locationAssets.map((asset) => asset.id));
   const locationWorkOrders = selectedLocation.id
@@ -1791,11 +1791,11 @@ export default function AtlasLocationsWorkspace(props: any) {
                   aria-label="Add an asset to this location"
                 >
                   <option value="">+ Add Asset</option>
-                  {byName(
+                  {(byName(
                     locationAssetSourceRecords.filter(
                       (asset) => !assetHasLocation(asset, selectedLocation.id),
                     ),
-                  ).map((asset) => (
+                  ) as AtlasAssetRecord[]).map((asset) => (
                     <option key={asset.id} value={asset.id}>
                       {asset.name}
                     </option>
