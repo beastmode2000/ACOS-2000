@@ -21,6 +21,8 @@ function isPublicPath(request: NextRequest) {
   if (p === "/api/landscape-help" && hasShareToken(request)) return true;
   if (p === "/request") return true;
   if (p === "/api/atlas-requests" && hasShareToken(request)) return true;
+  if (p === "/reset-password" && hasShareToken(request)) return true;
+  if (p === "/api/atlas-password-reset") return true;
   if (p === "/asset-share" && hasShareToken(request)) return true;
   if (p === "/api/atlas" && hasAssetShareToken(request)) return true;
   return false;
