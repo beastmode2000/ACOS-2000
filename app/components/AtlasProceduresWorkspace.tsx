@@ -674,14 +674,28 @@ export default function AtlasProceduresWorkspace(props: any) {
         <div style={eyebrowStyle}>Photos and Documents</div>
         <div style={buttonRowStyle}>
           <label style={{ ...secondaryButtonStyle, cursor: "pointer" }}>
-            Add Photos
+            Take Photo
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(event) => {
+                void uploadProcedureFiles("photos", event.currentTarget.files);
+                event.currentTarget.value = "";
+              }}
+              style={{ display: "none" }}
+            />
+          </label>
+          <label style={{ ...secondaryButtonStyle, cursor: "pointer" }}>
+            Choose from Library
             <input
               type="file"
               accept="image/*"
               multiple
-              onChange={(event) =>
-                void uploadProcedureFiles("photos", event.currentTarget.files)
-              }
+              onChange={(event) => {
+                void uploadProcedureFiles("photos", event.currentTarget.files);
+                event.currentTarget.value = "";
+              }}
               style={{ display: "none" }}
             />
           </label>
