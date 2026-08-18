@@ -504,7 +504,7 @@ export default function AtlasLocationsWorkspace(props: any) {
 
   return (
     <ListDrawerLayout
-      eyebrow="Property Areas"
+      eyebrow=""
       title="Locations"
       isMobile={isMobile}
       drawerResetKey={selectedLocationId || "location-empty"}
@@ -533,6 +533,7 @@ export default function AtlasLocationsWorkspace(props: any) {
       }
       list={
         <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+          {false && <>
           <div
             style={{
               display: "grid",
@@ -543,28 +544,25 @@ export default function AtlasLocationsWorkspace(props: any) {
             }}
           >
             {[
-              ["🏠", "Top level", topLevelLocationCount, "Main property areas"],
-              ["🔗", "Connected", linkedLocationCount, "With linked records"],
-              ["🔧", "Active work", locationsWithOpenWork, "Locations with work"],
+              ["Top level", topLevelLocationCount, "Main property areas"],
+              ["Connected", linkedLocationCount, "With linked records"],
+              ["Active work", locationsWithOpenWork, "Locations with work"],
               [
-                "↔",
                 "Review",
                 possibleAssetLocations.length,
                 "May belong in Assets",
               ],
               [
-                "📦",
                 "Unassigned Assets",
                 vagueLocationAssetCount,
                 "Need a real location",
               ],
               [
-                "⚠",
                 "Hierarchy Issues",
                 orphanLocationCount,
                 "Missing parent records",
               ],
-            ].map(([icon, label, value, note]) => (
+            ].map(([label, value, note]) => (
               <div
                 key={String(label)}
                 style={{
@@ -586,22 +584,6 @@ export default function AtlasLocationsWorkspace(props: any) {
                 >
                   <span style={{ ...fieldLabelStyle, display: "block" }}>
                     {label}
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 9,
-                      display: "grid",
-                      placeItems: "center",
-                      background: colors.panel,
-                      border: `1px solid ${colors.line}`,
-                      fontSize: 14,
-                      flex: "0 0 auto",
-                    }}
-                  >
-                    {icon}
                   </span>
                 </div>
                 <strong
@@ -748,6 +730,7 @@ export default function AtlasLocationsWorkspace(props: any) {
               </span>
             </section>
           ) : null}
+          </>}
 
           <div
             style={{
