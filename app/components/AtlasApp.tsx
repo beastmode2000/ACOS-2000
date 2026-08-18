@@ -1219,6 +1219,7 @@ export default function AtlasApp() {
   const [intakeDocs, setIntakeDocs] = useState<DocumentRecord[]>([]);
   const [inboxItems, setInboxItems] = useState<InboxItemRecord[]>([]);
   const [selectedInboxId, setSelectedInboxId] = useState("");
+  const convertingFieldReportsRef = useRef(new Set<string>());
   const [inboxMessage, setInboxMessage] = useState("Loading Atlas Inbox...");
   const [analyzingInboxId, setAnalyzingInboxId] = useState("");
   const [savingInboxApprovalId, setSavingInboxApprovalId] = useState("");
@@ -4914,7 +4915,7 @@ export default function AtlasApp() {
 
   const restrictedTeamScreenIds = new Set<AtlasScreen>(
     isAddisonUser
-      ? ["planner", "routines"]
+      ? ["planner"]
       : isRequestCoordinatorUser
         ? ["dashboard", "requests", "locations", "assets", "history"]
         : isSeanMarineUser
@@ -4935,7 +4936,7 @@ export default function AtlasApp() {
                 ? "Marine Operations"
                 : "My Atlas",
           items: isAddisonUser
-            ? (["planner", "routines"] as AtlasScreen[])
+            ? (["planner"] as AtlasScreen[])
             : isRequestCoordinatorUser
               ? (["dashboard", "requests", "locations", "assets", "history"] as AtlasScreen[])
               : isSeanMarineUser
@@ -17849,6 +17850,81 @@ ${notes.trim()}` : notes.trim(),
     return <div style={{ display: "grid", gap: 12 }}><section style={{ ...cardStyle, background: colors.navy, color: "#FFFFFF" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Seasonal Intelligence</div><h2 style={{ margin: "4px 0", color: "#FFFFFF" }}>Plan the work before it becomes urgent</h2><p style={{ margin: 0, opacity: .84 }}>Atlas watches scheduling windows, targets, deadlines, and yearly completion history.</p></div><div style={{ textAlign: "right" }}><strong style={{ display: "block", fontSize: 25 }}>{inWindow.length}</strong><small style={{ opacity: .82 }}>ready to schedule</small></div></div></section><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>{[["Overdue",overdue.length],["In window",inWindow.length],["Next 60 days",upcoming.length],["Programs",seasonalItems.length]].map(([label,value]) => <div key={String(label)} style={{ ...cardStyle, padding: 10 }}><small style={fieldLabelStyle}>{String(label).toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 22, color: label === "Overdue" && Number(value) ? colors.red : colors.navy }}>{value}</strong></div>)}</div>{missingPrograms.length ? <section style={cardStyle}><div style={eyebrowStyle}>Recommended programs</div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 9 }}>{missingPrograms.map((program) => <button key={program.id} type="button" onClick={() => { setSeasonalItems((current) => [...current, program]); showSaveToast(`${program.title} added.`); }} style={{ ...secondaryButtonStyle, minHeight: 55, textAlign: "left", justifyContent: "space-between" }}><span><strong style={{ display: "block" }}>{program.title}</strong><small style={mutedSmallStyle}>{program.category} · {program.season}</small></span><span>＋</span></button>)}</div></section> : null}<section><div style={{ ...eyebrowStyle, marginBottom: 8 }}>Seasonal plan</div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>{seasonalItems.sort((a, b) => a.windowStart.localeCompare(b.windowStart)).map(card)}</div></section></div>;
   }
 
+  async function submitAddisonFieldReport(report: {
+    description: string;
+    locationId: string;
+    canHandle: boolean;
+    files: UploadedFileRecord[];
+  }) {
+    const description = report.description.trim();
+    if (!description) return { ok: false, error: "Describe what you found." };
+    const titleLine = description.split(/\r?\n/).find((line) => line.trim())?.trim() || "Field Report";
+    const title = titleLine.length > 80 ? `${titleLine.slice(0, 77)}…` : titleLine;
+    const reportLocationName = report.locationId
+      ? locationName(report.locationId)
+      : "General property";
+
+    const matchingOpenReport = inboxItems.some((item) => {
+      if (item.status === "Archived") return false;
+      const data = (item.extractedData || {}) as Record<string, unknown>;
+      return (
+        item.source === "Addison Field Report" &&
+        String(data.propertyId || "") === activePropertyId &&
+        String(item.notes || "").trim().toLowerCase() ===
+          description.toLowerCase() &&
+        String(data.locationId || item.targetId || "") === report.locationId
+      );
+    });
+    if (matchingOpenReport) {
+      showSaveToast("This report is already waiting in the Inbox.");
+      return { ok: true };
+    }
+
+    try {
+      const response = await fetch("/api/atlas-inbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          intakeType: "Work Order Issue",
+          status: "Needs Review",
+          source: "Addison Field Report",
+          notes: description,
+          pastedText: "",
+          files: report.files,
+          targetType: report.locationId ? "Location" : "General",
+          targetId: report.locationId,
+          targetName: reportLocationName,
+          proposedAction: "Attach to Existing",
+          extractedData: {
+            propertyId: activePropertyId,
+            reportType: "Field Report",
+            submittedBy: currentAtlasUser?.name || "Addison",
+            canHandle: report.canHandle,
+            locationId: report.locationId,
+            locationName: reportLocationName,
+            suggestedAction: "Create Task",
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Field Report could not be sent.");
+      }
+      const saved = payload.item as InboxItemRecord;
+      setInboxItems((current) => [
+        saved,
+        ...current.filter((item) => item.id !== saved.id),
+      ]);
+      showSaveToast("Report sent to Inbox.");
+      return { ok: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Field Report could not be sent.";
+      showSaveToast(message, "warning");
+      return { ok: false, error: message };
+    }
+  }
+
   function renderAddisonToday() {
     return (
       <AtlasAddisonWork
@@ -17877,6 +17953,8 @@ ${notes.trim()}` : notes.trim(),
         eyebrowStyle={eyebrowStyle}
         fieldLabelStyle={fieldLabelStyle}
         colors={colors}
+        locations={locations}
+        submitFieldReport={submitAddisonFieldReport}
       />
     );
   }
@@ -22376,8 +22454,146 @@ ${notes.trim()}` : notes.trim(),
     setScreen("intake");
   }
 
+  function fieldReportInfo(item: InboxItemRecord) {
+    const data = (item.extractedData || {}) as Record<string, unknown>;
+    return {
+      isFieldReport:
+        item.source === "Addison Field Report" ||
+        String(data.reportType || "") === "Field Report",
+      submittedBy: String(data.submittedBy || "Addison"),
+      canHandle: Boolean(data.canHandle),
+      locationId: String(data.locationId || item.targetId || ""),
+      locationName: String(
+        data.locationName || item.targetName || "General property",
+      ),
+      convertedId: String(data.convertedId || ""),
+    };
+  }
+
+  async function archiveConvertedFieldReport(
+    item: InboxItemRecord,
+    convertedTo: "Task" | "Work Order" | "Dismissed",
+    convertedId = "",
+  ) {
+    await updateInboxItem(item.id, {
+      status: "Archived",
+      extractedData: {
+        ...(item.extractedData || {}),
+        convertedTo,
+        convertedId,
+        convertedAt: new Date().toISOString(),
+      },
+    });
+    setSelectedInboxId("");
+  }
+
+  async function createTaskFromFieldReport(item: InboxItemRecord) {
+    const info = fieldReportInfo(item);
+    if (info.convertedId) {
+      showSaveToast("This report has already been converted.");
+      return;
+    }
+    if (convertingFieldReportsRef.current.has(item.id)) return;
+    convertingFieldReportsRef.current.add(item.id);
+
+    try {
+      const taskId = addAtlasTask(item.title);
+      if (!taskId) return;
+
+      updateWorkPlanTask(taskId, {
+        locationId: info.locationId || "general",
+        notes: item.notes || "",
+      });
+      updateTaskDetails(taskId, {
+        status: "Open",
+        assignee: info.canHandle ? "Addison" : "Nick",
+        dueDate: todayISO(),
+        notes: item.notes || "",
+        instructions: item.notes || "",
+        photos: Array.isArray(item.files) ? item.files : [],
+        needsReview: false,
+      });
+
+      await archiveConvertedFieldReport(item, "Task", taskId);
+      showSaveToast(
+        info.canHandle
+          ? "Task created and assigned to Addison."
+          : "Task created and assigned to Nick.",
+      );
+    } finally {
+      convertingFieldReportsRef.current.delete(item.id);
+    }
+  }
+
+  async function createWorkOrderFromFieldReport(item: InboxItemRecord) {
+    const info = fieldReportInfo(item);
+    if (info.convertedId) {
+      showSaveToast("This report has already been converted.");
+      return;
+    }
+    if (convertingFieldReportsRef.current.has(item.id)) return;
+    convertingFieldReportsRef.current.add(item.id);
+
+    try {
+      const workOrderId = uid("wo");
+      addWorkOrder({
+        id: workOrderId,
+        title: item.title,
+        date: todayISO(),
+        status: "Open",
+        priority: "Medium",
+        notes: item.notes || "",
+        locationId: info.locationId,
+        assignedTo: info.canHandle ? "Addison" : "",
+        workType: "Work Order",
+        workCategory: "Maintenance",
+        responsibilityArea: "Field Report",
+        photos: Array.isArray(item.files) ? item.files : [],
+      });
+
+      await archiveConvertedFieldReport(item, "Work Order", workOrderId);
+      showSaveToast("Work order created from Addison’s report.");
+    } finally {
+      convertingFieldReportsRef.current.delete(item.id);
+    }
+  }
+
+  async function dismissFieldReport(item: InboxItemRecord) {
+    if (convertingFieldReportsRef.current.has(item.id)) return;
+    convertingFieldReportsRef.current.add(item.id);
+    try {
+      await archiveConvertedFieldReport(item, "Dismissed");
+      showSaveToast("Field report dismissed.");
+    } finally {
+      convertingFieldReportsRef.current.delete(item.id);
+    }
+  }
+
   function renderInbox() {
-    const filtered = inboxItems.filter((item) => {
+    const propertyInboxItems = inboxItems.filter((item) => {
+      const data = (item.extractedData || {}) as Record<string, unknown>;
+      const propertyId = String(data.propertyId || "").trim();
+      return propertyId
+        ? propertyId === activePropertyId
+        : activePropertyId === "2000";
+    });
+    const seenFieldReports = new Set<string>();
+    const filtered = propertyInboxItems.filter((item) => {
+      if (item.status === "Archived") return false;
+      const data = (item.extractedData || {}) as Record<string, unknown>;
+      const isFieldReport =
+        item.source === "Addison Field Report" ||
+        String(data.reportType || "") === "Field Report";
+      if (isFieldReport) {
+        const identity = [
+          activePropertyId,
+          String(item.title || "").trim().toLowerCase(),
+          String(item.notes || "").trim().toLowerCase(),
+          String(data.locationId || item.targetId || ""),
+        ].join("||");
+        if (seenFieldReports.has(identity)) return false;
+        seenFieldReports.add(identity);
+      }
       const haystack = [
         item.title,
         item.intakeType,
@@ -22393,8 +22609,9 @@ ${notes.trim()}` : notes.trim(),
     });
 
     const selected =
-      inboxItems.find((item) => item.id === selectedInboxId) || filtered[0];
+      filtered.find((item) => item.id === selectedInboxId) || filtered[0];
     const analysis = (selected?.extractedData || {}) as Record<string, unknown>;
+    const fieldReport = selected ? fieldReportInfo(selected) : null;
     const suggestedMatch = analysis.suggestedMatch as
       | {
           type?: string;
@@ -22515,6 +22732,39 @@ ${notes.trim()}` : notes.trim(),
                     {selected.status}
                   </p>
 
+                  {fieldReport?.isFieldReport ? (
+                    <div
+                      style={{
+                        ...noticeStyle,
+                        display: "grid",
+                        gridTemplateColumns: isMobile
+                          ? "minmax(0,1fr)"
+                          : "repeat(3,minmax(0,1fr))",
+                        gap: 10,
+                        marginBottom: 12,
+                      }}
+                    >
+                      <div>
+                        <small style={fieldLabelStyle}>REPORTED BY</small>
+                        <strong style={{ display: "block", marginTop: 3 }}>
+                          {fieldReport.submittedBy}
+                        </strong>
+                      </div>
+                      <div>
+                        <small style={fieldLabelStyle}>LOCATION</small>
+                        <strong style={{ display: "block", marginTop: 3 }}>
+                          {fieldReport.locationName}
+                        </strong>
+                      </div>
+                      <div>
+                        <small style={fieldLabelStyle}>CAN HANDLE THIS</small>
+                        <strong style={{ display: "block", marginTop: 3 }}>
+                          {fieldReport.canHandle ? "Yes" : "No"}
+                        </strong>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {(selected.files || []).length ? (
                     <div style={{ display: "grid", gap: 10 }}>
                       {(selected.files || []).map((file, index) => (
@@ -22567,65 +22817,69 @@ ${notes.trim()}` : notes.trim(),
                     </div>
                   )}
 
-                  <div
-                    style={{
-                      ...buttonRowStyle,
-                      marginTop: 12,
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        openInboxReview(selected);
-                        void analyzeInboxItem(selected);
-                      }}
-                      disabled={analyzingInboxId === selected.id}
+                  {!fieldReport?.isFieldReport ? (
+                    <div
                       style={{
-                        ...goldButtonStyle,
-                        opacity: analyzingInboxId === selected.id ? 0.65 : 1,
-                        cursor:
-                          analyzingInboxId === selected.id ? "wait" : "pointer",
+                        ...buttonRowStyle,
+                        marginTop: 12,
+                        alignItems: "center",
+                        justifyContent: "space-between",
                       }}
                     >
-                      {analyzingInboxId === selected.id
-                        ? "Reading File..."
-                        : analysis.analyzedAt
-                          ? "Analyze Again"
-                          : "Analyze Item"}
-                    </button>
-                    {analysis.analyzedAt ? (
-                      <span style={mutedSmallStyle}>
-                        Last analyzed {formatDate(String(analysis.analyzedAt))}
-                      </span>
-                    ) : null}
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          openInboxReview(selected);
+                          void analyzeInboxItem(selected);
+                        }}
+                        disabled={analyzingInboxId === selected.id}
+                        style={{
+                          ...goldButtonStyle,
+                          opacity: analyzingInboxId === selected.id ? 0.65 : 1,
+                          cursor:
+                            analyzingInboxId === selected.id ? "wait" : "pointer",
+                        }}
+                      >
+                        {analyzingInboxId === selected.id
+                          ? "Reading File..."
+                          : analysis.analyzedAt
+                            ? "Analyze Again"
+                            : "Analyze Item"}
+                      </button>
+                      {analysis.analyzedAt ? (
+                        <span style={mutedSmallStyle}>
+                          Last analyzed {formatDate(String(analysis.analyzedAt))}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
 
-                <div style={cardStyle}>
-                  <div style={eyebrowStyle}>Atlas Review</div>
-                  <h3 style={detailTitleStyle}>
-                    Analysis Opens in a Separate Review Drawer
-                  </h3>
-                  <p style={mutedSmallStyle}>
-                    The review drawer keeps the original file, detected
-                    information, editable fields, and any reliable match
-                    together. Destination fields stay blank unless you choose
-                    them.
-                  </p>
-                  <div style={buttonRowStyle}>
-                    <button
-                      type="button"
-                      onClick={() => openInboxReview(selected)}
-                      style={secondaryButtonStyle}
-                    >
-                      {analysis.analyzedAt
-                        ? "Open AI Review"
-                        : "Open Review Drawer"}
-                    </button>
+                {!fieldReport?.isFieldReport ? (
+                  <div style={cardStyle}>
+                    <div style={eyebrowStyle}>Atlas Review</div>
+                    <h3 style={detailTitleStyle}>
+                      Analysis Opens in a Separate Review Drawer
+                    </h3>
+                    <p style={mutedSmallStyle}>
+                      The review drawer keeps the original file, detected
+                      information, editable fields, and any reliable match
+                      together. Destination fields stay blank unless you choose
+                      them.
+                    </p>
+                    <div style={buttonRowStyle}>
+                      <button
+                        type="button"
+                        onClick={() => openInboxReview(selected)}
+                        style={secondaryButtonStyle}
+                      >
+                        {analysis.analyzedAt
+                          ? "Open AI Review"
+                          : "Open Review Drawer"}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
                 <div style={cardStyle}>
                   <div style={eyebrowStyle}>Review and Edit</div>
@@ -22712,24 +22966,52 @@ ${notes.trim()}` : notes.trim(),
                     >
                       Save Edits
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => openInboxItemInFastIntake(selected)}
-                      style={goldButtonStyle}
-                    >
-                      Review in Fast Intake
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void updateInboxItem(selected.id, {
-                          status: "Archived",
-                        })
-                      }
-                      style={secondaryButtonStyle}
-                    >
-                      Archive
-                    </button>
+                    {fieldReport?.isFieldReport ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void createTaskFromFieldReport(selected)}
+                          style={goldButtonStyle}
+                        >
+                          Create Task
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void createWorkOrderFromFieldReport(selected)}
+                          style={secondaryButtonStyle}
+                        >
+                          Convert to Work Order
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void dismissFieldReport(selected)}
+                          style={secondaryButtonStyle}
+                        >
+                          Dismiss
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openInboxItemInFastIntake(selected)}
+                          style={goldButtonStyle}
+                        >
+                          Review in Fast Intake
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void updateInboxItem(selected.id, {
+                              status: "Archived",
+                            })
+                          }
+                          style={secondaryButtonStyle}
+                        >
+                          Archive
+                        </button>
+                      </>
+                    )}
                     <button
                       type="button"
                       onClick={() => void deleteInboxItem(selected)}
@@ -22741,11 +23023,15 @@ ${notes.trim()}` : notes.trim(),
                 </div>
 
                 <div style={noticeStyle}>
-                  <strong>No automatic changes.</strong>
+                  <strong>
+                    {fieldReport?.isFieldReport
+                      ? "Manager approval required."
+                      : "No automatic changes."}
+                  </strong>
                   <p style={mutedSmallStyle}>
-                    This Inbox item cannot alter Assets, Vendors, Work Orders,
-                    Documents, Calendar, or Readings until you open it in Fast
-                    Intake and approve the final save.
+                    {fieldReport?.isFieldReport
+                      ? "The report stays in this property’s Inbox until you create a task, convert it to a work order, or dismiss it."
+                      : "This Inbox item cannot alter Assets, Vendors, Work Orders, Documents, Calendar, or Readings until you open it in Fast Intake and approve the final save."}
                   </p>
                 </div>
               </div>
@@ -28402,7 +28688,7 @@ ${notes.trim()}` : notes.trim(),
     let content: React.ReactNode;
 
     if (isAddisonUser) {
-      content = screen === "routines" ? renderRoutines() : renderAddisonToday();
+      content = renderAddisonToday();
     } else if (departmentCenter) content = renderDepartmentCenter(departmentCenter);
     else if (screen === "dashboard") content = renderDashboard();
     else if (screen === "portfolio") content = renderPortfolio();
