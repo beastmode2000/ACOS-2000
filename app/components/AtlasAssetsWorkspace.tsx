@@ -132,6 +132,7 @@ import type {
 
 export default function AtlasAssetsWorkspace(props: any) {
   const {
+    activePropertyId,
     addAsset,
     addAssetPhotoFiles,
     addWorkOrder,
@@ -286,6 +287,21 @@ export default function AtlasAssetsWorkspace(props: any) {
   } | null>(null);
   const [assetPdfZoom, setAssetPdfZoom] = useState(100);
   const [assetManualSaveStatus, setAssetManualSaveStatus] = useState("");
+  const [assetShareOpen, setAssetShareOpen] = useState(false);
+  const [assetShareSaving, setAssetShareSaving] = useState(false);
+  const [assetShareMessage, setAssetShareMessage] = useState("");
+  const [assetShareExpiresDays, setAssetShareExpiresDays] = useState("14");
+  const [assetShareVendorId, setAssetShareVendorId] = useState("");
+  const [assetShareIncludeLocation, setAssetShareIncludeLocation] = useState(true);
+  const [assetShareIncludeSerial, setAssetShareIncludeSerial] = useState(true);
+  const [assetShareIncludePhoto, setAssetShareIncludePhoto] = useState(true);
+  const [assetShareIncludeManuals, setAssetShareIncludeManuals] = useState(true);
+  const [assetShareResult, setAssetShareResult] = useState<{
+    shareId: string;
+    url: string;
+    expiresAt: string;
+  } | null>(null);
+  const [assetShareStatus, setAssetShareStatus] = useState("");
   const assetSourceRecords = isSeanMarineUser ? seanVisibleAssetRecords : assetRecords;
   const assetWorkSourceRecords = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
   const attachedManuals = manualsForAsset(selectedAsset);
@@ -342,6 +358,160 @@ export default function AtlasAssetsWorkspace(props: any) {
       })[0] ||
     selectedAssetPhotos[0];
   const selectedAssetCoverSource = photoSource(selectedAssetCoverPhoto);
+
+  const assetShareStorageKey = selectedAsset.id
+    ? `atlas-asset-share-v1:${activePropertyId}:${selectedAsset.id}`
+    : "";
+
+  useEffect(() => {
+    setAssetShareOpen(false);
+    setAssetShareMessage("");
+    setAssetShareStatus("");
+    setAssetShareVendorId(selectedAsset.vendorIds?.[0] || "");
+    if (!assetShareStorageKey || typeof window === "undefined") {
+      setAssetShareResult(null);
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(assetShareStorageKey);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed?.url && parsed?.shareId && new Date(parsed.expiresAt).getTime() > Date.now()) {
+        setAssetShareResult(parsed);
+      } else {
+        window.localStorage.removeItem(assetShareStorageKey);
+        setAssetShareResult(null);
+      }
+    } catch {
+      setAssetShareResult(null);
+    }
+  }, [assetShareStorageKey, selectedAsset.id]);
+
+  const shareableWebUrl = (value: unknown) => {
+    const url = String(value || "").trim();
+    return /^https?:\/\//i.test(url) ? url : "";
+  };
+
+  const createAssetVendorShare = async () => {
+    if (!selectedAsset.id || assetShareSaving) return;
+    setAssetShareSaving(true);
+    setAssetShareStatus("Creating secure link...");
+    try {
+      const selectedVendor = vendorRecords.find((vendor) => vendor.id === assetShareVendorId);
+      const manuals = assetShareIncludeManuals
+        ? attachedManuals.map((manual) => ({
+            title: manual.title || "Manual PDF",
+            documentNumber: manual.documentNumber || "",
+            url: shareableWebUrl(
+              manual.href ||
+              manual.files?.find((file) => shareableWebUrl(file.url || file.dataUrl))?.url ||
+              manual.files?.find((file) => shareableWebUrl(file.url || file.dataUrl))?.dataUrl ||
+              "",
+            ),
+          })).filter((manual) => manual.url)
+        : [];
+
+      const response = await fetch("/api/atlas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          action: "createAssetShare",
+          propertyId: activePropertyId,
+          assetId: selectedAsset.id,
+          expiresInDays: Number(assetShareExpiresDays || 14),
+          includeLocation: assetShareIncludeLocation,
+          includeSerial: assetShareIncludeSerial,
+          snapshot: {
+            locationName: assetShareIncludeLocation
+              ? locationName(selectedAsset.locationId || "")
+              : "",
+            photoUrl: assetShareIncludePhoto
+              ? shareableWebUrl(selectedAssetCoverSource)
+              : "",
+            manuals,
+            message: assetShareMessage.trim(),
+            vendorName: selectedVendor?.name || "",
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok !== true || !payload?.token) {
+        throw new Error(payload?.error || "Atlas could not create the vendor link.");
+      }
+
+      const result = {
+        shareId: String(payload.shareId || ""),
+        url: `${window.location.origin}/asset-share?token=${encodeURIComponent(String(payload.token))}`,
+        expiresAt: String(payload.expiresAt || ""),
+      };
+      setAssetShareResult(result);
+      if (assetShareStorageKey) {
+        window.localStorage.setItem(assetShareStorageKey, JSON.stringify(result));
+      }
+      setAssetShareStatus("Vendor link ready.");
+    } catch (error) {
+      setAssetShareStatus(
+        error instanceof Error ? error.message : "Atlas could not create the vendor link.",
+      );
+    } finally {
+      setAssetShareSaving(false);
+    }
+  };
+
+  const copyAssetShareLink = async () => {
+    if (!assetShareResult?.url) return;
+    try {
+      await navigator.clipboard.writeText(assetShareResult.url);
+      setAssetShareStatus("Link copied.");
+    } catch {
+      window.prompt("Copy this vendor link:", assetShareResult.url);
+    }
+  };
+
+  const sendAssetShareLink = async () => {
+    if (!assetShareResult?.url) return;
+    if (typeof navigator.share === "function") {
+      await navigator.share({
+        title: selectedAsset.name || "Atlas asset information",
+        text: `Asset information for ${selectedAsset.name || "this asset"}`,
+        url: assetShareResult.url,
+      });
+      return;
+    }
+    await copyAssetShareLink();
+  };
+
+  const revokeAssetVendorShare = async () => {
+    if (!assetShareResult?.shareId || assetShareSaving) return;
+    setAssetShareSaving(true);
+    setAssetShareStatus("Revoking link...");
+    try {
+      const response = await fetch("/api/atlas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          action: "revokeAssetShare",
+          propertyId: activePropertyId,
+          shareId: assetShareResult.shareId,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok !== true) {
+        throw new Error(payload?.error || "Atlas could not revoke the vendor link.");
+      }
+      if (assetShareStorageKey) window.localStorage.removeItem(assetShareStorageKey);
+      setAssetShareResult(null);
+      setAssetShareStatus("Link revoked.");
+    } catch (error) {
+      setAssetShareStatus(
+        error instanceof Error ? error.message : "Atlas could not revoke the vendor link.",
+      );
+    } finally {
+      setAssetShareSaving(false);
+    }
+  };
+
   const normalizedAssetSearch = assetListSearch.trim().toLowerCase();
   const favoriteAssets = favoriteAssetIds
     .map((id) => assetSourceRecords.find((asset) => asset.id === id))
@@ -1438,6 +1608,16 @@ export default function AtlasAssetsWorkspace(props: any) {
                     </button>
                     <button
                       type="button"
+                      onClick={() => {
+                        setAssetShareStatus("");
+                        setAssetShareOpen(true);
+                      }}
+                      style={assetActionButtonStyle}
+                    >
+                      Share with Vendor
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setAssetPanelCustomizeOpen((current) => !current)}
                       style={{
                         ...assetActionButtonStyle,
@@ -1459,6 +1639,182 @@ export default function AtlasAssetsWorkspace(props: any) {
                 ) : null}
               </div>
             </div>
+
+            {assetShareOpen ? (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label={`Share ${selectedAsset.name} with a vendor`}
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 10000,
+                  background: "rgba(10, 27, 50, 0.58)",
+                  display: "grid",
+                  placeItems: "center",
+                  padding: isMobile ? 12 : 24,
+                }}
+                onMouseDown={(event) => {
+                  if (event.currentTarget === event.target) setAssetShareOpen(false);
+                }}
+              >
+                <section
+                  style={{
+                    width: "min(620px, 100%)",
+                    maxHeight: "min(780px, calc(100vh - 24px))",
+                    overflowY: "auto",
+                    background: "#FFFFFF",
+                    borderRadius: 16,
+                    border: `1px solid ${colors.line}`,
+                    boxShadow: "0 24px 70px rgba(10,27,50,.28)",
+                    padding: isMobile ? 16 : 22,
+                    display: "grid",
+                    gap: 16,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                    <div>
+                      <h3 style={{ margin: 0, color: colors.navy, fontSize: 19 }}>
+                        Share with Vendor
+                      </h3>
+                      <div style={{ ...mutedSmallStyle, marginTop: 4 }}>
+                        {selectedAsset.name}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAssetShareOpen(false)}
+                      style={{ ...assetIconButtonStyle, flex: "0 0 auto" }}
+                      aria-label="Close vendor sharing"
+                    >
+                      X
+                    </button>
+                  </div>
+
+                  {!assetShareResult ? (
+                    <>
+                      <label style={assetInfoLabelStyle}>
+                        Vendor
+                        <select
+                          value={assetShareVendorId}
+                          onChange={(event) => setAssetShareVendorId(event.target.value)}
+                          style={{ ...inputStyle, width: "100%", marginTop: 6 }}
+                        >
+                          <option value="">Vendor not selected</option>
+                          {[...vendorRecords]
+                            .sort((a, b) => a.name.localeCompare(b.name))
+                            .map((vendor) => (
+                              <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+                            ))}
+                        </select>
+                      </label>
+
+                      <label style={assetInfoLabelStyle}>
+                        Message for vendor
+                        <textarea
+                          value={assetShareMessage}
+                          onChange={(event) => setAssetShareMessage(event.target.value)}
+                          placeholder="What should the vendor review before arriving?"
+                          style={{ ...inputStyle, width: "100%", minHeight: 86, resize: "vertical", marginTop: 6 }}
+                        />
+                      </label>
+
+                      <label style={assetInfoLabelStyle}>
+                        Link expires
+                        <select
+                          value={assetShareExpiresDays}
+                          onChange={(event) => setAssetShareExpiresDays(event.target.value)}
+                          style={{ ...inputStyle, width: "100%", marginTop: 6 }}
+                        >
+                          <option value="7">7 days</option>
+                          <option value="14">14 days</option>
+                          <option value="30">30 days</option>
+                        </select>
+                      </label>
+
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 9 }}>
+                        {[
+                          ["Location", assetShareIncludeLocation, setAssetShareIncludeLocation],
+                          ["Serial / VIN / HIN", assetShareIncludeSerial, setAssetShareIncludeSerial],
+                          ["Asset photo", assetShareIncludePhoto, setAssetShareIncludePhoto],
+                          [`Manuals (${attachedManuals.length})`, assetShareIncludeManuals, setAssetShareIncludeManuals],
+                        ].map(([label, checked, setter]) => (
+                          <label
+                            key={String(label)}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 9,
+                              padding: "10px 11px",
+                              border: `1px solid ${colors.line}`,
+                              borderRadius: 10,
+                              color: colors.navy,
+                              fontSize: 13,
+                              fontWeight: 800,
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={Boolean(checked)}
+                              onChange={(event) => (setter as React.Dispatch<React.SetStateAction<boolean>>)(event.target.checked)}
+                            />
+                            {String(label)}
+                          </label>
+                        ))}
+                      </div>
+
+                      <div style={{ ...mutedSmallStyle }}>
+                        Service history, internal notes, costs, contacts, and other Atlas records are never included.
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => void createAssetVendorShare()}
+                        disabled={assetShareSaving}
+                        style={{ ...assetPrimaryActionButtonStyle, width: "100%", minHeight: 44 }}
+                      >
+                        {assetShareSaving ? "Creating Link..." : "Create Secure Link"}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <label style={assetInfoLabelStyle}>
+                        Vendor link
+                        <textarea
+                          readOnly
+                          value={assetShareResult.url}
+                          onFocus={(event) => event.currentTarget.select()}
+                          style={{ ...inputStyle, width: "100%", minHeight: 76, resize: "none", marginTop: 6 }}
+                        />
+                      </label>
+                      <div style={{ ...mutedSmallStyle }}>
+                        Expires {new Date(assetShareResult.expiresAt).toLocaleString()}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 9 }}>
+                        <button type="button" onClick={() => void copyAssetShareLink()} style={assetPrimaryActionButtonStyle}>
+                          Copy Link
+                        </button>
+                        <button type="button" onClick={() => void sendAssetShareLink()} style={assetActionButtonStyle}>
+                          Share Link
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void revokeAssetVendorShare()}
+                        disabled={assetShareSaving}
+                        style={{ ...dangerButtonStyle, width: "100%" }}
+                      >
+                        {assetShareSaving ? "Revoking..." : "Revoke Link"}
+                      </button>
+                    </>
+                  )}
+
+                  {assetShareStatus ? (
+                    <div style={{ ...noticeStyle, margin: 0 }}>{assetShareStatus}</div>
+                  ) : null}
+                </section>
+              </div>
+            ) : null}
 
             <div
               style={{
@@ -2171,6 +2527,11 @@ export default function AtlasAssetsWorkspace(props: any) {
                       accept=".pdf,application/pdf"
                       style={{ display: "none" }}
                       onChange={async (event) => {
+                        if (typeof uploadManualForAsset !== "function") {
+                          event.currentTarget.value = "";
+                          startManualForAsset(selectedAsset);
+                          return;
+                        }
                         setAssetManualSaveStatus("Saving...");
                         const result = await uploadManualForAsset(
                           selectedAsset,
