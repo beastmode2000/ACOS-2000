@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { NextRequest, NextResponse } from "next/server";
+import { createHash, randomBytes } from "node:crypto";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -103,6 +104,27 @@ function asMoney(value: unknown) {
   return Number(parsed.toFixed(2));
 }
 
+function assetShareTokenHash(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function safeShareText(value: unknown, maxLength = 500) {
+  return asString(value).slice(0, maxLength);
+}
+
+function safeShareUrl(value: unknown) {
+  const text = asString(value);
+  if (!text) return "";
+  try {
+    const parsed = new URL(text);
+    return parsed.protocol === "https:" || parsed.protocol === "http:"
+      ? parsed.toString()
+      : "";
+  } catch {
+    return "";
+  }
+}
+
 function asArray(value: unknown) {
   if (Array.isArray(value)) return value;
   return [];
@@ -201,6 +223,28 @@ async function ensurePropertyColumns(sql: ReturnType<typeof neon>) {
   await sql`ALTER TABLE atlas_vendors ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
   await sql`ALTER TABLE atlas_contacts ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
   await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
+}
+
+async function ensureAssetShareTable(sql: ReturnType<typeof neon>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_asset_shares (
+      id text PRIMARY KEY,
+      token_hash text NOT NULL UNIQUE,
+      property_id text NOT NULL,
+      asset_id text NOT NULL,
+      snapshot jsonb NOT NULL,
+      created_by text NOT NULL DEFAULT '',
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      expires_at timestamptz NOT NULL,
+      revoked_at timestamptz,
+      last_viewed_at timestamptz,
+      view_count integer NOT NULL DEFAULT 0
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS atlas_asset_shares_property_asset_idx
+    ON atlas_asset_shares(property_id, asset_id, created_at DESC)
+  `;
 }
 
 
@@ -626,7 +670,7 @@ function mapAsset(row: JsonRecord) {
   return {
     id: String(row.id || ""),
     name: String(row.name || ""),
-    locationId: String(row.location_id || ""),
+    locationId: String(row.location_id || "general"),
     locationIds: asStringArray(row.location_ids),
     category: String(row.category || ""),
     status: String(row.status || "Monitor"),
@@ -806,6 +850,46 @@ export async function GET(request: NextRequest) {
     await ensureProjectsTable(sql);
     await ensureOperationalRecordsTable(sql);
     await ensurePropertyColumns(sql);
+    await ensureAssetShareTable(sql);
+
+    const assetShareToken = asString(
+      request.nextUrl.searchParams.get("assetShareToken"),
+    );
+    if (assetShareToken) {
+      if (assetShareToken.length < 24 || assetShareToken.length > 160) {
+        return atlasJson({ ok: false, error: "This vendor link is invalid." }, 404);
+      }
+
+      const shareRows = (await sql`
+        SELECT id, snapshot, expires_at, revoked_at
+        FROM atlas_asset_shares
+        WHERE token_hash = ${assetShareTokenHash(assetShareToken)}
+        LIMIT 1
+      `) as unknown as JsonRecord[];
+      const share = shareRows[0];
+      if (!share) {
+        return atlasJson({ ok: false, error: "This vendor link is invalid." }, 404);
+      }
+      if (share.revoked_at) {
+        return atlasJson({ ok: false, error: "This vendor link has been revoked." }, 410);
+      }
+      if (new Date(String(share.expires_at || "")).getTime() <= Date.now()) {
+        return atlasJson({ ok: false, error: "This vendor link has expired." }, 410);
+      }
+
+      await sql`
+        UPDATE atlas_asset_shares
+        SET last_viewed_at = NOW(), view_count = view_count + 1
+        WHERE id = ${asString(share.id)}
+      `;
+
+      return atlasJson({
+        ok: true,
+        share: share.snapshot && typeof share.snapshot === "object" ? share.snapshot : {},
+        expiresAt: String(share.expires_at || ""),
+      });
+    }
+
     if (request.nextUrl.searchParams.get("portfolio") === "1") {
       const propertyIds = ["2000", "6855", "3661", "hangar"];
       const accessible = (
@@ -1224,6 +1308,7 @@ export async function POST(request: NextRequest) {
     await ensureProjectsTable(sql);
     await ensureOperationalRecordsTable(sql);
     await ensurePropertyColumns(sql);
+    await ensureAssetShareTable(sql);
 
     let body: JsonRecord;
     try {
@@ -1241,6 +1326,138 @@ export async function POST(request: NextRequest) {
     }
 
     const action = asString(body.action);
+
+    if (action === "createAssetShare") {
+      const propertyId = asString(body.propertyId) || "2000";
+      const assetId = asString(body.assetId);
+      if (!assetId) {
+        return atlasJson({ ok: false, error: "Select an asset before creating a vendor link." }, 400, requestId);
+      }
+      if (!(await authorizeAtlasRequest(sql, request, propertyId, "edit"))) {
+        return atlasJson({ ok: false, error: "You do not have permission to share this asset." }, 403, requestId);
+      }
+
+      const assetRows = (await sql`
+        SELECT id, name, location_id, category, status, make, model, year,
+               manufacturer, serial, serial_2
+        FROM atlas_assets
+        WHERE id = ${assetId} AND property_id = ${propertyId}
+        LIMIT 1
+      `) as unknown as JsonRecord[];
+      const asset = assetRows[0];
+      if (!asset) {
+        return atlasJson({ ok: false, error: "That asset was not found in this property." }, 404, requestId);
+      }
+
+      const rawSnapshot = body.snapshot && typeof body.snapshot === "object"
+        ? body.snapshot as JsonRecord
+        : {};
+      const includeLocation = asBoolean(body.includeLocation);
+      const includeSerial = asBoolean(body.includeSerial);
+
+      let locationName = "";
+      if (includeLocation && asString(asset.location_id)) {
+        const locationRows = (await sql`
+          SELECT name
+          FROM atlas_locations
+          WHERE id = ${asString(asset.location_id)} AND property_id = ${propertyId}
+          LIMIT 1
+        `) as unknown as JsonRecord[];
+        locationName = safeShareText(locationRows[0]?.name || rawSnapshot.locationName, 180);
+      }
+
+      const manuals = asArray(rawSnapshot.manuals)
+        .filter((item) => item && typeof item === "object")
+        .map((item) => {
+          const manual = item as JsonRecord;
+          return {
+            title: safeShareText(manual.title || "Manual PDF", 180),
+            documentNumber: safeShareText(manual.documentNumber, 120),
+            url: safeShareUrl(manual.url),
+          };
+        })
+        .filter((manual) => manual.url)
+        .slice(0, 12);
+
+      const expiresInDays = Math.max(1, Math.min(30, Math.floor(Number(body.expiresInDays || 14))));
+      const token = randomBytes(32).toString("base64url");
+      const shareId = `asset-share-${Date.now()}-${randomBytes(6).toString("hex")}`;
+      const expiresAt = new Date(Date.now() + expiresInDays * 86400000).toISOString();
+      const snapshot = {
+        assetId,
+        name: safeShareText(asset.name || "Asset", 200),
+        category: safeShareText(asset.category, 160),
+        status: safeShareText(asset.status, 80),
+        make: safeShareText(asset.make, 160),
+        manufacturer: safeShareText(asset.manufacturer, 160),
+        model: safeShareText(asset.model, 160),
+        year: safeShareText(asset.year, 40),
+        serial: includeSerial ? safeShareText(asset.serial, 200) : "",
+        serial2: includeSerial ? safeShareText(asset.serial_2, 200) : "",
+        locationName,
+        photoUrl: safeShareUrl(rawSnapshot.photoUrl),
+        manuals,
+        message: safeShareText(rawSnapshot.message, 2000),
+        vendorName: safeShareText(rawSnapshot.vendorName, 200),
+      };
+
+      await sql`
+        INSERT INTO atlas_asset_shares (
+          id, token_hash, property_id, asset_id, snapshot, created_by, expires_at
+        ) VALUES (
+          ${shareId},
+          ${assetShareTokenHash(token)},
+          ${propertyId},
+          ${assetId},
+          ${JSON.stringify(snapshot)}::jsonb,
+          ${request.headers.get("x-atlas-user-email") || "Atlas user"},
+          ${expiresAt}::timestamptz
+        )
+      `;
+
+      await recordChange(
+        sql,
+        request.headers.get("x-atlas-user-email") || "Atlas user",
+        "create-share",
+        "assets",
+        assetId,
+        { shareId, propertyId, expiresAt, vendorName: snapshot.vendorName },
+      );
+
+      return atlasJson({ ok: true, shareId, token, expiresAt }, 200, requestId);
+    }
+
+    if (action === "revokeAssetShare") {
+      const propertyId = asString(body.propertyId) || "2000";
+      const shareId = asString(body.shareId);
+      if (!shareId) {
+        return atlasJson({ ok: false, error: "Share ID is required." }, 400, requestId);
+      }
+      if (!(await authorizeAtlasRequest(sql, request, propertyId, "edit"))) {
+        return atlasJson({ ok: false, error: "You do not have permission to revoke this link." }, 403, requestId);
+      }
+
+      const revokedRows = (await sql`
+        UPDATE atlas_asset_shares
+        SET revoked_at = NOW()
+        WHERE id = ${shareId} AND property_id = ${propertyId} AND revoked_at IS NULL
+        RETURNING asset_id
+      `) as unknown as JsonRecord[];
+      if (!revokedRows.length) {
+        return atlasJson({ ok: false, error: "That vendor link is no longer active." }, 404, requestId);
+      }
+
+      await recordChange(
+        sql,
+        request.headers.get("x-atlas-user-email") || "Atlas user",
+        "revoke-share",
+        "assets",
+        asString(revokedRows[0].asset_id),
+        { shareId, propertyId },
+      );
+
+      return atlasJson({ ok: true }, 200, requestId);
+    }
 
     if (action === "repair6855Calendar") {
       const sourcePropertyId = "6855";
@@ -1507,8 +1724,8 @@ if (table === "assets") {
         VALUES (
           ${id},
           ${asString(record.name) || "Untitled Asset"},
-          ${asString(record.locationId) || asStringArray(record.locationIds)[0] || ""},
-          ${asStringArray(record.locationIds).filter(Boolean)},
+          ${asString(record.locationId) || asStringArray(record.locationIds)[0] || "general"},
+          ${asStringArray(record.locationIds).length ? asStringArray(record.locationIds) : [asString(record.locationId) || "general"]},
           ${asString(record.category) || "General"},
           ${asStatus(record.status, "Monitor")},
           ${nullableString(record.make)},
