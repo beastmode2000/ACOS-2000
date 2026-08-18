@@ -160,8 +160,67 @@ async function patchAddisonRoutineTask(
   return true;
 }
 
+async function removeAddisonRoutineAssignments() {
+  await ensureAddisonBackingTables();
+  const sql = getSql();
+
+  const templateRows = await sql`
+    SELECT day_of_week, tasks
+    FROM atlas_routine_templates
+    WHERE property_id = '2000'
+  `;
+
+  for (const row of templateRows) {
+    const currentTasks = Array.isArray(row.tasks) ? row.tasks : [];
+    const nextTasks = currentTasks.filter(
+      (task: any) =>
+        !isAddisonAssigneeValue(
+          task?.assignedTo || task?.assignee || task?.assigned_to,
+        ),
+    );
+
+    if (nextTasks.length !== currentTasks.length) {
+      await sql`
+        UPDATE atlas_routine_templates
+        SET tasks = ${JSON.stringify(nextTasks)}::jsonb,
+            updated_at = NOW()
+        WHERE property_id = '2000'
+          AND day_of_week = ${Number(row.day_of_week)}
+      `;
+    }
+  }
+
+  const occurrenceRows = await sql`
+    SELECT occurrence_date, tasks
+    FROM atlas_routine_occurrences
+    WHERE property_id = '2000'
+  `;
+
+  for (const row of occurrenceRows) {
+    const currentTasks = Array.isArray(row.tasks) ? row.tasks : [];
+    const nextTasks = currentTasks.filter(
+      (task: any) =>
+        !isAddisonAssigneeValue(
+          task?.assignedTo || task?.assignee || task?.assigned_to,
+        ),
+    );
+
+    if (nextTasks.length !== currentTasks.length) {
+      await sql`
+        UPDATE atlas_routine_occurrences
+        SET tasks = ${JSON.stringify(nextTasks)}::jsonb,
+            updated_at = NOW()
+        WHERE property_id = '2000'
+          AND occurrence_date = ${String(row.occurrence_date).slice(0, 10)}::date
+      `;
+    }
+  }
+}
+
 async function loadAddisonWork() {
   await ensureAddisonBackingTables();
+  await removeAddisonRoutineAssignments();
+
   const sql = getSql();
   const today = pacificDateKey();
 
@@ -172,9 +231,10 @@ async function loadAddisonWork() {
       AND property_id = '2000'
     ORDER BY updated_at DESC
   `;
+
   const allTasks = rows.map((row: any) => ({
     ...(row.record || {}),
-    id: String(row.id || row.record?.id || ""),
+    id: String(row.id || row.record?.id || ''),
     serverUpdatedAt: row.updated_at,
   })) as AddisonTaskRecord[];
 
@@ -184,14 +244,15 @@ async function loadAddisonWork() {
     .filter((task) => {
       const meta = addisonTaskMeta(task);
       const identity = [
-        String(task.title || "").trim().toLowerCase().replace(/\s+/g, " "),
-        String(meta?.dueDate || "").slice(0, 10),
-        String(task.locationId || "general"),
+        String(task.title || '').trim().toLowerCase().replace(/\s+/g, ' '),
+        String(meta?.dueDate || '').slice(0, 10),
+        String(task.locationId || 'general'),
         task.recurring
-          ? `${Number(meta?.recurrenceInterval || 1)}-${String(meta?.recurrenceUnit || "Weeks")}`
-          : "one-time",
-        meta?.status === "Completed" ? "completed" : "active",
-      ].join("||");
+          ? `${Number(meta?.recurrenceInterval || 1)}-${String(meta?.recurrenceUnit || 'Weeks')}`
+          : 'one-time',
+        meta?.status === 'Completed' ? 'completed' : 'active',
+      ].join('||');
+
       if (seenTasks.has(identity)) return false;
       seenTasks.add(identity);
       return true;
@@ -199,128 +260,10 @@ async function loadAddisonWork() {
     .sort((a, b) => {
       const am = addisonTaskMeta(a);
       const bm = addisonTaskMeta(b);
-      return String(am?.dueDate || "9999-12-31").localeCompare(
-        String(bm?.dueDate || "9999-12-31"),
+      return String(am?.dueDate || '9999-12-31').localeCompare(
+        String(bm?.dueDate || '9999-12-31'),
       );
     });
-
-  const day = weekdayFromDateKey(today);
-
-  const templateRows = await sql`
-    SELECT name, tasks
-    FROM atlas_routine_templates
-    WHERE property_id = '2000'
-      AND day_of_week = ${day}
-    LIMIT 1
-  `;
-
-  let occurrenceRows = await sql`
-    SELECT occurrence_date, routine_name, tasks
-    FROM atlas_routine_occurrences
-    WHERE property_id = '2000'
-      AND occurrence_date = ${today}::date
-    LIMIT 1
-  `;
-
-  if (templateRows[0]) {
-    const templateTasks = Array.isArray(templateRows[0].tasks)
-      ? templateRows[0].tasks
-      : [];
-
-    if (!occurrenceRows[0]) {
-      await sql`
-        INSERT INTO atlas_routine_occurrences (
-          property_id, occurrence_date, day_of_week, routine_name, tasks, updated_at
-        )
-        VALUES (
-          '2000', ${today}::date, ${day},
-          ${String(templateRows[0].name || "Daily Routine")},
-          ${JSON.stringify(templateTasks)}::jsonb,
-          NOW()
-        )
-        ON CONFLICT (property_id, occurrence_date) DO NOTHING
-      `;
-    } else {
-      // Keep today's completion/progress state, but always pull in the latest
-      // template assignments so a routine edited in Atlas appears on Addison's
-      // field page immediately.
-      const existingTasks = Array.isArray(occurrenceRows[0].tasks)
-        ? occurrenceRows[0].tasks
-        : [];
-      const existingById = new Map(
-        existingTasks.map((task: any) => [String(task?.id || ""), task]),
-      );
-
-      const synchronizedTasks = templateTasks.map((task: any) => {
-        const existing = existingById.get(String(task?.id || ""));
-        if (!existing) return task;
-
-        return {
-          ...task,
-          completed: Boolean(existing?.completed),
-          status:
-            existing?.status === "completed" ||
-            existing?.status === "skipped" ||
-            existing?.status === "deferred"
-              ? existing.status
-              : Boolean(existing?.completed)
-                ? "completed"
-                : task?.status || "open",
-          ...(existing?.deferredTo
-            ? { deferredTo: existing.deferredTo }
-            : {}),
-          ...(existing?.deferredFrom
-            ? { deferredFrom: existing.deferredFrom }
-            : {}),
-        };
-      });
-
-      await sql`
-        UPDATE atlas_routine_occurrences
-        SET
-          day_of_week = ${day},
-          routine_name = ${String(templateRows[0].name || "Daily Routine")},
-          tasks = ${JSON.stringify(synchronizedTasks)}::jsonb,
-          updated_at = NOW()
-        WHERE property_id = '2000'
-          AND occurrence_date = ${today}::date
-      `;
-    }
-
-    occurrenceRows = await sql`
-      SELECT occurrence_date, routine_name, tasks
-      FROM atlas_routine_occurrences
-      WHERE property_id = '2000'
-        AND occurrence_date = ${today}::date
-      LIMIT 1
-    `;
-  }
-
-  const occurrence = occurrenceRows[0] || null;
-  const routineTasks = Array.isArray(occurrence?.tasks)
-    ? occurrence.tasks.filter((task: any) => {
-        if (task?.enabled === false) return false;
-        return isAddisonAssigneeValue(
-          task?.assignedTo || task?.assignee || task?.assigned_to
-        );
-      })
-    : [];
-
-  const nextDate = nextAddisonWorkDate(today);
-  const nextDay = weekdayFromDateKey(nextDate);
-  const nextRows = await sql`
-    SELECT name, tasks
-    FROM atlas_routine_templates
-    WHERE property_id = '2000'
-      AND day_of_week = ${nextDay}
-    LIMIT 1
-  `;
-  const nextRoutineTasks = Array.isArray(nextRows[0]?.tasks)
-    ? nextRows[0].tasks.filter((task: any) =>
-        task?.enabled !== false &&
-        isAddisonAssigneeValue(task?.assignedTo || task?.assignee || task?.assigned_to)
-      )
-    : [];
 
   const dailyNoteRows = await sql`
     SELECT record
@@ -330,6 +273,7 @@ async function loadAddisonWork() {
       AND id = ${today}
     LIMIT 1
   `;
+
   const dailyNoteRecord = dailyNoteRows[0]?.record || {};
 
   const locationRows = await sql`
@@ -339,27 +283,18 @@ async function loadAddisonWork() {
       AND property_id = '2000'
     ORDER BY COALESCE(record->>'name', record->>'title', id) ASC
   `;
+
   const locations = locationRows.map((row: any) => ({
-    id: String(row.id || row.record?.id || ""),
-    name: String(row.record?.name || row.record?.title || "Location"),
+    id: String(row.id || row.record?.id || ''),
+    name: String(row.record?.name || row.record?.title || 'Location'),
   }));
 
   return {
     today,
     tasks,
     locations,
-    dailyNote: String(dailyNoteRecord.note || ""),
-    dailyNoteUpdatedAt: String(dailyNoteRecord.updatedAt || ""),
-    routine: occurrence
-      ? {
-          date: String(occurrence.occurrence_date || today).slice(0, 10),
-          name: String(occurrence.routine_name || "Addison Routine"),
-          tasks: routineTasks,
-        }
-      : { date: today, name: "Addison Routine", tasks: [] },
-    nextRoutine: nextRows[0]
-      ? { date: nextDate, name: String(nextRows[0].name || "Next Routine"), tasks: nextRoutineTasks }
-      : null,
+    dailyNote: String(dailyNoteRecord.note || ''),
+    dailyNoteUpdatedAt: String(dailyNoteRecord.updatedAt || ''),
   };
 }
 
