@@ -279,7 +279,39 @@ export default function AtlasDashboardWorkspace(props: any) {
     workPlanTasks
   } = props;
   const [dashboardRoutinePerson, setDashboardRoutinePerson] = useState<"Nick" | "Addison">("Nick");
-  const [dashboardNotesOpen, setDashboardNotesOpen] = useState(true);
+  const dashboardNotesOpenStorageKey = `atlas-dashboard-notes-open-${activePropertyId}`;
+  const [dashboardNotesOpen, setDashboardNotesOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const saved = window.localStorage.getItem(
+        `atlas-dashboard-notes-open-${activePropertyId}`,
+      );
+      return saved === null ? true : saved === "true";
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(dashboardNotesOpenStorageKey);
+      setDashboardNotesOpen(saved === null ? true : saved === "true");
+    } catch {
+      setDashboardNotesOpen(true);
+    }
+  }, [dashboardNotesOpenStorageKey]);
+
+  const toggleDashboardNotes = () => {
+    setDashboardNotesOpen((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(dashboardNotesOpenStorageKey, String(next));
+      } catch {
+        // The collapse control still works if browser storage is unavailable.
+      }
+      return next;
+    });
+  };
 
   const teamSectionStyle: React.CSSProperties = {
     width: "100%",
@@ -2168,7 +2200,7 @@ export default function AtlasDashboardWorkspace(props: any) {
       <section style={{ ...cardStyle, padding: isMobile ? 10 : 12, borderColor: "#D7C07A", background: "linear-gradient(135deg,#FFFDF6,#FFFFFF)" }}>
         <button
           type="button"
-          onClick={() => setDashboardNotesOpen((current) => !current)}
+          onClick={toggleDashboardNotes}
           aria-expanded={dashboardNotesOpen}
           style={{ display: "flex", width: "100%", justifyContent: "space-between", gap: 8, alignItems: "center", border: 0, background: "transparent", padding: 0, cursor: "pointer", textAlign: "left" }}
         >
