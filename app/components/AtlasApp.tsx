@@ -137,6 +137,63 @@ type AtlasDepartmentVendor = VendorRecord & {
   contacts?: VendorContactEntry[];
 };
 
+const atlas2000WeeklySeedTitles = new Set([
+  "Monday — Property Reset & Garage",
+  "Tuesday — Dock, Waterfront & Recreation",
+  "Wednesday — Landscaping & Irrigation",
+  "Thursday — Pool, Spa & Outdoor Cleaning",
+  "Friday — Maintenance & Weekend Readiness",
+  "Friday — Seasonal Spider Control",
+  "Monday — Computer Work & Admin",
+  "Tuesday — Computer Work & Admin",
+  "Wednesday — Computer Work & Admin",
+  "Thursday — Computer Work & Admin",
+  "Friday — Computer Work & Weekly Closeout",
+  "Clean windows — Waterside & Great Room",
+  "Clean windows — East Side & Bedrooms",
+  "Clean windows — Courtyard & Main Entry",
+  "Clean windows — Garages, ADU & Remaining Areas",
+].map((title) => normalizeLocationName(title)));
+
+const atlas2000WeeklySeedCalendarIds = new Set([
+  "routine-monday-reset",
+  "routine-tuesday-dock",
+  "routine-wednesday-landscape",
+  "routine-thursday-outdoor",
+  "routine-friday-ready",
+  "routine-friday-spiders",
+  "routine-monday-admin",
+  "routine-tuesday-admin",
+  "routine-wednesday-admin",
+  "routine-thursday-admin",
+  "routine-friday-admin",
+  "routine-windows-waterside",
+  "routine-windows-east",
+  "routine-windows-courtyard",
+  "routine-windows-garage",
+  "weekly-property-meeting",
+  "lanken-tuesday-crew",
+  "nick-steve-friday-meeting",
+  "weekly-owner-update",
+]);
+
+const atlas2000WeeklySeedCalendarTitles = new Set([
+  ...atlas2000WeeklySeedTitles,
+  "Weekly Property Meeting",
+  "Lanken Landscaping Crew",
+  "Nick and Steve Meeting",
+  "Review Weekly Owner Update",
+].map((title) => normalizeLocationName(title)));
+
+function isAtlas2000WeeklySeedTask(task: Pick<WorkPlanTask, "title">) {
+  return atlas2000WeeklySeedTitles.has(normalizeLocationName(task.title));
+}
+
+function isAtlas2000WeeklySeedCalendarItem(item: Pick<CalendarItem, "id" | "title">) {
+  return atlas2000WeeklySeedCalendarIds.has(item.id) ||
+    atlas2000WeeklySeedCalendarTitles.has(normalizeLocationName(item.title));
+}
+
 function normalizeDepartmentVendor(value: Partial<AtlasDepartmentVendor>): AtlasDepartmentVendor {
   const normalized = normalizeVendor(value as VendorRecord);
   const departments = Array.from(
@@ -771,12 +828,27 @@ export default function AtlasApp() {
   const [dashboardReminderDraft, setDashboardReminderDraft] = useState("");
   const [dashboardReminderDate, setDashboardReminderDate] = useState("");
   const [dashboardReminders, setDashboardReminders] = useState<Array<{ id: string; text: string; done: boolean; createdAt: string; dueDate?: string }>>([]);
+  const dashboardRemindersSkipSaveRef = useRef(false);
+  const dashboardPersonFocusSkipSaveRef = useRef(false);
+  const dashboardLayoutSkipSaveRef = useRef(false);
+  const dashboardRoutineSkipSaveRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    dashboardRemindersSkipSaveRef.current = true;
     try {
       const raw = window.localStorage.getItem(`atlas-dashboard-reminders-v1:${activePropertyId}`);
-      setDashboardReminders(raw ? JSON.parse(raw) : []);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setDashboardReminders(
+        Array.isArray(parsed)
+          ? parsed.filter((reminder) => {
+              const reminderPropertyId = String(reminder?.propertyId || "");
+              return reminderPropertyId
+                ? reminderPropertyId === activePropertyId
+                : activePropertyId === "2000";
+            })
+          : [],
+      );
     } catch {
       setDashboardReminders([]);
     }
@@ -784,22 +856,35 @@ export default function AtlasApp() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(`atlas-dashboard-reminders-v1:${activePropertyId}`, JSON.stringify(dashboardReminders));
+    if (dashboardRemindersSkipSaveRef.current) {
+      dashboardRemindersSkipSaveRef.current = false;
+      return;
+    }
+    window.localStorage.setItem(
+      `atlas-dashboard-reminders-v1:${activePropertyId}`,
+      JSON.stringify(dashboardReminders.map((reminder) => ({ ...reminder, propertyId: activePropertyId }))),
+    );
   }, [activePropertyId, dashboardReminders]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    dashboardPersonFocusSkipSaveRef.current = true;
     const stored = window.localStorage.getItem(`atlas-dashboard-person-focus-v1:${activePropertyId}`);
-    if (stored === "Nick" || stored === "Addison" || stored === "Both") setDashboardPersonFocus(stored);
+    setDashboardPersonFocus(stored === "Nick" || stored === "Addison" || stored === "Both" ? stored : "Both");
   }, [activePropertyId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (dashboardPersonFocusSkipSaveRef.current) {
+      dashboardPersonFocusSkipSaveRef.current = false;
+      return;
+    }
     window.localStorage.setItem(`atlas-dashboard-person-focus-v1:${activePropertyId}`, dashboardPersonFocus);
   }, [activePropertyId, dashboardPersonFocus]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    dashboardLayoutSkipSaveRef.current = true;
     try {
       const raw = window.localStorage.getItem(`atlas-command-center-layouts-v2:${activePropertyId}`);
       if (!raw) {
@@ -831,6 +916,10 @@ export default function AtlasApp() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (dashboardLayoutSkipSaveRef.current) {
+      dashboardLayoutSkipSaveRef.current = false;
+      return;
+    }
     try {
       window.localStorage.setItem(
         `atlas-command-center-layouts-v2:${activePropertyId}`,
@@ -861,19 +950,26 @@ export default function AtlasApp() {
         createdAt: entry.createdAt || new Date().toISOString(),
       }));
     setTodayLogEntries(stored);
+    dashboardRoutineSkipSaveRef.current = true;
+    const propertyRoutineCompletionKey = `${dashboardRoutineStorageKeys[0]}:${activePropertyId}`;
     setCompletedDashboardRoutineIds(
-      readStoredArray<string>(dashboardRoutineStorageKeys, []).filter(Boolean),
+      readStoredArray<string>(
+        [propertyRoutineCompletionKey],
+        activePropertyId === "2000"
+          ? readStoredArray<string>(dashboardRoutineStorageKeys, [])
+          : [],
+      ).filter(Boolean),
     );
-    setDashboardRoutineItems(loadDashboardRoutineItems());
+    setDashboardRoutineItems(loadDashboardRoutineItems(activePropertyId));
 
-    const refreshRoutineItems = () => setDashboardRoutineItems(loadDashboardRoutineItems());
+    const refreshRoutineItems = () => setDashboardRoutineItems(loadDashboardRoutineItems(activePropertyId));
     window.addEventListener("focus", refreshRoutineItems);
     window.addEventListener("storage", refreshRoutineItems);
     return () => {
       window.removeEventListener("focus", refreshRoutineItems);
       window.removeEventListener("storage", refreshRoutineItems);
     };
-  }, []);
+  }, [activePropertyId]);
   const atlasSaveQueueRef = useRef<Map<string, Promise<boolean>>>(new Map());
   const atlasLastSaveRef = useRef<Map<string, string>>(new Map());
   const atlasSaveAttemptRef = useRef(0);
@@ -911,10 +1007,13 @@ export default function AtlasApp() {
   const [adminPreviewMode, setAdminPreviewMode] = useState<"none" | "addison">("none");
   const [taskUndo, setTaskUndo] = useState<{ task: WorkPlanTask; meta: AtlasTaskMeta } | null>(null);
   const taskUndoTimerRef = useRef<number | null>(null);
-  const [atlasAuditLog, setAtlasAuditLog] = useState<Array<{ id: string; at: string; user: string; action: string; detail: string }>>(() => {
+  const [atlasAuditLog, setAtlasAuditLog] = useState<Array<{ id: string; at: string; user: string; action: string; detail: string; propertyId: string }>>(() => {
     if (typeof window === "undefined") return [];
     try {
-      return JSON.parse(window.localStorage.getItem("atlas-audit-log-v1") || "[]");
+      const parsed = JSON.parse(window.localStorage.getItem("atlas-audit-log-v1") || "[]");
+      return Array.isArray(parsed)
+        ? parsed.map((entry) => ({ ...entry, propertyId: entry?.propertyId || "2000" }))
+        : [];
     } catch {
       return [];
     }
@@ -2575,7 +2674,7 @@ export default function AtlasApp() {
     void setupFleetAssetsAndSchedules();
   }, [ready, operationsHydrated, syncState, activePropertyId, vehicleCare.length, assetRecords.length, workPlanTasks.length, serviceRecords.length, calendarItems.length]);
   useEffect(() => {
-    if (!ready || !operationsHydrated || syncState !== "synced") return;
+    if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000") return;
     void setupWeeklyOperations();
   }, [ready, operationsHydrated, syncState, activePropertyId]);
   useEffect(() => {
@@ -2701,11 +2800,25 @@ export default function AtlasApp() {
     setOperationsSyncState("idle");
     setActivePropertyId(propertyId);
 
-    const scopedTasks = readStoredArray<WorkPlanTask>([`atlas-tasks-v1-${propertyId}`], propertyId === "2000" ? readStoredArray<WorkPlanTask>(["atlas-tasks-v1"], []) : []);
+    const storedScopedTasks = readStoredArray<WorkPlanTask>([`atlas-tasks-v1-${propertyId}`], propertyId === "2000" ? readStoredArray<WorkPlanTask>(["atlas-tasks-v1"], []) : []);
+    const scopedTasks = propertyId === "2000"
+      ? storedScopedTasks
+      : storedScopedTasks.filter((task) => !isAtlas2000WeeklySeedTask(task));
+    if (scopedTasks.length !== storedScopedTasks.length) {
+      saveStoredArray(`atlas-tasks-v1-${propertyId}`, scopedTasks);
+    }
     setWorkPlanTasks(scopedTasks);
     try {
       const scopedMeta = window.localStorage.getItem(`atlas-task-meta-v1-${propertyId}`) || (propertyId === "2000" ? window.localStorage.getItem("atlas-task-meta-v1") : null);
-      setTaskMeta(scopedMeta ? JSON.parse(scopedMeta) : {});
+      const parsedMeta = scopedMeta ? JSON.parse(scopedMeta) : {};
+      const visibleTaskIds = new Set(scopedTasks.map((task) => task.id));
+      const cleanMeta = propertyId === "2000"
+        ? parsedMeta
+        : Object.fromEntries(Object.entries(parsedMeta).filter(([id]) => visibleTaskIds.has(id)));
+      setTaskMeta(cleanMeta);
+      if (propertyId !== "2000") {
+        window.localStorage.setItem(`atlas-task-meta-v1-${propertyId}`, JSON.stringify(cleanMeta));
+      }
     } catch { setTaskMeta({}); }
     setVehicleCare(readStoredArray<AtlasVehicleCare>([`atlas-vehicle-care-v1-${propertyId}`], propertyId === "2000" ? readStoredArray<AtlasVehicleCare>(["atlas-vehicle-care-v1"], []) : []));
     setDaySessions(readStoredArray<AtlasDaySession>([`atlas-day-sessions-v1-${propertyId}`], []));
@@ -2720,6 +2833,21 @@ export default function AtlasApp() {
     setSelectedPartId("");
     setSelectedDocumentId("");
     setSelectedRequestId("");
+
+    // A property switch starts a clean dashboard session. Persistent dashboard
+    // settings are loaded from that property's own storage keys by the effects above.
+    setDashboardEditMode(false);
+    setDashboardCenterView("command");
+    setDashboardFeedFilter("All");
+    setDismissedDashboardFeedIds([]);
+    setDashboardTaskEditorId("");
+    setDashboardVendorVisitId("");
+    setDashboardVendorVisitNote("");
+    setDashboardReminderDraft("");
+    setDashboardReminderDate("");
+    setDashboardWorkFilter("");
+    setCompletedDashboardRoutineIds([]);
+    setDashboardRoutineItems([]);
 
     setLocations([]);
     setAssetRecords([]);
@@ -3167,7 +3295,8 @@ export default function AtlasApp() {
         const apiTasks = rawApiTasks.filter(
           (record) =>
             !pendingTaskDeleteIds.has(String(record.id)) &&
-            !taskTombstones.has(String(record.id)),
+            !taskTombstones.has(String(record.id)) &&
+            (activePropertyId === "2000" || !isAtlas2000WeeklySeedTask(record)),
         );
         const apiVehicles = Array.isArray(operationsPayload.vehicleCareRecords) ? operationsPayload.vehicleCareRecords : Array.isArray(operationsPayload.vehicleCare) ? operationsPayload.vehicleCare : [];
         const apiDaySessions = Array.isArray(operationsPayload.daySessions) ? operationsPayload.daySessions : [];
@@ -3369,7 +3498,13 @@ export default function AtlasApp() {
         // Neon remains authoritative so deleted events are not resurrected.
         const normalizedSharedItems = apiCalendar
           .map(normalizeCalendar)
-          .filter((item) => item.id && item.date && item.title);
+          .filter(
+            (item) =>
+              item.id &&
+              item.date &&
+              item.title &&
+              (activePropertyId === "2000" || !isAtlas2000WeeklySeedCalendarItem(item)),
+          );
 
         let sharedItems = byTitle(normalizedSharedItems);
 
@@ -3954,8 +4089,12 @@ export default function AtlasApp() {
 
   useEffect(() => {
     if (!ready) return;
-    saveStoredArray(dashboardRoutineStorageKeys[0], completedDashboardRoutineIds);
-  }, [ready, completedDashboardRoutineIds]);
+    if (dashboardRoutineSkipSaveRef.current) {
+      dashboardRoutineSkipSaveRef.current = false;
+      return;
+    }
+    saveStoredArray(`${dashboardRoutineStorageKeys[0]}:${activePropertyId}`, completedDashboardRoutineIds);
+  }, [ready, activePropertyId, completedDashboardRoutineIds]);
 
   useEffect(() => {
     if (!ready) return;
@@ -8231,6 +8370,7 @@ export default function AtlasApp() {
       user: currentAtlasUser?.name || "Atlas user",
       action,
       detail,
+      propertyId: activePropertyId,
     };
     setAtlasAuditLog((current) => [entry, ...current].slice(0, 250));
   }
@@ -8250,7 +8390,7 @@ export default function AtlasApp() {
       procedures: procedureRecords,
       intakeDocuments: intakeDocs,
       reminders: dashboardReminders,
-      audit: atlasAuditLog,
+      audit: atlasAuditLog.filter((entry) => entry.propertyId === activePropertyId),
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -16226,7 +16366,7 @@ ${notes.trim()}` : notes.trim(),
   }
 
   async function setupWeeklyOperations() {
-    if (weeklyOperationsSetupRunningRef.current || typeof window === "undefined") return;
+    if (activePropertyId !== "2000" || weeklyOperationsSetupRunningRef.current || typeof window === "undefined") return;
     const setupKey = `atlas-weekly-operations-v3-${activePropertyId}`;
     if (window.localStorage.getItem(setupKey) === "ready") return;
     weeklyOperationsSetupRunningRef.current = true;
@@ -18159,7 +18299,7 @@ ${notes.trim()}` : notes.trim(),
       },
       assetName,
       assetRecords,
-      atlasAuditLog,
+      atlasAuditLog: atlasAuditLog.filter((entry) => entry.propertyId === activePropertyId),
       buildWorkPlan,
       buttonRowStyle,
       canUseAdminTools,
