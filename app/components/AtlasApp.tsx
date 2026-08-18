@@ -123,7 +123,13 @@ type VendorContactEntry = {
   name: string;
   role: string;
   phone: string;
+  officePhone: string;
+  cellPhone: string;
   email: string;
+  contactType: "Office" | "Owner" | "Manager" | "Sales" | "Service" | "Installation" | "Technician" | "Billing" | "Emergency";
+  primary: boolean;
+  preferredMethod: "Office" | "Cell" | "Email";
+  notes: string;
 };
 type AtlasDepartmentVendor = VendorRecord & {
   departments?: VendorDepartmentKey[];
@@ -145,7 +151,17 @@ function normalizeDepartmentVendor(value: Partial<AtlasDepartmentVendor>): Atlas
     name: String(contact?.name || ""),
     role: String(contact?.role || ""),
     phone: String(contact?.phone || ""),
+    officePhone: String(contact?.officePhone || ""),
+    cellPhone: String(contact?.cellPhone || contact?.phone || ""),
     email: String(contact?.email || ""),
+    contactType: ["Office", "Owner", "Manager", "Sales", "Service", "Installation", "Technician", "Billing", "Emergency"].includes(String(contact?.contactType))
+      ? contact.contactType
+      : "Technician",
+    primary: Boolean(contact?.primary),
+    preferredMethod: ["Office", "Cell", "Email"].includes(String(contact?.preferredMethod))
+      ? contact.preferredMethod
+      : "Cell",
+    notes: String(contact?.notes || ""),
   }));
   const vendorStatus = ["Preferred", "Backup", "Inactive"].includes(String(value.vendorStatus))
     ? value.vendorStatus
