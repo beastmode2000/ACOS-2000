@@ -19174,26 +19174,16 @@ ${notes.trim()}` : notes.trim(),
                       alt={selectedMapLabel.label}
                       style={mapHeaderPhotoStyle}
                     />
-                    <label style={mapHeaderPhotoChangeStyle}>
-                      Change Photo
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleMapHeaderPhotoUpload}
-                        style={{ display: "none" }}
-                      />
-                    </label>
+                    <div style={{ position: "absolute", right: 8, bottom: 8, display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <label style={{ ...mapHeaderPhotoChangeStyle, position: "static" }}>Take Photo<input type="file" accept="image/*" capture="environment" onChange={handleMapHeaderPhotoUpload} style={{ display: "none" }} /></label>
+                      <label style={{ ...mapHeaderPhotoChangeStyle, position: "static" }}>Upload from Library<input type="file" accept="image/*" onChange={handleMapHeaderPhotoUpload} style={{ display: "none" }} /></label>
+                    </div>
                   </div>
                 ) : (
-                  <label style={mapHeaderPhotoEmptyStyle}>
-                    Add header photo
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleMapHeaderPhotoUpload}
-                      style={{ display: "none" }}
-                    />
-                  </label>
+                  <div style={{ ...mapHeaderPhotoEmptyStyle, display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
+                    <label style={secondaryButtonStyle}>Take Photo<input type="file" accept="image/*" capture="environment" onChange={handleMapHeaderPhotoUpload} style={{ display: "none" }} /></label>
+                    <label style={secondaryButtonStyle}>Upload from Library<input type="file" accept="image/*" onChange={handleMapHeaderPhotoUpload} style={{ display: "none" }} /></label>
+                  </div>
                 )}
               </div>
 
@@ -19392,14 +19382,18 @@ ${notes.trim()}` : notes.trim(),
                         width: "fit-content",
                       }}
                     >
-                      Add Photos
+                      Take Photo
                       <input
                         type="file"
                         accept="image/*"
-                        multiple
+                        capture="environment"
                         onChange={handleMapLabelPhotoUpload}
                         style={{ display: "none" }}
                       />
+                    </label>
+                    <label style={{ ...secondaryButtonStyle, display: "inline-flex", cursor: "pointer", width: "fit-content" }}>
+                      Upload from Library
+                      <input type="file" accept="image/*" multiple onChange={handleMapLabelPhotoUpload} style={{ display: "none" }} />
                     </label>
 
                     {selectedMapLabel.photos?.length ? (
@@ -19816,7 +19810,7 @@ ${notes.trim()}` : notes.trim(),
       date: todayISO(),
       title: `${vendor.name || "Vendor"} service`,
       status: "Open",
-      priority: "Normal",
+      priority: "Medium",
       workType: "Work Order",
       notes: "",
     });
@@ -22989,7 +22983,7 @@ ${notes.trim()}` : notes.trim(),
               <div style={eyebrowStyle}>2. Capture or upload</div>
               <h3 style={detailTitleStyle}>{fastIntakeKind}</h3>
               <p style={mutedSmallStyle}>
-                Take Photo opens the phone camera. Upload supports photos,
+                Take Photo opens the phone camera. Upload from Library supports photos,
                 screenshots, PDFs, text files, and common documents.
               </p>
 
@@ -23008,7 +23002,7 @@ ${notes.trim()}` : notes.trim(),
                   />
                 </label>
                 <label style={secondaryUploadButtonStyle}>
-                  Upload File(s)
+                  Upload from Library
                   <input
                     type="file"
                     accept="image/*,.pdf,.txt,.doc,.docx"
@@ -24621,17 +24615,13 @@ ${notes.trim()}` : notes.trim(),
                   }))
                 }
               />
-              <label style={{ display: "grid", gap: 7 }}>
-                <span style={fieldLabelStyle}>Upload logo image</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(event) =>
-                    uploadWorkLinkLogo(event.currentTarget.files?.[0])
-                  }
-                  style={inputStyle}
-                />
-              </label>
+              <div style={{ display: "grid", gap: 7 }}>
+                <span style={fieldLabelStyle}>Logo image</span>
+                <div style={buttonRowStyle}>
+                  <label style={secondaryUploadButtonStyle}>Take Photo<input type="file" accept="image/*" capture="environment" onChange={(event) => { uploadWorkLinkLogo(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} style={{ display: "none" }} /></label>
+                  <label style={secondaryUploadButtonStyle}>Upload from Library<input type="file" accept="image/*" onChange={(event) => { uploadWorkLinkLogo(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} style={{ display: "none" }} /></label>
+                </div>
+              </div>
               <div
                 style={{
                   display: "grid",
