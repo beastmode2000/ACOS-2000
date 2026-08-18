@@ -130,6 +130,14 @@ import type {
   DashboardSavedLayout, DashboardWidgetDropTarget, WorkCompletionEntry, AtlasServiceRecord,
 } from "./AtlasAppFoundation";
 
+type LinkedVendorAsset = {
+  id: string;
+  name: string;
+  category: string;
+  status: string;
+  vendorIds: string[];
+};
+
 
 
 export default function AtlasVendorsWorkspace(props: any) {
@@ -204,12 +212,10 @@ export default function AtlasVendorsWorkspace(props: any) {
   const selectedVendorPhotos = selectedVendor.id
     ? linkedImageFilesFor("Vendor", selectedVendor.id)
     : [];
-  const relatedVendorAssets = selectedVendor.id
-    ? byName(
-        assetRecords.filter((asset) =>
-          asset.vendorIds.includes(selectedVendor.id),
-        ),
-      )
+  const relatedVendorAssets: LinkedVendorAsset[] = selectedVendor.id
+    ? [...(assetRecords as LinkedVendorAsset[])]
+        .filter((asset) => asset.vendorIds.includes(selectedVendor.id))
+        .sort((a, b) => a.name.localeCompare(b.name))
     : [];
   const relatedVendorWorkOrders = selectedVendor.id
     ? [...serviceRecords]
