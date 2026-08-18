@@ -45,6 +45,27 @@ const ACCESS_PROFILES = [
 
 type Props = {
   activePropertyId: string;
+  locations?: Array<{ id: string; name: string }>;
+  createAddisonAssignment?: (draft: AddisonAssignmentDraft) =>
+    | { ok: boolean; error?: string }
+    | Promise<{ ok: boolean; error?: string }>;
+};
+
+type AssignmentFrequency =
+  | "One-time"
+  | "Daily"
+  | "Weekly"
+  | "Biweekly"
+  | "Monthly";
+
+type AddisonAssignmentDraft = {
+  title: string;
+  dueDate: string;
+  frequency: AssignmentFrequency;
+  locationId: string;
+  instructions: string;
+  priority: "High" | "Medium" | "Low";
+  minutes: number;
 };
 
 const BASE_PEOPLE = ["Addison", "Pat's Crew", "Sean", "Nick", "Unassigned"];
@@ -166,7 +187,11 @@ function starterLists(): TeamList[] {
   ];
 }
 
-export default function AtlasTeamWork({ activePropertyId }: Props) {
+export default function AtlasTeamWork({
+  activePropertyId,
+  locations = [],
+  createAddisonAssignment,
+}: Props) {
   const [lists, setLists] = useState<TeamList[]>([]);
   const [selectedListId, setSelectedListId] = useState("");
   const [search, setSearch] = useState("");
@@ -176,6 +201,22 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [newMemberRole, setNewMemberRole] = useState<TeamRole>("Employee");
+  const [assignmentOpen, setAssignmentOpen] = useState(false);
+  const [assignmentTitle, setAssignmentTitle] = useState("");
+  const [assignmentDueDate, setAssignmentDueDate] = useState(() => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 10);
+  });
+  const [assignmentFrequency, setAssignmentFrequency] =
+    useState<AssignmentFrequency>("One-time");
+  const [assignmentLocationId, setAssignmentLocationId] = useState("");
+  const [assignmentInstructions, setAssignmentInstructions] = useState("");
+  const [assignmentPriority, setAssignmentPriority] =
+    useState<"High" | "Medium" | "Low">("Medium");
+  const [assignmentMinutes, setAssignmentMinutes] = useState(30);
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
+  const [assignmentMessage, setAssignmentMessage] = useState("");
 
   const assigneeOptions = useMemo(() => {
     const values = [
@@ -450,6 +491,52 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
     } catch (error) { setMemberMessage(error instanceof Error ? error.message : "Could not create invitation."); }
   }
 
+  function resetAssignmentForm() {
+    setAssignmentTitle("");
+    setAssignmentFrequency("One-time");
+    setAssignmentLocationId("");
+    setAssignmentInstructions("");
+    setAssignmentPriority("Medium");
+    setAssignmentMinutes(30);
+    setAssignmentMessage("");
+  }
+
+  async function saveAddisonAssignment() {
+    if (assignmentSaving) return;
+    if (!assignmentTitle.trim()) {
+      setAssignmentMessage("Enter a task name.");
+      return;
+    }
+    if (!createAddisonAssignment) {
+      setAssignmentMessage("Finish deploying the matching AtlasApp file first.");
+      return;
+    }
+
+    setAssignmentSaving(true);
+    setAssignmentMessage("Saving…");
+    try {
+      const result = await createAddisonAssignment({
+        title: assignmentTitle.trim(),
+        dueDate: assignmentDueDate,
+        frequency: assignmentFrequency,
+        locationId: assignmentLocationId,
+        instructions: assignmentInstructions.trim(),
+        priority: assignmentPriority,
+        minutes: Math.max(5, Number(assignmentMinutes || 30)),
+      });
+      if (!result.ok) {
+        setAssignmentMessage(result.error || "Atlas could not save this assignment.");
+        return;
+      }
+      resetAssignmentForm();
+      setAssignmentOpen(false);
+    } catch {
+      setAssignmentMessage("Atlas could not save this assignment.");
+    } finally {
+      setAssignmentSaving(false);
+    }
+  }
+
   return (
     <section style={{ display: "grid", gap: 16 }}>
       <div style={heroStyle}>
@@ -461,7 +548,19 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
           </p>
         </div>
 
-        {teamView === "assignments" ? <button type="button" style={goldButtonStyle} onClick={createList}>+ New List</button> : null}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            style={goldButtonStyle}
+            onClick={() => {
+              setAssignmentOpen((open) => !open);
+              setAssignmentMessage("");
+            }}
+          >
+            {assignmentOpen ? "Close Assignment" : "Assign Addison"}
+          </button>
+          {teamView === "assignments" ? <button type="button" style={goldButtonStyle} onClick={createList}>+ New List</button> : null}
+        </div>
       </div>
 
       <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
@@ -469,6 +568,155 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
           <button key={value} type="button" onClick={() => setTeamView(value)} style={{...lightButtonStyle, background:teamView===value?colors.navy3:colors.card, color:teamView===value?'#fff':colors.text, borderColor:teamView===value?colors.navy3:colors.line}}>{label}</button>
         ))}
       </div>
+
+      {assignmentOpen ? (
+        <div style={{ ...panelStyle, display: "grid", gap: 12 }}>
+          <div>
+            <div style={eyebrowStyle}>ADDISON</div>
+            <h2 style={{ margin: "4px 0", color: colors.text }}>Assign Work</h2>
+          </div>
+
+          <div
+            className="atlas-addison-assignment-grid"
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "minmax(220px,1.5fr) minmax(145px,.7fr) minmax(150px,.8fr)",
+              gap: 10,
+            }}
+          >
+            <label style={labelStyle}>
+              Task
+              <input
+                value={assignmentTitle}
+                onChange={(event) => setAssignmentTitle(event.currentTarget.value)}
+                placeholder="Task name"
+                style={fieldStyle}
+                autoFocus
+              />
+            </label>
+            <label style={labelStyle}>
+              Due date
+              <input
+                type="date"
+                value={assignmentDueDate}
+                onChange={(event) => setAssignmentDueDate(event.currentTarget.value)}
+                style={fieldStyle}
+              />
+            </label>
+            <label style={labelStyle}>
+              Frequency
+              <select
+                value={assignmentFrequency}
+                onChange={(event) =>
+                  setAssignmentFrequency(event.currentTarget.value as AssignmentFrequency)
+                }
+                style={fieldStyle}
+              >
+                <option value="One-time">One-time / As needed</option>
+                <option value="Daily">Daily</option>
+                <option value="Weekly">Weekly</option>
+                <option value="Biweekly">Every 2 weeks</option>
+                <option value="Monthly">Monthly</option>
+              </select>
+            </label>
+            <label style={labelStyle}>
+              Location
+              <select
+                value={assignmentLocationId}
+                onChange={(event) => setAssignmentLocationId(event.currentTarget.value)}
+                style={fieldStyle}
+              >
+                <option value="">General property</option>
+                {locations.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={labelStyle}>
+              Priority
+              <select
+                value={assignmentPriority}
+                onChange={(event) =>
+                  setAssignmentPriority(
+                    event.currentTarget.value as "High" | "Medium" | "Low",
+                  )
+                }
+                style={fieldStyle}
+              >
+                <option>High</option>
+                <option>Medium</option>
+                <option>Low</option>
+              </select>
+            </label>
+            <label style={labelStyle}>
+              Estimated time
+              <select
+                value={assignmentMinutes}
+                onChange={(event) => setAssignmentMinutes(Number(event.currentTarget.value))}
+                style={fieldStyle}
+              >
+                <option value={15}>15 minutes</option>
+                <option value={30}>30 minutes</option>
+                <option value={60}>1 hour</option>
+                <option value={120}>2 hours</option>
+                <option value={240}>Half day</option>
+                <option value={480}>Full day</option>
+              </select>
+            </label>
+          </div>
+
+          <label style={labelStyle}>
+            Instructions
+            <textarea
+              value={assignmentInstructions}
+              onChange={(event) => setAssignmentInstructions(event.currentTarget.value)}
+              placeholder="What Addison needs to do"
+              style={{ ...fieldStyle, minHeight: 88, resize: "vertical" }}
+            />
+          </label>
+
+          {assignmentMessage ? (
+            <div
+              style={{
+                padding: "9px 11px",
+                border: `1px solid ${colors.line}`,
+                borderRadius: 10,
+                background: colors.panel,
+                color: colors.text,
+                fontSize: 12,
+                fontWeight: 800,
+              }}
+            >
+              {assignmentMessage}
+            </div>
+          ) : null}
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => void saveAddisonAssignment()}
+              disabled={assignmentSaving}
+              style={{ ...goldButtonStyle, opacity: assignmentSaving ? 0.65 : 1 }}
+            >
+              {assignmentSaving ? "Saving…" : "Save Assignment"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                resetAssignmentForm();
+                setAssignmentOpen(false);
+              }}
+              disabled={assignmentSaving}
+              style={lightButtonStyle}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {teamView === "assignments" ? <>
       <div style={summaryGridStyle}>
@@ -879,6 +1127,9 @@ export default function AtlasTeamWork({ activePropertyId }: Props) {
           }
           .atlas-team-task-details {
             grid-template-columns: 1fr !important;
+          }
+          .atlas-addison-assignment-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
           }
         }
       `}</style>
