@@ -30553,6 +30553,15 @@ ${notes.trim()}` : notes.trim(),
               {
                 id: "today",
                 label: "Today",
+                active: screen === "dashboard",
+                action: () => {
+                  setMobileFieldMoreOpen(false);
+                  setScreen("dashboard");
+                },
+              },
+              {
+                id: "routines",
+                label: "Routine",
                 active: screen === "routines",
                 action: () => {
                   setMobileFieldMoreOpen(false);
@@ -30560,8 +30569,8 @@ ${notes.trim()}` : notes.trim(),
                 },
               },
               {
-                id: "work",
-                label: "Work",
+                id: "work-orders",
+                label: "Work Order",
                 active: screen === "history",
                 action: () => {
                   setMobileFieldMoreOpen(false);
@@ -30571,9 +30580,9 @@ ${notes.trim()}` : notes.trim(),
                 },
               },
               {
-                id: "property",
-                label: "Property",
-                active: screen === "assets" || screen === "locations" || screen === "vendors",
+                id: "assets",
+                label: "Assets",
+                active: screen === "assets",
                 action: () => {
                   setMobileFieldMoreOpen(false);
                   setScreen("assets");
@@ -30587,12 +30596,6 @@ ${notes.trim()}` : notes.trim(),
                   setMobileFieldMoreOpen(false);
                   setScreen("notes");
                 },
-              },
-              {
-                id: "more",
-                label: "More",
-                active: mobileFieldMoreOpen,
-                action: () => setMobileFieldMoreOpen((current) => !current),
               },
             ].map((item) => (
               <button
@@ -31445,37 +31448,6 @@ ${notes.trim()}` : notes.trim(),
         </div>
       ) : null}
 
-      {isMobile ? (
-        <nav style={mobileBottomNavStyle} aria-label="Mobile Atlas navigation">
-          {[
-            { id: "dashboard" as Screen, label: "Home" },
-            { id: "calendar" as Screen, label: "Calendar" },
-            { id: "map" as Screen, label: "Map" },
-            { id: "timeline" as Screen, label: "Projects" },
-            { id: "history" as Screen, label: "Work" },
-          ].map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => {
-                if (item.id === "history") {
-                  setSelectedServiceId("");
-                  setWorkOrdersOpenKey((current) => current + 1);
-                }
-                setScreen(item.id);
-              }}
-              style={{
-                ...mobileBottomButtonStyle,
-                color: screen === item.id ? colors.navy : colors.muted,
-                background: screen === item.id ? colors.gold : "transparent",
-                borderColor: screen === item.id ? colors.gold : "transparent",
-              }}
-            >
-              {((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}
-            </button>
-          ))}
-        </nav>
-      ) : null}
     </main>
   );
 }
