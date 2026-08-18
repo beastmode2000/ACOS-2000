@@ -130,6 +130,32 @@ import type {
   DashboardSavedLayout, DashboardWidgetDropTarget, WorkCompletionEntry, AtlasServiceRecord,
 } from "./AtlasAppFoundation";
 
+type VendorContactCard = {
+  id: string;
+  name: string;
+  role: string;
+  phone: string;
+  officePhone: string;
+  cellPhone: string;
+  email: string;
+  contactType: "Office" | "Owner" | "Manager" | "Sales" | "Service" | "Installation" | "Technician" | "Billing" | "Emergency";
+  primary: boolean;
+  preferredMethod: "Office" | "Cell" | "Email";
+  notes: string;
+};
+
+const vendorContactTypes: VendorContactCard["contactType"][] = [
+  "Office",
+  "Owner",
+  "Manager",
+  "Sales",
+  "Service",
+  "Installation",
+  "Technician",
+  "Billing",
+  "Emergency",
+];
+
 
 
 export default function AtlasVendorsWorkspace(props: any) {
@@ -199,6 +225,52 @@ export default function AtlasVendorsWorkspace(props: any) {
   const selectedVendorPhotos = selectedVendor.id
     ? linkedImageFilesFor("Vendor", selectedVendor.id)
     : [];
+  const vendorContacts: VendorContactCard[] = Array.isArray(selectedVendor.contacts)
+    ? selectedVendor.contacts
+    : [];
+
+  const updateVendorContacts = (contacts: VendorContactCard[]) => {
+    updateVendor({ contacts } as any);
+  };
+
+  const addVendorContact = () => {
+    const contact: VendorContactCard = {
+      id: uid("vendor-contact"),
+      name: "",
+      role: "",
+      phone: "",
+      officePhone: "",
+      cellPhone: "",
+      email: "",
+      contactType: "Technician",
+      primary: vendorContacts.length === 0,
+      preferredMethod: "Cell",
+      notes: "",
+    };
+    updateVendorContacts([...vendorContacts, contact]);
+  };
+
+  const updateVendorContact = (
+    contactId: string,
+    patch: Partial<VendorContactCard>,
+  ) => {
+    updateVendorContacts(
+      vendorContacts.map((contact) => ({
+        ...contact,
+        ...(patch.primary ? { primary: false } : {}),
+        ...(contact.id === contactId ? patch : {}),
+      })),
+    );
+  };
+
+  const deleteVendorContact = (contactId: string) => {
+    if (!window.confirm("Delete this vendor contact?")) return;
+    const next = vendorContacts.filter((contact) => contact.id !== contactId);
+    if (next.length && !next.some((contact) => contact.primary)) {
+      next[0] = { ...next[0], primary: true };
+    }
+    updateVendorContacts(next);
+  };
   const relatedVendorAssets: AssetRecord[] = selectedVendor.id
     ? [...(assetRecords as AssetRecord[])]
         .filter((asset) => asset.vendorIds.includes(selectedVendor.id))
@@ -260,6 +332,9 @@ export default function AtlasVendorsWorkspace(props: any) {
   const visibleVendors = filteredVendors.filter((vendor: VendorRecord) => {
     const query = vendorSearch.trim().toLowerCase();
     if (!query) return true;
+    const contacts = Array.isArray((vendor as VendorRecord & { contacts?: VendorContactCard[] }).contacts)
+      ? (vendor as VendorRecord & { contacts?: VendorContactCard[] }).contacts || []
+      : [];
     return [
       vendor.name,
       vendor.category,
@@ -267,6 +342,14 @@ export default function AtlasVendorsWorkspace(props: any) {
       vendor.email,
       vendor.website,
       vendor.notes,
+      ...contacts.flatMap((contact) => [
+        contact.name,
+        contact.role,
+        contact.contactType,
+        contact.officePhone,
+        contact.cellPhone,
+        contact.email,
+      ]),
     ]
       .filter(Boolean)
       .join(" ")
@@ -391,6 +474,11 @@ export default function AtlasVendorsWorkspace(props: any) {
                         .filter(Boolean)
                         .join(" · ")}
                     </p>
+                    {Array.isArray((vendor as VendorRecord & { contacts?: VendorContactCard[] }).contacts) && (vendor as VendorRecord & { contacts?: VendorContactCard[] }).contacts!.length ? (
+                      <p style={mutedSmallStyle}>
+                        {(vendor as VendorRecord & { contacts?: VendorContactCard[] }).contacts!.length} contact{(vendor as VendorRecord & { contacts?: VendorContactCard[] }).contacts!.length === 1 ? "" : "s"}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               </button>
@@ -510,38 +598,12 @@ export default function AtlasVendorsWorkspace(props: any) {
                 <Field
                   label="Name"
                   value={selectedVendor.name}
-                  onChange={(value) =>
-                    setVendorRecords((current) =>
-                      byName(
-                        current.map((item) =>
-                          item.id === selectedVendor.id
-                            ? normalizeVendor({
-                                ...item,
-                                name: value,
-                              })
-                            : item,
-                        ),
-                      ),
-                    )
-                  }
+                  onChange={(value) => updateVendor({ name: value })}
                 />
                 <Field
                   label="Category"
                   value={selectedVendor.category}
-                  onChange={(value) =>
-                    setVendorRecords((current) =>
-                      byName(
-                        current.map((item) =>
-                          item.id === selectedVendor.id
-                            ? normalizeVendor({
-                                ...item,
-                                category: value,
-                              })
-                            : item,
-                        ),
-                      ),
-                    )
-                  }
+                  onChange={(value) => updateVendor({ category: value })}
                 />
                 <Field
                   label="Phone"
@@ -564,6 +626,83 @@ export default function AtlasVendorsWorkspace(props: any) {
                   onChange={(value) => updateVendor({ notes: value })}
                   multiline
                 />
+              </div>
+
+              <div style={{ borderTop: `1px solid ${colors.line}`, marginTop: 14, paddingTop: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={eyebrowStyle}>Contacts</div>
+                    <strong style={{ color: colors.navy }}>
+                      {vendorContacts.length} saved
+                    </strong>
+                  </div>
+                  <button type="button" onClick={addVendorContact} style={secondaryButtonStyle}>
+                    Add Contact
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                  {vendorContacts.map((contact) => {
+                    const cell = contact.cellPhone || contact.phone;
+                    return (
+                      <section
+                        key={contact.id}
+                        style={{ border: `1px solid ${contact.primary ? colors.gold : colors.line}`, borderRadius: 12, background: contact.primary ? "#FFF9EC" : "#FFFFFF", padding: isMobile ? 10 : 12, minWidth: 0 }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+                          <div style={{ minWidth: 0 }}>
+                            <strong style={{ display: "block", color: colors.navy, overflowWrap: "anywhere" }}>
+                              {contact.name.trim() || "New Contact"}
+                            </strong>
+                            <span style={mutedSmallStyle}>
+                              {[contact.contactType, contact.role].filter(Boolean).join(" · ")}
+                            </span>
+                          </div>
+                          {contact.primary ? <span style={badgeStyle("Preferred")}>Primary</span> : null}
+                        </div>
+
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
+                          {cell ? <a href={`tel:${cell.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Call Cell</a> : null}
+                          {cell ? <a href={`sms:${cell.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Text</a> : null}
+                          {contact.officePhone ? <a href={`tel:${contact.officePhone.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Call Office</a> : null}
+                          {contact.email ? <a href={`mailto:${contact.email.trim()}`} style={secondaryButtonStyle}>Email</a> : null}
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}>
+                          <Field label="Name" value={contact.name} onChange={(name) => updateVendorContact(contact.id, { name })} />
+                          <Field label="Role / Title" value={contact.role} onChange={(role) => updateVendorContact(contact.id, { role })} />
+                          <label style={{ display: "grid", gap: 5 }}>
+                            <span style={mutedSmallStyle}>Contact Type</span>
+                            <select value={contact.contactType} onChange={(event) => updateVendorContact(contact.id, { contactType: event.currentTarget.value as VendorContactCard["contactType"] })} style={{ width: "100%", minWidth: 0, minHeight: 40, border: `1px solid ${colors.line}`, borderRadius: 9, padding: "7px 9px", background: "#FFFFFF", color: colors.text }}>
+                              {vendorContactTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                            </select>
+                          </label>
+                          <label style={{ display: "grid", gap: 5 }}>
+                            <span style={mutedSmallStyle}>Preferred Contact</span>
+                            <select value={contact.preferredMethod} onChange={(event) => updateVendorContact(contact.id, { preferredMethod: event.currentTarget.value as VendorContactCard["preferredMethod"] })} style={{ width: "100%", minWidth: 0, minHeight: 40, border: `1px solid ${colors.line}`, borderRadius: 9, padding: "7px 9px", background: "#FFFFFF", color: colors.text }}>
+                              <option value="Cell">Cell</option>
+                              <option value="Office">Office</option>
+                              <option value="Email">Email</option>
+                            </select>
+                          </label>
+                          <Field label="Office Phone" value={contact.officePhone} onChange={(officePhone) => updateVendorContact(contact.id, { officePhone })} />
+                          <Field label="Cell Phone" value={contact.cellPhone || contact.phone} onChange={(cellPhone) => updateVendorContact(contact.id, { cellPhone, phone: cellPhone })} />
+                          <Field label="Email" value={contact.email} onChange={(email) => updateVendorContact(contact.id, { email })} />
+                          <Field label="Notes" value={contact.notes} onChange={(notes) => updateVendorContact(contact.id, { notes })} multiline />
+                        </div>
+
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                          <label style={{ display: "inline-flex", alignItems: "center", gap: 7, color: colors.navy, fontWeight: 800, cursor: "pointer" }}>
+                            <input type="checkbox" checked={contact.primary} onChange={(event) => updateVendorContact(contact.id, { primary: event.currentTarget.checked })} />
+                            Primary contact
+                          </label>
+                          <button type="button" onClick={() => deleteVendorContact(contact.id)} style={dangerButtonStyle}>Delete Contact</button>
+                        </div>
+                      </section>
+                    );
+                  })}
+                  {!vendorContacts.length ? <div style={noticeStyle}>No individual contacts saved.</div> : null}
+                </div>
               </div>
 
               <div style={buttonRowStyle}>
