@@ -116,6 +116,42 @@ import {
   manualCategories, seaDooManualUrl, cleanManualOpenUrl, defaultManuals, inferManualCategory, blankManual, normalizeManualRecord, ListDrawerLayout,
   CreatableRelationshipField,
 } from "./AtlasAppFoundation";
+
+type VendorDepartmentKey = "house" | "garage" | "pool" | "landscaping" | "marine";
+type VendorContactEntry = {
+  id: string;
+  name: string;
+  role: string;
+  phone: string;
+  email: string;
+};
+type AtlasDepartmentVendor = VendorRecord & {
+  departments?: VendorDepartmentKey[];
+  vendorStatus?: "Preferred" | "Backup" | "Inactive";
+  contacts?: VendorContactEntry[];
+};
+
+function normalizeDepartmentVendor(value: Partial<AtlasDepartmentVendor>): AtlasDepartmentVendor {
+  const normalized = normalizeVendor(value as VendorRecord);
+  const departments = Array.from(
+    new Set(
+      (Array.isArray(value.departments) ? value.departments : []).filter((department): department is VendorDepartmentKey =>
+        ["house", "garage", "pool", "landscaping", "marine"].includes(String(department)),
+      ),
+    ),
+  );
+  const contacts = (Array.isArray(value.contacts) ? value.contacts : []).map((contact) => ({
+    id: String(contact?.id || uid("vendor-contact")),
+    name: String(contact?.name || ""),
+    role: String(contact?.role || ""),
+    phone: String(contact?.phone || ""),
+    email: String(contact?.email || ""),
+  }));
+  const vendorStatus = ["Preferred", "Backup", "Inactive"].includes(String(value.vendorStatus))
+    ? value.vendorStatus
+    : "Preferred";
+  return { ...normalized, departments, vendorStatus, contacts } as AtlasDepartmentVendor;
+}
 import AtlasContacts from "./AtlasContacts";
 import AtlasWeather from "./AtlasWeather";
 import type {
@@ -2871,7 +2907,7 @@ export default function AtlasApp() {
     const storedVendors = readStoredArray<VendorRecord>(
       storageKeys.vendors,
       fallbackVendors,
-    ).map(normalizeVendor);
+    ).map((vendor) => normalizeDepartmentVendor(vendor as AtlasDepartmentVendor));
     const storedContacts = readStoredArray<ContactRecord>(
       storageKeys.contacts,
       [],
@@ -3152,7 +3188,7 @@ export default function AtlasApp() {
                 ),
             ),
         );
-        const nextVendors = byName(apiVendors.map(normalizeVendor));
+        const nextVendors = byName(apiVendors.map((vendor) => normalizeDepartmentVendor(vendor as AtlasDepartmentVendor)));
         const nextContacts = byName(apiContacts.map(normalizeContact));
         const normalizedApiServices = apiServices.map(normalizeService);
         const workOrderCleanup = planWorkOrderDatabaseCleanup(
@@ -4326,7 +4362,7 @@ export default function AtlasApp() {
     });
   const selectedVendor =
     vendorRecords.find((vendor) => vendor.id === selectedVendorId) ??
-    normalizeVendor({
+    normalizeDepartmentVendor({
       id: "",
       name: "",
       category: "",
@@ -9108,7 +9144,7 @@ export default function AtlasApp() {
       }
 
       if (fastIntakeSaveMode === "Create Vendor") {
-        const vendor = normalizeVendor({
+        const vendor = normalizeDepartmentVendor({
           id: uid("vendor"),
           name: fastIntakeRecordName.trim() || title,
           category: fastIntakeCategory.trim() || "General",
@@ -9168,7 +9204,7 @@ export default function AtlasApp() {
             (item) => item.id === intakeTargetId,
           );
           if (existing) {
-            const updated = normalizeVendor({
+            const updated = normalizeDepartmentVendor({
               ...existing,
               notes: appendIntakeNote(existing.notes, combinedNotes),
             });
@@ -10158,7 +10194,7 @@ export default function AtlasApp() {
   }
 
   function addVendor(name = "") {
-    const record = normalizeVendor({
+    const record = normalizeDepartmentVendor({
       id: uid("vendor"),
       name,
       category: "",
@@ -10174,7 +10210,7 @@ export default function AtlasApp() {
   }
 
   function quickCreateVendor(name: string) {
-    const record = normalizeVendor({ id: uid("vendor"), name: name.trim(), category: "", phone: "", email: "", website: "", notes: "" });
+    const record = normalizeDepartmentVendor({ id: uid("vendor"), name: name.trim(), category: "", phone: "", email: "", website: "", notes: "" });
     setVendorRecords((current) => byName([record, ...current]));
     markRecordDirty("vendor", record.id);
     showSaveToast(`${record.name} added and selected.`);
@@ -10220,7 +10256,7 @@ export default function AtlasApp() {
       byName(
         current.map((item) =>
           item.id === selectedVendor.id
-            ? normalizeVendor({ ...item, ...patch })
+            ? normalizeDepartmentVendor({ ...(item as AtlasDepartmentVendor), ...(patch as Partial<AtlasDepartmentVendor>) })
             : item,
         ),
       ),
@@ -19713,6 +19749,67 @@ ${notes.trim()}` : notes.trim(),
     );
   }
 
+  const vendorDepartmentNames: Record<VendorDepartmentKey, string> = {
+    house: "House & Maintenance",
+    garage: "Garage",
+    pool: "Pool & Spa",
+    landscaping: "Landscaping & Irrigation",
+    marine: "Dock & Waterfront",
+  };
+
+  function vendorDepartmentsFor(vendor: VendorRecord): VendorDepartmentKey[] {
+    const vendorRecord = vendor as AtlasDepartmentVendor;
+    const vendorText = recordSearchText(vendor).toLowerCase();
+
+    // These known companies have an exact operating-area assignment. Sunstream
+    // intentionally remains Dock only even if a linked record mentions a garage.
+    if (/\bsunstream\b/i.test(vendorText)) return ["marine"];
+
+    const explicit = Array.isArray(vendorRecord.departments)
+      ? vendorRecord.departments.filter((department): department is VendorDepartmentKey =>
+          ["house", "garage", "pool", "landscaping", "marine"].includes(department),
+        )
+      : [];
+    if (explicit.length) return Array.from(new Set(explicit));
+
+    const departments = new Set<VendorDepartmentKey>();
+    const addFromText = (textValue: string) => {
+      const text = textValue.toLowerCase();
+      if (/\b(oryan marine|i[\s-]?90 motorsports?|190 motorsports?|seaborn|seaborne|dock|marine|boat|watercraft|lift box|liftbox)\b/i.test(text)) departments.add("marine");
+      if (/\b(cascade spray|lanken|advanced irrigation|landscap|irrigation|sprinkler|lawn|garden|grounds|tree|shrub)\b/i.test(text)) departments.add("landscaping");
+      if (/\b(north sound boilers?|psf mechanical|best plumbing|maple valley electric|appliance service station|precision garage door|high tech living|hvac|boiler|plumb|electric|appliance|house maintenance|cleaning)\b/i.test(text)) departments.add("house");
+      if (/\b(aqua quip|krisco|pool|spa|hot tub|sundance|fountain|desert aire)\b/i.test(text)) departments.add("pool");
+      if (/\b(autonation|les schwab|rivian service|mercedes|porsche|lucid|vehicle|automotive|car service|garage vehicle)\b/i.test(text)) departments.add("garage");
+    };
+
+    addFromText(vendorText);
+    assetRecords
+      .filter((asset) => (asset.vendorIds || []).includes(vendor.id))
+      .forEach((asset) => addFromText(recordSearchText(asset)));
+    serviceRecords
+      .filter((record) => record.vendorId === vendor.id)
+      .forEach((record) => addFromText(recordSearchText(record)));
+
+    return Array.from(departments);
+  }
+
+  function createVendorWorkOrder(vendor: VendorRecord) {
+    const record = normalizeService({
+      id: uid("service"),
+      vendorId: vendor.id,
+      date: todayISO(),
+      title: `${vendor.name || "Vendor"} service`,
+      status: "Open",
+      priority: "Normal",
+      workType: "Work Order",
+      notes: "",
+    });
+    setServiceRecords((current) => byTitle([record, ...current]));
+    setSelectedServiceId(record.id);
+    markRecordDirty("work_order", record.id);
+    setScreen("history");
+  }
+
   function renderVendors() {
     return <AtlasVendorsWorkspace {...{
       addLinkedPhotoFiles,
@@ -19762,6 +19859,9 @@ ${notes.trim()}` : notes.trim(),
       stackStyle,
       taskDetails,
       updateVendor,
+      createVendorWorkOrder,
+      vendorDepartmentNames,
+      vendorDepartmentsFor,
       vendorDetailHeaderStyle,
       vendorLogoFor,
       vendorLogoImageStyle,
@@ -26849,17 +26949,9 @@ ${notes.trim()}` : notes.trim(),
       : isMarine
         ? locations.filter((location) => marineLocationIds.has(location.id))
         : locations.filter((location) => matches(location) && (!isLandscape || !marineLocationIds.has(location.id)));
-    const namedDepartmentVendorPatterns: Partial<Record<DepartmentKind, RegExp>> = {
-      marine: /\b(oryan marine|i[\s-]?90 motorsports?|190 motorsports?|sunstream|seaborn|seaborne)\b/i,
-      landscaping: /\b(cascade spray|lanken|advanced irrigation)\b/i,
-      house: /\bnorth sound boilers?\b/i,
-    };
-    const namedDepartmentVendorPattern = namedDepartmentVendorPatterns[kind];
     const departmentVendors = kind === "garage"
-      ? []
-      : vendorRecords.filter((vendor) =>
-          matches(vendor) || Boolean(namedDepartmentVendorPattern?.test(recordSearchText(vendor))),
-        );
+      ? vendorRecords.filter((vendor) => vendorDepartmentsFor(vendor).includes("garage"))
+      : vendorRecords.filter((vendor) => vendorDepartmentsFor(vendor).includes(kind));
     const departmentDocuments = kind === "garage" ? [] : mergeDocuments(documents, intakeDocs).filter((document) =>
       isMarine ? isMarineDocumentRecord(document) : matchesDepartmentRecord(document) && (!isLandscape || !isMarineDocumentRecord(document)),
     );
@@ -27201,14 +27293,15 @@ ${notes.trim()}` : notes.trim(),
             </button>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#FFFFFF" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(5,minmax(0,1fr))", border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#FFFFFF" }}>
             {[
               ["Vehicles", garageVehicles.length],
               ["Due this week", cleaningDueCount + serviceDueCount],
               ["Open work orders", openGarageWork.length],
+              ["Vendors", departmentVendors.length],
               ["Warnings", serviceHistory.filter((entry) => entry.type === "Issue").length],
             ].map(([label, value], index) => (
-              <div key={String(label)} style={{ padding: "11px 14px", borderRight: !isMobile && index < 3 ? `1px solid ${colors.line}` : undefined, borderBottom: isMobile && index < 2 ? `1px solid ${colors.line}` : undefined }}>
+              <div key={String(label)} style={{ padding: "11px 14px", borderRight: !isMobile && index < 4 ? `1px solid ${colors.line}` : undefined, borderBottom: isMobile && index < 3 ? `1px solid ${colors.line}` : undefined }}>
                 <strong style={{ color: colors.navy, fontSize: 20, marginRight: 7 }}>{value}</strong>
                 <span style={mutedSmallStyle}>{label}</span>
               </div>
@@ -27255,6 +27348,15 @@ ${notes.trim()}` : notes.trim(),
                   return <button key={task.id} type="button" onClick={() => { setDepartmentCenter(""); setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...compactLinkedRowStyle, width: "100%", borderRadius: 0, borderLeft: 0, borderRight: 0, borderBottom: 0 }}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>{meta.dueDate ? formatDate(meta.dueDate) : "No due date"} · {meta.assignee || "Unassigned"}</small></span><span>›</span></button>;
                 })}
                 {!departmentTasks.length ? <div style={{ ...noticeStyle, margin: 10 }}>No garage tasks scheduled.</div> : null}
+              </div>
+
+              <div style={{ borderTop: `8px solid ${colors.panel}`, padding: "13px 15px" }}>
+                <div style={eyebrowStyle}>Service</div>
+                <strong style={{ color: colors.navy }}>Garage vendors</strong>
+              </div>
+              <div style={{ display: "grid" }}>
+                {departmentVendors.map((vendor) => <button key={vendor.id} type="button" onClick={() => { setSelectedVendorId(vendor.id); openCenter("vendors"); }} style={{ ...compactLinkedRowStyle, width: "100%", borderRadius: 0, borderLeft: 0, borderRight: 0, borderBottom: 0 }}><span><strong>{vendor.name}</strong><small style={mutedSmallStyle}>{vendor.category || "Vehicle service"}</small></span><span>›</span></button>)}
+                {!departmentVendors.length ? <div style={{ ...noticeStyle, margin: 10 }}>No garage vendors assigned.</div> : null}
               </div>
             </section>
 
