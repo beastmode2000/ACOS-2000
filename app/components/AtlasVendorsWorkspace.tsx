@@ -133,8 +133,6 @@ import type {
 
 
 export default function AtlasVendorsWorkspace(props: any) {
-  const [mobileFieldDetailsOpen, setMobileFieldDetailsOpen] = React.useState(false);
-  const [vendorSearch, setVendorSearch] = React.useState("");
   const {
     addLinkedPhotoFiles,
     addVendor,
@@ -182,6 +180,9 @@ export default function AtlasVendorsWorkspace(props: any) {
     stackStyle,
     taskDetails,
     updateVendor,
+    createVendorWorkOrder,
+    vendorDepartmentNames,
+    vendorDepartmentsFor,
     vendorDetailHeaderStyle,
     vendorLogoFor,
     vendorLogoImageStyle,
@@ -192,19 +193,22 @@ export default function AtlasVendorsWorkspace(props: any) {
   const selectedVendorLogo = selectedVendor.id
     ? vendorLogoFor(selectedVendor.id)
     : undefined;
-  React.useEffect(() => {
-    setMobileFieldDetailsOpen(false);
-  }, [selectedVendorId]);
-
+  const selectedVendorDepartments = selectedVendor.id
+    ? vendorDepartmentsFor(selectedVendor)
+    : [];
+  const selectedVendorStatus = selectedVendor.vendorStatus || "Preferred";
+  const selectedVendorContacts = Array.isArray(selectedVendor.contacts)
+    ? selectedVendor.contacts
+    : [];
   const selectedVendorPhotos = selectedVendor.id
     ? linkedImageFilesFor("Vendor", selectedVendor.id)
     : [];
-  const relatedVendorAssets: AssetRecord[] = selectedVendor.id
-    ? [...(assetRecords as AssetRecord[])]
-        .filter((asset) => asset.vendorIds.includes(selectedVendor.id))
-        .sort((a, b) =>
-          String(a.name || "").localeCompare(String(b.name || "")),
-        )
+  const relatedVendorAssets = selectedVendor.id
+    ? byName(
+        assetRecords.filter((asset) =>
+          asset.vendorIds.includes(selectedVendor.id),
+        ),
+      )
     : [];
   const relatedVendorWorkOrders = selectedVendor.id
     ? [...serviceRecords]
@@ -232,137 +236,22 @@ export default function AtlasVendorsWorkspace(props: any) {
     relatedVendorWorkOrders.find((record) => record.status === "Completed") ||
     relatedVendorWorkOrders[0];
 
-  const vendorCompletedVisitCount = relatedVendorWorkOrders.reduce(
-    (count, record) =>
-      count +
-      (Array.isArray(record.serviceHistory) && record.serviceHistory.length
-        ? record.serviceHistory.length
-        : record.status === "Completed"
-          ? 1
-          : 0),
-    0,
-  );
-  const vendorOpenWorkCount = relatedVendorWorkOrders.filter(
-    (record) => record.status !== "Completed",
-  ).length;
-  const vendorOpenTaskCount = relatedVendorTasks.filter(
-    (task) => taskDetails(task.id).status !== "Completed",
-  ).length;
-  const vendorLastVisitDate = lastVendorVisit
-    ? String(
-        lastVendorVisit.serviceHistory?.[0]?.completedAt ||
-          lastVendorVisit.lastCompletedDate ||
-          lastVendorVisit.date ||
-          "",
-      ).slice(0, 10)
-    : "";
-
-  const visibleVendors = filteredVendors.filter((vendor: VendorRecord) => {
-    const query = vendorSearch.trim().toLowerCase();
-    if (!query) return true;
-    return [
-      vendor.name,
-      vendor.category,
-      vendor.phone,
-      vendor.email,
-      vendor.website,
-      vendor.notes,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase()
-      .includes(query);
-  });
-
   return (
     <ListDrawerLayout
       eyebrow="Property Records"
       title="Vendors"
       isMobile={isMobile}
       drawerResetKey={selectedVendorId || "vendor-new"}
-      gridStyleOverride={
-        isMobile
-          ? { minWidth: 0, overflowX: "hidden" }
-          : {
-              gridTemplateColumns: "minmax(300px, 340px) minmax(0, 1fr)",
-              gap: 12,
-              alignItems: "start",
-            }
-      }
-      listPanelStyleOverride={
-        isMobile
-          ? { minWidth: 0, overflowX: "hidden" }
-          : { minWidth: 0, padding: 10 }
-      }
-      drawerStyleOverride={
-        isMobile ? { minWidth: 0, overflowX: "hidden" } : { minWidth: 0 }
-      }
       right={
         <button type="button" onClick={() => addVendor()} style={goldButtonStyle}>
           Add Vendor
         </button>
       }
       list={
-        <div style={{ ...listStyle, gap: 6 }}>
-          <div
-            style={{
-              position: "sticky",
-              top: 0,
-              zIndex: 5,
-              display: "grid",
-              gap: 6,
-              paddingBottom: 6,
-              background: colors.panel,
-            }}
-          >
-            <input
-              type="search"
-              value={vendorSearch}
-              onChange={(event) => setVendorSearch(event.currentTarget.value)}
-              placeholder="Search vendors..."
-              aria-label="Search vendors"
-              style={{
-                width: "100%",
-                minWidth: 0,
-                height: 36,
-                boxSizing: "border-box",
-                border: `1px solid ${colors.line}`,
-                borderRadius: 10,
-                padding: "7px 10px",
-                background: "#FFFFFF",
-                color: colors.text,
-                font: "inherit",
-                outline: "none",
-              }}
-            />
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-              }}
-            >
-              <span style={mutedSmallStyle}>
-                {visibleVendors.length} vendor{visibleVendors.length === 1 ? "" : "s"}
-              </span>
-              {vendorSearch ? (
-                <button
-                  type="button"
-                  onClick={() => setVendorSearch("")}
-                  style={{
-                    ...secondaryButtonStyle,
-                    minHeight: 28,
-                    padding: "4px 7px",
-                    fontSize: 11,
-                  }}
-                >
-                  Clear
-                </button>
-              ) : null}
-            </div>
-          </div>
-          {visibleVendors.map((vendor) => {
+        <div style={listStyle}>
+          {filteredVendors.map((vendor) => {
+            const logo = vendorLogoFor(vendor.id);
+            const logoSrc = logo?.dataUrl || logo?.url || "";
             return (
               <button
                 key={vendor.id}
@@ -370,22 +259,32 @@ export default function AtlasVendorsWorkspace(props: any) {
                 onClick={() => setSelectedVendorId(vendor.id)}
                 style={{
                   ...rowButtonStyle,
-                  padding: "8px 9px",
-                  minHeight: 0,
-                  borderRadius: 10,
                   borderColor:
                     vendor.id === selectedVendor.id
                       ? colors.gold
                       : colors.line,
-                  background:
-                    vendor.id === selectedVendor.id ? "#FFF9EC" : "#FFFFFF",
-                  boxShadow: "none",
                 }}
               >
-                <div style={{ ...recordListIdentityStyle, gridTemplateColumns: "1fr" }}>
+                <div style={recordListIdentityStyle}>
+                  <div style={vendorLogoThumbStyle}>
+                    {logoSrc ? (
+                      <img
+                        src={logoSrc}
+                        alt={`${vendor.name} logo`}
+                        style={vendorLogoImageStyle}
+                      />
+                    ) : (
+                      <span>{vendor.name.slice(0, 2).toUpperCase()}</span>
+                    )}
+                  </div>
                   <div>
                     <strong>{vendor.name}</strong>
                     <p style={mutedSmallStyle}>{vendor.category}</p>
+                    <p style={mutedSmallStyle}>
+                      {vendorDepartmentsFor(vendor)
+                        .map((department) => vendorDepartmentNames[department])
+                        .join(" · ") || "No department"}
+                    </p>
                     <p style={mutedSmallStyle}>
                       {[vendor.phone, vendor.email]
                         .filter(Boolean)
@@ -396,9 +295,6 @@ export default function AtlasVendorsWorkspace(props: any) {
               </button>
             );
           })}
-          {!visibleVendors.length ? (
-            <div style={noticeStyle}>No vendors match this search.</div>
-          ) : null}
         </div>
       }
       drawer={
@@ -415,17 +311,34 @@ export default function AtlasVendorsWorkspace(props: any) {
                 selectedVendor.id,
                 selectedVendor.name,
                 files,
-                "Photo",
+                selectedVendorLogo ? "Photo" : "Vendor Logo",
               );
             }}
           >
             <div style={vendorDetailHeaderStyle}>
+              <div style={vendorLogoLargeStyle}>
+                {selectedVendorLogo?.dataUrl || selectedVendorLogo?.url ? (
+                  <img
+                    src={selectedVendorLogo.dataUrl || selectedVendorLogo.url}
+                    alt={`${selectedVendor.name} logo`}
+                    style={vendorLogoImageStyle}
+                  />
+                ) : (
+                  <span>{selectedVendor.name.slice(0, 2).toUpperCase()}</span>
+                )}
+              </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <h3 style={editorHeaderStyle}>
                   {selectedVendor.name.trim() || "Vendor"}
                 </h3>
                 <p style={mutedSmallStyle}>
                   {selectedVendor.category || "Uncategorized"}
+                </p>
+                <p style={mutedSmallStyle}>
+                  {selectedVendorDepartments
+                    .map((department) => vendorDepartmentNames[department])
+                    .join(" · ") || "No department assigned"}
+                  {` · ${selectedVendorStatus}`}
                 </p>
                 <p style={mutedSmallStyle}>
                   Last recorded visit:{" "}
@@ -491,39 +404,21 @@ export default function AtlasVendorsWorkspace(props: any) {
                 <Field
                   label="Name"
                   value={selectedVendor.name}
-                  onChange={(value) =>
-                    setVendorRecords((current) =>
-                      byName(
-                        current.map((item) =>
-                          item.id === selectedVendor.id
-                            ? normalizeVendor({
-                                ...item,
-                                name: value,
-                              })
-                            : item,
-                        ),
-                      ),
-                    )
-                  }
+                  onChange={(value) => updateVendor({ name: value })}
                 />
                 <Field
                   label="Category"
                   value={selectedVendor.category}
-                  onChange={(value) =>
-                    setVendorRecords((current) =>
-                      byName(
-                        current.map((item) =>
-                          item.id === selectedVendor.id
-                            ? normalizeVendor({
-                                ...item,
-                                category: value,
-                              })
-                            : item,
-                        ),
-                      ),
-                    )
-                  }
+                  onChange={(value) => updateVendor({ category: value })}
                 />
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: colors.navy }}>Status</span>
+                  <select value={selectedVendorStatus} onChange={(event) => updateVendor({ vendorStatus: event.currentTarget.value } as any)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: "10px 11px", background: "#FFFFFF", color: colors.navy }}>
+                    <option>Preferred</option>
+                    <option>Backup</option>
+                    <option>Inactive</option>
+                  </select>
+                </label>
                 <Field
                   label="Phone"
                   value={selectedVendor.phone ?? ""}
@@ -547,7 +442,19 @@ export default function AtlasVendorsWorkspace(props: any) {
                 />
               </div>
 
+              <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+                <div style={eyebrowStyle}>Departments</div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 7 }}>
+                  {Object.entries(vendorDepartmentNames).map(([department, label]) => {
+                    const checked = selectedVendorDepartments.includes(department);
+                    return <label key={department} style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${checked ? colors.gold : colors.line}`, borderRadius: 9, padding: "9px 10px", background: checked ? "#FFF8E7" : "#FFFFFF", cursor: "pointer" }}><input type="checkbox" checked={checked} onChange={(event) => { const next = event.currentTarget.checked ? Array.from(new Set([...selectedVendorDepartments, department])) : selectedVendorDepartments.filter((item) => item !== department); updateVendor({ departments: next } as any); }} /><strong style={{ color: colors.navy, fontSize: 13 }}>{label}</strong></label>;
+                  })}
+                </div>
+                <small style={mutedSmallStyle}>A vendor can appear in more than one department. Sunstream is kept in Dock & Waterfront only.</small>
+              </div>
+
               <div style={buttonRowStyle}>
+                <button type="button" onClick={() => createVendorWorkOrder(selectedVendor)} style={secondaryButtonStyle}>Create Work Order</button>
                 {isRecordDirty("vendor", selectedVendor.id) ? (
                   <button
                     type="button"
@@ -574,182 +481,14 @@ export default function AtlasVendorsWorkspace(props: any) {
               </div>
             </section>
 
-            <section
-              style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: 10 }}
-              aria-label="Vendor relationships"
-            >
-              <div style={{ ...eyebrowStyle, marginBottom: 7 }}>Linked Records</div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "repeat(2,minmax(0,1fr))"
-                    : "repeat(4,minmax(0,1fr))",
-                  gap: 6,
-                }}
-              >
-                {[
-                  ["Assets", relatedVendorAssets.length],
-                  ["Work", relatedVendorWorkOrders.length],
-                  ["Tasks", relatedVendorTasks.length],
-                  ["Photos", selectedVendorPhotos.length],
-                ].map(([label, count]) => (
-                  <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: "7px 8px" }}>
-                    <span style={{ ...mutedSmallStyle, display: "block" }}>{label}</span>
-                    <strong style={{ color: colors.navy, fontSize: 15 }}>{count}</strong>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {relatedVendorWorkOrders.length ? (
-              <section
-                style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10 }}
-                aria-label="Vendor recent activity"
-              >
-                <div style={{ ...eyebrowStyle, marginBottom: 7 }}>Recent Activity</div>
-                <div style={{ display: "grid", gap: 6 }}>
-                  {relatedVendorWorkOrders.slice(0, 3).map((entry: any, index: number) => (
-                    <div key={String(entry.id || index)} style={{ borderLeft: `3px solid ${colors.gold}`, paddingLeft: 8 }}>
-                      <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
-                        {entry.title || "Vendor work"}
-                      </strong>
-                      <span style={mutedSmallStyle}>
-                        {entry.lastCompletedDate || entry.date
-                          ? formatDate(entry.lastCompletedDate || entry.date)
-                          : "Date not recorded"}
-                        {entry.status ? ` · ${entry.status}` : ""}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-
-            {isMobile ? (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(4,minmax(0,1fr))",
-                  gap: 6,
-                }}
-              >
-                {selectedVendor.phone ? (
-                  <a
-                    href={`tel:${selectedVendor.phone}`}
-                    style={{
-                      ...secondaryButtonStyle,
-                      minHeight: 42,
-                      padding: "7px 4px",
-                      textDecoration: "none",
-                      justifyContent: "center",
-                    }}
-                  >
-                    Call
-                  </a>
-                ) : (
-                  <button type="button" disabled style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px", opacity: .45 }}>
-                    Call
-                  </button>
-                )}
-                {selectedVendor.email ? (
-                  <a
-                    href={`mailto:${selectedVendor.email}`}
-                    style={{
-                      ...secondaryButtonStyle,
-                      minHeight: 42,
-                      padding: "7px 4px",
-                      textDecoration: "none",
-                      justifyContent: "center",
-                    }}
-                  >
-                    Email
-                  </a>
-                ) : (
-                  <button type="button" disabled style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px", opacity: .45 }}>
-                    Email
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const open = relatedVendorWorkOrders.find((record) => record.status !== "Completed");
-                    if (open) setSelectedServiceId(open.id);
-                    setScreen("history");
-                  }}
-                  style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px" }}
-                >
-                  Work
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMobileFieldDetailsOpen((current) => !current)}
-                  aria-expanded={mobileFieldDetailsOpen}
-                  style={{
-                    ...secondaryButtonStyle,
-                    minHeight: 42,
-                    padding: "7px 4px",
-                    borderColor: mobileFieldDetailsOpen ? colors.gold : colors.line,
-                    background: mobileFieldDetailsOpen ? "#FFF8E6" : "#FFFFFF",
-                  }}
-                >
-                  {mobileFieldDetailsOpen ? "Less" : "More"}
-                </button>
-              </div>
-            ) : null}
-
             <section style={detailSectionStyle}>
               <div style={detailSectionHeaderStyle}>
-                <div>
-                  <div style={eyebrowStyle}>Vendor Snapshot</div>
-                  <strong>Service relationship</strong>
-                </div>
+                <div><div style={eyebrowStyle}>Contacts</div><strong>{selectedVendorContacts.length} saved</strong></div>
+                <button type="button" onClick={() => updateVendor({ contacts: [...selectedVendorContacts, { id: `vendor-contact-${Date.now()}`, name: "", role: "", phone: "", email: "" }] } as any)} style={secondaryButtonStyle}>Add Contact</button>
               </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "repeat(2, minmax(0, 1fr))"
-                    : "repeat(5, minmax(0, 1fr))",
-                  gap: 8,
-                }}
-              >
-                {[
-                  ["Last visit", vendorLastVisitDate ? formatDate(vendorLastVisitDate) : "None"],
-                  ["Completed visits", vendorCompletedVisitCount],
-                  ["Open work", vendorOpenWorkCount],
-                  ["Linked assets", relatedVendorAssets.length],
-                  ["Open tasks", vendorOpenTaskCount],
-                ].map(([label, value]) => (
-                  <div
-                    key={String(label)}
-                    style={{
-                      border: `1px solid ${colors.line}`,
-                      borderRadius: 9,
-                      padding: "8px 9px",
-                      background: "#FFFFFF",
-                      minWidth: 0,
-                    }}
-                  >
-                    <small style={mutedSmallStyle}>{label}</small>
-                    <strong
-                      style={{
-                        display: "block",
-                        marginTop: 3,
-                        color: colors.navy,
-                        fontSize: 15,
-                        overflowWrap: "anywhere",
-                      }}
-                    >
-                      {value}
-                    </strong>
-                  </div>
-                ))}
-              </div>
+              {selectedVendorContacts.length ? <div style={{ display: "grid", gap: 9 }}>{selectedVendorContacts.map((contact, index) => <div key={contact.id || index} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 10, display: "grid", gap: 8 }}><div style={formGridStyle}><Field label="Name" value={contact.name || ""} onChange={(value) => updateVendor({ contacts: selectedVendorContacts.map((item, itemIndex) => itemIndex === index ? { ...item, name: value } : item) } as any)} /><Field label="Role" value={contact.role || ""} onChange={(value) => updateVendor({ contacts: selectedVendorContacts.map((item, itemIndex) => itemIndex === index ? { ...item, role: value } : item) } as any)} /><Field label="Phone" value={contact.phone || ""} onChange={(value) => updateVendor({ contacts: selectedVendorContacts.map((item, itemIndex) => itemIndex === index ? { ...item, phone: value } : item) } as any)} /><Field label="Email" value={contact.email || ""} onChange={(value) => updateVendor({ contacts: selectedVendorContacts.map((item, itemIndex) => itemIndex === index ? { ...item, email: value } : item) } as any)} /></div><div style={buttonRowStyle}><button type="button" onClick={() => updateVendor({ contacts: selectedVendorContacts.filter((_, itemIndex) => itemIndex !== index) } as any)} style={dangerButtonStyle}>Delete Contact</button></div></div>)}</div> : <p style={mutedSmallStyle}>No individual contacts saved.</p>}
             </section>
 
-            {(!isMobile || mobileFieldDetailsOpen) ? (
-            <>
             <section style={detailSectionStyle}>
               <div style={detailSectionHeaderStyle}>
                 <div>
@@ -820,168 +559,38 @@ export default function AtlasVendorsWorkspace(props: any) {
             </section>
 
             <section style={detailSectionStyle}>
-              <div style={detailSectionHeaderStyle}>
-                <div>
-                  <div style={eyebrowStyle}>Service & Visit History</div>
-                  <strong>{vendorCompletedVisitCount} completed visit{vendorCompletedVisitCount === 1 ? "" : "s"}</strong>
-                </div>
-              </div>
+              <div style={eyebrowStyle}>Service & Visit History</div>
               {relatedVendorWorkOrders.length ? (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {relatedVendorWorkOrders.map((record) => {
-                    const completedEntries = Array.isArray(record.serviceHistory)
-                      ? record.serviceHistory
-                      : [];
-                    const latestCompletion = completedEntries[0];
-                    const checklist = Array.isArray(latestCompletion?.checklist)
-                      ? latestCompletion.checklist
-                      : Array.isArray(record.checklist)
-                        ? record.checklist
-                        : [];
-                    const passCount = checklist.filter(
-                      (item: any) =>
-                        item.completed === true ||
-                        /^\[PASS\]/i.test(String(item.text || "")),
-                    ).length;
-                    const flagCount = checklist.filter((item: any) =>
-                      /^\[FLAG\]/i.test(String(item.text || "")),
-                    ).length;
-                    const failCount = checklist.filter((item: any) =>
-                      /^\[FAIL\]/i.test(String(item.text || "")),
-                    ).length;
-                    const photos = Array.isArray(latestCompletion?.photos)
-                      ? latestCompletion.photos
-                      : Array.isArray(record.photos)
-                        ? record.photos
-                        : [];
-                    const documents = Array.isArray(latestCompletion?.documents)
-                      ? latestCompletion.documents
-                      : Array.isArray(record.documents)
-                        ? record.documents
-                        : [];
-                    const serviceDate = String(
-                      latestCompletion?.completedAt ||
-                        record.lastCompletedDate ||
-                        record.date ||
-                        "",
-                    ).slice(0, 10);
-                    const serviceNotes = String(
-                      latestCompletion?.notes || record.notes || "",
-                    ).trim();
-
-                    return (
-                      <div
-                        key={record.id}
-                        style={{
-                          border: `1px solid ${colors.line}`,
-                          borderRadius: 10,
-                          padding: 9,
-                          background: "#FFFFFF",
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedServiceId(record.id);
-                            setScreen("history");
-                          }}
-                          style={{
-                            ...compactLinkedRowStyle,
-                            width: "100%",
-                            border: 0,
-                            padding: 0,
-                            background: "transparent",
-                          }}
-                        >
-                          <span>
-                            <strong>{record.title}</strong>
-                            <small style={mutedSmallStyle}>
-                              {serviceDate ? formatDate(serviceDate) : "No service date"}
-                              {record.assetId
-                                ? ` · ${assetName(record.assetId)}`
-                                : ""}
-                            </small>
-                          </span>
-                          <span style={badgeStyle(record.status)}>
-                            {record.status}
-                          </span>
-                        </button>
-
-                        {checklist.length || photos.length || documents.length || serviceNotes ? (
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: 6,
-                              marginTop: 7,
-                            }}
-                          >
-                            {checklist.length ? (
-                              <span style={mutedSmallStyle}>
-                                {passCount}/{checklist.length} passed
-                                {flagCount ? ` · ${flagCount} flagged` : ""}
-                                {failCount ? ` · ${failCount} failed` : ""}
-                              </span>
-                            ) : null}
-                            {photos.length ? (
-                              <span style={mutedSmallStyle}>
-                                {photos.length} photo{photos.length === 1 ? "" : "s"}
-                              </span>
-                            ) : null}
-                            {documents.length ? (
-                              <span style={mutedSmallStyle}>
-                                {documents.length} document{documents.length === 1 ? "" : "s"}
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : null}
-
-                        {serviceNotes ? (
-                          <p
-                            style={{
-                              ...mutedSmallStyle,
-                              marginTop: 6,
-                              marginBottom: 0,
-                              whiteSpace: "pre-wrap",
-                            }}
-                          >
-                            {serviceNotes}
-                          </p>
-                        ) : null}
-
-                        {completedEntries.length > 1 ? (
-                          <details style={{ marginTop: 7 }}>
-                            <summary
-                              style={{
-                                cursor: "pointer",
-                                color: colors.navy,
-                                fontSize: 12,
-                                fontWeight: 800,
-                              }}
-                            >
-                              Previous visits ({completedEntries.length - 1})
-                            </summary>
-                            <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
-                              {completedEntries.slice(1).map((entry: any) => (
-                                <div
-                                  key={entry.id}
-                                  style={{
-                                    ...mutedSmallStyle,
-                                    padding: "5px 7px",
-                                    borderRadius: 7,
-                                    background: "#F8FAFC",
-                                  }}
-                                >
-                                  {formatDate(String(entry.completedAt || "").slice(0, 10))}
-                                  {entry.notes ? ` · ${String(entry.notes)}` : ""}
-                                </div>
-                              ))}
-                            </div>
-                          </details>
-                        ) : null}
-                      </div>
-                    );
-                  })}
+                <div style={compactLinkedListStyle}>
+                  {relatedVendorWorkOrders.map((record) => (
+                    <button
+                      key={record.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedServiceId(record.id);
+                        setScreen("history");
+                      }}
+                      style={compactLinkedRowStyle}
+                    >
+                      <span>
+                        <strong>{record.title}</strong>
+                        <small style={mutedSmallStyle}>
+                          {formatDate(record.date)}
+                          {record.assetId
+                            ? ` · ${assetName(record.assetId)}`
+                            : ""}
+                        </small>
+                        {(record.serviceHistory || []).map((entry) => (
+                          <small key={entry.id} style={mutedSmallStyle}>
+                            Visit {formatDate(entry.completedAt.slice(0, 10))}
+                          </small>
+                        ))}
+                      </span>
+                      <span style={badgeStyle(record.status)}>
+                        {record.status}
+                      </span>
+                    </button>
+                  ))}
                 </div>
               ) : (
                 <p style={mutedSmallStyle}>
@@ -1025,8 +634,6 @@ export default function AtlasVendorsWorkspace(props: any) {
 
             <section style={detailSectionStyle}><div style={detailSectionHeaderStyle}><div><div style={eyebrowStyle}>Related Tasks</div><strong>{relatedVendorTasks.length} linked</strong></div></div>{relatedVendorTasks.length ? <div style={compactLinkedListStyle}>{relatedVendorTasks.map((task) => <button key={`vendor-task-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>{taskDetails(task.id).dueDate ? formatDate(taskDetails(task.id).dueDate) : "No due date"}</small></span><span style={badgeStyle(taskDetails(task.id).status)}>{taskDetails(task.id).status}</span></button>)}</div> : <p style={mutedSmallStyle}>No Tasks are linked to this vendor.</p>}</section>
             {renderLinkedDocuments("Vendor", selectedVendor.id)}
-            </>
-            ) : null}
           </div>
         ) : (
           <div style={noticeStyle}>
