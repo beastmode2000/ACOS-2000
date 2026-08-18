@@ -238,17 +238,6 @@ export default function AtlasLocationsWorkspace(props: any) {
         document.targetType === "Location" &&
         document.targetId === locationId,
     ).length;
-  const locationIcon = (location: AtlasLocationRecord) => {
-    const value = `${location.type} ${location.name}`.toLowerCase();
-    if (value.includes("pool") || value.includes("hot tub")) return "🏊";
-    if (value.includes("dock") || value.includes("water") || value.includes("boat")) return "⚓";
-    if (value.includes("garage") || value.includes("vehicle")) return "🚗";
-    if (value.includes("garden") || value.includes("lawn") || value.includes("courtyard") || value.includes("landscape")) return "🌿";
-    if (value.includes("kitchen") || value.includes("pantry")) return "🍽️";
-    if (value.includes("mechanical") || value.includes("utility") || value.includes("pump")) return "⚙️";
-    if (value.includes("room") || value.includes("house") || value.includes("bedroom")) return "🏠";
-    return "📍";
-  };
   const assetLikeLocationTerms = [
     "lift",
     "boat",
@@ -1014,22 +1003,6 @@ export default function AtlasLocationsWorkspace(props: any) {
                     >
                       {collapsed ? "+" : "−"}
                     </span>
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: 38,
-                        height: 38,
-                        borderRadius: 11,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: selected || hovered ? "#FFF1C7" : colors.panel,
-                        border: `1px solid ${selected || hovered ? colors.gold : colors.line}`,
-                        fontSize: 18,
-                      }}
-                    >
-                      {locationIcon(location)}
-                    </span>
                     <span style={{ minWidth: 0 }}>
                       <strong
                         style={{
@@ -1203,22 +1176,6 @@ export default function AtlasLocationsWorkspace(props: any) {
                       minWidth: 0,
                     }}
                   >
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: 12,
-                        display: "grid",
-                        placeItems: "center",
-                        background: "#FFF3CF",
-                        border: `1px solid ${colors.gold}`,
-                        fontSize: 20,
-                        flex: "0 0 auto",
-                      }}
-                    >
-                      {locationIcon(selectedLocation)}
-                    </span>
                     <div style={{ minWidth: 0 }}>
                       <h3
                         style={{
