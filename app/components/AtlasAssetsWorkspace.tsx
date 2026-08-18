@@ -747,7 +747,7 @@ export default function AtlasAssetsWorkspace(props: any) {
 
   return (
     <ListDrawerLayout
-      eyebrow="Property Equipment"
+      eyebrow=""
       title="Assets"
       detail=""
       isMobile={isMobile}
@@ -761,7 +761,7 @@ export default function AtlasAssetsWorkspace(props: any) {
       gridStyleOverride={
         isMobile
           ? { minWidth: 0, overflowX: "hidden" }
-          : { gridTemplateColumns: "minmax(300px, 340px) minmax(520px, 1fr)", gap: 12, alignItems: "start" }
+          : { gridTemplateColumns: "minmax(270px, 34%) minmax(0, 66%)", gap: 12, alignItems: "start", overflow: "visible" }
       }
       listPanelStyleOverride={
         isMobile
