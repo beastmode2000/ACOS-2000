@@ -8,7 +8,12 @@ import { ListDrawerLayout } from "./AtlasAppFoundation";
 export default function AtlasContacts(props: any) {
   const {
     selectedContactId,
+    setSelectedContactId,
     contactRecords,
+    vendorRecords = [],
+    teamDirectory = [],
+    activePropertyId,
+    openVendor,
     isMobile,
     startNewContact,
     goldButtonStyle,
@@ -28,6 +33,7 @@ export default function AtlasContacts(props: any) {
     contactSecondaryLineStyle,
     noticeStyle,
     contactEditorOpen,
+    setContactEditorOpen,
     stackStyle,
     contactDetailHeaderStyle,
     contactDraft,
@@ -46,6 +52,27 @@ export default function AtlasContacts(props: any) {
     deleteContact,
   } = props;
 
+  const [directoryFilter, setDirectoryFilter] = React.useState<"All" | "Co-workers" | "Vendors" | "Contacts">("All");
+  const [selectedCoworker, setSelectedCoworker] = React.useState<any>(null);
+
+  const directorySearch = String(contactSearch || "").trim().toLowerCase();
+  const visibleCoworkers = teamDirectory.filter((member: any) => {
+    if (member.active === false) return false;
+    if (member.propertyIds?.length && !member.propertyIds.includes(activePropertyId) && !["master", "administrator"].includes(member.role)) return false;
+    return !directorySearch || [member.name, member.email, member.role].join(" ").toLowerCase().includes(directorySearch);
+  });
+  const visibleVendors = vendorRecords.filter((vendor: any) =>
+    !directorySearch || [vendor.name, vendor.category, vendor.phone, vendor.email, vendor.website].join(" ").toLowerCase().includes(directorySearch),
+  );
+
+  const initials = (name: string, fallback = "C") =>
+    String(name || "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.slice(0, 1).toUpperCase())
+      .join("") || fallback;
+
   const selectedStoredContact = selectedContactId
     ? contactRecords.find((item: ContactRecord) => item.id === selectedContactId)
     : undefined;
@@ -61,12 +88,19 @@ export default function AtlasContacts(props: any) {
       title="Contacts"
       detail=""
       isMobile={isMobile}
-      drawerResetKey={selectedContactId || "contact-new"}
+      drawerResetKey={selectedCoworker?.id || selectedContactId || "contact-new"}
+      mobileDrawerOpen={isMobile && (contactEditorOpen || Boolean(selectedCoworker))}
+      onMobileDrawerClose={() => {
+        setSelectedCoworker(null);
+        setContactEditorOpen(false);
+        setSelectedContactId("");
+      }}
+      mobileDrawerTitle={selectedCoworker?.name || contactDraft.name || (selectedContactId ? "Contact" : "New Contact")}
       gridStyleOverride={
         isMobile
           ? { minWidth: 0, overflowX: "hidden" }
           : {
-              gridTemplateColumns: "minmax(300px, 340px) minmax(0, 1fr)",
+              gridTemplateColumns: "minmax(280px, 34%) minmax(0, 66%)",
               gap: 12,
               alignItems: "start",
             }
@@ -74,7 +108,7 @@ export default function AtlasContacts(props: any) {
       listPanelStyleOverride={
         isMobile
           ? { minWidth: 0, overflowX: "hidden" }
-          : { minWidth: 0, maxWidth: 340, padding: 10 }
+          : { minWidth: 0, padding: 10 }
       }
       drawerStyleOverride={
         isMobile
@@ -86,7 +120,7 @@ export default function AtlasContacts(props: any) {
               alignSelf: "start",
               maxHeight: "calc(100vh - 24px)",
               overflowY: "auto",
-              overflowX: "hidden",
+              overflowX: "visible",
             }
       }
       right={
@@ -112,23 +146,89 @@ export default function AtlasContacts(props: any) {
             <input
               value={contactSearch}
               onChange={(event) => setContactSearch(event.currentTarget.value)}
-              placeholder="Search contacts..."
-              aria-label="Search contacts"
+              placeholder="Search people, companies, phone or email..."
+              aria-label="Search contact book"
               style={{
                 ...inputStyle,
                 minHeight: 38,
                 padding: "7px 10px",
               }}
             />
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+              {(["All", "Co-workers", "Vendors", "Contacts"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setDirectoryFilter(filter)}
+                  style={{
+                    ...secondaryButtonStyle,
+                    width: "auto",
+                    minHeight: 34,
+                    padding: "6px 9px",
+                    background: directoryFilter === filter ? "#FFF4D6" : "#FFFFFF",
+                    borderColor: directoryFilter === filter ? colors.gold : colors.line,
+                  }}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div style={{ ...contactListShellStyle, gap: 5 }}>
+            {(directoryFilter === "All" || directoryFilter === "Co-workers") && visibleCoworkers.length ? (
+              <div style={{ display: "grid", gap: 5, marginBottom: 8 }}>
+                <div style={{ ...eyebrowStyle, padding: "4px 2px" }}>Co-workers</div>
+                {visibleCoworkers.map((member: any) => (
+                  <button
+                    key={`coworker-${member.id}`}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCoworker(member);
+                      setContactEditorOpen(false);
+                      setSelectedContactId("");
+                    }}
+                    style={{ ...contactRowStyle, padding: "9px", borderRadius: 10, boxShadow: "none", borderColor: selectedCoworker?.id === member.id ? colors.gold : colors.line, background: selectedCoworker?.id === member.id ? "#FFF9EC" : "#FFFFFF" }}
+                  >
+                    <div style={contactAvatarStyle}>{initials(member.name, "T")}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={contactNameStyle}>{member.name}</strong>
+                      <p style={mutedSmallStyle}>{member.role || "Team member"}</p>
+                      <p style={contactSecondaryLineStyle}>{member.email || "No email saved"}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {(directoryFilter === "All" || directoryFilter === "Vendors") && visibleVendors.length ? (
+              <div style={{ display: "grid", gap: 5, marginBottom: 8 }}>
+                <div style={{ ...eyebrowStyle, padding: "4px 2px" }}>Vendors</div>
+                {visibleVendors.map((vendor: any) => (
+                  <button key={`vendor-${vendor.id}`} type="button" onClick={() => openVendor?.(vendor.id)} style={{ ...contactRowStyle, padding: "9px", borderRadius: 10, boxShadow: "none", borderColor: colors.line, background: "#FFFFFF" }}>
+                    <div style={contactAvatarStyle}>{initials(vendor.name, "V")}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={contactNameStyle}>{vendor.name}</strong>
+                      <p style={mutedSmallStyle}>{vendor.category || "Vendor"}</p>
+                      <p style={contactSecondaryLineStyle}>{[vendor.phone, vendor.email].filter(Boolean).join(" · ") || "No phone or email saved"}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {directoryFilter === "All" || directoryFilter === "Contacts" ? (
+              <div style={{ display: "grid", gap: 5 }}>
+                <div style={{ ...eyebrowStyle, padding: "4px 2px" }}>Contacts</div>
             {filteredContacts.length ? (
               filteredContacts.map((contact: ContactRecord) => (
                 <button
                   key={contact.id}
                   type="button"
-                  onClick={() => editContact(contact)}
+                  onClick={() => {
+                    setSelectedCoworker(null);
+                    editContact(contact);
+                  }}
                   style={{
                     ...contactRowStyle,
                     padding: "8px 9px",
@@ -171,11 +271,40 @@ export default function AtlasContacts(props: any) {
                   : "No contacts have been added yet."}
               </div>
             )}
+              </div>
+            ) : null}
           </div>
         </div>
       }
       drawer={
-        contactEditorOpen ? (
+        selectedCoworker ? (
+          <div style={{ ...stackStyle, gap: 12 }}>
+            <div style={contactDetailHeaderStyle}>
+              <div style={contactAvatarLargeStyle}>{initials(selectedCoworker.name, "T")}</div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <h3 style={editorHeaderStyle}>{selectedCoworker.name}</h3>
+                <p style={mutedSmallStyle}>{selectedCoworker.role || "Team member"}</p>
+                <span style={badgeStyle(selectedCoworker.active === false ? "Monitor" : "Completed")}>
+                  {selectedCoworker.active === false ? "Inactive" : "Active co-worker"}
+                </span>
+              </div>
+            </div>
+            <section style={{ ...detailSectionStyle, padding: 14 }}>
+              <div style={eyebrowStyle}>Contact Information</div>
+              <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                <div><strong style={{ display: "block", color: colors.navy }}>Email</strong><span style={mutedSmallStyle}>{selectedCoworker.email || "No email saved"}</span></div>
+                <div><strong style={{ display: "block", color: colors.navy }}>Role</strong><span style={mutedSmallStyle}>{selectedCoworker.role || "Not assigned"}</span></div>
+                <div><strong style={{ display: "block", color: colors.navy }}>Property access</strong><span style={mutedSmallStyle}>{selectedCoworker.propertyIds?.length ? selectedCoworker.propertyIds.join(" · ") : "All assigned properties"}</span></div>
+              </div>
+              {selectedCoworker.email ? (
+                <div style={{ ...buttonRowStyle, marginTop: 14 }}>
+                  <a href={`mailto:${selectedCoworker.email}`} style={secondaryButtonStyle}>Email</a>
+                  <button type="button" onClick={() => void navigator.clipboard?.writeText(selectedCoworker.email)} style={secondaryButtonStyle}>Copy Email</button>
+                </div>
+              ) : null}
+            </section>
+          </div>
+        ) : contactEditorOpen ? (
           <div style={{ ...stackStyle, gap: 10 }}>
             <div style={contactDetailHeaderStyle}>
               <div style={contactAvatarLargeStyle}>
