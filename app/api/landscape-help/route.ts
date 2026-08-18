@@ -78,6 +78,29 @@ async function ensureAddisonBackingTables() {
   `;
 }
 
+async function ensureInboxTable() {
+  const sql = getSql();
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_inbox_items (
+      id text PRIMARY KEY,
+      title text NOT NULL,
+      intake_type text NOT NULL DEFAULT 'Document',
+      status text NOT NULL DEFAULT 'New',
+      source text NOT NULL DEFAULT 'Fast Intake',
+      notes text NOT NULL DEFAULT '',
+      pasted_text text NOT NULL DEFAULT '',
+      files jsonb NOT NULL DEFAULT '[]'::jsonb,
+      target_type text NOT NULL DEFAULT 'General',
+      target_id text NOT NULL DEFAULT '',
+      target_name text NOT NULL DEFAULT '',
+      proposed_action text NOT NULL DEFAULT 'Attach to Existing',
+      extracted_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `;
+}
+
 
 function isAddisonAssigneeValue(value: unknown) {
   const assigned = String(value || "").trim().toLowerCase();
@@ -89,6 +112,21 @@ function nextAddisonWorkDate(dateKey: string) {
   do {
     date.setDate(date.getDate() + 1);
   } while ([0,1,6].includes(date.getDay()));
+  return date.toISOString().slice(0, 10);
+}
+
+function nextRecurringDate(
+  dateKey: string,
+  intervalValue: unknown,
+  unitValue: unknown,
+) {
+  const interval = Math.max(1, Number(intervalValue || 1));
+  const unit = String(unitValue || "Weeks");
+  const date = new Date(`${dateKey}T12:00:00-07:00`);
+  if (unit === "Days") date.setDate(date.getDate() + interval);
+  else if (unit === "Months") date.setMonth(date.getMonth() + interval);
+  else if (unit === "Years") date.setFullYear(date.getFullYear() + interval);
+  else date.setDate(date.getDate() + interval * 7);
   return date.toISOString().slice(0, 10);
 }
 
@@ -140,8 +178,24 @@ async function loadAddisonWork() {
     serverUpdatedAt: row.updated_at,
   })) as AddisonTaskRecord[];
 
+  const seenTasks = new Set<string>();
   const tasks = allTasks
     .filter(isAddisonAssigned)
+    .filter((task) => {
+      const meta = addisonTaskMeta(task);
+      const identity = [
+        String(task.title || "").trim().toLowerCase().replace(/\s+/g, " "),
+        String(meta?.dueDate || "").slice(0, 10),
+        String(task.locationId || "general"),
+        task.recurring
+          ? `${Number(meta?.recurrenceInterval || 1)}-${String(meta?.recurrenceUnit || "Weeks")}`
+          : "one-time",
+        meta?.status === "Completed" ? "completed" : "active",
+      ].join("||");
+      if (seenTasks.has(identity)) return false;
+      seenTasks.add(identity);
+      return true;
+    })
     .sort((a, b) => {
       const am = addisonTaskMeta(a);
       const bm = addisonTaskMeta(b);
@@ -278,9 +332,22 @@ async function loadAddisonWork() {
   `;
   const dailyNoteRecord = dailyNoteRows[0]?.record || {};
 
+  const locationRows = await sql`
+    SELECT id, record
+    FROM atlas_operational_records
+    WHERE record_type = 'locations'
+      AND property_id = '2000'
+    ORDER BY COALESCE(record->>'name', record->>'title', id) ASC
+  `;
+  const locations = locationRows.map((row: any) => ({
+    id: String(row.id || row.record?.id || ""),
+    name: String(row.record?.name || row.record?.title || "Location"),
+  }));
+
   return {
     today,
     tasks,
+    locations,
     dailyNote: String(dailyNoteRecord.note || ""),
     dailyNoteUpdatedAt: String(dailyNoteRecord.updatedAt || ""),
     routine: occurrence
@@ -698,6 +765,71 @@ export async function PATCH(request: NextRequest) {
       const action = String(body.action || "");
       const today = pacificDateKey();
 
+      if (action === "field-report") {
+        const description = String(body.description || "").trim();
+        if (!description) {
+          return NextResponse.json(
+            { ok: false, error: "Describe what you found." },
+            { status: 400 },
+          );
+        }
+
+        await ensureInboxTable();
+        const locationId = String(body.locationId || "");
+        const locationName = String(body.locationName || "General property");
+        const canHandle = Boolean(body.canHandle);
+        const files = Array.isArray(body.files) ? body.files : [];
+        const firstLine =
+          description.split(/\r?\n/).find((line) => line.trim())?.trim() ||
+          "Field Report";
+        const title =
+          firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine;
+
+        const duplicates = await sql`
+          SELECT id
+          FROM atlas_inbox_items
+          WHERE source = 'Addison Field Report'
+            AND status <> 'Archived'
+            AND LOWER(TRIM(notes)) = LOWER(TRIM(${description}))
+            AND COALESCE(extracted_data->>'propertyId', '') = '2000'
+            AND COALESCE(extracted_data->>'locationId', '') = ${locationId}
+          LIMIT 1
+        `;
+        if (!duplicates[0]) {
+          const id = `inbox-addison-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const extractedData = {
+            propertyId: "2000",
+            reportType: "Field Report",
+            submittedBy: "Addison Hutton",
+            canHandle,
+            locationId,
+            locationName,
+            suggestedAction: "Create Task",
+          };
+          await sql`
+            INSERT INTO atlas_inbox_items (
+              id, title, intake_type, status, source, notes, pasted_text,
+              files, target_type, target_id, target_name, proposed_action,
+              extracted_data, created_at, updated_at
+            )
+            VALUES (
+              ${id}, ${title}, 'Work Order Issue', 'Needs Review',
+              'Addison Field Report', ${description}, '',
+              ${JSON.stringify(files)}::jsonb,
+              ${locationId ? "Location" : "General"}, ${locationId},
+              ${locationName}, 'Attach to Existing',
+              ${JSON.stringify(extractedData)}::jsonb, NOW(), NOW()
+            )
+          `;
+        }
+
+        return NextResponse.json({
+          ok: true,
+          mode: "addison",
+          addison: await loadAddisonWork(),
+        });
+      }
+
       if (action === "task-create") {
         const title = String(body.title || "").trim();
         if (!title) {
@@ -826,13 +958,34 @@ export async function PATCH(request: NextRequest) {
           ? Array.from(new Set([...history, today])).sort()
           : history.filter((value: string) => value !== today);
 
-        const ok = await patchAddisonTask(taskId, {
-          status,
-          completedAt: completed ? new Date().toISOString() : undefined,
-          lastCompletedDate: completed ? today : currentMeta?.lastCompletedDate || "",
-          completionHistory: nextHistory,
-          needsReview: completed,
-        });
+        const recurring = Boolean(currentTask?.recurring);
+        const ok = await patchAddisonTask(
+          taskId,
+          completed && recurring
+            ? {
+                status: "Open",
+                dueDate: nextRecurringDate(
+                  String(currentMeta?.dueDate || today).slice(0, 10),
+                  currentMeta?.recurrenceInterval,
+                  currentMeta?.recurrenceUnit,
+                ),
+                completedAt: undefined,
+                lastCompletedDate: today,
+                completionHistory: nextHistory,
+                needsReview: true,
+              }
+            : {
+                status,
+                completedAt: completed ? new Date().toISOString() : undefined,
+                lastCompletedDate: completed
+                  ? today
+                  : String(currentMeta?.lastCompletedDate || "").slice(0, 10) === today
+                    ? ""
+                    : currentMeta?.lastCompletedDate || "",
+                completionHistory: nextHistory,
+                needsReview: completed,
+              },
+        );
         if (!ok) return NextResponse.json({ ok: false, error: "Addison task not found." }, { status: 404 });
         return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
       }
