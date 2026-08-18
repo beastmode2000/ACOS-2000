@@ -1377,7 +1377,7 @@ export default function AtlasLocationsWorkspace(props: any) {
                 </section>
               ) : null}
 
-              {!locationEditorOpen ? (
+              {false && !locationEditorOpen ? (
                 <section
                   style={{
                     marginTop: 12,
