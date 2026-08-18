@@ -319,7 +319,7 @@ export default function AtlasNotifications(props: Props) {
   }
 
   return (
-    <div ref={notificationRootRef} className="atlas-notifications-root" style={{ position:"relative", marginBottom:8 }}>
+    <div ref={notificationRootRef} className="atlas-notifications-root" style={{ position:"relative", marginBottom:0, minWidth:0, width:"100%" }}>
       <style>{`
         .atlas-page-header .atlas-notifications-root > button,
         .atlas-page-header .atlas-notifications-root > button span,
@@ -335,18 +335,18 @@ export default function AtlasNotifications(props: Props) {
         }
       `}</style>
       <button type="button" onClick={()=>setOpen((value)=>!value)} style={{width:"100%",minHeight:42,border:`1px solid ${props.colors.line}`,borderRadius:10,background:"#fff",color:props.colors.navy,fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 11px"}}>
-        <span>Notifications</span><span style={{minWidth:24,height:24,borderRadius:999,background:unread.length?props.colors.gold:props.colors.panel,display:"inline-grid",placeItems:"center",fontSize:12}}>{unread.length}</span>
+        <span>{props.isMobile ? "Alerts" : "Notifications"}</span><span style={{minWidth:24,height:24,borderRadius:999,background:unread.length?props.colors.gold:props.colors.panel,display:"inline-grid",placeItems:"center",fontSize:12}}>{unread.length}</span>
       </button>
       {open ? <div className="atlas-notifications-panel" role="dialog" aria-modal={props.isMobile} aria-label="Atlas notifications" style={{
-        position:props.isMobile?"fixed":"absolute",
-        top:props.isMobile?12:48,
-        right:props.isMobile?10:0,
-        left:props.isMobile?10:"auto",
-        bottom:props.isMobile?12:"auto",
-        zIndex:props.isMobile?10020:120,
-        width:props.isMobile?"auto":"420px",
-        maxWidth:props.isMobile?"none":"calc(100vw - 24px)",
-        maxHeight:props.isMobile?"calc(100dvh - 24px)":"65vh",
+        position:"fixed",
+        top:props.isMobile?8:72,
+        right:props.isMobile?8:16,
+        left:props.isMobile?8:"auto",
+        bottom:props.isMobile?8:16,
+        zIndex:12060,
+        width:props.isMobile?"auto":"min(460px, calc(100vw - 32px))",
+        maxWidth:"none",
+        maxHeight:"none",
         overflowY:"auto",
         WebkitOverflowScrolling:"touch",
         border:`1px solid ${props.colors.line}`,
@@ -359,8 +359,8 @@ export default function AtlasNotifications(props: Props) {
         alignContent:"start",
         gap:8
       }}>
-        <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",paddingRight:props.isMobile?42:0,color:props.colors.navy}}><strong>Atlas Notifications</strong><button type="button" onClick={markAllRead} style={{border:0,background:"transparent",color:props.colors.navy,fontWeight:800,cursor:"pointer"}}>Mark all read</button></div>
-        {props.isMobile ? <button type="button" onClick={()=>setOpen(false)} aria-label="Close notifications" style={{position:"absolute",top:8,right:8,width:36,height:36,border:`1px solid ${props.colors.line}`,borderRadius:9,background:"#fff",fontSize:20,fontWeight:900,cursor:"pointer"}}>×</button> : null}
+        <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",paddingRight:42,color:props.colors.navy}}><strong>Atlas Notifications</strong><button type="button" onClick={markAllRead} style={{border:0,background:"transparent",color:props.colors.navy,fontWeight:800,cursor:"pointer"}}>Mark all read</button></div>
+        <button type="button" onClick={()=>setOpen(false)} aria-label="Close notifications" style={{position:"absolute",top:8,right:8,width:36,height:36,border:`1px solid ${props.colors.line}`,borderRadius:9,background:"#fff",fontSize:20,fontWeight:900,cursor:"pointer"}}>×</button>
         <label style={{display:"flex",gap:8,alignItems:"center",color:props.colors.navy,fontSize:12,fontWeight:800}}><input type="checkbox" checked={browserEnabled} onChange={()=>void toggleBrowserAlerts()}/>Phone / browser alerts on this device</label>
         <label style={{display:"grid",gap:4,color:props.colors.navy,fontSize:11,fontWeight:800}}>
           Phone alert property
