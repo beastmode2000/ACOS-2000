@@ -19,6 +19,7 @@ function isPublicPath(request: NextRequest) {
   if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(p)) return true;
   if (p === "/landscape-help" && hasShareToken(request)) return true;
   if (p === "/api/landscape-help" && hasShareToken(request)) return true;
+  if (p === "/api/addison-upload" && hasShareToken(request)) return true;
   if (p === "/request") return true;
   if (p === "/api/atlas-requests" && hasShareToken(request)) return true;
   if (p === "/reset-password" && hasShareToken(request)) return true;
