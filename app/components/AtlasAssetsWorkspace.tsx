@@ -398,17 +398,47 @@ export default function AtlasAssetsWorkspace(props: any) {
     try {
       const selectedVendor = vendorRecords.find((vendor) => vendor.id === assetShareVendorId);
       const manuals = assetShareIncludeManuals
-        ? attachedManuals.map((manual) => ({
-            title: manual.title || "Manual PDF",
-            documentNumber: manual.documentNumber || "",
-            url: shareableWebUrl(
-              manual.href ||
-              manual.files?.find((file) => shareableWebUrl(file.url || file.dataUrl))?.url ||
-              manual.files?.find((file) => shareableWebUrl(file.url || file.dataUrl))?.dataUrl ||
-              "",
-            ),
-          })).filter((manual) => manual.url)
+        ? attachedManuals.map((manual) => {
+            const linkedDocument = intakeDocs.find((document) => {
+              const linkedToAsset =
+                document.targetId === selectedAsset.id ||
+                document.linkedAssetId === selectedAsset.id;
+              if (!linkedToAsset) return false;
+              const sameTitle = String(document.title || "").trim().toLowerCase() ===
+                String(manual.title || "").trim().toLowerCase();
+              const sameHref = Boolean(
+                manual.href && document.href && manual.href === document.href,
+              );
+              const manualFileIds = new Set((manual.files || []).map((file) => file.id));
+              const sameFile = (document.files || []).some((file) => manualFileIds.has(file.id));
+              return sameTitle || sameHref || sameFile;
+            });
+            const manualFile = (manual.files || []).find(
+              (file) => file.url || file.dataUrl,
+            );
+            const linkedFile = (linkedDocument?.files || []).find(
+              (file) => file.id === manualFile?.id,
+            ) || (linkedDocument?.files || []).find(
+              (file) => file.url || file.dataUrl,
+            );
+            const sourceFile = linkedFile || manualFile;
+
+            return {
+              title: manual.title || "Manual PDF",
+              documentNumber: manual.documentNumber || "",
+              url: shareableWebUrl(
+                manual.href || sourceFile?.url || sourceFile?.dataUrl || "",
+              ),
+              documentId: linkedDocument?.id || "",
+              fileId: linkedFile?.id || "",
+            };
+          }).filter((manual) => manual.url || (manual.documentId && manual.fileId))
         : [];
+      if (assetShareIncludeManuals && attachedManuals.length && !manuals.length) {
+        throw new Error(
+          "The attached manuals are not synced as openable PDF files yet. Open and save the manual in Atlas, then create the vendor link again.",
+        );
+      }
 
       const response = await fetch("/api/atlas", {
         method: "POST",
@@ -429,6 +459,7 @@ export default function AtlasAssetsWorkspace(props: any) {
               ? shareableWebUrl(selectedAssetCoverSource)
               : "",
             manuals,
+            includeManuals: assetShareIncludeManuals,
             message: assetShareMessage.trim(),
             vendorName: selectedVendor?.name || "",
           },
@@ -448,7 +479,12 @@ export default function AtlasAssetsWorkspace(props: any) {
       if (assetShareStorageKey) {
         window.localStorage.setItem(assetShareStorageKey, JSON.stringify(result));
       }
-      setAssetShareStatus("Vendor link ready.");
+      const includedManualCount = Number(payload.manualCount || 0);
+      setAssetShareStatus(
+        assetShareIncludeManuals && attachedManuals.length
+          ? `Vendor link ready with ${includedManualCount} of ${attachedManuals.length} manual${attachedManuals.length === 1 ? "" : "s"}.`
+          : "Vendor link ready.",
+      );
     } catch (error) {
       setAssetShareStatus(
         error instanceof Error ? error.message : "Atlas could not create the vendor link.",
@@ -1614,7 +1650,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                       }}
                       style={assetActionButtonStyle}
                     >
-                      Share with Vendor
+                      Share
                     </button>
                     <button
                       type="button"
@@ -1675,7 +1711,7 @@ export default function AtlasAssetsWorkspace(props: any) {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                     <div>
                       <h3 style={{ margin: 0, color: colors.navy, fontSize: 19 }}>
-                        Share with Vendor
+                        Share
                       </h3>
                       <div style={{ ...mutedSmallStyle, marginTop: 4 }}>
                         {selectedAsset.name}
