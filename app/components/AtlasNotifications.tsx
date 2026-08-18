@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type Props = {
   propertyId: string;
@@ -64,7 +65,10 @@ function recordDateKey(value: unknown) {
 
 export default function AtlasNotifications(props: Props) {
   const notificationRootRef = useRef<HTMLDivElement>(null);
+  const notificationPanelRef = useRef<HTMLDivElement>(null);
+  const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  const [desktopPanelTop, setDesktopPanelTop] = useState(88);
   const [readIds, setReadIds] = useState<string[]>([]);
   const [browserEnabled, setBrowserEnabled] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState("");
@@ -78,7 +82,11 @@ export default function AtlasNotifications(props: Props) {
 
     const closeOutside = (event: PointerEvent) => {
       const target = event.target as Node | null;
-      if (target && !notificationRootRef.current?.contains(target)) setOpen(false);
+      if (
+        target &&
+        !notificationRootRef.current?.contains(target) &&
+        !notificationPanelRef.current?.contains(target)
+      ) setOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
@@ -91,6 +99,14 @@ export default function AtlasNotifications(props: Props) {
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
+
+  const toggleNotifications = () => {
+    if (!open && !props.isMobile) {
+      const buttonBounds = notificationButtonRef.current?.getBoundingClientRect();
+      if (buttonBounds) setDesktopPanelTop(Math.ceil(buttonBounds.bottom + 10));
+    }
+    setOpen((value) => !value);
+  };
 
   useEffect(() => {
     try {
@@ -321,25 +337,25 @@ export default function AtlasNotifications(props: Props) {
   return (
     <div ref={notificationRootRef} className="atlas-notifications-root" style={{ position:"relative", marginBottom:0, minWidth:0, width:"100%" }}>
       <style>{`
-        .atlas-page-header .atlas-notifications-root > button,
-        .atlas-page-header .atlas-notifications-root > button span,
-        .atlas-page-header .atlas-notifications-panel,
-        .atlas-page-header .atlas-notifications-panel button,
-        .atlas-page-header .atlas-notifications-panel label,
-        .atlas-page-header .atlas-notifications-panel strong,
-        .atlas-page-header .atlas-notifications-panel span {
+        .atlas-notifications-root > button,
+        .atlas-notifications-root > button span,
+        .atlas-notifications-panel,
+        .atlas-notifications-panel button,
+        .atlas-notifications-panel label,
+        .atlas-notifications-panel strong,
+        .atlas-notifications-panel span {
           color: ${props.colors.navy} !important;
         }
-        .atlas-page-header .atlas-notifications-panel .atlas-notification-detail {
+        .atlas-notifications-panel .atlas-notification-detail {
           color: ${props.colors.muted} !important;
         }
       `}</style>
-      <button type="button" onClick={()=>setOpen((value)=>!value)} style={{width:"100%",minHeight:42,border:`1px solid ${props.colors.line}`,borderRadius:10,background:"#fff",color:props.colors.navy,fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 11px"}}>
+      <button ref={notificationButtonRef} type="button" onClick={toggleNotifications} style={{width:"100%",minHeight:42,border:`1px solid ${props.colors.line}`,borderRadius:10,background:"#fff",color:props.colors.navy,fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 11px"}}>
         <span>{props.isMobile ? "Alerts" : "Notifications"}</span><span style={{minWidth:24,height:24,borderRadius:999,background:unread.length?props.colors.gold:props.colors.panel,display:"inline-grid",placeItems:"center",fontSize:12}}>{unread.length}</span>
       </button>
-      {open ? <div className="atlas-notifications-panel" role="dialog" aria-modal={props.isMobile} aria-label="Atlas notifications" style={{
+      {open && typeof document !== "undefined" ? createPortal(<div ref={notificationPanelRef} className="atlas-notifications-panel" role="dialog" aria-modal={props.isMobile} aria-label="Atlas notifications" style={{
         position:"fixed",
-        top:props.isMobile?8:72,
+        top:props.isMobile?8:desktopPanelTop,
         right:props.isMobile?8:16,
         left:props.isMobile?8:"auto",
         bottom:props.isMobile?8:16,
@@ -388,7 +404,7 @@ export default function AtlasNotifications(props: Props) {
           ))}
         </div>
         {alerts.length ? alerts.map((alert)=><button key={alert.id} type="button" onClick={()=>{setOpen(false);alert.open();}} style={{textAlign:"left",color:props.colors.navy,border:`1px solid ${props.colors.line}`,borderLeft:`4px solid ${alert.tone==="urgent"?"#B42318":alert.tone==="attention"?props.colors.gold:"#3B82F6"}`,borderRadius:9,background:readIds.includes(alert.id)?props.colors.panel:"#fff",padding:10,cursor:"pointer"}}><strong style={{display:"block",color:props.colors.navy}}>{alert.title}</strong><span className="atlas-notification-detail" style={{display:"block",marginTop:2,fontSize:12,color:props.colors.muted}}>{alert.detail}</span></button>) : <div style={{padding:14,color:props.colors.muted}}>No active notifications.</div>}
-      </div> : null}
+      </div>, document.body) : null}
     </div>
   );
 }
