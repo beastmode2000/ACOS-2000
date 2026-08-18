@@ -230,8 +230,6 @@ export default function AtlasAssetsWorkspace(props: any) {
     recentAssetIds,
     recordListIdentityStyle,
     recordListThumbImageStyle,
-    renameAssetDocument,
-    renameAssetManual,
     renameAssetPhoto,
     saveDirtyRecord,
     seanVisibleAssetRecords,
@@ -2062,12 +2060,24 @@ export default function AtlasAssetsWorkspace(props: any) {
                       Paste
                     </button>
                     <label style={assetTinyUploadStyle}>
-                      + Add Photo
+                      Take Photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={(event) => {
+                          void addAssetPhotoFiles(event.currentTarget.files);
+                          event.currentTarget.value = "";
+                        }}
+                        style={{ display: "none" }}
+                      />
+                    </label>
+                    <label style={assetTinyUploadStyle}>
+                      Upload from Library
                       <input
                         type="file"
                         accept="image/*"
                         multiple
-                        capture="environment"
                         onChange={(event) => {
                           void addAssetPhotoFiles(event.currentTarget.files);
                           event.currentTarget.value = "";
@@ -2240,7 +2250,10 @@ export default function AtlasAssetsWorkspace(props: any) {
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                             <button
                               type="button"
-                              onClick={() => void renameAssetManual(manual)}
+                              onClick={() => {
+                                setSelectedManualId(manual.id);
+                                setScreen("manuals");
+                              }}
                               style={assetTinyButtonStyle}
                             >
                               Edit
@@ -2335,7 +2348,10 @@ export default function AtlasAssetsWorkspace(props: any) {
                         </button>
                         <button
                           type="button"
-                          onClick={() => void renameAssetDocument(document)}
+                          onClick={() => {
+                            setSelectedDocumentId(document.id);
+                            setScreen("documents");
+                          }}
                           style={assetTinyButtonStyle}
                         >
                           Edit
