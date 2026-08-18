@@ -5401,7 +5401,7 @@ export function ListDrawerLayout(props: {
       style={{
         ...outerStyle,
         minWidth: 0,
-        overflowX: props.isMobile ? "hidden" : "clip",
+        overflowX: props.isMobile ? "hidden" : "visible",
       }}
     >
       {props.eyebrow || props.detail || props.right || props.toolbar ? (
@@ -5474,12 +5474,12 @@ export function ListDrawerLayout(props: {
           style={{
             position: "fixed",
             inset: 0,
-            zIndex: 240,
+            zIndex: 12040,
             background: "rgba(7,27,47,0.68)",
             display: "grid",
             alignItems: "stretch",
             justifyItems: "stretch",
-            padding: "max(8px, env(safe-area-inset-top)) 8px 0",
+            padding: "max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom))",
           }}
           onClick={(event) => {
             if (event.currentTarget === event.target) {
@@ -5491,14 +5491,15 @@ export function ListDrawerLayout(props: {
             ref={drawerScrollRef}
             style={{
               width: "100%",
-              height: "calc(100dvh - max(8px, env(safe-area-inset-top)))",
+              height: "calc(100dvh - max(16px, env(safe-area-inset-top)) - max(8px, env(safe-area-inset-bottom)))",
               minWidth: 0,
               overflowY: "auto",
               overflowX: "hidden",
               background: colors.card,
               WebkitOverflowScrolling: "touch",
               overscrollBehavior: "contain",
-              borderRadius: "18px 18px 0 0",
+              borderRadius: 18,
+              boxSizing: "border-box",
               paddingBottom: "max(24px, env(safe-area-inset-bottom))",
             }}
           >
@@ -5540,7 +5541,7 @@ export function ListDrawerLayout(props: {
             </div>
             <div
               className="atlas-record-detail-content atlas-record-detail-content--mobile"
-              style={{ minWidth: 0, padding: 12, overflowX: "hidden" }}
+              style={{ minWidth: 0, padding: 12, overflowX: "visible" }}
             >
               {props.drawer}
             </div>
