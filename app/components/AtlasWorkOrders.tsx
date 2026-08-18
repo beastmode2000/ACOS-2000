@@ -1776,10 +1776,18 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         style={{ display: "none" }}
       />
       <ListDrawerLayout
-        eyebrow="Work"
+        eyebrow=""
         title="Work Orders"
         detail=""
         isMobile={isMobile}
+        drawerResetKey={selectedService.id || "work-order-empty"}
+        mobileDrawerOpen={isMobile && detailOpen && Boolean(selectedService.id)}
+        onMobileDrawerClose={() => {
+          setDetailOpen(false);
+          setSelectedServiceId("");
+          setWorkEditorOpen(false);
+        }}
+        mobileDrawerTitle={selectedService.title || "Work Order"}
         toolbar={
           <div style={{ display: "grid", gap: 8, width: "100%" }}>
             <input
@@ -1802,7 +1810,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               style={{
                 display: "grid",
                 gridTemplateColumns: isMobile
-                  ? "repeat(2, minmax(0, 1fr))"
+                  ? "minmax(0, 1fr)"
                   : `repeat(${Math.max(1, visibleFilters.length + (visibleFilters.length < DEFAULT_VISIBLE_FILTERS.length ? 1 : 0))}, minmax(0, 1fr))`,
                 alignItems: "center",
                 gap: 7,
@@ -1914,18 +1922,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         drawerStyleOverride={
           detailOpen && selectedService.id
             ? isMobile
-              ? {
-                  position: "fixed",
-                  inset: 0,
-                  zIndex: 1000,
-                  width: "100%",
-                  height: "100dvh",
-                  maxHeight: "100dvh",
-                  overflowY: "auto",
-                  overscrollBehavior: "contain",
-                  background: "#FFFFFF",
-                  padding: 16,
-                }
+              ? { minWidth: 0, overflowX: "visible", background: "#FFFFFF", padding: 0 }
               : {
                   position: "relative",
                   top: 0,
@@ -2232,7 +2229,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         drawer={
           detailOpen && selectedService.id ? (
             <div style={{ ...stackStyle, gap: 12 }}>
-              {isMobile ? (
+              {false && isMobile ? (
               <div
                 style={{
                   display: "flex",
