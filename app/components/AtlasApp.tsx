@@ -18773,7 +18773,111 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function renderTeamWork() {
-    return <AtlasTeamWork activePropertyId={activePropertyId} />;
+    const createAddisonAssignment = (draft: {
+      title: string;
+      dueDate: string;
+      frequency: "One-time" | "Daily" | "Weekly" | "Biweekly" | "Monthly";
+      locationId: string;
+      instructions: string;
+      priority: "High" | "Medium" | "Low";
+      minutes: number;
+    }) => {
+      const title = draft.title.trim();
+      if (!title) return { ok: false, error: "Enter a task name." };
+
+      const dueDate = draft.dueDate || todayISO();
+      const recurrence =
+        draft.frequency === "Daily"
+          ? { recurring: true, interval: 1, unit: "Days" as WorkOrderRecurrenceUnit }
+          : draft.frequency === "Weekly"
+            ? { recurring: true, interval: 1, unit: "Weeks" as WorkOrderRecurrenceUnit }
+            : draft.frequency === "Biweekly"
+              ? { recurring: true, interval: 2, unit: "Weeks" as WorkOrderRecurrenceUnit }
+              : draft.frequency === "Monthly"
+                ? { recurring: true, interval: 1, unit: "Months" as WorkOrderRecurrenceUnit }
+                : { recurring: false, interval: 1, unit: "Weeks" as WorkOrderRecurrenceUnit };
+      const locationId = draft.locationId || "general";
+
+      const duplicate = workPlanTasks.find((task) => {
+        const meta = taskDetails(task.id);
+        return (
+          meta.status !== "Completed" &&
+          String(task.title || "").trim().toLowerCase() === title.toLowerCase() &&
+          String(meta.assignee || "").trim().toLowerCase() === "addison" &&
+          String(meta.dueDate || "").slice(0, 10) === dueDate &&
+          String(task.locationId || "general") === locationId &&
+          Boolean(task.recurring) === recurrence.recurring &&
+          (!recurrence.recurring ||
+            (Number(meta.recurrenceInterval || 1) === recurrence.interval &&
+              meta.recurrenceUnit === recurrence.unit))
+        );
+      });
+      if (duplicate) {
+        setSelectedTaskId(duplicate.id);
+        showSaveToast("That Addison assignment already exists.");
+        return { ok: false, error: "That assignment already exists." };
+      }
+
+      const createdAt = new Date().toISOString();
+      const category = inferTaskCategory(title);
+      const task: WorkPlanTask = {
+        id: uid("task"),
+        title,
+        minutes: Math.max(5, Number(draft.minutes || 30)),
+        priority: draft.priority,
+        category,
+        locationId,
+        preferredDay: inferTaskDay(title, category),
+        locked: false,
+        recurring: recurrence.recurring,
+        fixedTime: "",
+        notes: draft.instructions.trim(),
+      };
+      const meta: AtlasTaskMeta = {
+        status: "Open",
+        dueDate,
+        assignee: "Addison",
+        createdAt,
+        completedAt: undefined,
+        notes: draft.instructions.trim(),
+        instructions: draft.instructions.trim(),
+        addisonNote: "",
+        problemFlag: "",
+        recurrenceInterval: recurrence.interval,
+        recurrenceUnit: recurrence.unit,
+        recurrenceEndDate: "",
+        lastCompletedDate: "",
+        completionHistory: [],
+        season: "Year-Round",
+        weatherDependency: "None",
+        flexibleTime: true,
+        skippable: true,
+        assignmentScope: recurrence.recurring
+          ? "All future occurrences"
+          : "This occurrence",
+        needsReview: false,
+        updatedAt: createdAt,
+      };
+
+      clearTaskTombstone(task.id);
+      setWorkPlanTasks((current) => [task, ...current]);
+      setTaskMeta((current) => ({ ...current, [task.id]: meta }));
+      setSelectedTaskId(task.id);
+      recordAtlasAudit(
+        "Task assigned",
+        `${task.title} → Addison · ${draft.frequency} · ${formatDate(dueDate)}`,
+      );
+      showSaveToast(`${task.title} assigned to Addison.`);
+      return { ok: true };
+    };
+
+    return (
+      <AtlasTeamWork
+        activePropertyId={activePropertyId}
+        locations={locations}
+        createAddisonAssignment={createAddisonAssignment}
+      />
+    );
   }
 
   function renderTimelineOrInsights(mode: "timeline" | "insights") {
