@@ -28443,7 +28443,6 @@ ${notes.trim()}` : notes.trim(),
 
     return (
       <div style={sectionNavyBackdropStyle}>
-        {renderPageVisualSummary()}
         {content}
       </div>
     );
