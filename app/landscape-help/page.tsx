@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { upload } from "@vercel/blob/client";
 
 type LandscapeStatus = "Not Started" | "In Progress" | "Complete" | "Needs Review";
 
@@ -34,7 +35,9 @@ type LandscapeItem = {
 type AddisonWorkData = {
   today: string;
   tasks: Array<Record<string, any>>;
-  routine: { date: string; name: string; tasks: Array<Record<string, any>> };
+  locations?: Array<{ id: string; name: string }>;
+  dailyNote?: string;
+  dailyNoteUpdatedAt?: string;
 };
 
 type LandscapeApiData = {
@@ -81,6 +84,12 @@ function getLandscapeShareTokenFromUrl() {
   const pathParts = currentUrl.pathname.split("/").filter(Boolean);
   if (pathParts[0] === "landscape-help" && pathParts[1]) {
     return decodeURIComponent(pathParts[1]);
+  }
+
+  // Dedicated Addison Home Screen route. This intentionally survives
+  // iPhone/PWA launches even when the query string is dropped.
+  if (pathParts[0] === "addison-work") {
+    return "addison-2000-7f94f468dca84de3a7b8c2d942ca3819";
   }
 
   return "";
@@ -136,6 +145,21 @@ export default function LandscapeHelpPage() {
   const [origin, setOrigin] = useState("");
   const [shareToken, setShareToken] = useState("");
   const [addisonData, setAddisonData] = useState<AddisonWorkData | null>(null);
+  const [addisonSync, setAddisonSync] = useState<"saved" | "syncing" | "offline">("saved");
+  const [uploadingItemId, setUploadingItemId] = useState("");
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportDescription, setReportDescription] = useState("");
+  const [reportLocationId, setReportLocationId] = useState("");
+  const [reportCanHandle, setReportCanHandle] = useState(false);
+  const [reportFiles, setReportFiles] = useState<File[]>([]);
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [todayWeather, setTodayWeather] = useState<{
+    temperature: number;
+    code: number;
+    high: number;
+    low: number;
+    precipChance: number;
+  } | null>(null);
 
   useEffect(() => {
     const token = getLandscapeShareTokenFromUrl();
@@ -147,9 +171,9 @@ export default function LandscapeHelpPage() {
   useEffect(() => {
     if (!addisonData || !shareToken) return;
     const timer = window.setInterval(() => {
-      void loadCurrentWeek(shareToken);
+      void loadCurrentWeek(shareToken, false);
     }, 5000);
-    const onFocus = () => void loadCurrentWeek(shareToken);
+    const onFocus = () => void loadCurrentWeek(shareToken, false);
     window.addEventListener("focus", onFocus);
     return () => {
       window.clearInterval(timer);
@@ -157,9 +181,54 @@ export default function LandscapeHelpPage() {
     };
   }, [Boolean(addisonData), shareToken]);
 
+  function weatherText(code: number) {
+    if (code === 0) return "Clear";
+    if (code === 1 || code === 2) return "Mostly clear";
+    if (code === 3) return "Cloudy";
+    if (code === 45 || code === 48) return "Fog";
+    if ([51, 53, 55, 56, 57].includes(code)) return "Drizzle";
+    if ([61, 63, 65, 66, 67].includes(code)) return "Rain";
+    if ([71, 73, 75, 77].includes(code)) return "Snow";
+    if ([80, 81, 82].includes(code)) return "Showers";
+    if ([85, 86].includes(code)) return "Snow showers";
+    if ([95, 96, 99].includes(code)) return "Thunderstorms";
+    return "Weather";
+  }
+
+  async function loadTodayWeather() {
+    try {
+      const url =
+        "https://api.open-meteo.com/v1/forecast?latitude=47.60&longitude=-122.20&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&temperature_unit=fahrenheit&timezone=America%2FLos_Angeles&forecast_days=1";
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error("Weather failed");
+      const data = await response.json();
+
+      setTodayWeather({
+        temperature: Math.round(Number(data?.current?.temperature_2m ?? 0)),
+        code: Number(data?.current?.weather_code ?? 0),
+        high: Math.round(Number(data?.daily?.temperature_2m_max?.[0] ?? 0)),
+        low: Math.round(Number(data?.daily?.temperature_2m_min?.[0] ?? 0)),
+        precipChance: Math.round(
+          Number(data?.daily?.precipitation_probability_max?.[0] ?? 0),
+        ),
+      });
+    } catch {
+      setTodayWeather(null);
+    }
+  }
+
+  useEffect(() => {
+    void loadTodayWeather();
+    const timer = window.setInterval(() => {
+      void loadTodayWeather();
+    }, 30 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   async function patchAddison(action: string, payload: Record<string, unknown>) {
     if (!shareToken) return;
     setSaving(true);
+    setAddisonSync("syncing");
     setMessage("");
     try {
       const response = await fetch(landscapeApiUrl(shareToken), {
@@ -170,11 +239,141 @@ export default function LandscapeHelpPage() {
       const data = await readLandscapeJson(response, "Could not save Addison work.");
       if (!data.ok) throw new Error(data.error || "Could not save Addison work.");
       if (data.mode === "addison" && data.addison) setAddisonData(data.addison);
-      setMessage("Saved.");
+      setAddisonSync("saved");
+      setMessage("");
     } catch (error) {
+      setAddisonSync("offline");
       setMessage(error instanceof Error ? error.message : "Could not save Addison work.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function uploadAddisonPhoto(itemId: string, file: File) {
+    if (!shareToken || !file) return;
+    setUploadingItemId(itemId);
+    setAddisonSync("syncing");
+    try {
+      const safeName = (file.name || "photo")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+      const blob = await upload(
+        `atlas-addison/2000/${Date.now()}-${safeName || "photo"}`,
+        file,
+        {
+          access: "public",
+          handleUploadUrl: `/api/addison-upload?token=${encodeURIComponent(shareToken)}`,
+          contentType: file.type || undefined,
+        },
+      );
+      await patchAddison("task-photo", {
+        taskId: itemId,
+        photo: {
+          url: blob.url,
+          name: file.name || "Photo",
+          createdAt: new Date().toISOString(),
+        },
+      });
+      setAddisonSync("saved");
+    } catch (error) {
+      setAddisonSync("offline");
+      setMessage(error instanceof Error ? error.message : "Photo upload failed.");
+    } finally {
+      setUploadingItemId("");
+    }
+  }
+
+  function addReportFiles(files: FileList | null) {
+    if (!files?.length) return;
+    setReportFiles((current) => {
+      const next = [...current];
+      Array.from(files)
+        .filter((file) => file.type.startsWith("image/"))
+        .forEach((file) => {
+          const identity = `${file.name}|${file.size}|${file.lastModified}`;
+          if (
+            !next.some(
+              (item) =>
+                `${item.name}|${item.size}|${item.lastModified}` === identity,
+            )
+          ) {
+            next.push(file);
+          }
+        });
+      return next;
+    });
+  }
+
+  async function submitFieldReport() {
+    const description = reportDescription.trim();
+    if (!description) {
+      setMessage("Describe what you found.");
+      return;
+    }
+    if (!shareToken || reportSubmitting) return;
+
+    setReportSubmitting(true);
+    setAddisonSync("syncing");
+    setMessage("");
+    try {
+      const uploadedPhotos: Array<{
+        url: string;
+        name: string;
+        createdAt: string;
+      }> = [];
+      for (const file of reportFiles) {
+        const safeName = (file.name || "photo")
+          .replace(/[^a-zA-Z0-9._-]+/g, "-")
+          .replace(/-+/g, "-")
+          .replace(/^-|-$/g, "");
+        const blob = await upload(
+          `atlas-addison/2000/reports/${Date.now()}-${safeName || "photo"}`,
+          file,
+          {
+            access: "public",
+            handleUploadUrl: `/api/addison-upload?token=${encodeURIComponent(shareToken)}`,
+            contentType: file.type || undefined,
+          },
+        );
+        uploadedPhotos.push({
+          url: blob.url,
+          name: file.name || "Photo",
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      const selectedLocation = (addisonData?.locations || []).find(
+        (location) => location.id === reportLocationId,
+      );
+      const response = await fetch(landscapeApiUrl(shareToken), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: shareToken,
+          action: "field-report",
+          description,
+          locationId: reportLocationId,
+          locationName: selectedLocation?.name || "General property",
+          canHandle: reportCanHandle,
+          files: uploadedPhotos,
+        }),
+      });
+      const data = await readLandscapeJson(response, "Could not send report.");
+      if (!data.ok) throw new Error(data.error || "Could not send report.");
+      if (data.mode === "addison" && data.addison) setAddisonData(data.addison);
+      setReportDescription("");
+      setReportLocationId("");
+      setReportCanHandle(false);
+      setReportFiles([]);
+      setReportOpen(false);
+      setAddisonSync("saved");
+      setMessage("Report sent.");
+    } catch (error) {
+      setAddisonSync("offline");
+      setMessage(error instanceof Error ? error.message : "Could not send report.");
+    } finally {
+      setReportSubmitting(false);
     }
   }
 
@@ -186,9 +385,11 @@ export default function LandscapeHelpPage() {
     return `${origin}/landscape-help?token=${encodeURIComponent(week.shareToken)}`;
   }, [origin, week]);
 
-  async function loadCurrentWeek(tokenOverride = shareToken) {
-    setLoading(true);
-    setMessage("");
+  async function loadCurrentWeek(tokenOverride = shareToken, showLoading = true) {
+    if (showLoading) {
+      setLoading(true);
+      setMessage("");
+    }
 
     try {
       const response = await fetch(landscapeApiUrl(tokenOverride), { cache: "no-store" });
@@ -212,7 +413,7 @@ export default function LandscapeHelpPage() {
       const text = error instanceof Error ? error.message : "Could not load Landscape Help.";
       setMessage(text);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }
 
@@ -292,7 +493,7 @@ export default function LandscapeHelpPage() {
       <main style={styles.page}>
         <section style={styles.card}>
           <div style={styles.eyebrow}>Atlas / 2000</div>
-          <h1 style={styles.title}>{shareToken.startsWith("addison-") ? "Addison Work" : "Landscape Help"}</h1>
+          <h1 style={styles.title}>{shareToken.startsWith("addison-") ? "Atlas Today" : "Landscape Help"}</h1>
           <p style={styles.muted}>Loading...</p>
         </section>
       </main>
@@ -303,115 +504,362 @@ export default function LandscapeHelpPage() {
     const today = addisonData.today;
     const taskMeta = (task: Record<string, any>) =>
       task.taskMeta && typeof task.taskMeta === "object" ? task.taskMeta : task;
-    const activeTasks = addisonData.tasks.filter((task) => taskMeta(task).status !== "Completed");
-    const completedTasks = addisonData.tasks.filter((task) => taskMeta(task).status === "Completed");
-    const routineTasks = addisonData.routine?.tasks || [];
-    const routineDone = routineTasks.filter((task) => Boolean(task.completed) || task.status === "completed").length;
-    const total = activeTasks.length + completedTasks.length + routineTasks.length;
-    const done = completedTasks.length + routineDone;
-    const progress = total ? Math.round((done / total) * 100) : 0;
+    const activeTasks = addisonData.tasks.filter(
+      (task) => taskMeta(task).status !== "Completed",
+    );
+    const todayTasks = activeTasks.filter((task) => {
+      const dueDate = String(taskMeta(task).dueDate || "").slice(0, 10);
+      return !dueDate || dueDate <= today;
+    });
+    const upcomingTasks = activeTasks.filter(
+      (task) => String(taskMeta(task).dueDate || "").slice(0, 10) > today,
+    );
+    const completedTasks = addisonData.tasks.filter((task) => {
+      const meta = taskMeta(task);
+      return (
+        String(meta.completedAt || "").slice(0, 10) === today ||
+        String(meta.lastCompletedDate || "").slice(0, 10) === today ||
+        (Array.isArray(meta.completionHistory) &&
+          meta.completionHistory.map(String).includes(today))
+      );
+    });
+    const prettyToday = new Date(`${today}T12:00:00`).toLocaleDateString(undefined, {
+      weekday: "long", month: "long", day: "numeric"
+    });
+    const isAsNeeded = (title: string) =>
+      /\bas needed\b|dog area|dock|geese|trash/i.test(title);
+
+    const itemCard = (item: Record<string, any>, completed: boolean) => {
+      const meta = taskMeta(item);
+      const photos = Array.isArray(meta.photos) ? meta.photos : [];
+      const note = String(meta.addisonNote || meta.note || "");
+      const flagged = Boolean(meta.needsNick);
+      const problem = Boolean(meta.problemFound);
+      const nothingNeeded = Boolean(meta.checkedNothingNeeded);
+      const title = String(item.title || "Work item");
+      return (
+        <div key={`task-${String(item.id)}`} style={{
+          border: `1px solid ${problem || flagged ? colors.gold : colors.line}`,
+          borderRadius: 14,
+          padding: 12,
+          background: completed || nothingNeeded ? "#F7FAFC" : colors.card,
+          opacity: completed || nothingNeeded ? .78 : 1,
+        }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <input
+              type="checkbox"
+              checked={completed}
+              disabled={saving}
+              onChange={() =>
+                void patchAddison("task-status", {
+                  taskId: item.id,
+                  status: completed ? "Open" : "Completed",
+                })
+              }
+              style={{ width: 21, height: 21, marginTop: 2 }}
+            />
+            <div style={{ flex: 1 }}>
+              <strong style={{
+                display: "block",
+                color: colors.navy,
+                textDecoration: completed ? "line-through" : "none",
+              }}>{title}</strong>
+              {meta.dueDate ? (
+                <small style={{ color: colors.muted }}>Due {formatDate(String(meta.dueDate).slice(0,10))}</small>
+              ) : null}
+              {meta.instructions || item.notes || meta.notes ? (
+                <p style={{ margin:"6px 0 0", color:colors.text, fontSize:13, lineHeight:1.45, whiteSpace:"pre-wrap" }}>
+                  {String(meta.instructions || item.notes || meta.notes)}
+                </p>
+              ) : null}
+              {nothingNeeded ? <small style={{ display:"block", color: colors.muted, marginTop: 3 }}>Checked — nothing needed</small> : null}
+            </div>
+          </div>
+
+          <textarea
+            defaultValue={note}
+            placeholder="Add a note…"
+            onBlur={(event) =>
+              void patchAddison("task-note", {
+                taskId: item.id,
+                note: event.currentTarget.value,
+              })
+            }
+            style={{ ...styles.textarea, minHeight: 58, marginTop: 9 }}
+          />
+
+          <div style={{ display:"flex", gap:7, flexWrap:"wrap", marginTop:8 }}>
+            {isAsNeeded(title) ? (
+              <button
+                type="button"
+                onClick={() => void patchAddison("task-nothing-needed", {
+                  taskId: item.id,
+                  value: !nothingNeeded,
+                })}
+                style={styles.secondaryButton}
+              >
+                {nothingNeeded ? "Undo Nothing Needed" : "Checked — Nothing Needed"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void patchAddison("task-flag", {
+                taskId: item.id,
+                needsNick: !flagged,
+              })}
+              style={{ ...styles.secondaryButton, borderColor: flagged ? colors.gold : colors.line }}
+            >
+              {flagged ? "Needs Nick ✓" : "Needs Nick"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void patchAddison("task-problem", {
+                taskId: item.id,
+                problemFound: !problem,
+              })}
+              style={{ ...styles.secondaryButton, color: problem ? colors.red : colors.text }}
+            >
+              {problem ? "Problem Found ✓" : "Problem Found"}
+            </button>
+            <label style={{ ...styles.secondaryButton, cursor:"pointer", display:"inline-flex", alignItems:"center" }}>
+              {uploadingItemId === String(item.id) ? "Uploading…" : "Take Photo"}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display:"none" }}
+                disabled={uploadingItemId === String(item.id)}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  if (file) void uploadAddisonPhoto(String(item.id), file);
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+            <label style={{ ...styles.secondaryButton, cursor:"pointer", display:"inline-flex", alignItems:"center" }}>
+              {uploadingItemId === String(item.id) ? "Uploading…" : "Choose from Library"}
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display:"none" }}
+                disabled={uploadingItemId === String(item.id)}
+                onChange={(event) => {
+                  const files = Array.from(event.currentTarget.files || []);
+                  if (files.length) {
+                    void (async () => {
+                      for (const file of files) {
+                        await uploadAddisonPhoto(String(item.id), file);
+                      }
+                    })();
+                  }
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+          </div>
+
+          {photos.length ? (
+            <div style={{ display:"flex", gap:7, overflowX:"auto", marginTop:9, paddingBottom:2 }}>
+              {photos.map((photo:any, index:number) => (
+                <a key={`${photo.url}-${index}`} href={String(photo.url)} target="_blank" rel="noreferrer">
+                  <img
+                    src={String(photo.url)}
+                    alt={String(photo.name || "Addison photo")}
+                    style={{ width:72, height:72, objectFit:"cover", borderRadius:10, border:`1px solid ${colors.line}` }}
+                  />
+                </a>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      );
+    };
 
     return (
-      <main style={{ ...styles.page, padding: 14 }}>
-        <section style={{ ...styles.header, padding: 18, borderRadius: 18 }}>
-          <div>
-            <div style={styles.eyebrow}>Atlas / 2000</div>
-            <h1 style={{ ...styles.title, fontSize: 30 }}>Addison</h1>
-            <p style={styles.subtitle}>Your tasks and routine. Changes save directly to Atlas.</p>
+      <main style={{ ...styles.page, padding: 14, maxWidth: 760 }}>
+        <section style={{ ...styles.header, padding: 18, borderRadius: 18, marginBottom: 12 }}>
+          <div style={{ width:"100%" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", gap:14, alignItems:"flex-start" }}>
+              <div style={{ display:"flex", gap:12, alignItems:"flex-start", minWidth:0 }}>
+                <img
+                  src="/atlas-logo.png"
+                  alt="Atlas"
+                  onError={(event) => {
+                    const image = event.currentTarget;
+                    const fallbackIndex = Number(image.dataset.fallbackIndex || "0");
+                    const fallbacks = [
+                      "/atlas-logo.svg",
+                      "/logo.png",
+                      "/icon-512.png",
+                      "/icon-192.png",
+                      "/apple-touch-icon.png",
+                    ];
+                    if (fallbackIndex < fallbacks.length) {
+                      image.dataset.fallbackIndex = String(fallbackIndex + 1);
+                      image.src = fallbacks[fallbackIndex];
+                    }
+                  }}
+                  style={{
+                    width:58,
+                    height:58,
+                    objectFit:"contain",
+                    flex:"0 0 auto",
+                  }}
+                />
+                <div style={{ minWidth:0 }}>
+                  <h1 style={{ ...styles.title, fontSize:30, marginBottom:2 }}>Atlas Today</h1>
+                  <div style={{ color:"white", fontWeight:800, fontSize:14 }}>Addison Hutton · 2000</div>
+                  <p style={{ ...styles.subtitle, marginTop:3 }}>{prettyToday}</p>
+                </div>
+              </div>
+
+              <div style={{ textAlign:"right", flex:"0 0 auto" }}>
+                {todayWeather ? (
+                  <>
+                    <div style={{ color:"white", fontWeight:900, fontSize:27, lineHeight:1 }}>
+                      {todayWeather.temperature}°
+                    </div>
+                    <div style={{ color:"rgba(255,255,255,.88)", fontSize:12, fontWeight:800, marginTop:4 }}>
+                      {weatherText(todayWeather.code)}
+                    </div>
+                    <div style={{ color:"rgba(255,255,255,.68)", fontSize:11, marginTop:2 }}>
+                      H {todayWeather.high}° · L {todayWeather.low}°
+                    </div>
+                    <div style={{ color:"rgba(255,255,255,.68)", fontSize:11 }}>
+                      Rain {todayWeather.precipChance}%
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color:"rgba(255,255,255,.65)", fontSize:12 }}>Weather loading…</div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"center", flexWrap:"wrap", marginTop:14 }}>
+              <div style={{ color:"rgba(255,255,255,.72)", fontSize:12 }}>
+                {addisonSync === "syncing" ? "Syncing…" : addisonSync === "offline" ? "Offline / not saved" : "Saved"}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setReportOpen((open) => !open);
+                  setMessage("");
+                }}
+                style={styles.primaryButton}
+              >
+                {reportOpen ? "Close Report" : "Report Something"}
+              </button>
+            </div>
           </div>
-          <div style={{ color: "white", fontWeight: 900 }}>{progress}%</div>
         </section>
 
-        {message ? <div style={{ ...styles.card, padding: 12, marginBottom: 12 }}>{message}</div> : null}
+        {message ? <div style={{ ...styles.card, padding: 10, marginBottom: 10 }}>{message}</div> : null}
+
+        {reportOpen ? (
+          <section style={{ ...styles.card, padding:16, marginBottom:14 }}>
+            <div style={styles.eyebrow}>FIELD REPORT</div>
+            <h2 style={styles.cardTitle}>What did you find?</h2>
+            <textarea
+              value={reportDescription}
+              onChange={(event) => setReportDescription(event.currentTarget.value)}
+              placeholder="Describe what you found"
+              style={{ ...styles.textarea, minHeight:110 }}
+            />
+            <label style={{ ...styles.label, marginTop:10 }}>
+              Location
+              <select
+                value={reportLocationId}
+                onChange={(event) => setReportLocationId(event.currentTarget.value)}
+                style={styles.input}
+              >
+                <option value="">General property</option>
+                {(addisonData.locations || []).map((location) => (
+                  <option key={location.id} value={location.id}>{location.name}</option>
+                ))}
+              </select>
+            </label>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:10 }}>
+              <label style={{ ...styles.secondaryButton, cursor:"pointer", display:"inline-flex", alignItems:"center" }}>
+                Take Photo
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(event) => {
+                    addReportFiles(event.currentTarget.files);
+                    event.currentTarget.value = "";
+                  }}
+                  style={{ display:"none" }}
+                />
+              </label>
+              <label style={{ ...styles.secondaryButton, cursor:"pointer", display:"inline-flex", alignItems:"center" }}>
+                Choose from Library
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(event) => {
+                    addReportFiles(event.currentTarget.files);
+                    event.currentTarget.value = "";
+                  }}
+                  style={{ display:"none" }}
+                />
+              </label>
+            </div>
+            {reportFiles.length ? (
+              <div style={{ display:"grid", gap:6, marginTop:10 }}>
+                {reportFiles.map((file) => (
+                  <div key={`${file.name}-${file.size}-${file.lastModified}`} style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", border:`1px solid ${colors.line}`, borderRadius:10, padding:"8px 10px" }}>
+                    <span style={{ fontSize:12, overflowWrap:"anywhere" }}>{file.name}</span>
+                    <button type="button" onClick={() => setReportFiles((current) => current.filter((item) => item !== file))} style={styles.secondaryButton}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <label style={{ display:"flex", gap:9, alignItems:"center", marginTop:12, minHeight:42, fontWeight:800, color:colors.navy }}>
+              <input type="checkbox" checked={reportCanHandle} onChange={(event) => setReportCanHandle(event.currentTarget.checked)} />
+              I can handle this
+            </label>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:10 }}>
+              <button type="button" disabled={reportSubmitting} onClick={() => void submitFieldReport()} style={{ ...styles.primaryButton, opacity:reportSubmitting ? .65 : 1 }}>
+                {reportSubmitting ? "Sending…" : "Send Report"}
+              </button>
+              <button type="button" disabled={reportSubmitting} onClick={() => { setReportOpen(false); setReportDescription(""); setReportLocationId(""); setReportCanHandle(false); setReportFiles([]); }} style={styles.secondaryButton}>Cancel</button>
+            </div>
+          </section>
+        ) : null}
 
         <section style={{ ...styles.card, padding: 16, marginBottom: 14 }}>
           <div style={styles.rowBetween}>
             <div>
-              <div style={styles.eyebrow}>Today</div>
+              <div style={styles.eyebrow}>TODAY</div>
               <h2 style={styles.cardTitle}>My Tasks</h2>
             </div>
-            <strong>{activeTasks.length} open</strong>
+            <strong>{todayTasks.length} open</strong>
           </div>
-          <div style={{ display: "grid", gap: 9 }}>
-            {activeTasks.map((task) => {
-              const meta = taskMeta(task);
-              return (
-                <div key={String(task.id)} style={{ border: `1px solid ${colors.line}`, borderRadius: 14, padding: 12 }}>
-                  <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={false}
-                      disabled={saving}
-                      onChange={() => void patchAddison("task-status", { taskId: task.id, status: "Completed" })}
-                      style={{ width: 20, height: 20, marginTop: 2 }}
-                    />
-                    <span style={{ flex: 1 }}>
-                      <strong style={{ display: "block", color: colors.navy }}>{String(task.title || "Task")}</strong>
-                      <small style={{ color: colors.muted }}>
-                        {meta.dueDate ? `Due ${formatDate(String(meta.dueDate).slice(0,10))}` : "Assigned to Addison"}
-                      </small>
-                    </span>
-                  </label>
-                  <textarea
-                    defaultValue={String(meta.addisonNote || "")}
-                    placeholder="Add a progress note"
-                    onBlur={(event) => void patchAddison("task-note", { taskId: task.id, note: event.currentTarget.value })}
-                    style={{ ...styles.textarea, minHeight: 58, marginTop: 9 }}
-                  />
-                </div>
-              );
-            })}
-            {!activeTasks.length ? <p style={styles.muted}>No open tasks assigned to Addison.</p> : null}
+          <div style={{ display:"grid", gap:9 }}>
+            {todayTasks.map((item) => itemCard(item, false))}
+            {!todayTasks.length ? <p style={styles.muted}>No assigned tasks due today.</p> : null}
           </div>
-          {completedTasks.length ? (
-            <details style={{ marginTop: 12 }}>
-              <summary style={{ cursor: "pointer", fontWeight: 900 }}>Completed · {completedTasks.length}</summary>
-              <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
-                {completedTasks.map((task) => (
-                  <label key={String(task.id)} style={{ display: "flex", gap: 9, alignItems: "center", opacity: .7 }}>
-                    <input
-                      type="checkbox"
-                      checked
-                      disabled={saving}
-                      onChange={() => void patchAddison("task-status", { taskId: task.id, status: "Open" })}
-                    />
-                    <span style={{ textDecoration: "line-through" }}>{String(task.title || "Task")}</span>
-                  </label>
-                ))}
-              </div>
-            </details>
-          ) : null}
         </section>
 
-        <section style={{ ...styles.card, padding: 16 }}>
-          <div style={styles.rowBetween}>
-            <div>
-              <div style={styles.eyebrow}>Routine</div>
-              <h2 style={styles.cardTitle}>{addisonData.routine?.name || "My Routine"}</h2>
+        <details style={{ ...styles.card, padding:14, marginBottom:14 }}>
+          <summary style={{ cursor:"pointer", fontWeight:900, color:colors.navy }}>Upcoming · {upcomingTasks.length}</summary>
+          <div style={{ display:"grid", gap:8, marginTop:10 }}>
+            {upcomingTasks.map((item) => itemCard(item, false))}
+            {!upcomingTasks.length ? <p style={styles.muted}>No upcoming assigned tasks.</p> : null}
+          </div>
+        </details>
+
+        {completedTasks.length ? (
+          <details style={{ ...styles.card, padding: 14, marginBottom:14 }}>
+            <summary style={{ cursor:"pointer", fontWeight:900, color:colors.navy }}>Completed Today · {completedTasks.length}</summary>
+            <div style={{ display:"grid", gap:8, marginTop:10 }}>
+              {completedTasks.map((item) => itemCard(item, true))}
             </div>
-            <strong>{routineDone}/{routineTasks.length}</strong>
-          </div>
-          <div style={{ display: "grid", gap: 8 }}>
-            {routineTasks.map((task) => {
-              const checked = Boolean(task.completed) || task.status === "completed";
-              return (
-                <label key={String(task.id)} style={{ display: "flex", gap: 10, alignItems: "flex-start", border: `1px solid ${colors.line}`, borderRadius: 12, padding: 11, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={saving}
-                    onChange={() => void patchAddison("routine-toggle", { taskId: task.id })}
-                    style={{ width: 20, height: 20, marginTop: 1 }}
-                  />
-                  <span style={{ textDecoration: checked ? "line-through" : "none", opacity: checked ? .6 : 1, fontWeight: 800 }}>
-                    {String(task.title || "Routine item")}
-                  </span>
-                </label>
-              );
-            })}
-            {!routineTasks.length ? <p style={styles.muted}>No routine items assigned to Addison today.</p> : null}
-          </div>
-        </section>
+          </details>
+        ) : null}
       </main>
     );
   }
