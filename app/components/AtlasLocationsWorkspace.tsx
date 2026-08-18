@@ -131,7 +131,6 @@ import type {
 
 
 export default function AtlasLocationsWorkspace(props: any) {
-  const [mobileFieldDetailsOpen, setMobileFieldDetailsOpen] = useState(false);
   const {
     addAsset,
     addLinkedPhotoFiles,
@@ -181,7 +180,6 @@ export default function AtlasLocationsWorkspace(props: any) {
     recordInfoGridStyle,
     recordInfoItemStyle,
     recordNotesStyle,
-    renameLinkedImage,
     removeAssetFromLocation,
     removeLocationCustomDetail,
     renderLinkedDocuments,
@@ -215,15 +213,9 @@ export default function AtlasLocationsWorkspace(props: any) {
     updateLocationCustomDetail,
     workPlanTasks
   } = props;
-  const locationSourceRecords: AtlasLocationRecord[] = (
-    isSeanMarineUser ? seanVisibleLocationRecords : locations
-  ) as AtlasLocationRecord[];
-  const locationAssetSourceRecords: AtlasAssetRecord[] = (
-    isSeanMarineUser ? seanVisibleAssetRecords : assetRecords
-  ) as AtlasAssetRecord[];
-  const locationWorkSourceRecords: AtlasServiceRecord[] = (
-    isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords
-  ) as AtlasServiceRecord[];
+  const locationSourceRecords = isSeanMarineUser ? seanVisibleLocationRecords : locations;
+  const locationAssetSourceRecords = isSeanMarineUser ? seanVisibleAssetRecords : assetRecords;
+  const locationWorkSourceRecords = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
   const locationAssetCount = (locationId: string) =>
     locationAssetSourceRecords.filter((asset) => assetHasLocation(asset, locationId)).length;
   const locationWorkCount = (locationId: string) => {
@@ -328,13 +320,7 @@ export default function AtlasLocationsWorkspace(props: any) {
   };
   const possibleAssetLocations = locationSourceRecords.filter(locationLooksLikeAsset);
   const childLocationsFor = (parentId: string) =>
-    [...locationSourceRecords]
-      .filter((location) => location.parentId === parentId)
-      .sort((a, b) =>
-        String(a.name || "").localeCompare(String(b.name || ""), undefined, {
-          sensitivity: "base",
-        }),
-      );
+    byName(locationSourceRecords.filter((location) => location.parentId === parentId));
   const normalizedLocationSearch = locationSearch.trim().toLowerCase();
   const locationMatchesSearch = (location: AtlasLocationRecord) =>
     !normalizedLocationSearch ||
@@ -375,18 +361,13 @@ export default function AtlasLocationsWorkspace(props: any) {
     depth: number;
     hasChildren: boolean;
   }[] =>
-    [...locationSourceRecords]
-      .filter((location) =>
+    byName(
+      locationSourceRecords.filter((location) =>
         parentId
           ? location.parentId === parentId
           : !location.parentId,
-      )
-      .sort((a, b) =>
-        String(a.name || "").localeCompare(String(b.name || ""), undefined, {
-          sensitivity: "base",
-        }),
-      )
-      .flatMap((location) => {
+      ),
+    ).flatMap((location) => {
       const children = childLocationsFor(location.id);
       const row = {
         location,
@@ -412,14 +393,12 @@ export default function AtlasLocationsWorkspace(props: any) {
   const locationPhotos = selectedLocation.id
     ? linkedImageFilesFor("Location", selectedLocation.id)
     : [];
-  const locationAssets: AtlasAssetRecord[] = selectedLocation.id
-    ? [...locationAssetSourceRecords]
-        .filter((asset) => assetHasLocation(asset, selectedLocation.id))
-        .sort((a, b) =>
-          String(a.name || "").localeCompare(String(b.name || ""), undefined, {
-            sensitivity: "base",
-          }),
-        )
+  const locationAssets = selectedLocation.id
+    ? byName(
+        locationAssetSourceRecords.filter(
+          (asset) => assetHasLocation(asset, selectedLocation.id),
+        ),
+      )
     : [];
   const locationAssetIds = new Set(locationAssets.map((asset) => asset.id));
   const locationWorkOrders = selectedLocation.id
@@ -517,10 +496,6 @@ export default function AtlasLocationsWorkspace(props: any) {
       Boolean(location.parentId) &&
       !locations.some((item) => item.id === location.parentId),
   ).length;
-  useEffect(() => {
-    setMobileFieldDetailsOpen(false);
-  }, [selectedLocationId]);
-
   const selectedLocationPath = (() => {
     if (!selectedLocation.id) return [] as AtlasLocationRecord[];
     const path: AtlasLocationRecord[] = [];
@@ -550,48 +525,9 @@ export default function AtlasLocationsWorkspace(props: any) {
         setLocationEditorOpen(false);
       }}
       mobileDrawerTitle={selectedLocation.name || "Location Details"}
-      gridStyleOverride={
-        isMobile
-          ? { minWidth: 0, overflowX: "hidden" }
-          : {
-              gridTemplateColumns: "minmax(340px, 40%) minmax(0, 60%)",
-              gap: 14,
-              alignItems: "start",
-            }
-      }
-      listPanelStyleOverride={
-        isMobile
-          ? { minWidth: 0, overflowX: "hidden", padding: 0 }
-          : {
-              position: "sticky",
-              top: 8,
-              height: "calc(100vh - 24px)",
-              maxHeight: "calc(100vh - 24px)",
-              minHeight: 0,
-              overflowY: "auto",
-              overflowX: "hidden",
-              overscrollBehavior: "contain",
-              scrollbarGutter: "stable",
-              alignSelf: "start",
-            }
-      }
-      drawerStyleOverride={
-        isMobile
-          ? { minWidth: 0, overflowX: "hidden" }
-          : {
-              position: "sticky",
-              top: 8,
-              height: "calc(100vh - 24px)",
-              maxHeight: "calc(100vh - 24px)",
-              minHeight: 0,
-              overflowY: "auto",
-              overflowX: "hidden",
-              overscrollBehavior: "contain",
-              scrollbarGutter: "stable",
-              alignSelf: "start",
-              zIndex: 2,
-            }
-      }
+      gridStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
+      listPanelStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden", padding: 0 } : undefined}
+      drawerStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
       right={
         <>
           <button
@@ -608,6 +544,222 @@ export default function AtlasLocationsWorkspace(props: any) {
       }
       list={
         <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "repeat(2, minmax(0, 1fr))"
+                : "repeat(6, minmax(0, 1fr))",
+              gap: 7,
+            }}
+          >
+            {[
+              ["🏠", "Top level", topLevelLocationCount, "Main property areas"],
+              ["🔗", "Connected", linkedLocationCount, "With linked records"],
+              ["🔧", "Active work", locationsWithOpenWork, "Locations with work"],
+              [
+                "↔",
+                "Review",
+                possibleAssetLocations.length,
+                "May belong in Assets",
+              ],
+              [
+                "📦",
+                "Unassigned Assets",
+                vagueLocationAssetCount,
+                "Need a real location",
+              ],
+              [
+                "⚠",
+                "Hierarchy Issues",
+                orphanLocationCount,
+                "Missing parent records",
+              ],
+            ].map(([icon, label, value, note]) => (
+              <div
+                key={String(label)}
+                style={{
+                  minWidth: 0,
+                  padding: isMobile ? "10px 9px" : "11px 10px",
+                  borderRadius: 14,
+                  border: `1px solid ${colors.line}`,
+                  background: colors.card,
+                  boxShadow: "0 5px 16px rgba(15, 42, 67, 0.06)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ ...fieldLabelStyle, display: "block" }}>
+                    {label}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 9,
+                      display: "grid",
+                      placeItems: "center",
+                      background: colors.panel,
+                      border: `1px solid ${colors.line}`,
+                      fontSize: 14,
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    {icon}
+                  </span>
+                </div>
+                <strong
+                  style={{
+                    display: "block",
+                    fontSize: 22,
+                    lineHeight: 1,
+                    marginTop: 5,
+                    color: colors.navy,
+                  }}
+                >
+                  {value}
+                </strong>
+                <small
+                  style={{
+                    ...mutedSmallStyle,
+                    display: "block",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    marginTop: 5,
+                  }}
+                >
+                  {note}
+                </small>
+              </div>
+            ))}
+          </div>
+          {(vagueLocationAssetCount || orphanLocationCount) ? (
+            <section
+              style={{
+                border: `1px solid ${colors.line}`,
+                borderRadius: 12,
+                background: "#FFFFFF",
+                padding: 10,
+                display: "grid",
+                gap: 9,
+              }}
+            >
+              <div>
+                <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
+                  Hierarchy and Assignment Review
+                </strong>
+                <span style={mutedSmallStyle}>
+                  Assign assets to the most specific physical location and repair missing parent relationships.
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr",
+                  gap: 8,
+                }}
+              >
+                <div style={recordInfoItemStyle}>
+                  <span style={fieldLabelStyle}>Assets needing location</span>
+                  <strong>{vagueLocationAssetCount}</strong>
+                  <small style={mutedSmallStyle}>General, unknown, or unassigned</small>
+                </div>
+                <div style={recordInfoItemStyle}>
+                  <span style={fieldLabelStyle}>Broken parent links</span>
+                  <strong>{orphanLocationCount}</strong>
+                  <small style={mutedSmallStyle}>Parent location no longer exists</small>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {locationAssetSourceRecords
+                  .filter((asset) => {
+                    const location = locationSourceRecords.find((item) => item.id === asset.locationId);
+                    return !asset.locationId || isVagueLocation(location);
+                  })
+                  .slice(0, 8)
+                  .map((asset) => (
+                    <button
+                      key={asset.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedAssetId(asset.id);
+                        setScreen("assets");
+                      }}
+                      style={secondaryButtonStyle}
+                    >
+                      Reassign {asset.name}
+                    </button>
+                  ))}
+              </div>
+            </section>
+          ) : null}
+
+          {possibleAssetLocations.length ? (
+            <section
+              style={{
+                border: `1px solid ${colors.gold}`,
+                borderRadius: 12,
+                background: "#FFF9E8",
+                padding: 10,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div>
+                <strong
+                  style={{
+                    display: "block",
+                    color: colors.navy,
+                    fontSize: 12,
+                  }}
+                >
+                  Location Classification Review
+                </strong>
+                <span style={mutedSmallStyle}>
+                  These records look more like equipment or vehicles than
+                  physical property areas.
+                </span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {possibleAssetLocations.slice(0, 8).map((location) => (
+                  <button
+                    key={location.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedLocationId(location.id);
+                      setLocationEditorOpen(false);
+                      if (isMobile) setLocationMobileDrawerOpen(true);
+                    }}
+                    style={{
+                      ...secondaryButtonStyle,
+                      minHeight: 30,
+                      padding: "5px 8px",
+                      background: "#FFFFFF",
+                    }}
+                  >
+                    {location.name}
+                  </button>
+                ))}
+                {possibleAssetLocations.length > 8 ? (
+                  <span style={mutedSmallStyle}>
+                    +{possibleAssetLocations.length - 8} more
+                  </span>
+                ) : null}
+              </div>
+              <span style={mutedSmallStyle}>
+                Atlas will not move or delete these records automatically.
+              </span>
+            </section>
+          ) : null}
+
           <div
             style={{
               position: "sticky",
@@ -1005,224 +1157,6 @@ export default function AtlasLocationsWorkspace(props: any) {
               </div>
             ) : null}
           </div>
-
-          <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isMobile
-                ? "repeat(2, minmax(0, 1fr))"
-                : "repeat(6, minmax(0, 1fr))",
-              gap: 7,
-            }}
-          >
-            {[
-              ["🏠", "Top level", topLevelLocationCount, "Main property areas"],
-              ["🔗", "Connected", linkedLocationCount, "With linked records"],
-              ["🔧", "Active work", locationsWithOpenWork, "Locations with work"],
-              [
-                "↔",
-                "Review",
-                possibleAssetLocations.length,
-                "May belong in Assets",
-              ],
-              [
-                "📦",
-                "Unassigned Assets",
-                vagueLocationAssetCount,
-                "Need a real location",
-              ],
-              [
-                "⚠",
-                "Hierarchy Issues",
-                orphanLocationCount,
-                "Missing parent records",
-              ],
-            ].map(([icon, label, value, note]) => (
-              <div
-                key={String(label)}
-                style={{
-                  minWidth: 0,
-                  padding: isMobile ? "10px 9px" : "11px 10px",
-                  borderRadius: 14,
-                  border: `1px solid ${colors.line}`,
-                  background: colors.card,
-                  boxShadow: "0 5px 16px rgba(15, 42, 67, 0.06)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                  }}
-                >
-                  <span style={{ ...fieldLabelStyle, display: "block" }}>
-                    {label}
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 9,
-                      display: "grid",
-                      placeItems: "center",
-                      background: colors.panel,
-                      border: `1px solid ${colors.line}`,
-                      fontSize: 14,
-                      flex: "0 0 auto",
-                    }}
-                  >
-                    {icon}
-                  </span>
-                </div>
-                <strong
-                  style={{
-                    display: "block",
-                    fontSize: 22,
-                    lineHeight: 1,
-                    marginTop: 5,
-                    color: colors.navy,
-                  }}
-                >
-                  {value}
-                </strong>
-                <small
-                  style={{
-                    ...mutedSmallStyle,
-                    display: "block",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    marginTop: 5,
-                  }}
-                >
-                  {note}
-                </small>
-              </div>
-            ))}
-          </div>
-          {(vagueLocationAssetCount || orphanLocationCount) ? (
-            <section
-              style={{
-                border: `1px solid ${colors.line}`,
-                borderRadius: 12,
-                background: "#FFFFFF",
-                padding: 10,
-                display: "grid",
-                gap: 9,
-              }}
-            >
-              <div>
-                <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
-                  Hierarchy and Assignment Review
-                </strong>
-                <span style={mutedSmallStyle}>
-                  Assign assets to the most specific physical location and repair missing parent relationships.
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr",
-                  gap: 8,
-                }}
-              >
-                <div style={recordInfoItemStyle}>
-                  <span style={fieldLabelStyle}>Assets needing location</span>
-                  <strong>{vagueLocationAssetCount}</strong>
-                  <small style={mutedSmallStyle}>General, unknown, or unassigned</small>
-                </div>
-                <div style={recordInfoItemStyle}>
-                  <span style={fieldLabelStyle}>Broken parent links</span>
-                  <strong>{orphanLocationCount}</strong>
-                  <small style={mutedSmallStyle}>Parent location no longer exists</small>
-                </div>
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {locationAssetSourceRecords
-                  .filter((asset) => {
-                    const location = locationSourceRecords.find((item) => item.id === asset.locationId);
-                    return !asset.locationId || isVagueLocation(location);
-                  })
-                  .slice(0, 8)
-                  .map((asset) => (
-                    <button
-                      key={asset.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedAssetId(asset.id);
-                        setScreen("assets");
-                      }}
-                      style={secondaryButtonStyle}
-                    >
-                      Reassign {asset.name}
-                    </button>
-                  ))}
-              </div>
-            </section>
-          ) : null}
-
-          {possibleAssetLocations.length ? (
-            <section
-              style={{
-                border: `1px solid ${colors.gold}`,
-                borderRadius: 12,
-                background: "#FFF9E8",
-                padding: 10,
-                display: "grid",
-                gap: 8,
-              }}
-            >
-              <div>
-                <strong
-                  style={{
-                    display: "block",
-                    color: colors.navy,
-                    fontSize: 12,
-                  }}
-                >
-                  Location Classification Review
-                </strong>
-                <span style={mutedSmallStyle}>
-                  These records look more like equipment or vehicles than
-                  physical property areas.
-                </span>
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {possibleAssetLocations.slice(0, 8).map((location) => (
-                  <button
-                    key={location.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedLocationId(location.id);
-                      setLocationEditorOpen(false);
-                      if (isMobile) setLocationMobileDrawerOpen(true);
-                    }}
-                    style={{
-                      ...secondaryButtonStyle,
-                      minHeight: 30,
-                      padding: "5px 8px",
-                      background: "#FFFFFF",
-                    }}
-                  >
-                    {location.name}
-                  </button>
-                ))}
-                {possibleAssetLocations.length > 8 ? (
-                  <span style={mutedSmallStyle}>
-                    +{possibleAssetLocations.length - 8} more
-                  </span>
-                ) : null}
-              </div>
-              <span style={mutedSmallStyle}>
-                Atlas will not move or delete these records automatically.
-              </span>
-            </section>
-          ) : null}
-          </div>
         </div>
       }
       drawer={
@@ -1369,15 +1303,13 @@ export default function AtlasLocationsWorkspace(props: any) {
                     gap: 7,
                   }}
                 >
-                  {(!isMobile || mobileFieldDetailsOpen) ? (
-                    <button
-                      type="button"
-                      onClick={() => addSubLocation(selectedLocation.id)}
-                      style={{ ...secondaryButtonStyle, width: isMobile ? "100%" : undefined }}
-                    >
-                      + Sub-location
-                    </button>
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => addSubLocation(selectedLocation.id)}
+                    style={{ ...secondaryButtonStyle, width: isMobile ? "100%" : undefined }}
+                  >
+                    + Sub-location
+                  </button>
                   {locationEditorOpen ? (
                     <button
                       type="button"
@@ -1395,13 +1327,15 @@ export default function AtlasLocationsWorkspace(props: any) {
                       Edit
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => void deleteSelectedLocation()}
-                    style={{ ...dangerButtonStyle, width: isMobile ? "100%" : undefined }}
-                  >
-                    Delete
-                  </button>
+                  {locationEditorOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => void deleteSelectedLocation()}
+                      style={{ ...dangerButtonStyle, width: isMobile ? "100%" : undefined }}
+                    >
+                      Delete Location
+                    </button>
+                  ) : null}
                   {locationEditorOpen ||
                   isRecordDirty("location", selectedLocation.id) ? (
                     <button
@@ -1434,131 +1368,7 @@ export default function AtlasLocationsWorkspace(props: any) {
                 </div>
               </div>
 
-              <section
-                style={{
-                  border: `1px solid ${colors.line}`,
-                  borderRadius: 12,
-                  background: "#F8FAFC",
-                  padding: 10,
-                  marginTop: 10,
-                  marginBottom: 10,
-                }}
-                aria-label="Location relationships"
-              >
-                <div style={{ ...fieldLabelStyle, marginBottom: 7 }}>LINKED RECORDS</div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile
-                      ? "repeat(2,minmax(0,1fr))"
-                      : "repeat(4,minmax(0,1fr))",
-                    gap: 6,
-                  }}
-                >
-                  {[
-                    ["Assets", locationAssets.length],
-                    ["Work", locationWorkOrders.length],
-                    ["Tasks", locationTasks.length],
-                    ["Photos", locationPhotos.length],
-                  ].map(([label, count]) => (
-                    <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: "7px 8px" }}>
-                      <span style={{ ...mutedSmallStyle, display: "block" }}>{label}</span>
-                      <strong style={{ color: colors.navy, fontSize: 15 }}>{count}</strong>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              {locationWorkOrders.length ? (
-                <section
-                  style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, marginBottom: 10 }}
-                  aria-label="Location recent activity"
-                >
-                  <div style={{ ...fieldLabelStyle, marginBottom: 7 }}>RECENT ACTIVITY</div>
-                  <div style={{ display: "grid", gap: 6 }}>
-                    {[...locationWorkOrders]
-                      .sort((a: any, b: any) => String(b.lastCompletedDate || b.date || "").localeCompare(String(a.lastCompletedDate || a.date || "")))
-                      .slice(0, 3)
-                      .map((entry: any, index: number) => (
-                        <div key={String(entry.id || index)} style={{ borderLeft: `3px solid ${colors.gold}`, paddingLeft: 8 }}>
-                          <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
-                            {entry.title || "Location work"}
-                          </strong>
-                          <span style={mutedSmallStyle}>
-                            {entry.lastCompletedDate || entry.date
-                              ? formatDate(entry.lastCompletedDate || entry.date)
-                              : "Date not recorded"}
-                            {entry.status ? ` · ${entry.status}` : ""}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                </section>
-              ) : null}
-
-              {isMobile ? (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-                    gap: 6,
-                    marginTop: 10,
-                    marginBottom: 10,
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const firstOpen = locationWorkOrders.find(
-                        (record) => record.status !== "Completed",
-                      );
-                      if (firstOpen) setSelectedServiceId(firstOpen.id);
-                      setScreen("history");
-                    }}
-                    style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px" }}
-                  >
-                    Work
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      document
-                        .getElementById(`location-photos-${selectedLocation.id}`)
-                        ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                    }
-                    style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px" }}
-                  >
-                    Photos
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      document
-                        .getElementById(`location-assets-${selectedLocation.id}`)
-                        ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                    }
-                    style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px" }}
-                  >
-                    Assets
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMobileFieldDetailsOpen((current) => !current)}
-                    aria-expanded={mobileFieldDetailsOpen}
-                    style={{
-                      ...secondaryButtonStyle,
-                      minHeight: 42,
-                      padding: "7px 4px",
-                      borderColor: mobileFieldDetailsOpen ? colors.gold : colors.line,
-                      background: mobileFieldDetailsOpen ? "#FFF8E6" : "#FFFFFF",
-                    }}
-                  >
-                    {mobileFieldDetailsOpen ? "Less" : "More"}
-                  </button>
-                </div>
-              ) : null}
-
-              {locationLooksLikeAsset(selectedLocation) && (!isMobile || mobileFieldDetailsOpen) ? (
+              {locationLooksLikeAsset(selectedLocation) ? (
                 <section
                   style={{
                     marginTop: 12,
@@ -1808,10 +1618,7 @@ export default function AtlasLocationsWorkspace(props: any) {
               )}
             </div>
 
-            <section
-              id={`location-photos-${selectedLocation.id}`}
-              style={{ ...detailSectionStyle, scrollMarginTop: 72 }}
-            >
+            <section style={detailSectionStyle}>
               <div style={detailSectionHeaderStyle}>
                 <div>
                   <div style={eyebrowStyle}>Photos</div>
@@ -1832,11 +1639,11 @@ export default function AtlasLocationsWorkspace(props: any) {
                     Paste Image
                   </button>
                   <label style={compactUploadButtonStyle}>
-                    Upload Photo
+                    Take Photo
                     <input
                       type="file"
                       accept="image/*"
-                      multiple
+                      capture="environment"
                       onChange={(event) => {
                         void addLinkedPhotoFiles(
                           "Location",
@@ -1850,18 +1657,13 @@ export default function AtlasLocationsWorkspace(props: any) {
                     />
                   </label>
                   <label style={compactUploadButtonStyle}>
-                    Take Photo
+                    Upload from Library
                     <input
                       type="file"
                       accept="image/*"
-                      capture="environment"
+                      multiple
                       onChange={(event) => {
-                        void addLinkedPhotoFiles(
-                          "Location",
-                          selectedLocation.id,
-                          selectedLocation.name,
-                          event.currentTarget.files,
-                        );
+                        void addLinkedPhotoFiles("Location", selectedLocation.id, selectedLocation.name, event.currentTarget.files);
                         event.currentTarget.value = "";
                       }}
                       style={{ display: "none" }}
@@ -1884,91 +1686,47 @@ export default function AtlasLocationsWorkspace(props: any) {
                     <div
                       key={file.id}
                       style={{
+                        position: "relative",
+                        aspectRatio: "4 / 3",
                         borderRadius: 10,
                         overflow: "hidden",
                         border: `1px solid ${colors.line}`,
-                        background: "#FFFFFF",
-                        display: "grid",
+                        background: colors.panel,
                       }}
                     >
                       <button
                         type="button"
                         onClick={() => openUploadedFile(file)}
                         title={file.name}
-                        style={{
-                          border: 0,
-                          padding: 0,
-                          width: "100%",
-                          aspectRatio: "4 / 3",
-                          background: colors.panel,
-                          cursor: "pointer",
-                          overflow: "hidden",
-                        }}
+                        style={{ border: 0, padding: 0, width: "100%", height: "100%", background: "transparent", cursor: "pointer" }}
                       >
                         <img
                           src={file.dataUrl || file.url}
                           alt={file.name || "Location photo"}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                            display: "block",
-                          }}
+                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                         />
                       </button>
-                      <div
+                      <button
+                        type="button"
+                        onClick={() => void deleteLinkedImage(file)}
+                        aria-label={`Delete ${file.name}`}
+                        title="Delete photo"
                         style={{
-                          display: "grid",
-                          gap: 6,
-                          padding: 7,
-                          borderTop: `1px solid ${colors.line}`,
+                          position: "absolute",
+                          top: 6,
+                          right: 6,
+                          width: 26,
+                          height: 26,
+                          borderRadius: 999,
+                          border: "1px solid rgba(255,255,255,.8)",
+                          background: "rgba(15,42,67,.82)",
+                          color: "white",
+                          cursor: "pointer",
+                          fontWeight: 900,
                         }}
                       >
-                        <strong
-                          title={file.name}
-                          style={{
-                            color: colors.navy,
-                            fontSize: 10,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {file.name || "Location photo"}
-                        </strong>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
-                            gap: 5,
-                          }}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => void renameLinkedImage(file)}
-                            style={{
-                              ...secondaryButtonStyle,
-                              minHeight: 28,
-                              padding: "4px 6px",
-                              fontSize: 10,
-                            }}
-                          >
-                            Edit Name
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void deleteLinkedImage(file)}
-                            style={{
-                              ...dangerButtonStyle,
-                              minHeight: 28,
-                              padding: "4px 6px",
-                              fontSize: 10,
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
+                        {closeSymbol}
+                      </button>
                     </div>
                   ))}
                   {locationPhotos.length > 8 ? (
@@ -1996,7 +1754,7 @@ export default function AtlasLocationsWorkspace(props: any) {
                 >
                   <div>
                     <strong>Add the first location photo</strong>
-                    <p style={{ ...mutedSmallStyle, marginBottom: 0 }}>Paste an image, upload from your photo library, take a photo, or drop an image into this panel.</p>
+                    <p style={{ ...mutedSmallStyle, marginBottom: 0 }}>Paste an image, use Add Photo, or drop an image into this panel.</p>
                   </div>
                 </div>
               )}
@@ -2007,10 +1765,7 @@ export default function AtlasLocationsWorkspace(props: any) {
               {locationTasks.length ? <div style={compactLinkedListStyle}>{locationTasks.slice(0, 12).map((task) => <button key={`location-task-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>{taskDetails(task.id).dueDate ? formatDate(taskDetails(task.id).dueDate) : "No due date"}</small></span><span style={badgeStyle(taskDetails(task.id).status)}>{taskDetails(task.id).status}</span></button>)}</div> : <p style={mutedSmallStyle}>No Tasks are linked to this location.</p>}
             </section>
 
-            <section
-              id={`location-assets-${selectedLocation.id}`}
-              style={{ ...detailSectionStyle, scrollMarginTop: 72 }}
-            >
+            <section style={detailSectionStyle}>
               <div style={detailSectionHeaderStyle}>
                 <div>
                   <div style={eyebrowStyle}>Assets Assigned Here</div>
@@ -2036,18 +1791,11 @@ export default function AtlasLocationsWorkspace(props: any) {
                   aria-label="Add an asset to this location"
                 >
                   <option value="">+ Add Asset</option>
-                  {[...locationAssetSourceRecords]
-                    .filter(
+                  {byName(
+                    locationAssetSourceRecords.filter(
                       (asset) => !assetHasLocation(asset, selectedLocation.id),
-                    )
-                    .sort((a, b) =>
-                      String(a.name || "").localeCompare(
-                        String(b.name || ""),
-                        undefined,
-                        { sensitivity: "base" },
-                      ),
-                    )
-                    .map((asset) => (
+                    ),
+                  ).map((asset) => (
                     <option key={asset.id} value={asset.id}>
                       {asset.name}
                     </option>
@@ -2116,8 +1864,6 @@ export default function AtlasLocationsWorkspace(props: any) {
               )}
             </section>
 
-            {(!isMobile || mobileFieldDetailsOpen) ? (
-            <>
             <section style={detailSectionStyle}>
               <div style={detailSectionHeaderStyle}>
                 <div>
@@ -2173,8 +1919,6 @@ export default function AtlasLocationsWorkspace(props: any) {
             </section>
 
             {renderLinkedDocuments("Location", selectedLocation.id)}
-            </>
-            ) : null}
           </div>
         ) : (
           <div style={noticeStyle}>
