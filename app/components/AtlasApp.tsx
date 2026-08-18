@@ -518,7 +518,7 @@ export default function AtlasApp() {
     "open" | "completed" | "assets" | "requests" | "vendors" | "documents" | "procedures" | ""
   >("");
   const [departmentWorkspaceCategory, setDepartmentWorkspaceCategory] = useState("All");
-  const [departmentWorkspaceSelectedKind, setDepartmentWorkspaceSelectedKind] = useState<"asset" | "work" | "task" | "">("");
+  const [departmentWorkspaceSelectedKind, setDepartmentWorkspaceSelectedKind] = useState<"asset" | "work" | "task" | "vendor" | "">("");
   const [departmentWorkspaceSelectedId, setDepartmentWorkspaceSelectedId] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileFieldMoreOpen, setMobileFieldMoreOpen] = useState(false);
@@ -26849,7 +26849,17 @@ ${notes.trim()}` : notes.trim(),
       : isMarine
         ? locations.filter((location) => marineLocationIds.has(location.id))
         : locations.filter((location) => matches(location) && (!isLandscape || !marineLocationIds.has(location.id)));
-    const departmentVendors = kind === "garage" ? [] : vendorRecords.filter(matches);
+    const namedDepartmentVendorPatterns: Partial<Record<DepartmentKind, RegExp>> = {
+      marine: /\b(oryan marine|i[\s-]?90 motorsports?|190 motorsports?|sunstream|seaborn|seaborne)\b/i,
+      landscaping: /\b(cascade spray|lanken|advanced irrigation)\b/i,
+      house: /\bnorth sound boilers?\b/i,
+    };
+    const namedDepartmentVendorPattern = namedDepartmentVendorPatterns[kind];
+    const departmentVendors = kind === "garage"
+      ? []
+      : vendorRecords.filter((vendor) =>
+          matches(vendor) || Boolean(namedDepartmentVendorPattern?.test(recordSearchText(vendor))),
+        );
     const departmentDocuments = kind === "garage" ? [] : mergeDocuments(documents, intakeDocs).filter((document) =>
       isMarine ? isMarineDocumentRecord(document) : matchesDepartmentRecord(document) && (!isLandscape || !isMarineDocumentRecord(document)),
     );
@@ -26981,22 +26991,24 @@ ${notes.trim()}` : notes.trim(),
       const visibleAssets = departmentAssets.filter(categoryMatches).sort((a, b) => a.name.localeCompare(b.name));
       const visibleWork = departmentWork.filter(categoryMatches).sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")));
       const visibleTasks = departmentTasks.filter(categoryMatches).sort((a, b) => String(taskDetails(a.id).dueDate || "9999-12-31").localeCompare(String(taskDetails(b.id).dueDate || "9999-12-31")));
+      const visibleVendors = departmentVendors.filter(categoryMatches).sort((a, b) => a.name.localeCompare(b.name));
       const selectedAsset = departmentWorkspaceSelectedKind === "asset" ? departmentAssets.find((asset) => asset.id === departmentWorkspaceSelectedId) : undefined;
       const selectedWork = departmentWorkspaceSelectedKind === "work" ? departmentWork.find((record) => record.id === departmentWorkspaceSelectedId) : undefined;
       const selectedTask = departmentWorkspaceSelectedKind === "task" ? departmentTasks.find((task) => task.id === departmentWorkspaceSelectedId) : undefined;
-      const selectedTitle = selectedAsset?.name || selectedWork?.title || selectedTask?.title || "";
-      const selectedCategory = selectedAsset ? categoryFor(selectedAsset) : selectedWork ? categoryFor(selectedWork) : selectedTask ? categoryFor(selectedTask) : "";
+      const selectedDepartmentVendor = departmentWorkspaceSelectedKind === "vendor" ? departmentVendors.find((vendor) => vendor.id === departmentWorkspaceSelectedId) : undefined;
+      const selectedTitle = selectedAsset?.name || selectedWork?.title || selectedTask?.title || selectedDepartmentVendor?.name || "";
+      const selectedCategory = selectedAsset ? categoryFor(selectedAsset) : selectedWork ? categoryFor(selectedWork) : selectedTask ? categoryFor(selectedTask) : selectedDepartmentVendor ? categoryFor(selectedDepartmentVendor) : "";
       const selectedAssetPhotos = selectedAsset ? photos.filter((photo) => photo.assetId === selectedAsset.id && Boolean(photoSource(photo))) : [];
       const selectedAssetWork = selectedAsset ? departmentWork.filter((record) => record.assetId === selectedAsset.id) : [];
-      const selectRecord = (recordKind: "asset" | "work" | "task", id: string) => {
+      const selectRecord = (recordKind: "asset" | "work" | "task" | "vendor", id: string) => {
         setDepartmentWorkspaceSelectedKind(recordKind);
         setDepartmentWorkspaceSelectedId(id);
       };
-      const categoryCount = (label: string) => [...departmentAssets, ...departmentWork, ...departmentTasks].filter((record) => categoryFor(record) === label).length;
+      const categoryCount = (label: string) => [...departmentAssets, ...departmentWork, ...departmentTasks, ...departmentVendors].filter((record) => categoryFor(record) === label).length;
 
       return <section style={{ display: "grid", gap: 12 }}>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}><button type="button" onClick={() => addDashboardWorkOrder(config.title)} style={goldButtonStyle}>+ Add</button><button type="button" onClick={() => selectedAsset ? openAssetById(selectedAsset.id) : selectedWork ? (setDepartmentCenter(""), openWorkOrderById(selectedWork.id)) : selectedTask ? (setDepartmentCenter(""), setSelectedTaskId(selectedTask.id), setTasksView("tasks"), setScreen("planner")) : showSaveToast("Select a record to edit.")} style={secondaryButtonStyle}>Edit</button></div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#FFFFFF" }}>{[["Open work", openWork.length],["Assets",departmentAssets.length],["Tasks",departmentTasks.length],["Completed",completedWork.length]].map(([label,value],index)=><div key={String(label)} style={{ padding: "11px 14px", borderRight: !isMobile && index < 3 ? `1px solid ${colors.line}` : undefined }}><strong style={{ color: colors.navy, fontSize: 20, marginRight: 7 }}>{value}</strong><span style={mutedSmallStyle}>{label}</span></div>)}</div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}><button type="button" onClick={() => addDashboardWorkOrder(config.title)} style={goldButtonStyle}>+ Add</button><button type="button" onClick={() => selectedAsset ? openAssetById(selectedAsset.id) : selectedWork ? (setDepartmentCenter(""), openWorkOrderById(selectedWork.id)) : selectedTask ? (setDepartmentCenter(""), setSelectedTaskId(selectedTask.id), setTasksView("tasks"), setScreen("planner")) : selectedDepartmentVendor ? (setSelectedVendorId(selectedDepartmentVendor.id), openCenter("vendors")) : showSaveToast("Select a record to edit.")} style={secondaryButtonStyle}>Edit</button></div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(5,minmax(0,1fr))", border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#FFFFFF" }}>{[["Open work", openWork.length],["Assets",departmentAssets.length],["Tasks",departmentTasks.length],["Vendors",departmentVendors.length],["Completed",completedWork.length]].map(([label,value],index)=><div key={String(label)} style={{ padding: "11px 14px", borderRight: !isMobile && index < 4 ? `1px solid ${colors.line}` : undefined }}><strong style={{ color: colors.navy, fontSize: 20, marginRight: 7 }}>{value}</strong><span style={mutedSmallStyle}>{label}</span></div>)}</div>
         <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2 }}><button type="button" onClick={() => setDepartmentWorkspaceCategory("All")} style={activeCategory === "All" ? goldButtonStyle : secondaryButtonStyle}>All</button>{categories.map((category)=><button key={category.label} type="button" onClick={() => { setDepartmentWorkspaceCategory(category.label); setDepartmentWorkspaceSelectedKind(""); setDepartmentWorkspaceSelectedId(""); }} style={activeCategory === category.label ? goldButtonStyle : secondaryButtonStyle}>{category.label} ({categoryCount(category.label)})</button>)}</div>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(330px,40%) minmax(0,60%)", gap: 12, alignItems: "start" }}>
           <section style={{ ...centerCardStyle, padding: 0, overflow: "hidden" }}>
@@ -27005,15 +27017,17 @@ ${notes.trim()}` : notes.trim(),
               {visibleAssets.length ? <div style={{ padding: "9px 12px 5px", ...fieldLabelStyle }}>ASSETS</div> : null}{visibleAssets.map((asset)=>{const photo=photos.find((item)=>item.assetId===asset.id&&Boolean(photoSource(item)));return <button key={asset.id} type="button" onClick={()=>selectRecord("asset",asset.id)} style={{ width:"100%",border:0,borderBottom:`1px solid ${colors.line}`,background:selectedAsset?.id===asset.id?"#F0F6FC":"#FFFFFF",padding:"10px 12px",display:"grid",gridTemplateColumns:"36px minmax(0,1fr) auto",gap:9,alignItems:"center",textAlign:"left",cursor:"pointer" }}><span style={{width:36,height:36,borderRadius:9,background:"#E2ECF5",display:"grid",placeItems:"center",overflow:"hidden",fontWeight:900,color:colors.navy}}>{photo?<img src={photoSource(photo)} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:asset.name.slice(0,1)}</span><span><strong style={{display:"block",color:colors.navy}}>{asset.name}</strong><small style={mutedSmallStyle}>{categoryFor(asset)} · {locationName(asset.locationId)||"No location"}</small></span><span>›</span></button>})}
               {visibleWork.length ? <div style={{ padding: "12px 12px 5px", ...fieldLabelStyle }}>WORK ORDERS</div> : null}{visibleWork.map((record)=><button key={record.id} type="button" onClick={()=>selectRecord("work",record.id)} style={{...compactLinkedRowStyle,width:"100%",borderRadius:0,borderLeft:0,borderRight:0,borderBottom:0,background:selectedWork?.id===record.id?"#F0F6FC":"#FFFFFF"}}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.date?formatDate(record.date):"No date"} · {categoryFor(record)}</small></span><span style={badgeStyle(record.status||"Open")}>{record.status||"Open"}</span></button>)}
               {visibleTasks.length ? <div style={{ padding: "12px 12px 5px", ...fieldLabelStyle }}>TASKS</div> : null}{visibleTasks.map((task)=>{const meta=taskDetails(task.id);return <button key={task.id} type="button" onClick={()=>selectRecord("task",task.id)} style={{...compactLinkedRowStyle,width:"100%",borderRadius:0,borderLeft:0,borderRight:0,borderBottom:0,background:selectedTask?.id===task.id?"#F0F6FC":"#FFFFFF"}}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>{meta.dueDate?formatDate(meta.dueDate):"No date"} · {meta.assignee}</small></span><span style={badgeStyle(meta.status||"Open")}>{meta.status||"Open"}</span></button>})}
-              {!visibleAssets.length&&!visibleWork.length&&!visibleTasks.length?<div style={{...noticeStyle,margin:10}}>No records in this category.</div>:null}
+              {visibleVendors.length ? <div style={{ padding: "12px 12px 5px", ...fieldLabelStyle }}>VENDORS</div> : null}{visibleVendors.map((vendor)=><button key={vendor.id} type="button" onClick={()=>selectRecord("vendor",vendor.id)} style={{...compactLinkedRowStyle,width:"100%",borderRadius:0,borderLeft:0,borderRight:0,borderBottom:0,background:selectedDepartmentVendor?.id===vendor.id?"#F0F6FC":"#FFFFFF"}}><span><strong>{vendor.name || "Unnamed vendor"}</strong><small style={mutedSmallStyle}>{vendor.category || categoryFor(vendor)}{vendor.phone ? ` · ${vendor.phone}` : ""}</small></span><span style={badgeStyle("Vendor")}>Vendor</span></button>)}
+              {!visibleAssets.length&&!visibleWork.length&&!visibleTasks.length&&!visibleVendors.length?<div style={{...noticeStyle,margin:10}}>No records in this category.</div>:null}
             </div>
           </section>
           <section style={{ ...centerCardStyle, padding: 0, overflow: "hidden", position: isMobile ? "static" : "sticky", top: 88, maxHeight: isMobile ? "none" : "calc(100vh - 110px)" }}>
-            {selectedTitle ? <><div style={{ padding:16,display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start" }}><span><span style={eyebrowStyle}>{selectedCategory}</span><strong style={{display:"block",fontSize:18,color:colors.navy}}>{selectedTitle}</strong><small style={mutedSmallStyle}>{selectedAsset?"Asset":selectedWork?"Work Order":"Task"}</small></span><button type="button" onClick={()=>selectedAsset?openAssetById(selectedAsset.id):selectedWork?(setDepartmentCenter(""),openWorkOrderById(selectedWork.id)):(setDepartmentCenter(""),setSelectedTaskId(selectedTask!.id),setTasksView("tasks"),setScreen("planner"))} style={goldButtonStyle}>Open</button></div><div style={{padding:16,borderTop:`1px solid ${colors.line}`,overflowY:"auto"}}>
+            {selectedTitle ? <><div style={{ padding:16,display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start" }}><span><span style={eyebrowStyle}>{selectedCategory}</span><strong style={{display:"block",fontSize:18,color:colors.navy}}>{selectedTitle}</strong><small style={mutedSmallStyle}>{selectedAsset?"Asset":selectedWork?"Work Order":selectedTask?"Task":"Vendor"}</small></span><button type="button" onClick={()=>selectedAsset?openAssetById(selectedAsset.id):selectedWork?(setDepartmentCenter(""),openWorkOrderById(selectedWork.id)):selectedTask?(setDepartmentCenter(""),setSelectedTaskId(selectedTask.id),setTasksView("tasks"),setScreen("planner")):(setSelectedVendorId(selectedDepartmentVendor!.id),openCenter("vendors"))} style={goldButtonStyle}>Open</button></div><div style={{padding:16,borderTop:`1px solid ${colors.line}`,overflowY:"auto"}}>
               {selectedAsset?<div style={{display:"grid",gap:12}}><div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(2,minmax(0,1fr))",gap:8}}>{[["Make / model",[selectedAsset.make,selectedAsset.model].filter(Boolean).join(" · ")||"Not recorded"],["Location",locationName(selectedAsset.locationId)||"Not linked"],["Status",selectedAsset.status||"Active"],["Open work",selectedAssetWork.filter((record)=>record.status!=="Completed").length]].map(([label,value])=><div key={String(label)} style={recordInfoItemStyle}><small style={fieldLabelStyle}>{label}</small><strong style={{display:"block",marginTop:5}}>{value}</strong></div>)}</div>{selectedAssetPhotos.length?<div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:7}}>{selectedAssetPhotos.slice(0,6).map((photo)=><button key={photo.id} type="button" onClick={()=>openPhotoPreview(photo)} style={{border:`1px solid ${colors.line}`,borderRadius:9,padding:0,overflow:"hidden"}}><img src={photoSource(photo)} alt={photo.name} style={{width:"100%",aspectRatio:"4 / 3",objectFit:"cover",display:"block"}}/></button>)}</div>:null}<button type="button" onClick={()=>addDashboardWorkOrder(config.title)} style={secondaryButtonStyle}>New Work Order</button></div>:null}
               {selectedWork?<div style={{display:"grid",gap:8}}>{[["Status",selectedWork.status||"Open"],["Due date",selectedWork.date?formatDate(selectedWork.date):"Not scheduled"],["Assigned",selectedWork.assignedTo||"Unassigned"],["Location",locationName(selectedWork.locationId)||"Not linked"]].map(([label,value])=><div key={String(label)} style={recordInfoItemStyle}><small style={fieldLabelStyle}>{label}</small><strong style={{display:"block",marginTop:5}}>{value}</strong></div>)}</div>:null}
               {selectedTask?(()=>{const meta=taskDetails(selectedTask.id);return <div style={{display:"grid",gap:8}}>{[["Status",meta.status],["Due date",meta.dueDate?formatDate(meta.dueDate):"Not scheduled"],["Assigned",meta.assignee],["Category",categoryFor(selectedTask)]].map(([label,value])=><div key={String(label)} style={recordInfoItemStyle}><small style={fieldLabelStyle}>{label}</small><strong style={{display:"block",marginTop:5}}>{value}</strong></div>)}</div>})():null}
-            </div></>:<div style={noticeStyle}>Select an asset, work order, or task.</div>}
+              {selectedDepartmentVendor?<div style={{display:"grid",gap:8}}>{[["Category",selectedDepartmentVendor.category||selectedCategory],["Phone",selectedDepartmentVendor.phone||"Not recorded"],["Email",selectedDepartmentVendor.email||"Not recorded"],["Website",selectedDepartmentVendor.website||"Not recorded"]].map(([label,value])=><div key={String(label)} style={recordInfoItemStyle}><small style={fieldLabelStyle}>{label}</small><strong style={{display:"block",marginTop:5,overflowWrap:"anywhere"}}>{value}</strong></div>)}</div>:null}
+            </div></>:<div style={noticeStyle}>Select an asset, work order, task, or vendor.</div>}
           </section>
         </div>
       </section>;
@@ -27734,6 +27748,41 @@ ${notes.trim()}` : notes.trim(),
                   })}
                   {!sortedMarineTasks.length ? (
                     <div style={noticeStyle}>No Dock or Marine tasks.</div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div style={centerCardStyle}>
+                <strong style={{ color: colors.navy, fontSize: 16 }}>
+                  Dock & Marine Vendors
+                </strong>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {departmentVendors.map((vendor) => (
+                    <button
+                      key={vendor.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedVendorId(vendor.id);
+                        openCenter("vendors");
+                      }}
+                      style={{
+                        ...compactLinkedRowStyle,
+                        width: "100%",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span>
+                        <strong>{vendor.name || "Unnamed vendor"}</strong>
+                        <small style={mutedSmallStyle}>
+                          {vendor.category || "Dock & Marine"}
+                          {vendor.phone ? ` · ${vendor.phone}` : ""}
+                        </small>
+                      </span>
+                      <span style={badgeStyle("Vendor")}>Open</span>
+                    </button>
+                  ))}
+                  {!departmentVendors.length ? (
+                    <div style={noticeStyle}>No Dock or Marine vendors.</div>
                   ) : null}
                 </div>
               </div>
