@@ -10292,7 +10292,13 @@ export default function AtlasApp() {
       daySessions: daySessions.map((session) => ({ ...session, propertyId: activePropertyId })),
     };
     try {
-      window.localStorage.setItem(pendingKey, JSON.stringify(snapshot));
+      // The pending local snapshot is only a recovery cache. A full or unavailable
+      // localStorage must never turn a healthy shared-Atlas connection into a failed sync.
+      try {
+        window.localStorage.setItem(pendingKey, JSON.stringify(snapshot));
+      } catch (error) {
+        console.warn("Atlas could not cache the operational retry snapshot locally.", error);
+      }
       setOperationsSyncState("saving");
       const pendingDeletesKey = `atlas-operations-deletes-v1-${activePropertyId}`;
       const pendingDeletes = readStoredArray<{ table: string; id: string }>([pendingDeletesKey], []);
@@ -10303,9 +10309,106 @@ export default function AtlasApp() {
       }
       if (pendingDeletes.length) saveStoredArray(pendingDeletesKey, failedDeletes);
 
+      // Addison can complete a task from a different device while this dashboard has
+      // an older copy in memory. Before bulk-saving Tasks, compare the shared record's
+      // updatedAt timestamp so an old dashboard retry can never overwrite a newer
+      // Addison completion. This also makes the newer shared copy visible here at once.
+      const newerRemoteTaskRecords: Array<Record<string, any>> = [];
+      let remoteTaskMap = new Map<string, Record<string, any>>();
+      try {
+        const response = await fetch(
+          `/api/atlas?sharedTasksBeforeSave=${Date.now()}&propertyId=${encodeURIComponent(activePropertyId)}`,
+          { cache: "no-store" },
+        );
+        if (response.ok) {
+          const payload = await response.json();
+          const operationsPayload = payload?.operations && typeof payload.operations === "object"
+            ? payload.operations
+            : payload;
+          const records = Array.isArray(operationsPayload?.taskRecords)
+            ? operationsPayload.taskRecords
+            : Array.isArray(operationsPayload?.tasks)
+              ? operationsPayload.tasks
+              : [];
+          remoteTaskMap = new Map(
+            records.map((record: Record<string, any>) => [String(record?.id || ""), record]),
+          );
+        }
+      } catch {
+        // The normal save below still runs. This freshness check is protective, not required.
+      }
+
       const taskResults = await Promise.all(
-        snapshot.tasks.map((record) => postAtlasRecord("tasks" as AtlasTable, record)),
+        snapshot.tasks.map(async (record) => {
+          const remote = remoteTaskMap.get(String(record.id || ""));
+          if (remote) {
+            const localMeta = record.taskMeta && typeof record.taskMeta === "object"
+              ? record.taskMeta as Record<string, any>
+              : record as Record<string, any>;
+            const remoteMeta = remote.taskMeta && typeof remote.taskMeta === "object"
+              ? remote.taskMeta as Record<string, any>
+              : remote;
+            const localUpdatedAt = Date.parse(String(localMeta.updatedAt || record.updatedAt || localMeta.completedAt || localMeta.createdAt || "")) || 0;
+            const remoteUpdatedAt = Date.parse(String(remoteMeta.updatedAt || remote.updatedAt || remoteMeta.completedAt || remoteMeta.createdAt || "")) || 0;
+            if (remoteUpdatedAt > localUpdatedAt) {
+              newerRemoteTaskRecords.push(remote);
+              return true;
+            }
+          }
+          return postAtlasRecord("tasks" as AtlasTable, record);
+        }),
       );
+
+      if (newerRemoteTaskRecords.length) {
+        operationsRemoteRefreshRef.current = true;
+        if (operationsRemoteRefreshTimerRef.current) {
+          window.clearTimeout(operationsRemoteRefreshTimerRef.current);
+        }
+        operationsRemoteRefreshTimerRef.current = window.setTimeout(() => {
+          operationsRemoteRefreshRef.current = false;
+        }, 2000);
+
+        setWorkPlanTasks((current) => {
+          const remoteById = new Map(newerRemoteTaskRecords.map((record) => [String(record.id || ""), record]));
+          return current.map((task) => {
+            const remote = remoteById.get(task.id);
+            if (!remote) return task;
+            return {
+              ...task,
+              title: String(remote.title || task.title),
+              minutes: Math.max(5, Number(remote.minutes || task.minutes || 30)),
+              priority: (remote.priority || task.priority || "Medium") as WorkPlanTask["priority"],
+              category: String(remote.category || task.category || "General"),
+              locationId: String(remote.locationId || task.locationId || "general"),
+              preferredDay: (remote.preferredDay || task.preferredDay || "Auto") as WorkPlanTask["preferredDay"],
+              locked: Boolean(remote.locked),
+              recurring: Boolean(remote.recurring),
+              fixedTime: String(remote.fixedTime || ""),
+              notes: String(remote.notes || task.notes || ""),
+            };
+          });
+        });
+        setTaskMeta((current) => {
+          const next = { ...current };
+          for (const remote of newerRemoteTaskRecords) {
+            const id = String(remote.id || "");
+            if (!id) continue;
+            const nestedMeta = remote.taskMeta && typeof remote.taskMeta === "object"
+              ? remote.taskMeta as Partial<AtlasTaskMeta>
+              : {};
+            const baseMeta = current[id] || taskDetails(id);
+            next[id] = {
+              ...baseMeta,
+              ...nestedMeta,
+              assignee: nestedMeta.assignee || remote.assignee || baseMeta.assignee,
+              dueDate: nestedMeta.dueDate || remote.dueDate || baseMeta.dueDate,
+              status: nestedMeta.status || remote.status || baseMeta.status,
+              createdAt: nestedMeta.createdAt || baseMeta.createdAt,
+            };
+          }
+          return next;
+        });
+      }
 
       const [vehicleResults, daySessionResults] = await Promise.all([
         Promise.all(snapshot.vehicles.map((record) => postAtlasRecord("vehicle_care" as AtlasTable, record))),
