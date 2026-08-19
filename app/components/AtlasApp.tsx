@@ -2640,9 +2640,44 @@ export default function AtlasApp() {
           const next: Record<string, AtlasTaskMeta> = {};
           for (const record of remote) {
             const id = String(record.id || "");
-            next[id] = (record.taskMeta && typeof record.taskMeta === "object"
-              ? record.taskMeta
-              : record) as AtlasTaskMeta;
+            const nestedMeta = (
+              record.taskMeta && typeof record.taskMeta === "object"
+                ? record.taskMeta
+                : {}
+            ) as Partial<AtlasTaskMeta>;
+            const baseMeta: AtlasTaskMeta = current[id] || {
+              status: "Open",
+              dueDate: "",
+              assignee: "Unassigned",
+              createdAt: new Date().toISOString(),
+              recurrenceInterval: 1,
+              recurrenceUnit: "Weeks",
+              recurrenceEndDate: "",
+              completionHistory: [],
+              season: "Year-Round",
+              weatherDependency: "None",
+              flexibleTime: true,
+              skippable: true,
+            };
+            next[id] = {
+              ...baseMeta,
+              ...nestedMeta,
+              assignee:
+                nestedMeta.assignee ||
+                record.assignee ||
+                baseMeta.assignee,
+              dueDate:
+                nestedMeta.dueDate ||
+                record.dueDate ||
+                baseMeta.dueDate,
+              status:
+                nestedMeta.status ||
+                record.status ||
+                baseMeta.status,
+              createdAt:
+                nestedMeta.createdAt ||
+                baseMeta.createdAt,
+            };
           }
           for (const [id, meta] of Object.entries(current)) {
             if (remoteIds.has(id) || pendingDeleteIds.has(id) || tombstones.has(id)) continue;
@@ -3635,30 +3670,46 @@ export default function AtlasApp() {
             const mergedMeta = {
               ...visibleLocalMeta,
               ...Object.fromEntries(apiTasks.map((record) => {
-                const nestedMeta =
+                const id = String(record.id || "");
+                const nestedMeta = (
                   record.taskMeta && typeof record.taskMeta === "object"
                     ? record.taskMeta
-                    : {};
-                const remoteMeta = {
-                  ...record,
+                    : {}
+                ) as Partial<AtlasTaskMeta>;
+                const baseMeta: AtlasTaskMeta = visibleLocalMeta[id] || {
+                  status: "Open",
+                  dueDate: "",
+                  assignee: "Unassigned",
+                  createdAt: new Date().toISOString(),
+                  recurrenceInterval: 1,
+                  recurrenceUnit: "Weeks",
+                  recurrenceEndDate: "",
+                  completionHistory: [],
+                  season: "Year-Round",
+                  weatherDependency: "None",
+                  flexibleTime: true,
+                  skippable: true,
+                };
+                const remoteMeta: AtlasTaskMeta = {
+                  ...baseMeta,
                   ...nestedMeta,
                   assignee:
                     nestedMeta.assignee ||
                     record.assignee ||
-                    "Unassigned",
+                    baseMeta.assignee,
                   dueDate:
                     nestedMeta.dueDate ||
                     record.dueDate ||
-                    "",
+                    baseMeta.dueDate,
                   status:
                     nestedMeta.status ||
                     record.status ||
-                    "Open",
+                    baseMeta.status,
+                  createdAt:
+                    nestedMeta.createdAt ||
+                    baseMeta.createdAt,
                 };
-                return [
-                  record.id,
-                  remoteMeta as AtlasTaskMeta,
-                ];
+                return [id, remoteMeta];
               })),
             };
 
