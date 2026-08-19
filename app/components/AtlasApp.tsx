@@ -3635,8 +3635,29 @@ export default function AtlasApp() {
             const mergedMeta = {
               ...visibleLocalMeta,
               ...Object.fromEntries(apiTasks.map((record) => {
-                const remoteMeta = record.taskMeta || record;
-                const local = visibleLocalMeta[record.id];
+                const nestedMeta =
+                  record.taskMeta && typeof record.taskMeta === "object"
+                    ? record.taskMeta
+                    : {};
+                const remoteMeta = {
+                  ...record,
+                  ...nestedMeta,
+                  assignee:
+                    nestedMeta.assignee ||
+                    record.assignee ||
+                    record.assignedTo ||
+                    record.assigned_to ||
+                    "Unassigned",
+                  dueDate:
+                    nestedMeta.dueDate ||
+                    record.dueDate ||
+                    record.date ||
+                    "",
+                  status:
+                    nestedMeta.status ||
+                    record.status ||
+                    "Open",
+                };
                 return [
                   record.id,
                   remoteMeta as AtlasTaskMeta,
