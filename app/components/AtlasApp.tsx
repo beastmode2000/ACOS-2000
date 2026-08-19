@@ -2591,6 +2591,7 @@ export default function AtlasApp() {
 
         setWorkPlanTasks((current) => {
           let changed = false;
+          const existingIds = new Set(current.map((task) => task.id));
           const next = current.map((task) => {
             const remote = remoteById.get(task.id);
             if (!remote) return task;
@@ -2602,6 +2603,8 @@ export default function AtlasApp() {
               category: String(remote.category || task.category || "General"),
               locationId: String(remote.locationId || task.locationId || "general"),
               preferredDay: (remote.preferredDay || task.preferredDay || "Auto") as WorkPlanTask["preferredDay"],
+              scheduledDay: (remote.scheduledDay || task.scheduledDay) as WorkPlanTask["scheduledDay"],
+              scheduledDate: String(remote.scheduledDate || task.scheduledDate || "") || undefined,
               locked: Boolean(remote.locked),
               recurring: Boolean(remote.recurring),
               fixedTime: String(remote.fixedTime || ""),
@@ -2610,6 +2613,29 @@ export default function AtlasApp() {
             if (JSON.stringify(merged) !== JSON.stringify(task)) changed = true;
             return merged;
           });
+
+          for (const remote of remoteRecords as Record<string, any>[]) {
+            const id = String(remote?.id || "");
+            if (!id || existingIds.has(id)) continue;
+            next.push({
+              id,
+              title: String(remote.title || "Addison task"),
+              minutes: Math.max(5, Number(remote.minutes || 30)),
+              priority: (remote.priority || "Medium") as WorkPlanTask["priority"],
+              category: String(remote.category || "General"),
+              locationId: String(remote.locationId || "general"),
+              preferredDay: (remote.preferredDay || "Auto") as WorkPlanTask["preferredDay"],
+              scheduledDay: remote.scheduledDay as WorkPlanTask["scheduledDay"],
+              scheduledDate: String(remote.scheduledDate || "") || undefined,
+              locked: Boolean(remote.locked),
+              recurring: Boolean(remote.recurring),
+              fixedTime: String(remote.fixedTime || ""),
+              notes: String(remote.notes || ""),
+            });
+            existingIds.add(id);
+            changed = true;
+          }
+
           return changed ? next : current;
         });
 
