@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { colors } from "../lib/atlas-page-config";
 
 type TeamTaskStatus = "Open" | "In Progress" | "Waiting" | "Completed";
@@ -210,6 +210,7 @@ export default function AtlasTeamWork({
   const [newMemberRole, setNewMemberRole] = useState<TeamRole>("Employee");
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [assignmentTitle, setAssignmentTitle] = useState("");
+  const assignmentTitleRef = useRef<HTMLInputElement | null>(null);
   const [assignmentDueDate, setAssignmentDueDate] = useState(() => {
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
@@ -635,9 +636,12 @@ export default function AtlasTeamWork({
         },
         "Task added.",
       );
-      resetAssignmentForm();
-      setAssignmentOpen(false);
+      setAssignmentTitle("");
+      setAssignmentInstructions("");
       setAssignmentMessage("");
+      requestAnimationFrame(() => {
+        assignmentTitleRef.current?.focus();
+      });
     } catch (error) {
       setAssignmentMessage(
         error instanceof Error ? error.message : "Atlas could not save this assignment.",
@@ -881,7 +885,7 @@ export default function AtlasTeamWork({
             <h2 style={{ margin: "4px 0", color: colors.text }}>Add Task</h2>
           </div>
           <div className="atlas-addison-assignment-grid" style={{ display: "grid", gridTemplateColumns: "minmax(240px,1.5fr) minmax(145px,.7fr) minmax(150px,.8fr)", gap: 10 }}>
-            <label style={labelStyle}>Task<input value={assignmentTitle} onChange={(event) => setAssignmentTitle(event.currentTarget.value)} placeholder="What does Addison need to do?" style={fieldStyle} autoFocus /></label>
+            <label style={labelStyle}>Task<input ref={assignmentTitleRef} value={assignmentTitle} onChange={(event) => setAssignmentTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void saveAddisonAssignment(); } }} placeholder="What does Addison need to do?" style={fieldStyle} autoFocus /></label>
             <label style={labelStyle}>When<input type="date" value={assignmentDueDate} onChange={(event) => setAssignmentDueDate(event.currentTarget.value)} style={fieldStyle} /></label>
             <label style={labelStyle}>Repeat<select value={assignmentFrequency} onChange={(event) => setAssignmentFrequency(event.currentTarget.value as AssignmentFrequency)} style={fieldStyle}><option value="One-time">One time</option><option value="Daily">Daily</option><option value="Weekly">Weekly</option><option value="Biweekly">Every 2 weeks</option><option value="Monthly">Monthly</option></select></label>
             <label style={labelStyle}>Area<select value={assignmentLocationId} onChange={(event) => setAssignmentLocationId(event.currentTarget.value)} style={fieldStyle}><option value="">Anywhere / General</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
