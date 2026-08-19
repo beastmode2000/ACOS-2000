@@ -35,10 +35,6 @@ type LandscapeItem = {
 type AddisonWorkData = {
   today: string;
   tasks: Array<Record<string, any>>;
-  dailyNote?: string;
-  dailyNoteUpdatedAt?: string;
-  routine: { date: string; name: string; tasks: Array<Record<string, any>> };
-  nextRoutine?: { date: string; name: string; tasks: Array<Record<string, any>> } | null;
 };
 
 type LandscapeApiData = {
@@ -148,14 +144,6 @@ export default function LandscapeHelpPage() {
   const [addisonData, setAddisonData] = useState<AddisonWorkData | null>(null);
   const [addisonSync, setAddisonSync] = useState<"saved" | "syncing" | "offline">("saved");
   const [uploadingItemId, setUploadingItemId] = useState("");
-  const [quickNote, setQuickNote] = useState("");
-  const [todayWeather, setTodayWeather] = useState<{
-    temperature: number;
-    code: number;
-    high: number;
-    low: number;
-    precipChance: number;
-  } | null>(null);
 
   useEffect(() => {
     const token = getLandscapeShareTokenFromUrl();
@@ -163,12 +151,6 @@ export default function LandscapeHelpPage() {
     setOrigin(window.location.origin);
     void loadCurrentWeek(token);
   }, []);
-
-  useEffect(() => {
-    if (addisonData) {
-      setQuickNote(String(addisonData.dailyNote || ""));
-    }
-  }, [addisonData?.today, addisonData?.dailyNote]);
 
   useEffect(() => {
     if (!addisonData || !shareToken) return;
@@ -182,50 +164,6 @@ export default function LandscapeHelpPage() {
       window.removeEventListener("focus", onFocus);
     };
   }, [Boolean(addisonData), shareToken]);
-
-  function weatherText(code: number) {
-    if (code === 0) return "Clear";
-    if (code === 1 || code === 2) return "Mostly clear";
-    if (code === 3) return "Cloudy";
-    if (code === 45 || code === 48) return "Fog";
-    if ([51, 53, 55, 56, 57].includes(code)) return "Drizzle";
-    if ([61, 63, 65, 66, 67].includes(code)) return "Rain";
-    if ([71, 73, 75, 77].includes(code)) return "Snow";
-    if ([80, 81, 82].includes(code)) return "Showers";
-    if ([85, 86].includes(code)) return "Snow showers";
-    if ([95, 96, 99].includes(code)) return "Thunderstorms";
-    return "Weather";
-  }
-
-  async function loadTodayWeather() {
-    try {
-      const url =
-        "https://api.open-meteo.com/v1/forecast?latitude=47.60&longitude=-122.20&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&temperature_unit=fahrenheit&timezone=America%2FLos_Angeles&forecast_days=1";
-      const response = await fetch(url, { cache: "no-store" });
-      if (!response.ok) throw new Error("Weather failed");
-      const data = await response.json();
-
-      setTodayWeather({
-        temperature: Math.round(Number(data?.current?.temperature_2m ?? 0)),
-        code: Number(data?.current?.weather_code ?? 0),
-        high: Math.round(Number(data?.daily?.temperature_2m_max?.[0] ?? 0)),
-        low: Math.round(Number(data?.daily?.temperature_2m_min?.[0] ?? 0)),
-        precipChance: Math.round(
-          Number(data?.daily?.precipitation_probability_max?.[0] ?? 0),
-        ),
-      });
-    } catch {
-      setTodayWeather(null);
-    }
-  }
-
-  useEffect(() => {
-    void loadTodayWeather();
-    const timer = window.setInterval(() => {
-      void loadTodayWeather();
-    }, 30 * 60 * 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   async function patchAddison(action: string, payload: Record<string, unknown>) {
     if (!shareToken) return;
@@ -251,7 +189,7 @@ export default function LandscapeHelpPage() {
     }
   }
 
-  async function uploadAddisonPhoto(kind: "task" | "routine", itemId: string, file: File) {
+  async function uploadAddisonPhoto(itemId: string, file: File) {
     if (!shareToken || !file) return;
     setUploadingItemId(itemId);
     setAddisonSync("syncing");
@@ -269,7 +207,7 @@ export default function LandscapeHelpPage() {
           contentType: file.type || undefined,
         },
       );
-      await patchAddison(kind === "task" ? "task-photo" : "routine-photo", {
+      await patchAddison("task-photo", {
         taskId: itemId,
         photo: {
           url: blob.url,
@@ -402,7 +340,7 @@ export default function LandscapeHelpPage() {
       <main style={styles.page}>
         <section style={styles.card}>
           <div style={styles.eyebrow}>Atlas / 2000</div>
-          <h1 style={styles.title}>{shareToken.startsWith("addison-") ? "Atlas Today" : "Landscape Help"}</h1>
+          <h1 style={styles.title}>{shareToken.startsWith("addison-") ? "Addison Work" : "Landscape Help"}</h1>
           <p style={styles.muted}>Loading...</p>
         </section>
       </main>
@@ -413,12 +351,10 @@ export default function LandscapeHelpPage() {
     const today = addisonData.today;
     const taskMeta = (task: Record<string, any>) =>
       task.taskMeta && typeof task.taskMeta === "object" ? task.taskMeta : task;
-    const routineTasks = addisonData.routine?.tasks || [];
     const activeTasks = addisonData.tasks.filter((task) => taskMeta(task).status !== "Completed");
     const completedTasks = addisonData.tasks.filter((task) => taskMeta(task).status === "Completed");
-    const routineDone = routineTasks.filter((task) => Boolean(task.completed) || task.status === "completed" || task.checkedNothingNeeded).length;
-    const total = addisonData.tasks.length + routineTasks.length;
-    const done = completedTasks.length + routineDone;
+    const total = addisonData.tasks.length;
+    const done = completedTasks.length;
     const progress = total ? Math.round((done / total) * 100) : 0;
     const prettyToday = new Date(`${today}T12:00:00`).toLocaleDateString(undefined, {
       weekday: "long", month: "long", day: "numeric"
@@ -427,11 +363,10 @@ export default function LandscapeHelpPage() {
       /\bas needed\b|dog area|dock|geese|trash/i.test(title);
 
     const itemCard = (
-      kind: "task" | "routine",
       item: Record<string, any>,
       completed: boolean,
     ) => {
-      const meta = kind === "task" ? taskMeta(item) : item;
+      const meta = taskMeta(item);
       const photos = Array.isArray(meta.photos) ? meta.photos : [];
       const note = String(meta.addisonNote || meta.note || "");
       const flagged = Boolean(meta.needsNick);
@@ -439,7 +374,7 @@ export default function LandscapeHelpPage() {
       const nothingNeeded = Boolean(meta.checkedNothingNeeded);
       const title = String(item.title || "Work item");
       return (
-        <div key={`${kind}-${String(item.id)}`} style={{
+        <div key={`task-${String(item.id)}`} style={{
           border: `1px solid ${problem || flagged ? colors.gold : colors.line}`,
           borderRadius: 14,
           padding: 12,
@@ -453,10 +388,8 @@ export default function LandscapeHelpPage() {
               disabled={saving}
               onChange={() =>
                 void patchAddison(
-                  kind === "task" ? "task-status" : "routine-toggle",
-                  kind === "task"
-                    ? { taskId: item.id, status: completed ? "Open" : "Completed" }
-                    : { taskId: item.id },
+                  "task-status",
+                  { taskId: item.id, status: completed ? "Open" : "Completed" },
                 )
               }
               style={{ width: 21, height: 21, marginTop: 2 }}
@@ -467,7 +400,7 @@ export default function LandscapeHelpPage() {
                 color: colors.navy,
                 textDecoration: completed ? "line-through" : "none",
               }}>{title}</strong>
-              {kind === "task" && meta.dueDate ? (
+              {meta.dueDate ? (
                 <small style={{ color: colors.muted }}>Due {formatDate(String(meta.dueDate).slice(0,10))}</small>
               ) : null}
               {nothingNeeded ? <small style={{ display:"block", color: colors.muted, marginTop: 3 }}>Checked — nothing needed</small> : null}
@@ -478,7 +411,7 @@ export default function LandscapeHelpPage() {
             defaultValue={note}
             placeholder="Add a note…"
             onBlur={(event) =>
-              void patchAddison(kind === "task" ? "task-note" : "routine-note", {
+              void patchAddison("task-note", {
                 taskId: item.id,
                 note: event.currentTarget.value,
               })
@@ -491,7 +424,7 @@ export default function LandscapeHelpPage() {
               <button
                 type="button"
                 onClick={() => void patchAddison(
-                  kind === "task" ? "task-nothing-needed" : "routine-nothing-needed",
+                  "task-nothing-needed",
                   { taskId: item.id, value: !nothingNeeded }
                 )}
                 style={styles.secondaryButton}
@@ -502,7 +435,7 @@ export default function LandscapeHelpPage() {
             <button
               type="button"
               onClick={() => void patchAddison(
-                kind === "task" ? "task-flag" : "routine-flag",
+                "task-flag",
                 { taskId: item.id, needsNick: !flagged }
               )}
               style={{ ...styles.secondaryButton, borderColor: flagged ? colors.gold : colors.line }}
@@ -512,7 +445,7 @@ export default function LandscapeHelpPage() {
             <button
               type="button"
               onClick={() => void patchAddison(
-                kind === "task" ? "task-problem" : "routine-problem",
+                "task-problem",
                 { taskId: item.id, problemFound: !problem }
               )}
               style={{ ...styles.secondaryButton, color: problem ? colors.red : colors.text }}
@@ -529,7 +462,7 @@ export default function LandscapeHelpPage() {
                 disabled={uploadingItemId === String(item.id)}
                 onChange={(event) => {
                   const file = event.currentTarget.files?.[0];
-                  if (file) void uploadAddisonPhoto(kind, String(item.id), file);
+                  if (file) void uploadAddisonPhoto(String(item.id), file);
                   event.currentTarget.value = "";
                 }}
               />
@@ -557,124 +490,27 @@ export default function LandscapeHelpPage() {
       <main style={{ ...styles.page, padding: 14, maxWidth: 760 }}>
         <section style={{ ...styles.header, padding: 18, borderRadius: 18, marginBottom: 12 }}>
           <div style={{ width:"100%" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", gap:14, alignItems:"flex-start" }}>
-              <div style={{ display:"flex", gap:12, alignItems:"flex-start", minWidth:0 }}>
-                <img
-                  src="/atlas-logo.png"
-                  alt="Atlas"
-                  onError={(event) => {
-                    const image = event.currentTarget;
-                    const fallbackIndex = Number(image.dataset.fallbackIndex || "0");
-                    const fallbacks = [
-                      "/atlas-logo.svg",
-                      "/logo.png",
-                      "/icon-512.png",
-                      "/icon-192.png",
-                      "/apple-touch-icon.png",
-                    ];
-                    if (fallbackIndex < fallbacks.length) {
-                      image.dataset.fallbackIndex = String(fallbackIndex + 1);
-                      image.src = fallbacks[fallbackIndex];
-                    }
-                  }}
-                  style={{
-                    width:58,
-                    height:58,
-                    objectFit:"contain",
-                    flex:"0 0 auto",
-                  }}
-                />
-                <div style={{ minWidth:0 }}>
-                  <h1 style={{ ...styles.title, fontSize:30, marginBottom:2 }}>Atlas Today</h1>
-                  <div style={{ color:"white", fontWeight:800, fontSize:14 }}>Addison Hutton · 2000</div>
-                  <p style={{ ...styles.subtitle, marginTop:3 }}>{prettyToday}</p>
-                </div>
-              </div>
-
-              <div style={{ textAlign:"right", flex:"0 0 auto" }}>
-                {todayWeather ? (
-                  <>
-                    <div style={{ color:"white", fontWeight:900, fontSize:27, lineHeight:1 }}>
-                      {todayWeather.temperature}°
-                    </div>
-                    <div style={{ color:"rgba(255,255,255,.88)", fontSize:12, fontWeight:800, marginTop:4 }}>
-                      {weatherText(todayWeather.code)}
-                    </div>
-                    <div style={{ color:"rgba(255,255,255,.68)", fontSize:11, marginTop:2 }}>
-                      H {todayWeather.high}° · L {todayWeather.low}°
-                    </div>
-                    <div style={{ color:"rgba(255,255,255,.68)", fontSize:11 }}>
-                      Rain {todayWeather.precipChance}%
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ color:"rgba(255,255,255,.65)", fontSize:12 }}>Weather loading…</div>
-                )}
-              </div>
-            </div>
-
-            <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:12, alignItems:"end", marginTop:14 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"flex-start" }}>
               <div>
-                <div style={{ height:8, background:"rgba(255,255,255,.18)", borderRadius:999, overflow:"hidden" }}>
-                  <div style={{ width:`${progress}%`, height:"100%", background:colors.gold2, borderRadius:999 }} />
-                </div>
-                <div style={{ marginTop:7, color:"rgba(255,255,255,.72)", fontSize:12 }}>
-                  {addisonSync === "syncing" ? "Syncing…" : addisonSync === "offline" ? "Offline / not saved" : "Saved"}
-                </div>
+                <div style={styles.eyebrow}>Atlas / 2000</div>
+                <h1 style={{ ...styles.title, fontSize: 30 }}>Addison</h1>
+                <p style={styles.subtitle}>{prettyToday}</p>
               </div>
               <div style={{ textAlign:"right" }}>
                 <div style={{ color:"white", fontWeight:900, fontSize:22 }}>{done}/{total}</div>
                 <div style={{ color:"rgba(255,255,255,.72)", fontSize:12 }}>{progress}% complete</div>
               </div>
             </div>
+            <div style={{ height:8, background:"rgba(255,255,255,.18)", borderRadius:999, marginTop:12, overflow:"hidden" }}>
+              <div style={{ width:`${progress}%`, height:"100%", background:colors.gold2, borderRadius:999 }} />
+            </div>
+            <div style={{ marginTop:8, color:"rgba(255,255,255,.72)", fontSize:12 }}>
+              {addisonSync === "syncing" ? "Syncing…" : addisonSync === "offline" ? "Offline / not saved" : "Saved"}
+            </div>
           </div>
         </section>
 
         {message ? <div style={{ ...styles.card, padding: 10, marginBottom: 10 }}>{message}</div> : null}
-
-        <section style={{ ...styles.card, padding:16, marginBottom:14 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"center", marginBottom:9 }}>
-            <div>
-              <div style={styles.eyebrow}>QUICK INPUT</div>
-              <h2 style={{ ...styles.cardTitle, marginBottom:0 }}>Notes</h2>
-            </div>
-            <span style={{ ...styles.muted, fontSize:12 }}>
-              {addisonData.dailyNoteUpdatedAt ? "Saved today" : "Today"}
-            </span>
-          </div>
-          <textarea
-            value={quickNote}
-            onChange={(event) => setQuickNote(event.target.value)}
-            placeholder="Add a quick note for today…"
-            style={{ ...styles.textarea, minHeight:88 }}
-          />
-          <div style={{ display:"flex", justifyContent:"flex-end", marginTop:8 }}>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void patchAddison("daily-note", { note: quickNote })}
-              style={styles.primaryButton}
-            >
-              {saving ? "Saving…" : "Save Note"}
-            </button>
-          </div>
-        </section>
-
-        <section style={{ ...styles.card, padding: 16, marginBottom: 14 }}>
-          <div style={styles.rowBetween}>
-            <div>
-              <div style={styles.eyebrow}>Routine</div>
-              <h2 style={styles.cardTitle}>{addisonData.routine?.name || "Today's Routine"}</h2>
-            </div>
-            <strong>{routineDone}/{routineTasks.length}</strong>
-          </div>
-          <div style={{ display:"grid", gap:9 }}>
-            {routineTasks.filter((item) => !(Boolean(item.completed) || item.status === "completed" || item.checkedNothingNeeded))
-              .map((item) => itemCard("routine", item, false))}
-            {!routineTasks.filter((item) => !(Boolean(item.completed) || item.status === "completed" || item.checkedNothingNeeded)).length
-              ? <p style={styles.muted}>Routine complete.</p> : null}
-          </div>
-        </section>
 
         <section style={{ ...styles.card, padding: 16, marginBottom: 14 }}>
           <div style={styles.rowBetween}>
@@ -685,35 +521,18 @@ export default function LandscapeHelpPage() {
             <strong>{activeTasks.length} open</strong>
           </div>
           <div style={{ display:"grid", gap:9 }}>
-            {activeTasks.map((item) => itemCard("task", item, false))}
+            {activeTasks.map((item) => itemCard(item, false))}
             {!activeTasks.length ? <p style={styles.muted}>No open assigned tasks.</p> : null}
           </div>
         </section>
 
-        {(completedTasks.length || routineDone) ? (
+        {completedTasks.length ? (
           <details style={{ ...styles.card, padding: 14, marginBottom:14 }}>
-            <summary style={{ cursor:"pointer", fontWeight:900, color:colors.navy }}>Completed Today · {completedTasks.length + routineDone}</summary>
+            <summary style={{ cursor:"pointer", fontWeight:900, color:colors.navy }}>Completed Today · {completedTasks.length}</summary>
             <div style={{ display:"grid", gap:8, marginTop:10 }}>
-              {routineTasks.filter((item) => Boolean(item.completed) || item.status === "completed" || item.checkedNothingNeeded)
-                .map((item) => itemCard("routine", item, Boolean(item.completed) || item.status === "completed"))}
-              {completedTasks.map((item) => itemCard("task", item, true))}
+              {completedTasks.map((item) => itemCard(item, true))}
             </div>
           </details>
-        ) : null}
-
-        {addisonData.nextRoutine?.tasks?.length ? (
-          <section style={{ ...styles.card, padding: 16 }}>
-            <div style={styles.eyebrow}>Next Workday</div>
-            <h2 style={styles.cardTitle}>{addisonData.nextRoutine.name}</h2>
-            <p style={styles.muted}>{formatDate(addisonData.nextRoutine.date)}</p>
-            <div style={{ display:"grid", gap:6 }}>
-              {addisonData.nextRoutine.tasks.map((item) => (
-                <div key={String(item.id)} style={{ padding:"8px 10px", border:`1px solid ${colors.line}`, borderRadius:10 }}>
-                  {String(item.title || "Routine item")}
-                </div>
-              ))}
-            </div>
-          </section>
         ) : null}
       </main>
     );
