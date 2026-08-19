@@ -130,36 +130,6 @@ function nextRecurringDate(
   return date.toISOString().slice(0, 10);
 }
 
-async function patchAddisonRoutineTask(
-  taskId: string,
-  patch: Record<string, unknown>,
-) {
-  const sql = getSql();
-  const today = pacificDateKey();
-  const rows = await sql`
-    SELECT tasks
-    FROM atlas_routine_occurrences
-    WHERE property_id = '2000'
-      AND occurrence_date = ${today}::date
-    LIMIT 1
-  `;
-  if (!rows[0]) return false;
-  const tasks = Array.isArray(rows[0].tasks) ? rows[0].tasks : [];
-  const target = tasks.find((item: any) => String(item.id) === taskId);
-  if (!target || !isAddisonAssigneeValue(target?.assignedTo || target?.assignee || target?.assigned_to)) return false;
-  const next = tasks.map((item: any) =>
-    String(item.id) === taskId ? { ...item, ...patch } : item
-  );
-  await sql`
-    UPDATE atlas_routine_occurrences
-    SET tasks = ${JSON.stringify(next)}::jsonb,
-        updated_at = NOW()
-    WHERE property_id = '2000'
-      AND occurrence_date = ${today}::date
-  `;
-  return true;
-}
-
 async function removeAddisonRoutineAssignments() {
   await ensureAddisonBackingTables();
   const sql = getSql();
@@ -993,67 +963,6 @@ export async function PATCH(request: NextRequest) {
         const ok = await patchAddisonTask(taskId, patch);
         if (!ok) return NextResponse.json({ ok:false, error:"Addison task not found." }, { status:404 });
         return NextResponse.json({ ok:true, mode:"addison", addison:await loadAddisonWork() });
-      }
-
-      if (
-        action === "routine-note" ||
-        action === "routine-photo" ||
-        action === "routine-flag" ||
-        action === "routine-problem" ||
-        action === "routine-nothing-needed"
-      ) {
-        const taskId = String(body.taskId || "");
-        const current = await loadAddisonWork();
-        const item = current.routine.tasks.find((task:any) => String(task.id) === taskId);
-        if (!item) return NextResponse.json({ ok:false, error:"Addison routine item not found." }, { status:404 });
-        const patch: Record<string, unknown> =
-          action === "routine-note" ? { addisonNote: String(body.note || "") } :
-          action === "routine-flag" ? { needsNick: Boolean(body.needsNick) } :
-          action === "routine-problem" ? { problemFound: Boolean(body.problemFound) } :
-          action === "routine-nothing-needed"
-            ? { checkedNothingNeeded: Boolean(body.value) }
-            : { photos: [...(Array.isArray(item.photos) ? item.photos : []), body.photo].filter(Boolean) };
-        const ok = await patchAddisonRoutineTask(taskId, patch);
-        if (!ok) return NextResponse.json({ ok:false, error:"Addison routine item not found." }, { status:404 });
-        return NextResponse.json({ ok:true, mode:"addison", addison:await loadAddisonWork() });
-      }
-
-      if (action === "routine-toggle") {
-        const taskId = String(body.taskId || "");
-        const sql = getSql();
-        const rows = await sql`
-          SELECT tasks
-          FROM atlas_routine_occurrences
-          WHERE property_id = '2000'
-            AND occurrence_date = ${today}::date
-          LIMIT 1
-        `;
-        if (!rows[0]) return NextResponse.json({ ok: false, error: "Routine not found." }, { status: 404 });
-        const tasks = Array.isArray(rows[0].tasks) ? rows[0].tasks : [];
-        const target = tasks.find((item: any) => String(item.id) === taskId);
-        if (
-          !target ||
-          !isAddisonAssigneeValue(target?.assignedTo || target?.assignee || target?.assigned_to)
-        ) {
-          return NextResponse.json({ ok: false, error: "Addison routine item not found." }, { status: 404 });
-        }
-        const next = tasks.map((item: any) =>
-          String(item.id) === taskId
-            ? {
-                ...item,
-                completed: !Boolean(item.completed),
-                status: Boolean(item.completed) ? "open" : "completed",
-              }
-            : item
-        );
-        await sql`
-          UPDATE atlas_routine_occurrences
-          SET tasks = ${JSON.stringify(next)}::jsonb,
-              updated_at = NOW()
-          WHERE property_id = '2000'
-            AND occurrence_date = ${today}::date
-        `;
-        return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
       }
 
       return NextResponse.json({ ok: false, error: "Unsupported Addison action." }, { status: 400 });
