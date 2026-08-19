@@ -15280,11 +15280,8 @@ ${notes.trim()}` : notes.trim(),
           cleaningTask = nextTasks[taskIndex];
         }
         const existingCleaningMeta = nextTaskMeta[cleaningTask.id] || taskDetails(cleaningTask.id);
-        const cleaningAssignee = /mercedes/i.test(vehicle.name)
-          ? "Addison"
-          : existingCleaningMeta.assignee && existingCleaningMeta.assignee !== "Unassigned"
-            ? existingCleaningMeta.assignee
-            : vehicle.assignedTo === "Addison" ? "Addison" : "Nick";
+        const cleaningAssignee =
+          vehicle.assignedTo === "Addison" ? "Addison" : "Nick";
         nextTaskMeta[cleaningTask.id] = {
           ...existingCleaningMeta,
           status: existingCleaningMeta.status === "Completed" ? "Open" : existingCleaningMeta.status,
