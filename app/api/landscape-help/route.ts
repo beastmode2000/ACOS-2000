@@ -374,8 +374,6 @@ async function saveAddisonRoutineDefinition(
         ? String(task.frequency)
         : "Daily",
       startDate: String(task?.startDate || pacificDateKey()).slice(0, 10),
-      frequency: String(task?.frequency || "Daily"),
-      startDate: String(task?.startDate || ""),
     }))
     .filter((task: any) => task.title);
 
@@ -1566,3 +1564,4 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
+
