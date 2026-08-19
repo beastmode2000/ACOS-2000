@@ -177,6 +177,49 @@ async function loadAddisonWork() {
     serverUpdatedAt: row.updated_at,
   })) as AddisonTaskRecord[];
 
+  // Recurring Addison work stays visibly completed after he checks it off.
+  // Only reopen that same task when its next occurrence is actually due.
+  for (const task of allTasks) {
+    if (!isAddisonAssigned(task) || !task.recurring) continue;
+    const meta = addisonTaskMeta(task) || {};
+    const nextDueDate = String(meta?.nextDueDate || '').slice(0, 10);
+    if (
+      String(meta?.status || '') !== 'Completed' ||
+      !nextDueDate ||
+      nextDueDate > today
+    ) continue;
+
+    const updatedAt = new Date().toISOString();
+    const nextMeta = {
+      ...meta,
+      assignee: 'Addison',
+      status: 'Open',
+      dueDate: nextDueDate,
+      completedAt: undefined,
+      nextDueDate: '',
+      needsReview: false,
+      updatedAt,
+    };
+    const nextRecord = {
+      ...task,
+      ...nextMeta,
+      taskMeta: nextMeta,
+      propertyId: '2000',
+      updatedAt,
+    };
+
+    await sql`
+      UPDATE atlas_operational_records
+      SET record = ${JSON.stringify(nextRecord)}::jsonb,
+          updated_at = NOW()
+      WHERE record_type = 'tasks'
+        AND property_id = '2000'
+        AND id = ${String(task.id)}
+    `;
+
+    Object.assign(task, nextRecord, { serverUpdatedAt: updatedAt });
+  }
+
   const seenTasks = new Set<string>();
   const tasks = allTasks
     .filter(isAddisonAssigned)
@@ -1033,15 +1076,17 @@ export async function PATCH(request: NextRequest) {
           taskId,
           completed && recurring
             ? {
-                status: "Open",
-                dueDate: nextRecurringDate(
+                // Keep the completed occurrence completed and visible. Store the next
+                // due date separately; loadAddisonWork reopens it only when that date arrives.
+                status: "Completed",
+                completedAt: new Date().toISOString(),
+                lastCompletedDate: today,
+                completionHistory: nextHistory,
+                nextDueDate: nextRecurringDate(
                   String(currentMeta?.dueDate || today).slice(0, 10),
                   currentMeta?.recurrenceInterval,
                   currentMeta?.recurrenceUnit,
                 ),
-                completedAt: undefined,
-                lastCompletedDate: today,
-                completionHistory: nextHistory,
                 needsReview: true,
               }
             : {
@@ -1053,6 +1098,7 @@ export async function PATCH(request: NextRequest) {
                     ? ""
                     : currentMeta?.lastCompletedDate || "",
                 completionHistory: nextHistory,
+                nextDueDate: completed ? currentMeta?.nextDueDate || "" : "",
                 needsReview: completed,
               },
         );
