@@ -61,7 +61,15 @@ function addisonTaskMeta(record: AddisonTaskRecord) {
 }
 
 function isAddisonAssigned(record: AddisonTaskRecord) {
-  return String(addisonTaskMeta(record)?.assignee || "").trim().toLowerCase() === "addison";
+  const meta = addisonTaskMeta(record);
+  return isAddisonAssigneeValue(
+    meta?.assignee ||
+      meta?.assignedTo ||
+      meta?.assigned_to ||
+      record?.assignee ||
+      record?.assignedTo ||
+      record?.assigned_to,
+  );
 }
 
 async function ensureAddisonBackingTables() {
@@ -149,6 +157,74 @@ function nextRecurringDate(
   return date.toISOString().slice(0, 10);
 }
 
+const ADDISON_CLEAN_START_MIGRATION_ID = "addison-clean-start-2026-08-18-v1";
+
+async function clearAllAddisonTasks() {
+  await ensureAddisonBackingTables();
+  const sql = getSql();
+
+  const rows = await sql`
+    SELECT id, record
+    FROM atlas_operational_records
+    WHERE record_type = 'tasks'
+      AND property_id = '2000'
+  `;
+
+  const addisonIds = rows
+    .filter((row: any) =>
+      isAddisonAssigned({
+        ...(row.record || {}),
+        id: String(row.id || row.record?.id || ""),
+      } as AddisonTaskRecord),
+    )
+    .map((row: any) => String(row.id || row.record?.id || ""))
+    .filter(Boolean);
+
+  for (const id of addisonIds) {
+    await sql`
+      DELETE FROM atlas_operational_records
+      WHERE record_type = 'tasks'
+        AND property_id = '2000'
+        AND id = ${id}
+    `;
+  }
+
+  return addisonIds.length;
+}
+
+async function runAddisonCleanStartOnce() {
+  await ensureAddisonBackingTables();
+  const sql = getSql();
+
+  const existing = await sql`
+    SELECT id
+    FROM atlas_operational_records
+    WHERE record_type = 'system_migration'
+      AND property_id = '2000'
+      AND id = ${ADDISON_CLEAN_START_MIGRATION_ID}
+    LIMIT 1
+  `;
+
+  if (existing[0]) return;
+
+  const deleted = await clearAllAddisonTasks();
+  const appliedAt = new Date().toISOString();
+
+  await sql`
+    INSERT INTO atlas_operational_records (
+      record_type, id, property_id, record, updated_at
+    )
+    VALUES (
+      'system_migration',
+      ${ADDISON_CLEAN_START_MIGRATION_ID},
+      '2000',
+      ${JSON.stringify({ appliedAt, deleted })}::jsonb,
+      NOW()
+    )
+    ON CONFLICT (record_type, id) DO NOTHING
+  `;
+}
+
 async function removeAddisonRoutineAssignments() {
   await ensureAddisonBackingTables();
   const sql = getSql();
@@ -208,6 +284,7 @@ async function removeAddisonRoutineAssignments() {
 
 async function loadAddisonWork() {
   await ensureAddisonBackingTables();
+  await runAddisonCleanStartOnce();
   await removeAddisonRoutineAssignments();
 
   const sql = getSql();
@@ -750,6 +827,16 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({
           ok: true,
           mode: "addison",
+          addison: await loadAddisonWork(),
+        });
+      }
+
+      if (action === "task-clear-all") {
+        const deleted = await clearAllAddisonTasks();
+        return NextResponse.json({
+          ok: true,
+          mode: "addison",
+          deleted,
           addison: await loadAddisonWork(),
         });
       }
