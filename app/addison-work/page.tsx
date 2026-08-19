@@ -180,7 +180,20 @@ export default function LandscapeHelpPage() {
       if (!data.ok) throw new Error(data.error || "Could not save Addison work.");
       if (data.mode === "addison" && data.addison) setAddisonData(data.addison);
       setAddisonSync("saved");
-      setMessage("");
+      if (action === "task-status" && String(payload.status || "") === "Completed") {
+        const savedTask = Array.isArray(data.addison?.tasks)
+          ? data.addison.tasks.find((task: Record<string, any>) => String(task.id) === String(payload.taskId || ""))
+          : null;
+        setMessage(
+          savedTask?.recurring
+            ? "Completed and saved. The next occurrence will appear when it is due."
+            : "Completed and saved.",
+        );
+      } else if (action === "task-status" && String(payload.status || "") === "Open") {
+        setMessage("Reopened and saved.");
+      } else {
+        setMessage("");
+      }
     } catch (error) {
       setAddisonSync("offline");
       setMessage(error instanceof Error ? error.message : "Could not save Addison work.");
