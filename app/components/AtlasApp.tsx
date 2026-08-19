@@ -3649,8 +3649,7 @@ export default function AtlasApp() {
                   dueDate:
                     nestedMeta.dueDate ||
                     record.dueDate ||
-                    record.date ||
-                    "",
+                    String((record as unknown as Record<string, unknown>).date || ""),
                   status:
                     nestedMeta.status ||
                     record.status ||
