@@ -2559,7 +2559,12 @@ export default function AtlasApp() {
   }, [ready, operationsHydrated, activePropertyId]);
 
   useEffect(() => {
-    if (!ready || !operationsHydrated || activePropertyId !== "2000" || screen !== "dashboard") return;
+    if (
+      !ready ||
+      !operationsHydrated ||
+      activePropertyId !== "2000" ||
+      (screen !== "dashboard" && screen !== "team")
+    ) return;
     let cancelled = false;
 
     const refreshAddisonDashboardTasks = async () => {
@@ -2574,6 +2579,33 @@ export default function AtlasApp() {
         const remoteRecords = Array.isArray(payload?.addison?.tasks)
           ? payload.addison.tasks
           : [];
+        const deletedAddisonTaskIds = new Set<string>(
+          Array.isArray(payload?.addison?.deletedTaskIds)
+            ? payload.addison.deletedTaskIds.map((value: unknown) => String(value || "")).filter(Boolean)
+            : [],
+        );
+
+        // A deletion made from Team -> Addison must win over every older local
+        // task snapshot. Mirror the server tombstone into Atlas's existing local
+        // tombstone system so normal task autosave cannot recreate the deleted task.
+        if (deletedAddisonTaskIds.size) {
+          deletedAddisonTaskIds.forEach((taskId) => addTaskTombstone(taskId));
+          setWorkPlanTasks((current) => {
+            const next = current.filter((task) => !deletedAddisonTaskIds.has(String(task.id)));
+            return next.length === current.length ? current : next;
+          });
+          setTaskMeta((current) => {
+            let changed = false;
+            const next = { ...current };
+            deletedAddisonTaskIds.forEach((taskId) => {
+              if (Object.prototype.hasOwnProperty.call(next, taskId)) {
+                delete next[taskId];
+                changed = true;
+              }
+            });
+            return changed ? next : current;
+          });
+        }
 
         operationsRemoteRefreshRef.current = true;
         if (operationsRemoteRefreshTimerRef.current) {
@@ -2585,7 +2617,11 @@ export default function AtlasApp() {
 
         const remoteById = new Map<string, Record<string, any>>(
           remoteRecords
-            .filter((record: Record<string, any>) => Boolean(record?.id))
+            .filter(
+              (record: Record<string, any>) =>
+                Boolean(record?.id) &&
+                !deletedAddisonTaskIds.has(String(record.id)),
+            )
             .map((record: Record<string, any>) => [String(record.id), record]),
         );
 
@@ -2616,7 +2652,7 @@ export default function AtlasApp() {
 
           for (const remote of remoteRecords as Record<string, any>[]) {
             const id = String(remote?.id || "");
-            if (!id || existingIds.has(id)) continue;
+            if (!id || deletedAddisonTaskIds.has(id) || existingIds.has(id)) continue;
             next.push({
               id,
               title: String(remote.title || "Addison task"),
