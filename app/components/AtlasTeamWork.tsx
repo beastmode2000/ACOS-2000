@@ -68,12 +68,39 @@ type AddisonAssignmentDraft = {
   minutes: number;
 };
 
+type AddisonHistoryItem = {
+  id: string;
+  taskId: string;
+  title: string;
+  date: string;
+  completedAt?: string;
+  locationId?: string;
+  locationName?: string;
+  note?: string;
+  recurring?: boolean;
+  frequency?: string;
+};
+
+type AddisonNoteHistoryItem = {
+  id: string;
+  date: string;
+  note: string;
+  updatedAt?: string;
+  taskId?: string;
+  taskTitle?: string;
+};
+
 type AddisonLiveWork = {
   today: string;
   tasks: Array<Record<string, any>>;
   locations?: Array<{ id: string; name: string }>;
   dailyNote?: string;
   dailyNoteUpdatedAt?: string;
+  history?: AddisonHistoryItem[];
+  dailyNotes?: AddisonNoteHistoryItem[];
+  taskNotes?: AddisonNoteHistoryItem[];
+  weekStart?: string;
+  weeklySummary?: string;
 };
 
 function addisonMeta(task: Record<string, any>) {
@@ -91,6 +118,16 @@ function addisonFrequency(task: Record<string, any>): AssignmentFrequency {
   if (unit === "Months") return "Monthly";
   if (unit === "Weeks" && interval === 2) return "Biweekly";
   return "Weekly";
+}
+
+function formatAddisonHistoryDate(dateKey: string) {
+  if (!dateKey) return "";
+  const date = new Date(`${dateKey}T12:00:00-07:00`);
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  }).format(date);
 }
 
 const BASE_PEOPLE = ["Addison", "Pat's Crew", "Sean", "Nick", "Unassigned"];
@@ -233,6 +270,8 @@ export default function AtlasTeamWork({
   const [editingPriority, setEditingPriority] =
     useState<"High" | "Medium" | "Low">("Medium");
   const [editingMinutes, setEditingMinutes] = useState(30);
+  const [historyCopied, setHistoryCopied] = useState(false);
+
   async function loadAddisonWork(showLoading = false) {
     if (activePropertyId !== "2000") {
       setAddisonWork(null);
@@ -693,6 +732,19 @@ export default function AtlasTeamWork({
     }
   }
 
+  async function copyAddisonWeeklySummary() {
+    const summary = String(addisonWork?.weeklySummary || "").trim();
+    if (!summary) return;
+    try {
+      await navigator.clipboard.writeText(summary);
+      setHistoryCopied(true);
+      window.setTimeout(() => setHistoryCopied(false), 1800);
+    } catch {
+      setAddisonLiveMessage("Could not copy the weekly update.");
+    }
+  }
+
+
   return (
     <section style={{ display: "grid", gap: 16 }}>
       <div style={heroStyle}>
@@ -778,10 +830,6 @@ export default function AtlasTeamWork({
                 value={(addisonWork?.tasks || []).filter(
                   (task) => String(addisonMeta(task)?.status || "") === "Completed",
                 ).length}
-              />
-              <Stat
-                label="Assigned"
-                value={(addisonWork?.tasks || []).length}
               />
               <Stat label="Sync" value={addisonLoading ? "Loading" : "Live"} />
             </div>
@@ -877,8 +925,93 @@ export default function AtlasTeamWork({
                   <div style={emptyStyle}>No tasks are assigned to Addison.</div>
                 ) : null}
               </div>
+            <div style={panelStyle}>
+              <div style={editorHeaderStyle}>
+                <div>
+                  <div style={eyebrowStyle}>HISTORY</div>
+                  <h2 style={{ margin: "3px 0", color: colors.text }}>Addison History & Weekly Update</h2>
+                </div>
+                <button
+                  type="button"
+                  style={lightButtonStyle}
+                  onClick={() => void copyAddisonWeeklySummary()}
+                  disabled={!String(addisonWork?.weeklySummary || "").trim()}
+                >
+                  {historyCopied ? "Copied" : "Copy Weekly Update"}
+                </button>
+              </div>
+
+              <div style={{
+                marginTop: 12,
+                padding: 12,
+                border: `1px solid ${colors.line}`,
+                borderRadius: 12,
+                background: colors.panel,
+                whiteSpace: "pre-wrap",
+                fontSize: 13,
+                lineHeight: 1.55,
+                color: colors.text,
+              }}>
+                {String(addisonWork?.weeklySummary || "Addison\nNo completed work recorded this week yet.")}
+              </div>
+
+              <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
+                {(() => {
+                  const completions = addisonWork?.history || [];
+                  const dailyNotes = addisonWork?.dailyNotes || [];
+                  const taskNotes = addisonWork?.taskNotes || [];
+                  const dates = Array.from(new Set([
+                    ...completions.map((item) => item.date),
+                    ...dailyNotes.map((item) => item.date),
+                    ...taskNotes.map((item) => item.date),
+                  ].filter(Boolean))).sort((a, b) => b.localeCompare(a));
+
+                  if (!dates.length) {
+                    return <div style={emptyStyle}>No Addison history has been recorded yet.</div>;
+                  }
+
+                  return dates.slice(0, 30).map((date) => {
+                    const dayCompletions = completions.filter((item) => item.date === date);
+                    const dayDailyNotes = dailyNotes.filter((item) => item.date === date);
+                    const dayTaskNotes = taskNotes.filter((item) => item.date === date);
+                    return (
+                      <details key={date} open={date === addisonWork?.today} style={{
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 12,
+                        padding: 11,
+                        background: colors.card,
+                      }}>
+                        <summary style={{ cursor: "pointer", fontWeight: 900, color: colors.text }}>
+                          {formatAddisonHistoryDate(date)}
+                          {dayCompletions.length ? ` · ${dayCompletions.length} completed` : ""}
+                        </summary>
+                        <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                          {dayCompletions.map((item) => (
+                            <div key={`done-${item.id}`} style={{ fontSize: 13, color: colors.text }}>
+                              <strong>Completed:</strong> {item.title}
+                              {item.locationName ? ` · ${item.locationName}` : ""}
+                              {item.note ? <div style={{ ...mutedStyle, marginTop: 3 }}>Addison note: {item.note}</div> : null}
+                            </div>
+                          ))}
+                          {dayDailyNotes.map((item) => (
+                            <div key={`daily-${item.id}`} style={{ fontSize: 13, color: colors.text }}>
+                              <strong>Daily note:</strong> {item.note}
+                            </div>
+                          ))}
+                          {dayTaskNotes.map((item) => (
+                            <div key={`tasknote-${item.id}`} style={{ fontSize: 13, color: colors.text }}>
+                              <strong>Task note{item.taskTitle ? ` · ${item.taskTitle}` : ""}:</strong> {item.note}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    );
+                  });
+                })()}
+              </div>
             </div>
 
+            </div>
 
           </div>
         )
