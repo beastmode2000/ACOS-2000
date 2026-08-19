@@ -157,6 +157,26 @@ function task(
   };
 }
 
+const ADDISON_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] as const;
+type AddisonWeekday = (typeof ADDISON_WEEKDAYS)[number] | "Auto";
+
+function nextDateForWeekday(day: AddisonWeekday, fromDate?: string) {
+  if (day === "Auto") return fromDate || new Date().toISOString().slice(0, 10);
+  const target = ADDISON_WEEKDAYS.indexOf(day as (typeof ADDISON_WEEKDAYS)[number]) + 1;
+  const base = fromDate ? new Date(`${fromDate}T12:00:00`) : new Date();
+  const current = base.getDay();
+  let delta = (target - current + 7) % 7;
+  if (delta === 0 && fromDate) delta = 0;
+  base.setDate(base.getDate() + delta);
+  return `${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,"0")}-${String(base.getDate()).padStart(2,"0")}`;
+}
+
+function dayFromTask(task: Record<string, any>): AddisonWeekday {
+  const meta = addisonMeta(task);
+  const value = String(task.preferredDay || meta?.preferredDay || "Auto");
+  return (ADDISON_WEEKDAYS as readonly string[]).includes(value) ? value as AddisonWeekday : "Auto";
+}
+
 function starterLists(): TeamList[] {
   return [
     {
@@ -250,6 +270,7 @@ export default function AtlasTeamWork({
   });
   const [assignmentFrequency, setAssignmentFrequency] =
     useState<AssignmentFrequency>("One-time");
+  const [assignmentDay, setAssignmentDay] = useState<AddisonWeekday>("Auto");
   const [assignmentLocationId, setAssignmentLocationId] = useState("");
   const [assignmentInstructions, setAssignmentInstructions] = useState("");
   const [assignmentPriority, setAssignmentPriority] =
@@ -265,6 +286,7 @@ export default function AtlasTeamWork({
   const [editingDueDate, setEditingDueDate] = useState("");
   const [editingFrequency, setEditingFrequency] =
     useState<AssignmentFrequency>("One-time");
+  const [editingDay, setEditingDay] = useState<AddisonWeekday>("Auto");
   const [editingLocationId, setEditingLocationId] = useState("");
   const [editingInstructions, setEditingInstructions] = useState("");
   const [editingPriority, setEditingPriority] =
@@ -620,6 +642,7 @@ export default function AtlasTeamWork({
   function resetAssignmentForm() {
     setAssignmentTitle("");
     setAssignmentFrequency("One-time");
+    setAssignmentDay("Auto");
     setAssignmentLocationId("");
     setAssignmentInstructions("");
     setAssignmentPriority("Medium");
@@ -643,6 +666,7 @@ export default function AtlasTeamWork({
           title: assignmentTitle.trim(),
           dueDate: assignmentDueDate,
           frequency: assignmentFrequency,
+          preferredDay: assignmentDay,
           locationId: assignmentLocationId || "general",
           instructions: assignmentInstructions.trim(),
           priority: assignmentPriority,
@@ -671,6 +695,7 @@ export default function AtlasTeamWork({
     setEditingTitle(String(task.title || ""));
     setEditingDueDate(String(meta?.dueDate || "").slice(0, 10));
     setEditingFrequency(addisonFrequency(task));
+    setEditingDay(dayFromTask(task));
     setEditingLocationId(String(task.locationId || "general"));
     setEditingInstructions(String(meta?.instructions || task.notes || ""));
     setEditingPriority(
@@ -689,6 +714,7 @@ export default function AtlasTeamWork({
           title: editingTitle.trim(),
           dueDate: editingDueDate,
           frequency: editingFrequency,
+          preferredDay: editingDay,
           locationId: editingLocationId || "general",
           instructions: editingInstructions.trim(),
           priority: editingPriority,
@@ -728,6 +754,38 @@ export default function AtlasTeamWork({
     } catch (error) {
       setAddisonLiveMessage(
         error instanceof Error ? error.message : "Could not update task.",
+      );
+    }
+  }
+
+  async function prioritizeAddisonDay() {
+    const tasks = (addisonWork?.tasks || []).filter(
+      (task) => String(addisonMeta(task)?.status || "") !== "Completed",
+    );
+    const priorityWeight: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
+    const orderedTaskIds = [...tasks]
+      .sort((a, b) => {
+        const am = addisonMeta(a);
+        const bm = addisonMeta(b);
+        const ad = String(am?.dueDate || "9999-12-31").slice(0, 10);
+        const bd = String(bm?.dueDate || "9999-12-31").slice(0, 10);
+        if (ad !== bd) return ad.localeCompare(bd);
+        const ap = priorityWeight[String(a.priority || "Medium")] ?? 1;
+        const bp = priorityWeight[String(b.priority || "Medium")] ?? 1;
+        if (ap !== bp) return ap - bp;
+        return String(a.title || "").localeCompare(String(b.title || ""));
+      })
+      .map((task) => String(task.id || ""))
+      .filter(Boolean);
+    try {
+      await patchAddisonLive(
+        "task-prioritize",
+        { orderedTaskIds },
+        "Addison's day prioritized.",
+      );
+    } catch (error) {
+      setAddisonLiveMessage(
+        error instanceof Error ? error.message : "Could not prioritize Addison's day.",
       );
     }
   }
@@ -800,9 +858,11 @@ export default function AtlasTeamWork({
           </div>
           <div className="atlas-addison-assignment-grid" style={{ display: "grid", gridTemplateColumns: "minmax(240px,1.5fr) minmax(145px,.7fr) minmax(150px,.8fr)", gap: 10 }}>
             <label style={labelStyle}>Task<input ref={assignmentTitleRef} value={assignmentTitle} onChange={(event) => setAssignmentTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void saveAddisonAssignment(); } }} placeholder="What does Addison need to do?" style={fieldStyle} autoFocus /></label>
-            <label style={labelStyle}>When<input type="date" value={assignmentDueDate} onChange={(event) => setAssignmentDueDate(event.currentTarget.value)} style={fieldStyle} /></label>
+            <label style={labelStyle}>Date<input type="date" value={assignmentDueDate} onChange={(event) => { setAssignmentDueDate(event.currentTarget.value); setAssignmentDay("Auto"); }} style={fieldStyle} /></label>
             <label style={labelStyle}>Repeat<select value={assignmentFrequency} onChange={(event) => setAssignmentFrequency(event.currentTarget.value as AssignmentFrequency)} style={fieldStyle}><option value="One-time">One time</option><option value="Daily">Daily</option><option value="Weekly">Weekly</option><option value="Biweekly">Every 2 weeks</option><option value="Monthly">Monthly</option></select></label>
+            <div style={{ ...labelStyle, gridColumn: "1 / -1" }}><span>Day</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{ADDISON_WEEKDAYS.map((day)=><button key={day} type="button" onClick={()=>{setAssignmentDay(day);setAssignmentDueDate(nextDateForWeekday(day));}} style={{...lightButtonStyle,background:assignmentDay===day?colors.navy3:colors.card,color:assignmentDay===day?"#fff":colors.text,borderColor:assignmentDay===day?colors.navy3:colors.line}}>{day.slice(0,3)}</button>)}</div></div>
             <label style={labelStyle}>Area<select value={assignmentLocationId} onChange={(event) => setAssignmentLocationId(event.currentTarget.value)} style={fieldStyle}><option value="">Anywhere / General</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+            <label style={labelStyle}>Priority<select value={assignmentPriority} onChange={(event)=>setAssignmentPriority(event.currentTarget.value as "High"|"Medium"|"Low")} style={fieldStyle}><option>High</option><option>Medium</option><option>Low</option></select></label>
             <label style={{ ...labelStyle, gridColumn: "span 2" }}>Notes<textarea value={assignmentInstructions} onChange={(event) => setAssignmentInstructions(event.currentTarget.value)} placeholder="Optional" style={{ ...fieldStyle, minHeight: 58, resize: "vertical" }} /></label>
           </div>
           {assignmentMessage ? <div style={{ padding: "9px 11px", border: `1px solid ${colors.line}`, borderRadius: 10, background: colors.panel, color: colors.text, fontSize: 12, fontWeight: 800 }}>{assignmentMessage}</div> : null}
@@ -847,6 +907,9 @@ export default function AtlasTeamWork({
                   <h2 style={{ margin: "3px 0", color: colors.text }}>Addison's Live List</h2>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" style={goldButtonStyle} onClick={() => void prioritizeAddisonDay()}>
+                    Prioritize
+                  </button>
                   <button type="button" style={lightButtonStyle} onClick={() => void loadAddisonWork(true)}>
                     Refresh
                   </button>
@@ -872,8 +935,9 @@ export default function AtlasTeamWork({
                             gap: 8,
                           }}>
                             <label style={labelStyle}>Task<input value={editingTitle} onChange={(e) => setEditingTitle(e.currentTarget.value)} style={fieldStyle} /></label>
-                            <label style={labelStyle}>Due date<input type="date" value={editingDueDate} onChange={(e) => setEditingDueDate(e.currentTarget.value)} style={fieldStyle} /></label>
+                            <label style={labelStyle}>Due date<input type="date" value={editingDueDate} onChange={(e) => { setEditingDueDate(e.currentTarget.value); setEditingDay("Auto"); }} style={fieldStyle} /></label>
                             <label style={labelStyle}>Frequency<select value={editingFrequency} onChange={(e) => setEditingFrequency(e.currentTarget.value as AssignmentFrequency)} style={fieldStyle}><option>One-time</option><option>Daily</option><option>Weekly</option><option>Biweekly</option><option>Monthly</option></select></label>
+                            <div style={{ ...labelStyle, gridColumn:"1 / -1" }}><span>Day</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{ADDISON_WEEKDAYS.map((day)=><button key={day} type="button" onClick={()=>{setEditingDay(day);setEditingDueDate(nextDateForWeekday(day));}} style={{...lightButtonStyle,background:editingDay===day?colors.navy3:colors.card,color:editingDay===day?"#fff":colors.text,borderColor:editingDay===day?colors.navy3:colors.line}}>{day.slice(0,3)}</button>)}</div></div>
                             <label style={labelStyle}>Location<select value={editingLocationId} onChange={(e) => setEditingLocationId(e.currentTarget.value)} style={fieldStyle}><option value="general">General property</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
                             <label style={labelStyle}>Priority<select value={editingPriority} onChange={(e) => setEditingPriority(e.currentTarget.value as "High" | "Medium" | "Low")} style={fieldStyle}><option>High</option><option>Medium</option><option>Low</option></select></label>
                             <label style={labelStyle}>Time<select value={editingMinutes} onChange={(e) => setEditingMinutes(Number(e.currentTarget.value))} style={fieldStyle}><option value={15}>15 min</option><option value={30}>30 min</option><option value={60}>1 hour</option><option value={120}>2 hours</option><option value={240}>Half day</option><option value={480}>Full day</option></select></label>
@@ -894,11 +958,12 @@ export default function AtlasTeamWork({
                           />
                           <div>
                             <strong style={{ color: colors.text, textDecoration: completed ? "line-through" : "none" }}>
-                              {String(task.title || "Task")}
+                              {Number(meta?.addisonOrder || 0) > 0 ? `${Number(meta.addisonOrder)}. ` : ""}{String(task.title || "Task")}
                             </strong>
                             <div style={{ ...mutedStyle, marginTop: 4 }}>
                               {meta?.dueDate ? `Due ${String(meta.dueDate).slice(0,10)} · ` : ""}
                               {addisonFrequency(task)} · {locationLabel}
+                              {dayFromTask(task) !== "Auto" ? ` · ${dayFromTask(task)}` : ""}
                               {task.priority ? ` · ${String(task.priority)}` : ""}
                             </div>
                             {String(meta?.instructions || task.notes || "").trim() ? (
