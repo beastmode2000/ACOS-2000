@@ -311,7 +311,7 @@ export default function AtlasTeamWork({
     void loadAddisonWork(true);
     const timer = window.setInterval(() => {
       void loadAddisonWork(false);
-    }, 5000);
+    }, 2000);
     return () => window.clearInterval(timer);
   }, [activePropertyId]);
 
@@ -714,6 +714,8 @@ export default function AtlasTeamWork({
         id: `addison-routine-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         title: "New routine item",
         enabled: true,
+        frequency: "Daily",
+        startDate: new Date().toISOString().slice(0, 10),
       },
     ]);
   }
@@ -746,6 +748,8 @@ export default function AtlasTeamWork({
             id: String(item.id || ""),
             title: String(item.title || "").trim(),
             enabled: item.enabled !== false,
+            frequency: String(item.frequency || "Daily"),
+            startDate: String(item.startDate || new Date().toISOString().slice(0, 10)),
           })),
         },
         "Routine saved.",
@@ -803,7 +807,7 @@ export default function AtlasTeamWork({
           <h1 style={titleStyle}>{teamView === "addison" ? "Addison" : "Team"}</h1>
           <p style={heroCopyStyle}>
             {teamView === "addison"
-              ? "See exactly what Addison sees, assign work, edit tasks, and manage his routine."
+              ? "Add tasks and routines here. Changes sync directly with Addison."
               : `Manage people, helpers, assignments, roles, and property access for ${activePropertyId}.`}
           </p>
         </div>
@@ -820,6 +824,13 @@ export default function AtlasTeamWork({
                 }}
               >
                 {assignmentOpen ? "Close Add Task" : "Add Task"}
+              </button>
+              <button
+                type="button"
+                style={lightButtonStyle}
+                onClick={() => document.getElementById("addison-routine-manager")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              >
+                Add Routine
               </button>
               <button
                 type="button"
@@ -846,7 +857,7 @@ export default function AtlasTeamWork({
         <div style={{ ...panelStyle, display: "grid", gap: 12 }}>
           <div>
             <div style={eyebrowStyle}>ADDISON</div>
-            <h2 style={{ margin: "4px 0", color: colors.text }}>Assign Work</h2>
+            <h2 style={{ margin: "4px 0", color: colors.text }}>Add Task</h2>
           </div>
 
           <div
@@ -974,7 +985,7 @@ export default function AtlasTeamWork({
               disabled={assignmentSaving}
               style={{ ...goldButtonStyle, opacity: assignmentSaving ? 0.65 : 1 }}
             >
-              {assignmentSaving ? "Saving…" : "Save Assignment"}
+              {assignmentSaving ? "Saving…" : "Add Task"}
             </button>
             <button
               type="button"
@@ -1119,7 +1130,7 @@ export default function AtlasTeamWork({
               </div>
             </div>
 
-            <div style={panelStyle}>
+            <div id="addison-routine-manager" style={panelStyle}>
               <div style={editorHeaderStyle}>
                 <div>
                   <div style={eyebrowStyle}>ROUTINE</div>
@@ -1135,12 +1146,16 @@ export default function AtlasTeamWork({
               </label>
               <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                 {routineTasks.map((item, index) => (
-                  <div key={String(item.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 10, padding: 9 }}>
+                  <div key={String(item.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(125px,.45fr) minmax(140px,.5fr) auto", gap: 8, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 10, padding: 9 }}>
                     <input
                       value={String(item.title || "")}
                       onChange={(e) => updateRoutineItem(String(item.id), { title: e.currentTarget.value })}
                       style={fieldStyle}
                     />
+                    <select value={String(item.frequency || "Daily")} onChange={(e) => updateRoutineItem(String(item.id), { frequency: e.currentTarget.value })} style={fieldStyle}>
+                      <option value="Daily">Daily</option><option value="Weekly">Weekly</option><option value="Biweekly">Every 2 weeks</option><option value="Monthly">Monthly</option>
+                    </select>
+                    <input type="date" value={String(item.startDate || new Date().toISOString().slice(0,10))} onChange={(e) => updateRoutineItem(String(item.id), { startDate: e.currentTarget.value })} style={fieldStyle} />
                     <div style={{ display: "flex", gap: 5 }}>
                       <button type="button" disabled={index === 0} onClick={() => moveRoutineItem(index, -1)} style={iconButtonStyle}>↑</button>
                       <button type="button" disabled={index === routineTasks.length - 1} onClick={() => moveRoutineItem(index, 1)} style={iconButtonStyle}>↓</button>
