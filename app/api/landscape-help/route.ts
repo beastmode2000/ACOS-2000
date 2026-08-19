@@ -284,6 +284,41 @@ async function removeAddisonRoutineAssignments() {
 
 
 const ADDISON_ROUTINE_RECORD_ID = "default";
+const ADDISON_ROUTINE_RETIRED_MIGRATION_ID = "addison-routine-retired-2026-08-18";
+
+async function retireAddisonRoutineOnce() {
+  await ensureAddisonBackingTables();
+  const sql = getSql();
+  const existing = await sql`
+    SELECT id
+    FROM atlas_operational_records
+    WHERE record_type = 'system_migration'
+      AND property_id = '2000'
+      AND id = ${ADDISON_ROUTINE_RETIRED_MIGRATION_ID}
+    LIMIT 1
+  `;
+  if (existing[0]) return;
+
+  await sql`
+    DELETE FROM atlas_operational_records
+    WHERE property_id = '2000'
+      AND record_type IN ('addison_routine', 'addison_routine_day')
+  `;
+
+  await sql`
+    INSERT INTO atlas_operational_records (
+      record_type, id, property_id, record, updated_at
+    )
+    VALUES (
+      'system_migration',
+      ${ADDISON_ROUTINE_RETIRED_MIGRATION_ID},
+      '2000',
+      ${JSON.stringify({ retiredAt: new Date().toISOString() })}::jsonb,
+      NOW()
+    )
+    ON CONFLICT (record_type, id) DO NOTHING
+  `;
+}
 
 async function loadAddisonRoutineDefinition() {
   await ensureAddisonBackingTables();
@@ -467,6 +502,7 @@ async function loadAddisonWork() {
   await ensureAddisonBackingTables();
   await runAddisonCleanStartOnce();
   await removeAddisonRoutineAssignments();
+  await retireAddisonRoutineOnce();
 
   const sql = getSql();
   const today = pacificDateKey();
@@ -536,15 +572,12 @@ async function loadAddisonWork() {
     name: String(row.record?.name || row.record?.title || 'Location'),
   }));
 
-  const routine = await loadAddisonRoutineForDate(today);
-
   return {
     today,
     tasks,
     locations,
     dailyNote: String(dailyNoteRecord.note || ''),
     dailyNoteUpdatedAt: String(dailyNoteRecord.updatedAt || ''),
-    routine,
   };
 }
 
@@ -1025,69 +1058,11 @@ export async function PATCH(request: NextRequest) {
         });
       }
 
-      if (action === "routine-save") {
-        const name = String(body.name || "Addison Routine");
-        const routineTasks = Array.isArray(body.tasks) ? body.tasks : [];
-        await saveAddisonRoutineDefinition(name, routineTasks);
-        return NextResponse.json({
-          ok: true,
-          mode: "addison",
-          addison: await loadAddisonWork(),
-        });
-      }
-
-      if (
-        action === "routine-toggle" ||
-        action === "routine-note" ||
-        action === "routine-photo" ||
-        action === "routine-flag" ||
-        action === "routine-problem" ||
-        action === "routine-nothing-needed"
-      ) {
-        const taskId = String(body.taskId || "");
-        const current = await loadAddisonRoutineForDate(today);
-        const target = current.tasks.find((task: any) => String(task.id) === taskId);
-        if (!target) {
-          return NextResponse.json(
-            { ok: false, error: "Addison routine item not found." },
-            { status: 404 },
-          );
-        }
-
-        let patch: Record<string, unknown> = {};
-        if (action === "routine-toggle") {
-          const completed =
-            Boolean(target.completed) || String(target.status || "") === "completed";
-          patch = {
-            completed: !completed,
-            status: completed ? "open" : "completed",
-            completedAt: completed ? "" : new Date().toISOString(),
-          };
-        } else if (action === "routine-note") {
-          patch = { addisonNote: String(body.note || "") };
-        } else if (action === "routine-photo") {
-          const photos = Array.isArray(target.photos) ? target.photos : [];
-          patch = { photos: [...photos, body.photo].filter(Boolean) };
-        } else if (action === "routine-flag") {
-          patch = { needsNick: Boolean(body.needsNick) };
-        } else if (action === "routine-problem") {
-          patch = { problemFound: Boolean(body.problemFound) };
-        } else {
-          patch = { checkedNothingNeeded: Boolean(body.value) };
-        }
-
-        const ok = await patchAddisonRoutineTaskState(taskId, patch);
-        if (!ok) {
-          return NextResponse.json(
-            { ok: false, error: "Addison routine item not found." },
-            { status: 404 },
-          );
-        }
-        return NextResponse.json({
-          ok: true,
-          mode: "addison",
-          addison: await loadAddisonWork(),
-        });
+      if (String(action || "").startsWith("routine-")) {
+        return NextResponse.json(
+          { ok: false, error: "Addison routines have been retired. Use Tasks with a frequency instead." },
+          { status: 410 },
+        );
       }
 
       if (action === "task-create") {
