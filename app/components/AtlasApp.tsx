@@ -2559,6 +2559,108 @@ export default function AtlasApp() {
   }, [ready, operationsHydrated, activePropertyId]);
 
   useEffect(() => {
+    if (!ready || !operationsHydrated || activePropertyId !== "2000" || screen !== "dashboard") return;
+    let cancelled = false;
+
+    const refreshAddisonDashboardTasks = async () => {
+      try {
+        const response = await fetch(
+          `/api/landscape-help?addison=1&dashboardSync=${Date.now()}`,
+          { cache: "no-store" },
+        );
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (cancelled || !payload?.ok || payload?.mode !== "addison") return;
+        const remoteRecords = Array.isArray(payload?.addison?.tasks)
+          ? payload.addison.tasks
+          : [];
+
+        operationsRemoteRefreshRef.current = true;
+        if (operationsRemoteRefreshTimerRef.current) {
+          window.clearTimeout(operationsRemoteRefreshTimerRef.current);
+        }
+        operationsRemoteRefreshTimerRef.current = window.setTimeout(() => {
+          operationsRemoteRefreshRef.current = false;
+        }, 2000);
+
+        const remoteById = new Map<string, Record<string, any>>(
+          remoteRecords
+            .filter((record: Record<string, any>) => Boolean(record?.id))
+            .map((record: Record<string, any>) => [String(record.id), record]),
+        );
+
+        setWorkPlanTasks((current) => {
+          let changed = false;
+          const next = current.map((task) => {
+            const remote = remoteById.get(task.id);
+            if (!remote) return task;
+            const merged: WorkPlanTask = {
+              ...task,
+              title: String(remote.title || task.title),
+              minutes: Math.max(5, Number(remote.minutes || task.minutes || 30)),
+              priority: (remote.priority || task.priority || "Medium") as WorkPlanTask["priority"],
+              category: String(remote.category || task.category || "General"),
+              locationId: String(remote.locationId || task.locationId || "general"),
+              preferredDay: (remote.preferredDay || task.preferredDay || "Auto") as WorkPlanTask["preferredDay"],
+              locked: Boolean(remote.locked),
+              recurring: Boolean(remote.recurring),
+              fixedTime: String(remote.fixedTime || ""),
+              notes: String(remote.notes || task.notes || ""),
+            };
+            if (JSON.stringify(merged) !== JSON.stringify(task)) changed = true;
+            return merged;
+          });
+          return changed ? next : current;
+        });
+
+        setTaskMeta((current) => {
+          let changed = false;
+          const next = { ...current };
+          for (const [id, remote] of remoteById) {
+            const nestedMeta = (
+              remote.taskMeta && typeof remote.taskMeta === "object"
+                ? remote.taskMeta
+                : {}
+            ) as Partial<AtlasTaskMeta>;
+            const baseMeta = current[id] || taskDetails(id);
+            const merged: AtlasTaskMeta = {
+              ...baseMeta,
+              ...nestedMeta,
+              assignee: (nestedMeta.assignee || remote.assignee || "Addison") as AtlasTaskMeta["assignee"],
+              dueDate: String(nestedMeta.dueDate || remote.dueDate || baseMeta.dueDate || ""),
+              status: (nestedMeta.status || remote.status || baseMeta.status || "Open") as AtlasTaskMeta["status"],
+              createdAt: String(nestedMeta.createdAt || baseMeta.createdAt || new Date().toISOString()),
+              updatedAt: String(nestedMeta.updatedAt || remote.updatedAt || baseMeta.updatedAt || new Date().toISOString()),
+            };
+            if (JSON.stringify(merged) !== JSON.stringify(current[id])) {
+              next[id] = merged;
+              changed = true;
+            }
+          }
+          return changed ? next : current;
+        });
+      } catch {
+        // Addison's normal shared task sync remains available if this live dashboard refresh misses a cycle.
+      }
+    };
+
+    const onFocus = () => { void refreshAddisonDashboardTasks(); };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refreshAddisonDashboardTasks();
+    };
+    void refreshAddisonDashboardTasks();
+    const timer = window.setInterval(() => { void refreshAddisonDashboardTasks(); }, 2500);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [ready, operationsHydrated, activePropertyId, screen]);
+
+  useEffect(() => {
     if (!ready || !operationsHydrated) return;
     let cancelled = false;
 
