@@ -68,6 +68,36 @@ type AddisonAssignmentDraft = {
   minutes: number;
 };
 
+type AddisonLiveWork = {
+  today: string;
+  tasks: Array<Record<string, any>>;
+  locations?: Array<{ id: string; name: string }>;
+  dailyNote?: string;
+  dailyNoteUpdatedAt?: string;
+  routine?: {
+    date: string;
+    name: string;
+    tasks: Array<Record<string, any>>;
+  };
+};
+
+function addisonMeta(task: Record<string, any>) {
+  return task?.taskMeta && typeof task.taskMeta === "object"
+    ? task.taskMeta
+    : task;
+}
+
+function addisonFrequency(task: Record<string, any>): AssignmentFrequency {
+  const meta = addisonMeta(task);
+  if (!task?.recurring) return "One-time";
+  const unit = String(meta?.recurrenceUnit || "Weeks");
+  const interval = Math.max(1, Number(meta?.recurrenceInterval || 1));
+  if (unit === "Days") return "Daily";
+  if (unit === "Months") return "Monthly";
+  if (unit === "Weeks" && interval === 2) return "Biweekly";
+  return "Weekly";
+}
+
 const BASE_PEOPLE = ["Addison", "Pat's Crew", "Sean", "Nick", "Unassigned"];
 const PROPERTY_IDS = ["2000", "3661", "6855", "hangar"];
 const STORAGE_KEY = "atlas-team-work-v2";
@@ -172,7 +202,7 @@ export default function AtlasTeamWork({
   const [lists, setLists] = useState<TeamList[]>([]);
   const [selectedListId, setSelectedListId] = useState("");
   const [search, setSearch] = useState("");
-  const [teamView, setTeamView] = useState<"assignments" | "people">("people");
+  const [teamView, setTeamView] = useState<"addison" | "assignments" | "people">("addison");
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [memberMessage, setMemberMessage] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
@@ -195,6 +225,95 @@ export default function AtlasTeamWork({
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [assignmentMessage, setAssignmentMessage] = useState("");
   const [clearingAddisonTasks, setClearingAddisonTasks] = useState(false);
+  const [addisonWork, setAddisonWork] = useState<AddisonLiveWork | null>(null);
+  const [addisonLoading, setAddisonLoading] = useState(false);
+  const [addisonLiveMessage, setAddisonLiveMessage] = useState("");
+  const [editingAddisonTaskId, setEditingAddisonTaskId] = useState("");
+  const [editingTitle, setEditingTitle] = useState("");
+  const [editingDueDate, setEditingDueDate] = useState("");
+  const [editingFrequency, setEditingFrequency] =
+    useState<AssignmentFrequency>("One-time");
+  const [editingLocationId, setEditingLocationId] = useState("");
+  const [editingInstructions, setEditingInstructions] = useState("");
+  const [editingPriority, setEditingPriority] =
+    useState<"High" | "Medium" | "Low">("Medium");
+  const [editingMinutes, setEditingMinutes] = useState(30);
+  const [routineName, setRoutineName] = useState("Addison Routine");
+  const [routineTasks, setRoutineTasks] = useState<Array<Record<string, any>>>([]);
+  const [routineSaving, setRoutineSaving] = useState(false);
+
+  async function loadAddisonWork(showLoading = false) {
+    if (activePropertyId !== "2000") {
+      setAddisonWork(null);
+      return;
+    }
+    if (showLoading) setAddisonLoading(true);
+    try {
+      const response = await fetch(
+        `/api/landscape-help?token=${encodeURIComponent(ADDISON_WORK_TOKEN)}`,
+        { cache: "no-store" },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok || !payload?.addison) {
+        throw new Error(payload?.error || "Could not load Addison.");
+      }
+      const work = payload.addison as AddisonLiveWork;
+      setAddisonWork(work);
+      if (showLoading) {
+        setRoutineName(work.routine?.name || "Addison Routine");
+        setRoutineTasks(Array.isArray(work.routine?.tasks) ? work.routine!.tasks : []);
+      }
+      setAddisonLiveMessage("");
+    } catch (error) {
+      setAddisonLiveMessage(
+        error instanceof Error ? error.message : "Could not load Addison.",
+      );
+    } finally {
+      if (showLoading) setAddisonLoading(false);
+    }
+  }
+
+  async function patchAddisonLive(
+    action: string,
+    body: Record<string, unknown>,
+    successMessage = "",
+  ) {
+    const response = await fetch(
+      `/api/landscape-help?token=${encodeURIComponent(ADDISON_WORK_TOKEN)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: ADDISON_WORK_TOKEN,
+          action,
+          ...body,
+        }),
+      },
+    );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.error || "Could not update Addison.");
+    }
+    if (payload.addison) {
+      const work = payload.addison as AddisonLiveWork;
+      setAddisonWork(work);
+      if (action === "routine-save") {
+        setRoutineName(work.routine?.name || "Addison Routine");
+        setRoutineTasks(Array.isArray(work.routine?.tasks) ? work.routine!.tasks : []);
+      }
+    }
+    if (successMessage) setAddisonLiveMessage(successMessage);
+    return payload;
+  }
+
+  useEffect(() => {
+    if (activePropertyId !== "2000") return;
+    void loadAddisonWork(true);
+    const timer = window.setInterval(() => {
+      void loadAddisonWork(false);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [activePropertyId]);
 
   const assigneeOptions = useMemo(() => {
     const values = [
@@ -492,33 +611,151 @@ export default function AtlasTeamWork({
       setAssignmentMessage("Enter a task name.");
       return;
     }
-    if (!createAddisonAssignment) {
-      setAssignmentMessage("Finish deploying the matching AtlasApp file first.");
-      return;
-    }
 
     setAssignmentSaving(true);
     setAssignmentMessage("Saving…");
     try {
-      const result = await createAddisonAssignment({
-        title: assignmentTitle.trim(),
-        dueDate: assignmentDueDate,
-        frequency: assignmentFrequency,
-        locationId: assignmentLocationId,
-        instructions: assignmentInstructions.trim(),
-        priority: assignmentPriority,
-        minutes: Math.max(5, Number(assignmentMinutes || 30)),
-      });
-      if (!result.ok) {
-        setAssignmentMessage(result.error || "Atlas could not save this assignment.");
-        return;
-      }
+      await patchAddisonLive(
+        "task-create",
+        {
+          title: assignmentTitle.trim(),
+          dueDate: assignmentDueDate,
+          frequency: assignmentFrequency,
+          locationId: assignmentLocationId || "general",
+          instructions: assignmentInstructions.trim(),
+          priority: assignmentPriority,
+          minutes: Math.max(5, Number(assignmentMinutes || 30)),
+        },
+        "Task added.",
+      );
       resetAssignmentForm();
       setAssignmentOpen(false);
-    } catch {
-      setAssignmentMessage("Atlas could not save this assignment.");
+      setAssignmentMessage("");
+    } catch (error) {
+      setAssignmentMessage(
+        error instanceof Error ? error.message : "Atlas could not save this assignment.",
+      );
     } finally {
       setAssignmentSaving(false);
+    }
+  }
+
+  function beginEditAddisonTask(task: Record<string, any>) {
+    const meta = addisonMeta(task);
+    setEditingAddisonTaskId(String(task.id || ""));
+    setEditingTitle(String(task.title || ""));
+    setEditingDueDate(String(meta?.dueDate || "").slice(0, 10));
+    setEditingFrequency(addisonFrequency(task));
+    setEditingLocationId(String(task.locationId || "general"));
+    setEditingInstructions(String(meta?.instructions || task.notes || ""));
+    setEditingPriority(
+      task.priority === "High" || task.priority === "Low" ? task.priority : "Medium",
+    );
+    setEditingMinutes(Math.max(5, Number(task.minutes || 30)));
+  }
+
+  async function saveAddisonTaskEdit() {
+    if (!editingAddisonTaskId || !editingTitle.trim()) return;
+    try {
+      await patchAddisonLive(
+        "task-update",
+        {
+          taskId: editingAddisonTaskId,
+          title: editingTitle.trim(),
+          dueDate: editingDueDate,
+          frequency: editingFrequency,
+          locationId: editingLocationId || "general",
+          instructions: editingInstructions.trim(),
+          priority: editingPriority,
+          minutes: editingMinutes,
+        },
+        "Task updated.",
+      );
+      setEditingAddisonTaskId("");
+    } catch (error) {
+      setAddisonLiveMessage(
+        error instanceof Error ? error.message : "Could not update task.",
+      );
+    }
+  }
+
+  async function deleteAddisonLiveTask(taskId: string) {
+    if (!window.confirm("Delete this Addison task?")) return;
+    try {
+      await patchAddisonLive("task-delete", { taskId }, "Task deleted.");
+      if (editingAddisonTaskId === taskId) setEditingAddisonTaskId("");
+    } catch (error) {
+      setAddisonLiveMessage(
+        error instanceof Error ? error.message : "Could not delete task.",
+      );
+    }
+  }
+
+  async function toggleAddisonLiveTask(task: Record<string, any>) {
+    const meta = addisonMeta(task);
+    const completed = String(meta?.status || "") === "Completed";
+    try {
+      await patchAddisonLive(
+        "task-status",
+        { taskId: task.id, status: completed ? "Open" : "Completed" },
+        completed ? "Task reopened." : "Task completed.",
+      );
+    } catch (error) {
+      setAddisonLiveMessage(
+        error instanceof Error ? error.message : "Could not update task.",
+      );
+    }
+  }
+
+  function addRoutineItem() {
+    setRoutineTasks((current) => [
+      ...current,
+      {
+        id: `addison-routine-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        title: "New routine item",
+        enabled: true,
+      },
+    ]);
+  }
+
+  function updateRoutineItem(id: string, patch: Record<string, unknown>) {
+    setRoutineTasks((current) =>
+      current.map((item) => (String(item.id) === id ? { ...item, ...patch } : item)),
+    );
+  }
+
+  function moveRoutineItem(index: number, direction: -1 | 1) {
+    setRoutineTasks((current) => {
+      const target = index + direction;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  async function saveRoutine() {
+    if (routineSaving) return;
+    setRoutineSaving(true);
+    try {
+      await patchAddisonLive(
+        "routine-save",
+        {
+          name: routineName.trim() || "Addison Routine",
+          tasks: routineTasks.map((item) => ({
+            id: String(item.id || ""),
+            title: String(item.title || "").trim(),
+            enabled: item.enabled !== false,
+          })),
+        },
+        "Routine saved.",
+      );
+    } catch (error) {
+      setAddisonLiveMessage(
+        error instanceof Error ? error.message : "Could not save routine.",
+      );
+    } finally {
+      setRoutineSaving(false);
     }
   }
 
@@ -545,6 +782,7 @@ export default function AtlasTeamWork({
       if (!response.ok || !payload?.ok) {
         throw new Error(payload?.error || "Atlas could not clear Addison tasks.");
       }
+      if (payload?.addison) setAddisonWork(payload.addison as AddisonLiveWork);
       setAssignmentMessage(
         `${Number(payload?.deleted || 0)} Addison task${Number(payload?.deleted || 0) === 1 ? "" : "s"} cleared.`,
       );
@@ -562,42 +800,49 @@ export default function AtlasTeamWork({
       <div style={heroStyle}>
         <div>
           <div style={eyebrowStyle}>TEAM OPERATIONS</div>
-          <h1 style={titleStyle}>Team</h1>
+          <h1 style={titleStyle}>{teamView === "addison" ? "Addison" : "Team"}</h1>
           <p style={heroCopyStyle}>
-            Manage people, helpers, assignments, roles, and property access for {activePropertyId}.
+            {teamView === "addison"
+              ? "See exactly what Addison sees, assign work, edit tasks, and manage his routine."
+              : `Manage people, helpers, assignments, roles, and property access for ${activePropertyId}.`}
           </p>
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            style={goldButtonStyle}
-            onClick={() => {
-              setAssignmentOpen((open) => !open);
-              setAssignmentMessage("");
-            }}
-          >
-            {assignmentOpen ? "Close Assignment" : "Assign Addison"}
-          </button>
-          <button
-            type="button"
-            style={{ ...lightButtonStyle, color: colors.red }}
-            onClick={() => void clearAddisonTasks()}
-            disabled={clearingAddisonTasks}
-          >
-            {clearingAddisonTasks ? "Clearing…" : "Clear Addison Tasks"}
-          </button>
-          {teamView === "assignments" ? <button type="button" style={goldButtonStyle} onClick={createList}>+ New List</button> : null}
+          {teamView === "addison" ? (
+            <>
+              <button
+                type="button"
+                style={goldButtonStyle}
+                onClick={() => {
+                  setAssignmentOpen((open) => !open);
+                  setAssignmentMessage("");
+                }}
+              >
+                {assignmentOpen ? "Close Add Task" : "Add Task"}
+              </button>
+              <button
+                type="button"
+                style={lightButtonStyle}
+                onClick={() => window.open("/addison-work", "_blank", "noopener,noreferrer")}
+              >
+                View Addison Screen
+              </button>
+            </>
+          ) : null}
+          {teamView === "assignments" ? (
+            <button type="button" style={goldButtonStyle} onClick={createList}>+ New List</button>
+          ) : null}
         </div>
       </div>
 
       <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-        {([['people','Users & Roles'],['assignments','Assignments']] as const).map(([value,label]) => (
+        {([['addison','Addison'],['people','Users & Roles'],['assignments','Other Assignments']] as const).map(([value,label]) => (
           <button key={value} type="button" onClick={() => setTeamView(value)} style={{...lightButtonStyle, background:teamView===value?colors.navy3:colors.card, color:teamView===value?'#fff':colors.text, borderColor:teamView===value?colors.navy3:colors.line}}>{label}</button>
         ))}
       </div>
 
-      {assignmentOpen ? (
+      {teamView === "addison" && assignmentOpen ? (
         <div style={{ ...panelStyle, display: "grid", gap: 12 }}>
           <div>
             <div style={eyebrowStyle}>ADDISON</div>
@@ -744,6 +989,171 @@ export default function AtlasTeamWork({
             </button>
           </div>
         </div>
+      ) : null}
+
+      {teamView === "addison" ? (
+        activePropertyId !== "2000" ? (
+          <div style={emptyStyle}>Addison is assigned to property 2000.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={summaryGridStyle}>
+              <Stat
+                label="Open"
+                value={(addisonWork?.tasks || []).filter(
+                  (task) => String(addisonMeta(task)?.status || "") !== "Completed",
+                ).length}
+              />
+              <Stat
+                label="Completed"
+                value={(addisonWork?.tasks || []).filter(
+                  (task) => String(addisonMeta(task)?.status || "") === "Completed",
+                ).length}
+              />
+              <Stat
+                label="Routine"
+                value={`${(addisonWork?.routine?.tasks || []).filter(
+                  (item) => Boolean(item.completed) || String(item.status || "") === "completed",
+                ).length}/${addisonWork?.routine?.tasks?.length || 0}`}
+              />
+              <Stat label="Sync" value={addisonLoading ? "Loading" : "Live"} />
+            </div>
+
+            {addisonLiveMessage ? (
+              <div style={{ ...panelStyle, padding: 10, fontWeight: 800, fontSize: 12 }}>
+                {addisonLiveMessage}
+              </div>
+            ) : null}
+
+            <div style={panelStyle}>
+              <div style={editorHeaderStyle}>
+                <div>
+                  <div style={eyebrowStyle}>LIVE LIST</div>
+                  <h2 style={{ margin: "3px 0", color: colors.text }}>Addison's Tasks</h2>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" style={lightButtonStyle} onClick={() => void loadAddisonWork(true)}>
+                    Refresh
+                  </button>
+                  <button
+                    type="button"
+                    style={{ ...lightButtonStyle, color: colors.red }}
+                    onClick={() => void clearAddisonTasks()}
+                    disabled={clearingAddisonTasks}
+                  >
+                    {clearingAddisonTasks ? "Clearing…" : "Clear Tasks"}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
+                {(addisonWork?.tasks || []).map((task) => {
+                  const meta = addisonMeta(task);
+                  const taskId = String(task.id || "");
+                  const completed = String(meta?.status || "") === "Completed";
+                  const editing = editingAddisonTaskId === taskId;
+                  const locationLabel =
+                    locations.find((location) => location.id === String(task.locationId || ""))?.name ||
+                    String(task.locationId || "General");
+                  return (
+                    <div key={taskId} style={taskCardStyle}>
+                      {editing ? (
+                        <div style={{ display: "grid", gap: 9 }}>
+                          <div className="atlas-addison-manager-edit-grid" style={{
+                            display: "grid",
+                            gridTemplateColumns: "minmax(220px,1.4fr) minmax(145px,.7fr) minmax(150px,.8fr)",
+                            gap: 8,
+                          }}>
+                            <label style={labelStyle}>Task<input value={editingTitle} onChange={(e) => setEditingTitle(e.currentTarget.value)} style={fieldStyle} /></label>
+                            <label style={labelStyle}>Due date<input type="date" value={editingDueDate} onChange={(e) => setEditingDueDate(e.currentTarget.value)} style={fieldStyle} /></label>
+                            <label style={labelStyle}>Frequency<select value={editingFrequency} onChange={(e) => setEditingFrequency(e.currentTarget.value as AssignmentFrequency)} style={fieldStyle}><option>One-time</option><option>Daily</option><option>Weekly</option><option>Biweekly</option><option>Monthly</option></select></label>
+                            <label style={labelStyle}>Location<select value={editingLocationId} onChange={(e) => setEditingLocationId(e.currentTarget.value)} style={fieldStyle}><option value="general">General property</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+                            <label style={labelStyle}>Priority<select value={editingPriority} onChange={(e) => setEditingPriority(e.currentTarget.value as "High" | "Medium" | "Low")} style={fieldStyle}><option>High</option><option>Medium</option><option>Low</option></select></label>
+                            <label style={labelStyle}>Time<select value={editingMinutes} onChange={(e) => setEditingMinutes(Number(e.currentTarget.value))} style={fieldStyle}><option value={15}>15 min</option><option value={30}>30 min</option><option value={60}>1 hour</option><option value={120}>2 hours</option><option value={240}>Half day</option><option value={480}>Full day</option></select></label>
+                          </div>
+                          <label style={labelStyle}>Instructions<textarea value={editingInstructions} onChange={(e) => setEditingInstructions(e.currentTarget.value)} style={{ ...fieldStyle, minHeight: 72, resize: "vertical" }} /></label>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button type="button" style={goldButtonStyle} onClick={() => void saveAddisonTaskEdit()}>Save</button>
+                            <button type="button" style={lightButtonStyle} onClick={() => setEditingAddisonTaskId("")}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 10, alignItems: "start" }}>
+                          <input
+                            type="checkbox"
+                            checked={completed}
+                            onChange={() => void toggleAddisonLiveTask(task)}
+                            style={{ width: 20, height: 20, marginTop: 2 }}
+                          />
+                          <div>
+                            <strong style={{ color: colors.text, textDecoration: completed ? "line-through" : "none" }}>
+                              {String(task.title || "Task")}
+                            </strong>
+                            <div style={{ ...mutedStyle, marginTop: 4 }}>
+                              {meta?.dueDate ? `Due ${String(meta.dueDate).slice(0,10)} · ` : ""}
+                              {addisonFrequency(task)} · {locationLabel}
+                              {task.priority ? ` · ${String(task.priority)}` : ""}
+                            </div>
+                            {String(meta?.instructions || task.notes || "").trim() ? (
+                              <div style={{ ...mutedStyle, marginTop: 5, color: colors.text }}>
+                                {String(meta?.instructions || task.notes || "")}
+                              </div>
+                            ) : null}
+                            {String(meta?.addisonNote || "").trim() ? (
+                              <div style={{ ...mutedStyle, marginTop: 5 }}>
+                                Addison: {String(meta.addisonNote)}
+                              </div>
+                            ) : null}
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            <button type="button" style={lightButtonStyle} onClick={() => beginEditAddisonTask(task)}>Edit</button>
+                            <button type="button" style={{ ...lightButtonStyle, color: colors.red }} onClick={() => void deleteAddisonLiveTask(taskId)}>Delete</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {!addisonLoading && !(addisonWork?.tasks || []).length ? (
+                  <div style={emptyStyle}>No tasks are assigned to Addison.</div>
+                ) : null}
+              </div>
+            </div>
+
+            <div style={panelStyle}>
+              <div style={editorHeaderStyle}>
+                <div>
+                  <div style={eyebrowStyle}>ROUTINE</div>
+                  <h2 style={{ margin: "3px 0", color: colors.text }}>Routine</h2>
+                </div>
+                <button type="button" style={goldButtonStyle} disabled={routineSaving} onClick={() => void saveRoutine()}>
+                  {routineSaving ? "Saving…" : "Save Routine"}
+                </button>
+              </div>
+              <label style={{ ...labelStyle, marginTop: 12 }}>
+                Routine name
+                <input value={routineName} onChange={(e) => setRoutineName(e.currentTarget.value)} style={fieldStyle} />
+              </label>
+              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                {routineTasks.map((item, index) => (
+                  <div key={String(item.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 10, padding: 9 }}>
+                    <input
+                      value={String(item.title || "")}
+                      onChange={(e) => updateRoutineItem(String(item.id), { title: e.currentTarget.value })}
+                      style={fieldStyle}
+                    />
+                    <div style={{ display: "flex", gap: 5 }}>
+                      <button type="button" disabled={index === 0} onClick={() => moveRoutineItem(index, -1)} style={iconButtonStyle}>↑</button>
+                      <button type="button" disabled={index === routineTasks.length - 1} onClick={() => moveRoutineItem(index, 1)} style={iconButtonStyle}>↓</button>
+                      <button type="button" onClick={() => setRoutineTasks((current) => current.filter((row) => String(row.id) !== String(item.id)))} style={{ ...iconButtonStyle, color: colors.red }}>×</button>
+                    </div>
+                  </div>
+                ))}
+                {!routineTasks.length ? <div style={emptyStyle}>No routine items.</div> : null}
+              </div>
+              <button type="button" style={{ ...lightButtonStyle, marginTop: 10 }} onClick={addRoutineItem}>+ Add Routine Item</button>
+            </div>
+          </div>
+        )
       ) : null}
 
       {teamView === "assignments" ? <>
@@ -1082,7 +1492,9 @@ export default function AtlasTeamWork({
           )}
         </div>
       </div>
-      </> : (
+      </> : null}
+
+      {teamView === "people" ? (
         <div style={{ display:"grid", gap:14 }}>
           <div style={summaryGridStyle}>
             <Stat label="Users" value={members.length} />
@@ -1135,7 +1547,7 @@ export default function AtlasTeamWork({
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       <style>{`
         @media (max-width: 980px) {
@@ -1156,7 +1568,8 @@ export default function AtlasTeamWork({
           .atlas-team-task-details {
             grid-template-columns: 1fr !important;
           }
-          .atlas-addison-assignment-grid {
+          .atlas-addison-assignment-grid,
+          .atlas-addison-manager-edit-grid {
             grid-template-columns: minmax(0, 1fr) !important;
           }
         }
@@ -1165,7 +1578,7 @@ export default function AtlasTeamWork({
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <div style={statStyle}>
       <div style={statLabelStyle}>{label}</div>
