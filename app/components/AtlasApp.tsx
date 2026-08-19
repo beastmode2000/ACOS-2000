@@ -2613,9 +2613,10 @@ export default function AtlasApp() {
           const localOnly = current.filter((task) => {
             if (remoteIds.has(task.id)) return false;
             if (pendingDeleteIds.has(task.id) || tombstones.has(task.id)) return false;
-            // Once Addison work exists on shared Atlas, his server list is authoritative.
-            const meta = taskMeta[task.id];
-            if (String(meta?.assignee || "").trim().toLowerCase() === "addison") return false;
+            // Keep local tasks until shared Atlas confirms them. This is especially
+            // important for newly-added Addison work: the dashboard/task UI may create
+            // the local record a moment before the next server refresh sees it. Explicit
+            // deletes are still blocked by pendingDeleteIds/tombstones above.
             return true;
           });
           const remoteTasks = remote.map((record: any) => ({
@@ -2645,7 +2646,9 @@ export default function AtlasApp() {
           }
           for (const [id, meta] of Object.entries(current)) {
             if (remoteIds.has(id) || pendingDeleteIds.has(id) || tombstones.has(id)) continue;
-            if (String(meta?.assignee || "").trim().toLowerCase() === "addison") continue;
+            // Preserve unsynced local metadata until the matching shared task arrives.
+            // Without this, a newly-created Addison task loses its assignee/details on
+            // the next 5-second refresh and appears to delete itself.
             next[id] = meta;
           }
           return JSON.stringify(next) === JSON.stringify(current) ? current : next;
