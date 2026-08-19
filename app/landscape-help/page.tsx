@@ -415,8 +415,14 @@ export default function LandscapeHelpPage() {
       task.taskMeta && typeof task.taskMeta === "object" ? task.taskMeta : task;
     const activeTasks = addisonData.tasks.filter((task) => taskMeta(task).status !== "Completed");
     const completedTasks = addisonData.tasks.filter((task) => taskMeta(task).status === "Completed");
-    const total = addisonData.tasks.length;
-    const done = completedTasks.length;
+    const routineTasks = Array.isArray(addisonData.routine?.tasks)
+      ? addisonData.routine.tasks
+      : [];
+    const routineDone = routineTasks.filter(
+      (item) => Boolean(item.completed) || String(item.status || "") === "completed",
+    ).length;
+    const total = addisonData.tasks.length + routineTasks.length;
+    const done = completedTasks.length + routineDone;
     const progress = total ? Math.round((done / total) * 100) : 0;
     const prettyToday = new Date(`${today}T12:00:00`).toLocaleDateString(undefined, {
       weekday: "long", month: "long", day: "numeric"
@@ -661,6 +667,31 @@ export default function LandscapeHelpPage() {
         <section style={{ ...styles.card, padding: 16, marginBottom: 14 }}>
           <div style={styles.rowBetween}>
             <div>
+              <div style={styles.eyebrow}>Routine</div>
+              <h2 style={styles.cardTitle}>
+                {addisonData.routine?.name || "Addison Routine"}
+              </h2>
+            </div>
+            <strong>{routineDone}/{routineTasks.length}</strong>
+          </div>
+          <div style={{ display: "grid", gap: 9 }}>
+            {routineTasks
+              .filter(
+                (item) =>
+                  !(Boolean(item.completed) || String(item.status || "") === "completed"),
+              )
+              .map((item) => itemCard("routine", item, false))}
+            {!routineTasks.length ? (
+              <p style={styles.muted}>No routine items.</p>
+            ) : routineDone === routineTasks.length ? (
+              <p style={styles.muted}>Routine complete.</p>
+            ) : null}
+          </div>
+        </section>
+
+        <section style={{ ...styles.card, padding: 16, marginBottom: 14 }}>
+          <div style={styles.rowBetween}>
+            <div>
               <div style={styles.eyebrow}>Assigned Work</div>
               <h2 style={styles.cardTitle}>My Tasks</h2>
             </div>
@@ -672,10 +703,18 @@ export default function LandscapeHelpPage() {
           </div>
         </section>
 
-        {completedTasks.length ? (
+        {(completedTasks.length || routineDone) ? (
           <details style={{ ...styles.card, padding: 14, marginBottom:14 }}>
-            <summary style={{ cursor:"pointer", fontWeight:900, color:colors.navy }}>Completed Today · {completedTasks.length}</summary>
+            <summary style={{ cursor:"pointer", fontWeight:900, color:colors.navy }}>
+              Completed Today · {completedTasks.length + routineDone}
+            </summary>
             <div style={{ display:"grid", gap:8, marginTop:10 }}>
+              {routineTasks
+                .filter(
+                  (item) =>
+                    Boolean(item.completed) || String(item.status || "") === "completed",
+                )
+                .map((item) => itemCard("routine", item, true))}
               {completedTasks.map((item) => itemCard("task", item, true))}
             </div>
           </details>
