@@ -71,6 +71,8 @@ type AddisonAssignmentDraft = {
 const BASE_PEOPLE = ["Addison", "Pat's Crew", "Sean", "Nick", "Unassigned"];
 const PROPERTY_IDS = ["2000", "3661", "6855", "hangar"];
 const STORAGE_KEY = "atlas-team-work-v2";
+const ADDISON_WORK_TOKEN =
+  "addison-2000-7f94f468dca84de3a7b8c2d942ca3819";
 
 function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -192,6 +194,7 @@ export default function AtlasTeamWork({
   const [assignmentMinutes, setAssignmentMinutes] = useState(30);
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [assignmentMessage, setAssignmentMessage] = useState("");
+  const [clearingAddisonTasks, setClearingAddisonTasks] = useState(false);
 
   const assigneeOptions = useMemo(() => {
     const values = [
@@ -519,6 +522,41 @@ export default function AtlasTeamWork({
     }
   }
 
+  async function clearAddisonTasks() {
+    if (clearingAddisonTasks) return;
+    if (!window.confirm("Clear every task currently assigned to Addison? This cannot be undone.")) return;
+
+    setClearingAddisonTasks(true);
+    setAssignmentMessage("Clearing Addison tasks…");
+
+    try {
+      const response = await fetch(
+        `/api/landscape-help?token=${encodeURIComponent(ADDISON_WORK_TOKEN)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            token: ADDISON_WORK_TOKEN,
+            action: "task-clear-all",
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Atlas could not clear Addison tasks.");
+      }
+      setAssignmentMessage(
+        `${Number(payload?.deleted || 0)} Addison task${Number(payload?.deleted || 0) === 1 ? "" : "s"} cleared.`,
+      );
+    } catch (error) {
+      setAssignmentMessage(
+        error instanceof Error ? error.message : "Atlas could not clear Addison tasks.",
+      );
+    } finally {
+      setClearingAddisonTasks(false);
+    }
+  }
+
   return (
     <section style={{ display: "grid", gap: 16 }}>
       <div style={heroStyle}>
@@ -540,6 +578,14 @@ export default function AtlasTeamWork({
             }}
           >
             {assignmentOpen ? "Close Assignment" : "Assign Addison"}
+          </button>
+          <button
+            type="button"
+            style={{ ...lightButtonStyle, color: colors.red }}
+            onClick={() => void clearAddisonTasks()}
+            disabled={clearingAddisonTasks}
+          >
+            {clearingAddisonTasks ? "Clearing…" : "Clear Addison Tasks"}
           </button>
           {teamView === "assignments" ? <button type="button" style={goldButtonStyle} onClick={createList}>+ New List</button> : null}
         </div>
