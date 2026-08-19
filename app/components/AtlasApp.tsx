@@ -3410,6 +3410,7 @@ export default function AtlasApp() {
     let cancelled = false;
 
     async function loadAtlasApi() {
+      let sharedAtlasLoaded = false;
       try {
         setSyncState("loading");
 
@@ -3448,6 +3449,7 @@ export default function AtlasApp() {
             `Atlas property response mismatch: requested ${activePropertyId}, received ${responsePropertyId}`,
           );
         }
+        sharedAtlasLoaded = true;
 
         const apiLocations = Array.isArray(payload.locations)
           ? payload.locations
@@ -3987,16 +3989,33 @@ export default function AtlasApp() {
             minute: "2-digit",
           }).format(new Date()),
         );
-      } catch {
+      } catch (error) {
         if (!cancelled) {
           setOperationsHydrated(true);
-          setOperationsSyncState("failed");
-          setOperationsSyncMessage("Offline — changes are safe and will retry automatically.");
-          setSyncState("offline");
           setShowPropertyLoading(false);
-          setDatabaseStatus(
-            "Using saved browser records / fallback records. /api/atlas did not load.",
-          );
+
+          if (sharedAtlasLoaded) {
+            // The main shared-Atlas request succeeded. A later, optional hydration
+            // step must not falsely mark the whole app or operational sync offline.
+            setSyncState("synced");
+            setOperationsSyncMessage("Shared Atlas connected");
+            setLastSyncedAt(
+              new Intl.DateTimeFormat(undefined, {
+                hour: "numeric",
+                minute: "2-digit",
+              }).format(new Date()),
+            );
+            console.error("Atlas secondary hydration failed", error);
+          } else {
+            // Only a failure of the actual shared-Atlas load should put Atlas
+            // into offline mode. Operational saving will retry independently.
+            setSyncState("offline");
+            setOperationsSyncMessage("Shared Atlas is temporarily unavailable.");
+            setDatabaseStatus(
+              "Using saved browser records / fallback records. /api/atlas did not load.",
+            );
+            console.error("Atlas shared-data load failed", error);
+          }
         }
       }
     }
