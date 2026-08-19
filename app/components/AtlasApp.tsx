@@ -4079,9 +4079,10 @@ export default function AtlasApp() {
           }).format(new Date()),
         );
       } catch {
-        // Keep the current calendar visible if the shared API is unavailable.
+        // Keep the current calendar visible if its refresh fails. A calendar-only
+        // refresh failure must not mark all of Atlas offline when Tasks and other
+        // shared records are still syncing successfully.
         if (!cancelled) {
-          setSyncState("offline");
           setShowPropertyLoading(false);
         }
       } finally {
@@ -10276,20 +10277,41 @@ export default function AtlasApp() {
       setOperationsSyncState("saving");
       const pendingDeletesKey = `atlas-operations-deletes-v1-${activePropertyId}`;
       const pendingDeletes = readStoredArray<{ table: string; id: string }>([pendingDeletesKey], []);
-      const deleteResults = await Promise.all(pendingDeletes.map((item) => deleteAtlasRecord(item.table as AtlasTable, item.id)));
-      if (deleteResults.some((deleted) => !deleted)) throw new Error("A queued deletion is still waiting for shared Atlas.");
-      if (pendingDeletes.length) saveStoredArray(pendingDeletesKey, []);
-      const results = await Promise.all([
-        ...snapshot.tasks.map((record) => postAtlasRecord("tasks" as AtlasTable, record)),
-        ...snapshot.vehicles.map((record) => postAtlasRecord("vehicle_care" as AtlasTable, record)),
-        ...snapshot.daySessions.map((record) => postAtlasRecord("day_sessions" as AtlasTable, record)),
+      const failedDeletes: Array<{ table: string; id: string }> = [];
+      for (const item of pendingDeletes) {
+        const deleted = await deleteAtlasRecord(item.table as AtlasTable, item.id);
+        if (!deleted) failedDeletes.push(item);
+      }
+      if (pendingDeletes.length) saveStoredArray(pendingDeletesKey, failedDeletes);
+
+      const taskResults = await Promise.all(
+        snapshot.tasks.map((record) => postAtlasRecord("tasks" as AtlasTable, record)),
+      );
+
+      const [vehicleResults, daySessionResults] = await Promise.all([
+        Promise.all(snapshot.vehicles.map((record) => postAtlasRecord("vehicle_care" as AtlasTable, record))),
+        Promise.all(snapshot.daySessions.map((record) => postAtlasRecord("day_sessions" as AtlasTable, record))),
       ]);
-      if (results.some((saved) => !saved)) throw new Error("One or more shared records were not confirmed.");
-      window.localStorage.removeItem(pendingKey);
+      const backgroundRetryPending =
+        failedDeletes.length > 0 ||
+        taskResults.some((saved) => !saved) ||
+        vehicleResults.some((saved) => !saved) ||
+        daySessionResults.some((saved) => !saved);
+
+      if (!backgroundRetryPending) {
+        window.localStorage.removeItem(pendingKey);
+      }
       setOperationsSyncState("saved");
-      setOperationsSyncMessage(`Saved ${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date())}`);
+      setOperationsSyncMessage(
+        backgroundRetryPending
+          ? "Saved to shared Atlas. A background item will retry automatically."
+          : `Saved ${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date())}`,
+      );
       setSyncState("synced");
       setLastSyncedAt(new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date()));
+      if (backgroundRetryPending && navigator.onLine) {
+        window.setTimeout(() => { void syncOperationalData(); }, 8000);
+      }
     } catch (error) {
       setOperationsSyncState("failed");
       setOperationsSyncMessage("Failed — saved safely on this device. Atlas will retry automatically.");
