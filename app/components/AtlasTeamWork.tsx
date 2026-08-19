@@ -233,7 +233,6 @@ export default function AtlasTeamWork({
   const [editingPriority, setEditingPriority] =
     useState<"High" | "Medium" | "Low">("Medium");
   const [editingMinutes, setEditingMinutes] = useState(30);
-
   async function loadAddisonWork(showLoading = false) {
     if (activePropertyId !== "2000") {
       setAddisonWork(null);
@@ -694,7 +693,6 @@ export default function AtlasTeamWork({
     }
   }
 
-
   return (
     <section style={{ display: "grid", gap: 16 }}>
       <div style={heroStyle}>
@@ -780,6 +778,10 @@ export default function AtlasTeamWork({
                 value={(addisonWork?.tasks || []).filter(
                   (task) => String(addisonMeta(task)?.status || "") === "Completed",
                 ).length}
+              />
+              <Stat
+                label="Assigned"
+                value={(addisonWork?.tasks || []).length}
               />
               <Stat label="Sync" value={addisonLoading ? "Loading" : "Live"} />
             </div>
@@ -876,6 +878,7 @@ export default function AtlasTeamWork({
                 ) : null}
               </div>
             </div>
+
 
           </div>
         )
