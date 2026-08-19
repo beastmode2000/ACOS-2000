@@ -627,7 +627,7 @@ export default function AtlasDashboardWorkspace(props: any) {
             <SectionHeader
               eyebrow="My Day"
               title="Addison"
-              detail="Daily Routine and Daily Tasks"
+              detail="Daily Tasks"
             />
           </section>
 
@@ -722,18 +722,6 @@ export default function AtlasDashboardWorkspace(props: any) {
             </div>
           </section>
 
-          <AtlasRoutines
-            mode="dashboard"
-            isMobile={isMobile}
-            activePropertyId={activePropertyId}
-            assigneeFilter="Addison"
-            defaultTodayAssignee="Addison"
-            allowTodayEditing
-            employeeView
-            teamDirectory={teamDirectory}
-            onAddNote={addRoutineNote}
-            onFlagProblem={flagRoutineProblem}
-          />
         </div>
       );
     }
