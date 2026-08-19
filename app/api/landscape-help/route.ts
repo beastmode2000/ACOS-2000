@@ -331,12 +331,28 @@ async function loadAddisonRoutineForDate(dateKey: string) {
   return {
     date: dateKey,
     name: definition.name,
-    tasks: definition.tasks.map((task: any) => ({
-      ...task,
-      ...(states[String(task.id)] || {}),
-      id: String(task.id),
-      title: String(task.title || "Routine item"),
-    })),
+    tasks: definition.tasks
+      .filter((task: any) => {
+        const frequency = String(task?.frequency || "Daily");
+        const startDate = String(task?.startDate || dateKey).slice(0, 10) || dateKey;
+        if (dateKey < startDate) return false;
+        if (frequency === "Daily") return true;
+        const start = new Date(`${startDate}T12:00:00`);
+        const current = new Date(`${dateKey}T12:00:00`);
+        const days = Math.max(0, Math.round((current.getTime() - start.getTime()) / 86400000));
+        if (frequency === "Weekly") return days % 7 === 0;
+        if (frequency === "Biweekly") return days % 14 === 0;
+        if (frequency === "Monthly") {
+          return current.getDate() === start.getDate();
+        }
+        return true;
+      })
+      .map((task: any) => ({
+        ...task,
+        ...(states[String(task.id)] || {}),
+        id: String(task.id),
+        title: String(task.title || "Routine item"),
+      })),
   };
 }
 
@@ -354,6 +370,12 @@ async function saveAddisonRoutineDefinition(
       ),
       title: String(task?.title || "").trim(),
       enabled: task?.enabled !== false,
+      frequency: ["Daily", "Weekly", "Biweekly", "Monthly"].includes(String(task?.frequency))
+        ? String(task.frequency)
+        : "Daily",
+      startDate: String(task?.startDate || pacificDateKey()).slice(0, 10),
+      frequency: String(task?.frequency || "Daily"),
+      startDate: String(task?.startDate || ""),
     }))
     .filter((task: any) => task.title);
 
