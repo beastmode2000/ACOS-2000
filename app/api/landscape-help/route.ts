@@ -29,6 +29,25 @@ function pacificDateKey(date = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
+function sqlDateKey(value: unknown) {
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  const text = String(value || "").trim();
+  const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) {
+    return isoMatch[1];
+  }
+
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  throw new Error(`Invalid Atlas date value: ${text || "empty"}`);
+}
+
 function weekdayFromDateKey(dateKey: string) {
   const date = new Date(`${dateKey}T12:00:00-07:00`);
   const js = date.getDay();
@@ -181,7 +200,7 @@ async function removeAddisonRoutineAssignments() {
         SET tasks = ${JSON.stringify(nextTasks)}::jsonb,
             updated_at = NOW()
         WHERE property_id = '2000'
-          AND occurrence_date = ${String(row.occurrence_date).slice(0, 10)}::date
+          AND occurrence_date = ${sqlDateKey(row.occurrence_date)}::date
       `;
     }
   }
