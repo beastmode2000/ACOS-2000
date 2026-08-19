@@ -447,10 +447,10 @@ export default function LandscapeHelpPage() {
               checked={completed}
               disabled={saving}
               onChange={() =>
-                void patchAddison("task-status", {
-                  taskId: item.id,
-                  status: completed ? "Open" : "Completed",
-                })
+                void patchAddison(
+                  "task-status",
+                  { taskId: item.id, status: completed ? "Open" : "Completed" },
+                )
               }
               style={{ width: 21, height: 21, marginTop: 2 }}
             />
@@ -652,6 +652,7 @@ export default function LandscapeHelpPage() {
             </button>
           </div>
         </section>
+
         <section style={{ ...styles.card, padding: 16, marginBottom: 14 }}>
           <div style={styles.rowBetween}>
             <div>
