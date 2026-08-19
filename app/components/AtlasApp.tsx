@@ -2675,7 +2675,7 @@ export default function AtlasApp() {
       if (document.visibilityState === "visible") void refreshAddisonDashboardTasks();
     };
     void refreshAddisonDashboardTasks();
-    const timer = window.setInterval(() => { void refreshAddisonDashboardTasks(); }, 2500);
+    const timer = window.setInterval(() => { void refreshAddisonDashboardTasks(); }, 1000);
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
