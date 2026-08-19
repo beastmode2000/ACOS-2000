@@ -224,7 +224,6 @@ export default function AtlasTeamWork({
   const [assignmentMinutes, setAssignmentMinutes] = useState(30);
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [assignmentMessage, setAssignmentMessage] = useState("");
-  const [clearingAddisonTasks, setClearingAddisonTasks] = useState(false);
   const [addisonWork, setAddisonWork] = useState<AddisonLiveWork | null>(null);
   const [addisonLoading, setAddisonLoading] = useState(false);
   const [addisonLiveMessage, setAddisonLiveMessage] = useState("");
@@ -241,6 +240,14 @@ export default function AtlasTeamWork({
   const [routineName, setRoutineName] = useState("Addison Routine");
   const [routineTasks, setRoutineTasks] = useState<Array<Record<string, any>>>([]);
   const [routineSaving, setRoutineSaving] = useState(false);
+  const [routineAddOpen, setRoutineAddOpen] = useState(false);
+  const [newRoutineTitle, setNewRoutineTitle] = useState("");
+  const [newRoutineFrequency, setNewRoutineFrequency] = useState<"Daily" | "Weekly" | "Biweekly" | "Monthly">("Daily");
+  const [newRoutineStartDate, setNewRoutineStartDate] = useState(() => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 10);
+  });
 
   async function loadAddisonWork(showLoading = false) {
     if (activePropertyId !== "2000") {
@@ -763,39 +770,50 @@ export default function AtlasTeamWork({
     }
   }
 
-  async function clearAddisonTasks() {
-    if (clearingAddisonTasks) return;
-    if (!window.confirm("Clear every task currently assigned to Addison? This cannot be undone.")) return;
-
-    setClearingAddisonTasks(true);
-    setAssignmentMessage("Clearing Addison tasks…");
-
+  async function saveNewRoutineItem() {
+    const title = newRoutineTitle.trim();
+    if (!title || routineSaving) return;
+    const next = [
+      ...routineTasks,
+      {
+        id: `addison-routine-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        title,
+        enabled: true,
+        frequency: newRoutineFrequency,
+        startDate: newRoutineStartDate,
+      },
+    ];
+    setRoutineSaving(true);
     try {
-      const response = await fetch(
-        `/api/landscape-help?token=${encodeURIComponent(ADDISON_WORK_TOKEN)}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            token: ADDISON_WORK_TOKEN,
-            action: "task-clear-all",
-          }),
-        },
+      await patchAddisonLive(
+        "routine-save",
+        { name: routineName.trim() || "Addison Routine", tasks: next },
+        "Routine added.",
       );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !payload?.ok) {
-        throw new Error(payload?.error || "Atlas could not clear Addison tasks.");
-      }
-      if (payload?.addison) setAddisonWork(payload.addison as AddisonLiveWork);
-      setAssignmentMessage(
-        `${Number(payload?.deleted || 0)} Addison task${Number(payload?.deleted || 0) === 1 ? "" : "s"} cleared.`,
+      setNewRoutineTitle("");
+      setNewRoutineFrequency("Daily");
+      setRoutineAddOpen(false);
+    } catch (error) {
+      setAddisonLiveMessage(error instanceof Error ? error.message : "Could not add routine.");
+    } finally {
+      setRoutineSaving(false);
+    }
+  }
+
+  async function deleteRoutineItemNow(itemId: string) {
+    if (!window.confirm("Delete this routine item?")) return;
+    const next = routineTasks.filter((item) => String(item.id) !== itemId);
+    setRoutineSaving(true);
+    try {
+      await patchAddisonLive(
+        "routine-save",
+        { name: routineName.trim() || "Addison Routine", tasks: next },
+        "Routine deleted.",
       );
     } catch (error) {
-      setAssignmentMessage(
-        error instanceof Error ? error.message : "Atlas could not clear Addison tasks.",
-      );
+      setAddisonLiveMessage(error instanceof Error ? error.message : "Could not delete routine.");
     } finally {
-      setClearingAddisonTasks(false);
+      setRoutineSaving(false);
     }
   }
 
@@ -828,9 +846,12 @@ export default function AtlasTeamWork({
               <button
                 type="button"
                 style={lightButtonStyle}
-                onClick={() => document.getElementById("addison-routine-manager")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                onClick={() => {
+                  setRoutineAddOpen((open) => !open);
+                  setAddisonLiveMessage("");
+                }}
               >
-                Add Routine
+                {routineAddOpen ? "Close Add Routine" : "Add Routine"}
               </button>
               <button
                 type="button"
@@ -859,145 +880,35 @@ export default function AtlasTeamWork({
             <div style={eyebrowStyle}>ADDISON</div>
             <h2 style={{ margin: "4px 0", color: colors.text }}>Add Task</h2>
           </div>
-
-          <div
-            className="atlas-addison-assignment-grid"
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "minmax(220px,1.5fr) minmax(145px,.7fr) minmax(150px,.8fr)",
-              gap: 10,
-            }}
-          >
-            <label style={labelStyle}>
-              Task
-              <input
-                value={assignmentTitle}
-                onChange={(event) => setAssignmentTitle(event.currentTarget.value)}
-                placeholder="Task name"
-                style={fieldStyle}
-                autoFocus
-              />
-            </label>
-            <label style={labelStyle}>
-              Due date
-              <input
-                type="date"
-                value={assignmentDueDate}
-                onChange={(event) => setAssignmentDueDate(event.currentTarget.value)}
-                style={fieldStyle}
-              />
-            </label>
-            <label style={labelStyle}>
-              Frequency
-              <select
-                value={assignmentFrequency}
-                onChange={(event) =>
-                  setAssignmentFrequency(event.currentTarget.value as AssignmentFrequency)
-                }
-                style={fieldStyle}
-              >
-                <option value="One-time">One-time / As needed</option>
-                <option value="Daily">Daily</option>
-                <option value="Weekly">Weekly</option>
-                <option value="Biweekly">Every 2 weeks</option>
-                <option value="Monthly">Monthly</option>
-              </select>
-            </label>
-            <label style={labelStyle}>
-              Location
-              <select
-                value={assignmentLocationId}
-                onChange={(event) => setAssignmentLocationId(event.currentTarget.value)}
-                style={fieldStyle}
-              >
-                <option value="">General property</option>
-                {locations.map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={labelStyle}>
-              Priority
-              <select
-                value={assignmentPriority}
-                onChange={(event) =>
-                  setAssignmentPriority(
-                    event.currentTarget.value as "High" | "Medium" | "Low",
-                  )
-                }
-                style={fieldStyle}
-              >
-                <option>High</option>
-                <option>Medium</option>
-                <option>Low</option>
-              </select>
-            </label>
-            <label style={labelStyle}>
-              Estimated time
-              <select
-                value={assignmentMinutes}
-                onChange={(event) => setAssignmentMinutes(Number(event.currentTarget.value))}
-                style={fieldStyle}
-              >
-                <option value={15}>15 minutes</option>
-                <option value={30}>30 minutes</option>
-                <option value={60}>1 hour</option>
-                <option value={120}>2 hours</option>
-                <option value={240}>Half day</option>
-                <option value={480}>Full day</option>
-              </select>
-            </label>
+          <div className="atlas-addison-assignment-grid" style={{ display: "grid", gridTemplateColumns: "minmax(240px,1.5fr) minmax(145px,.7fr) minmax(150px,.8fr)", gap: 10 }}>
+            <label style={labelStyle}>Task<input value={assignmentTitle} onChange={(event) => setAssignmentTitle(event.currentTarget.value)} placeholder="What does Addison need to do?" style={fieldStyle} autoFocus /></label>
+            <label style={labelStyle}>When<input type="date" value={assignmentDueDate} onChange={(event) => setAssignmentDueDate(event.currentTarget.value)} style={fieldStyle} /></label>
+            <label style={labelStyle}>Repeat<select value={assignmentFrequency} onChange={(event) => setAssignmentFrequency(event.currentTarget.value as AssignmentFrequency)} style={fieldStyle}><option value="One-time">One time</option><option value="Daily">Daily</option><option value="Weekly">Weekly</option><option value="Biweekly">Every 2 weeks</option><option value="Monthly">Monthly</option></select></label>
+            <label style={labelStyle}>Area<select value={assignmentLocationId} onChange={(event) => setAssignmentLocationId(event.currentTarget.value)} style={fieldStyle}><option value="">Anywhere / General</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+            <label style={{ ...labelStyle, gridColumn: "span 2" }}>Notes<textarea value={assignmentInstructions} onChange={(event) => setAssignmentInstructions(event.currentTarget.value)} placeholder="Optional" style={{ ...fieldStyle, minHeight: 58, resize: "vertical" }} /></label>
           </div>
-
-          <label style={labelStyle}>
-            Instructions
-            <textarea
-              value={assignmentInstructions}
-              onChange={(event) => setAssignmentInstructions(event.currentTarget.value)}
-              placeholder="What Addison needs to do"
-              style={{ ...fieldStyle, minHeight: 88, resize: "vertical" }}
-            />
-          </label>
-
-          {assignmentMessage ? (
-            <div
-              style={{
-                padding: "9px 11px",
-                border: `1px solid ${colors.line}`,
-                borderRadius: 10,
-                background: colors.panel,
-                color: colors.text,
-                fontSize: 12,
-                fontWeight: 800,
-              }}
-            >
-              {assignmentMessage}
-            </div>
-          ) : null}
-
+          {assignmentMessage ? <div style={{ padding: "9px 11px", border: `1px solid ${colors.line}`, borderRadius: 10, background: colors.panel, color: colors.text, fontSize: 12, fontWeight: 800 }}>{assignmentMessage}</div> : null}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => void saveAddisonAssignment()}
-              disabled={assignmentSaving}
-              style={{ ...goldButtonStyle, opacity: assignmentSaving ? 0.65 : 1 }}
-            >
-              {assignmentSaving ? "Saving…" : "Add Task"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                resetAssignmentForm();
-                setAssignmentOpen(false);
-              }}
-              disabled={assignmentSaving}
-              style={lightButtonStyle}
-            >
-              Cancel
-            </button>
+            <button type="button" onClick={() => void saveAddisonAssignment()} disabled={assignmentSaving} style={{ ...goldButtonStyle, opacity: assignmentSaving ? 0.65 : 1 }}>{assignmentSaving ? "Saving…" : "Add Task"}</button>
+            <button type="button" onClick={() => { resetAssignmentForm(); setAssignmentOpen(false); }} disabled={assignmentSaving} style={lightButtonStyle}>Cancel</button>
+          </div>
+        </div>
+      ) : null}
+
+      {teamView === "addison" && routineAddOpen ? (
+        <div style={{ ...panelStyle, display: "grid", gap: 12 }}>
+          <div>
+            <div style={eyebrowStyle}>ADDISON</div>
+            <h2 style={{ margin: "4px 0", color: colors.text }}>Add Routine</h2>
+          </div>
+          <div className="atlas-addison-assignment-grid" style={{ display: "grid", gridTemplateColumns: "minmax(260px,1.5fr) minmax(150px,.7fr) minmax(150px,.7fr)", gap: 10 }}>
+            <label style={labelStyle}>Routine<input value={newRoutineTitle} onChange={(event) => setNewRoutineTitle(event.currentTarget.value)} placeholder="Routine item" style={fieldStyle} autoFocus /></label>
+            <label style={labelStyle}>Repeat<select value={newRoutineFrequency} onChange={(event) => setNewRoutineFrequency(event.currentTarget.value as "Daily" | "Weekly" | "Biweekly" | "Monthly")} style={fieldStyle}><option value="Daily">Daily</option><option value="Weekly">Weekly</option><option value="Biweekly">Every 2 weeks</option><option value="Monthly">Monthly</option></select></label>
+            <label style={labelStyle}>Starts<input type="date" value={newRoutineStartDate} onChange={(event) => setNewRoutineStartDate(event.currentTarget.value)} style={fieldStyle} /></label>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" style={goldButtonStyle} disabled={routineSaving || !newRoutineTitle.trim()} onClick={() => void saveNewRoutineItem()}>{routineSaving ? "Saving…" : "Add Routine"}</button>
+            <button type="button" style={lightButtonStyle} onClick={() => { setRoutineAddOpen(false); setNewRoutineTitle(""); }}>Cancel</button>
           </div>
         </div>
       ) : null}
@@ -1039,19 +950,11 @@ export default function AtlasTeamWork({
               <div style={editorHeaderStyle}>
                 <div>
                   <div style={eyebrowStyle}>LIVE LIST</div>
-                  <h2 style={{ margin: "3px 0", color: colors.text }}>Addison's Tasks</h2>
+                  <h2 style={{ margin: "3px 0", color: colors.text }}>Addison's Live List</h2>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button type="button" style={lightButtonStyle} onClick={() => void loadAddisonWork(true)}>
                     Refresh
-                  </button>
-                  <button
-                    type="button"
-                    style={{ ...lightButtonStyle, color: colors.red }}
-                    onClick={() => void clearAddisonTasks()}
-                    disabled={clearingAddisonTasks}
-                  >
-                    {clearingAddisonTasks ? "Clearing…" : "Clear Tasks"}
                   </button>
                 </div>
               </div>
@@ -1137,7 +1040,7 @@ export default function AtlasTeamWork({
                   <h2 style={{ margin: "3px 0", color: colors.text }}>Routine</h2>
                 </div>
                 <button type="button" style={goldButtonStyle} disabled={routineSaving} onClick={() => void saveRoutine()}>
-                  {routineSaving ? "Saving…" : "Save Routine"}
+                  {routineSaving ? "Saving…" : "Save Changes"}
                 </button>
               </div>
               <label style={{ ...labelStyle, marginTop: 12 }}>
@@ -1159,13 +1062,12 @@ export default function AtlasTeamWork({
                     <div style={{ display: "flex", gap: 5 }}>
                       <button type="button" disabled={index === 0} onClick={() => moveRoutineItem(index, -1)} style={iconButtonStyle}>↑</button>
                       <button type="button" disabled={index === routineTasks.length - 1} onClick={() => moveRoutineItem(index, 1)} style={iconButtonStyle}>↓</button>
-                      <button type="button" onClick={() => setRoutineTasks((current) => current.filter((row) => String(row.id) !== String(item.id)))} style={{ ...iconButtonStyle, color: colors.red }}>×</button>
+                      <button type="button" onClick={() => void deleteRoutineItemNow(String(item.id))} style={{ ...iconButtonStyle, color: colors.red }}>×</button>
                     </div>
                   </div>
                 ))}
                 {!routineTasks.length ? <div style={emptyStyle}>No routine items.</div> : null}
               </div>
-              <button type="button" style={{ ...lightButtonStyle, marginTop: 10 }} onClick={addRoutineItem}>+ Add Routine Item</button>
             </div>
           </div>
         )
