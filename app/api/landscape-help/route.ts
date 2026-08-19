@@ -157,352 +157,8 @@ function nextRecurringDate(
   return date.toISOString().slice(0, 10);
 }
 
-const ADDISON_CLEAN_START_MIGRATION_ID = "addison-clean-start-2026-08-18-v1";
-
-async function clearAllAddisonTasks() {
-  await ensureAddisonBackingTables();
-  const sql = getSql();
-
-  const rows = await sql`
-    SELECT id, record
-    FROM atlas_operational_records
-    WHERE record_type = 'tasks'
-      AND property_id = '2000'
-  `;
-
-  const addisonIds = rows
-    .filter((row: any) =>
-      isAddisonAssigned({
-        ...(row.record || {}),
-        id: String(row.id || row.record?.id || ""),
-      } as AddisonTaskRecord),
-    )
-    .map((row: any) => String(row.id || row.record?.id || ""))
-    .filter(Boolean);
-
-  for (const id of addisonIds) {
-    await sql`
-      DELETE FROM atlas_operational_records
-      WHERE record_type = 'tasks'
-        AND property_id = '2000'
-        AND id = ${id}
-    `;
-  }
-
-  return addisonIds.length;
-}
-
-async function runAddisonCleanStartOnce() {
-  await ensureAddisonBackingTables();
-  const sql = getSql();
-
-  const existing = await sql`
-    SELECT id
-    FROM atlas_operational_records
-    WHERE record_type = 'system_migration'
-      AND property_id = '2000'
-      AND id = ${ADDISON_CLEAN_START_MIGRATION_ID}
-    LIMIT 1
-  `;
-
-  if (existing[0]) return;
-
-  const deleted = await clearAllAddisonTasks();
-  const appliedAt = new Date().toISOString();
-
-  await sql`
-    INSERT INTO atlas_operational_records (
-      record_type, id, property_id, record, updated_at
-    )
-    VALUES (
-      'system_migration',
-      ${ADDISON_CLEAN_START_MIGRATION_ID},
-      '2000',
-      ${JSON.stringify({ appliedAt, deleted })}::jsonb,
-      NOW()
-    )
-    ON CONFLICT (record_type, id) DO NOTHING
-  `;
-}
-
-async function removeAddisonRoutineAssignments() {
-  await ensureAddisonBackingTables();
-  const sql = getSql();
-
-  const templateRows = await sql`
-    SELECT day_of_week, tasks
-    FROM atlas_routine_templates
-    WHERE property_id = '2000'
-  `;
-
-  for (const row of templateRows) {
-    const currentTasks = Array.isArray(row.tasks) ? row.tasks : [];
-    const nextTasks = currentTasks.filter(
-      (task: any) =>
-        !isAddisonAssigneeValue(
-          task?.assignedTo || task?.assignee || task?.assigned_to,
-        ),
-    );
-
-    if (nextTasks.length !== currentTasks.length) {
-      await sql`
-        UPDATE atlas_routine_templates
-        SET tasks = ${JSON.stringify(nextTasks)}::jsonb,
-            updated_at = NOW()
-        WHERE property_id = '2000'
-          AND day_of_week = ${Number(row.day_of_week)}
-      `;
-    }
-  }
-
-  const occurrenceRows = await sql`
-    SELECT occurrence_date, tasks
-    FROM atlas_routine_occurrences
-    WHERE property_id = '2000'
-  `;
-
-  for (const row of occurrenceRows) {
-    const currentTasks = Array.isArray(row.tasks) ? row.tasks : [];
-    const nextTasks = currentTasks.filter(
-      (task: any) =>
-        !isAddisonAssigneeValue(
-          task?.assignedTo || task?.assignee || task?.assigned_to,
-        ),
-    );
-
-    if (nextTasks.length !== currentTasks.length) {
-      await sql`
-        UPDATE atlas_routine_occurrences
-        SET tasks = ${JSON.stringify(nextTasks)}::jsonb,
-            updated_at = NOW()
-        WHERE property_id = '2000'
-          AND occurrence_date = ${sqlDateKey(row.occurrence_date)}::date
-      `;
-    }
-  }
-}
-
-
-const ADDISON_ROUTINE_RECORD_ID = "default";
-const ADDISON_ROUTINE_RETIRED_MIGRATION_ID = "addison-routine-retired-2026-08-18";
-
-async function retireAddisonRoutineOnce() {
-  await ensureAddisonBackingTables();
-  const sql = getSql();
-  const existing = await sql`
-    SELECT id
-    FROM atlas_operational_records
-    WHERE record_type = 'system_migration'
-      AND property_id = '2000'
-      AND id = ${ADDISON_ROUTINE_RETIRED_MIGRATION_ID}
-    LIMIT 1
-  `;
-  if (existing[0]) return;
-
-  await sql`
-    DELETE FROM atlas_operational_records
-    WHERE property_id = '2000'
-      AND record_type IN ('addison_routine', 'addison_routine_day')
-  `;
-
-  await sql`
-    INSERT INTO atlas_operational_records (
-      record_type, id, property_id, record, updated_at
-    )
-    VALUES (
-      'system_migration',
-      ${ADDISON_ROUTINE_RETIRED_MIGRATION_ID},
-      '2000',
-      ${JSON.stringify({ retiredAt: new Date().toISOString() })}::jsonb,
-      NOW()
-    )
-    ON CONFLICT (record_type, id) DO NOTHING
-  `;
-}
-
-async function loadAddisonRoutineDefinition() {
-  await ensureAddisonBackingTables();
-  const sql = getSql();
-  const rows = await sql`
-    SELECT record
-    FROM atlas_operational_records
-    WHERE record_type = 'addison_routine'
-      AND property_id = '2000'
-      AND id = ${ADDISON_ROUTINE_RECORD_ID}
-    LIMIT 1
-  `;
-  const record = rows[0]?.record || {};
-  const tasks = Array.isArray(record.tasks) ? record.tasks : [];
-  return {
-    name: String(record.name || "Addison Routine"),
-    tasks: tasks
-      .map((task: any, index: number) => ({
-        ...task,
-        id: String(task?.id || `addison-routine-${index + 1}`),
-        title: String(task?.title || "Routine item"),
-        enabled: task?.enabled !== false,
-      }))
-      .filter((task: any) => task.enabled !== false),
-  };
-}
-
-async function loadAddisonRoutineForDate(dateKey: string) {
-  const sql = getSql();
-  const definition = await loadAddisonRoutineDefinition();
-  const rows = await sql`
-    SELECT record
-    FROM atlas_operational_records
-    WHERE record_type = 'addison_routine_day'
-      AND property_id = '2000'
-      AND id = ${dateKey}
-    LIMIT 1
-  `;
-  const dayRecord = rows[0]?.record || {};
-  const states =
-    dayRecord.taskStates && typeof dayRecord.taskStates === "object"
-      ? dayRecord.taskStates
-      : {};
-
-  return {
-    date: dateKey,
-    name: definition.name,
-    tasks: definition.tasks
-      .filter((task: any) => {
-        const frequency = String(task?.frequency || "Daily");
-        const startDate = String(task?.startDate || dateKey).slice(0, 10) || dateKey;
-        if (dateKey < startDate) return false;
-        if (frequency === "Daily") return true;
-        const start = new Date(`${startDate}T12:00:00`);
-        const current = new Date(`${dateKey}T12:00:00`);
-        const days = Math.max(0, Math.round((current.getTime() - start.getTime()) / 86400000));
-        if (frequency === "Weekly") return days % 7 === 0;
-        if (frequency === "Biweekly") return days % 14 === 0;
-        if (frequency === "Monthly") {
-          return current.getDate() === start.getDate();
-        }
-        return true;
-      })
-      .map((task: any) => ({
-        ...task,
-        ...(states[String(task.id)] || {}),
-        id: String(task.id),
-        title: String(task.title || "Routine item"),
-      })),
-  };
-}
-
-async function saveAddisonRoutineDefinition(
-  name: string,
-  tasksInput: Array<Record<string, any>>,
-) {
-  const sql = getSql();
-  const now = new Date().toISOString();
-  const tasks = tasksInput
-    .map((task: any, index: number) => ({
-      id: String(
-        task?.id ||
-          `addison-routine-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
-      ),
-      title: String(task?.title || "").trim(),
-      enabled: task?.enabled !== false,
-      frequency: ["Daily", "Weekly", "Biweekly", "Monthly"].includes(String(task?.frequency))
-        ? String(task.frequency)
-        : "Daily",
-      startDate: String(task?.startDate || pacificDateKey()).slice(0, 10),
-    }))
-    .filter((task: any) => task.title);
-
-  const record = {
-    name: String(name || "Addison Routine").trim() || "Addison Routine",
-    tasks,
-    updatedAt: now,
-  };
-
-  await sql`
-    INSERT INTO atlas_operational_records (
-      record_type, id, property_id, record, updated_at
-    )
-    VALUES (
-      'addison_routine',
-      ${ADDISON_ROUTINE_RECORD_ID},
-      '2000',
-      ${JSON.stringify(record)}::jsonb,
-      NOW()
-    )
-    ON CONFLICT (record_type, id)
-    DO UPDATE SET
-      property_id = EXCLUDED.property_id,
-      record = EXCLUDED.record,
-      updated_at = NOW()
-  `;
-
-  return record;
-}
-
-async function patchAddisonRoutineTaskState(
-  taskId: string,
-  patch: Record<string, unknown>,
-) {
-  const definition = await loadAddisonRoutineDefinition();
-  if (!definition.tasks.some((task: any) => String(task.id) === taskId)) {
-    return false;
-  }
-
-  const sql = getSql();
-  const today = pacificDateKey();
-  const rows = await sql`
-    SELECT record
-    FROM atlas_operational_records
-    WHERE record_type = 'addison_routine_day'
-      AND property_id = '2000'
-      AND id = ${today}
-    LIMIT 1
-  `;
-  const current = rows[0]?.record || {};
-  const states =
-    current.taskStates && typeof current.taskStates === "object"
-      ? current.taskStates
-      : {};
-  const nextStates = {
-    ...states,
-    [taskId]: {
-      ...(states[taskId] || {}),
-      ...patch,
-      updatedAt: new Date().toISOString(),
-    },
-  };
-  const record = {
-    date: today,
-    taskStates: nextStates,
-    updatedAt: new Date().toISOString(),
-  };
-
-  await sql`
-    INSERT INTO atlas_operational_records (
-      record_type, id, property_id, record, updated_at
-    )
-    VALUES (
-      'addison_routine_day',
-      ${today},
-      '2000',
-      ${JSON.stringify(record)}::jsonb,
-      NOW()
-    )
-    ON CONFLICT (record_type, id)
-    DO UPDATE SET
-      property_id = EXCLUDED.property_id,
-      record = EXCLUDED.record,
-      updated_at = NOW()
-  `;
-
-  return true;
-}
-
 async function loadAddisonWork() {
   await ensureAddisonBackingTables();
-  await runAddisonCleanStartOnce();
-  await removeAddisonRoutineAssignments();
-  await retireAddisonRoutineOnce();
 
   const sql = getSql();
   const today = pacificDateKey();
@@ -571,6 +227,7 @@ async function loadAddisonWork() {
     id: String(row.id || row.record?.id || ''),
     name: String(row.record?.name || row.record?.title || 'Location'),
   }));
+
 
   return {
     today,
@@ -907,6 +564,14 @@ export async function GET(request: NextRequest) {
     const blocked = adminBlockResponse(request);
     if (blocked) return blocked;
 
+    if (url.searchParams.get("addison") === "1") {
+      const addison = await loadAddisonWork();
+      return NextResponse.json(
+        { ok: true, mode: "addison", addison },
+        { headers: { "Cache-Control": "no-store, max-age=0" } },
+      );
+    }
+
     if (weekId) {
       const selectedWeek = await loadWeekById(weekId);
       if (!selectedWeek) return NextResponse.json({ ok: false, error: "Landscape Help week not found." }, { status: 404 });
@@ -1048,19 +713,12 @@ export async function PATCH(request: NextRequest) {
         });
       }
 
-      if (action === "task-clear-all") {
-        const deleted = await clearAllAddisonTasks();
-        return NextResponse.json({
-          ok: true,
-          mode: "addison",
-          deleted,
-          addison: await loadAddisonWork(),
-        });
-      }
-
       if (String(action || "").startsWith("routine-")) {
         return NextResponse.json(
-          { ok: false, error: "Addison routines have been retired. Use Tasks with a frequency instead." },
+          {
+            ok: false,
+            error: "Addison routines have been retired. Use Tasks with a frequency instead.",
+          },
           { status: 410 },
         );
       }
