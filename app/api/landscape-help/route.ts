@@ -282,6 +282,167 @@ async function removeAddisonRoutineAssignments() {
   }
 }
 
+
+const ADDISON_ROUTINE_RECORD_ID = "default";
+
+async function loadAddisonRoutineDefinition() {
+  await ensureAddisonBackingTables();
+  const sql = getSql();
+  const rows = await sql`
+    SELECT record
+    FROM atlas_operational_records
+    WHERE record_type = 'addison_routine'
+      AND property_id = '2000'
+      AND id = ${ADDISON_ROUTINE_RECORD_ID}
+    LIMIT 1
+  `;
+  const record = rows[0]?.record || {};
+  const tasks = Array.isArray(record.tasks) ? record.tasks : [];
+  return {
+    name: String(record.name || "Addison Routine"),
+    tasks: tasks
+      .map((task: any, index: number) => ({
+        ...task,
+        id: String(task?.id || `addison-routine-${index + 1}`),
+        title: String(task?.title || "Routine item"),
+        enabled: task?.enabled !== false,
+      }))
+      .filter((task: any) => task.enabled !== false),
+  };
+}
+
+async function loadAddisonRoutineForDate(dateKey: string) {
+  const sql = getSql();
+  const definition = await loadAddisonRoutineDefinition();
+  const rows = await sql`
+    SELECT record
+    FROM atlas_operational_records
+    WHERE record_type = 'addison_routine_day'
+      AND property_id = '2000'
+      AND id = ${dateKey}
+    LIMIT 1
+  `;
+  const dayRecord = rows[0]?.record || {};
+  const states =
+    dayRecord.taskStates && typeof dayRecord.taskStates === "object"
+      ? dayRecord.taskStates
+      : {};
+
+  return {
+    date: dateKey,
+    name: definition.name,
+    tasks: definition.tasks.map((task: any) => ({
+      ...task,
+      ...(states[String(task.id)] || {}),
+      id: String(task.id),
+      title: String(task.title || "Routine item"),
+    })),
+  };
+}
+
+async function saveAddisonRoutineDefinition(
+  name: string,
+  tasksInput: Array<Record<string, any>>,
+) {
+  const sql = getSql();
+  const now = new Date().toISOString();
+  const tasks = tasksInput
+    .map((task: any, index: number) => ({
+      id: String(
+        task?.id ||
+          `addison-routine-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+      ),
+      title: String(task?.title || "").trim(),
+      enabled: task?.enabled !== false,
+    }))
+    .filter((task: any) => task.title);
+
+  const record = {
+    name: String(name || "Addison Routine").trim() || "Addison Routine",
+    tasks,
+    updatedAt: now,
+  };
+
+  await sql`
+    INSERT INTO atlas_operational_records (
+      record_type, id, property_id, record, updated_at
+    )
+    VALUES (
+      'addison_routine',
+      ${ADDISON_ROUTINE_RECORD_ID},
+      '2000',
+      ${JSON.stringify(record)}::jsonb,
+      NOW()
+    )
+    ON CONFLICT (record_type, id)
+    DO UPDATE SET
+      property_id = EXCLUDED.property_id,
+      record = EXCLUDED.record,
+      updated_at = NOW()
+  `;
+
+  return record;
+}
+
+async function patchAddisonRoutineTaskState(
+  taskId: string,
+  patch: Record<string, unknown>,
+) {
+  const definition = await loadAddisonRoutineDefinition();
+  if (!definition.tasks.some((task: any) => String(task.id) === taskId)) {
+    return false;
+  }
+
+  const sql = getSql();
+  const today = pacificDateKey();
+  const rows = await sql`
+    SELECT record
+    FROM atlas_operational_records
+    WHERE record_type = 'addison_routine_day'
+      AND property_id = '2000'
+      AND id = ${today}
+    LIMIT 1
+  `;
+  const current = rows[0]?.record || {};
+  const states =
+    current.taskStates && typeof current.taskStates === "object"
+      ? current.taskStates
+      : {};
+  const nextStates = {
+    ...states,
+    [taskId]: {
+      ...(states[taskId] || {}),
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    },
+  };
+  const record = {
+    date: today,
+    taskStates: nextStates,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await sql`
+    INSERT INTO atlas_operational_records (
+      record_type, id, property_id, record, updated_at
+    )
+    VALUES (
+      'addison_routine_day',
+      ${today},
+      '2000',
+      ${JSON.stringify(record)}::jsonb,
+      NOW()
+    )
+    ON CONFLICT (record_type, id)
+    DO UPDATE SET
+      property_id = EXCLUDED.property_id,
+      record = EXCLUDED.record,
+      updated_at = NOW()
+  `;
+
+  return true;
+}
+
 async function loadAddisonWork() {
   await ensureAddisonBackingTables();
   await runAddisonCleanStartOnce();
@@ -355,12 +516,15 @@ async function loadAddisonWork() {
     name: String(row.record?.name || row.record?.title || 'Location'),
   }));
 
+  const routine = await loadAddisonRoutineForDate(today);
+
   return {
     today,
     tasks,
     locations,
     dailyNote: String(dailyNoteRecord.note || ''),
     dailyNoteUpdatedAt: String(dailyNoteRecord.updatedAt || ''),
+    routine,
   };
 }
 
@@ -841,36 +1005,158 @@ export async function PATCH(request: NextRequest) {
         });
       }
 
+      if (action === "routine-save") {
+        const name = String(body.name || "Addison Routine");
+        const routineTasks = Array.isArray(body.tasks) ? body.tasks : [];
+        await saveAddisonRoutineDefinition(name, routineTasks);
+        return NextResponse.json({
+          ok: true,
+          mode: "addison",
+          addison: await loadAddisonWork(),
+        });
+      }
+
+      if (
+        action === "routine-toggle" ||
+        action === "routine-note" ||
+        action === "routine-photo" ||
+        action === "routine-flag" ||
+        action === "routine-problem" ||
+        action === "routine-nothing-needed"
+      ) {
+        const taskId = String(body.taskId || "");
+        const current = await loadAddisonRoutineForDate(today);
+        const target = current.tasks.find((task: any) => String(task.id) === taskId);
+        if (!target) {
+          return NextResponse.json(
+            { ok: false, error: "Addison routine item not found." },
+            { status: 404 },
+          );
+        }
+
+        let patch: Record<string, unknown> = {};
+        if (action === "routine-toggle") {
+          const completed =
+            Boolean(target.completed) || String(target.status || "") === "completed";
+          patch = {
+            completed: !completed,
+            status: completed ? "open" : "completed",
+            completedAt: completed ? "" : new Date().toISOString(),
+          };
+        } else if (action === "routine-note") {
+          patch = { addisonNote: String(body.note || "") };
+        } else if (action === "routine-photo") {
+          const photos = Array.isArray(target.photos) ? target.photos : [];
+          patch = { photos: [...photos, body.photo].filter(Boolean) };
+        } else if (action === "routine-flag") {
+          patch = { needsNick: Boolean(body.needsNick) };
+        } else if (action === "routine-problem") {
+          patch = { problemFound: Boolean(body.problemFound) };
+        } else {
+          patch = { checkedNothingNeeded: Boolean(body.value) };
+        }
+
+        const ok = await patchAddisonRoutineTaskState(taskId, patch);
+        if (!ok) {
+          return NextResponse.json(
+            { ok: false, error: "Addison routine item not found." },
+            { status: 404 },
+          );
+        }
+        return NextResponse.json({
+          ok: true,
+          mode: "addison",
+          addison: await loadAddisonWork(),
+        });
+      }
+
       if (action === "task-create") {
         const title = String(body.title || "").trim();
         if (!title) {
-          return NextResponse.json({ ok: false, error: "Task title is required." }, { status: 400 });
+          return NextResponse.json(
+            { ok: false, error: "Task title is required." },
+            { status: 400 },
+          );
         }
+
         const dueDate = String(body.dueDate || today).slice(0, 10);
+        const frequency = String(body.frequency || "One-time");
+        const recurrence =
+          frequency === "Daily"
+            ? { recurring: true, interval: 1, unit: "Days" }
+            : frequency === "Weekly"
+              ? { recurring: true, interval: 1, unit: "Weeks" }
+              : frequency === "Biweekly"
+                ? { recurring: true, interval: 2, unit: "Weeks" }
+                : frequency === "Monthly"
+                  ? { recurring: true, interval: 1, unit: "Months" }
+                  : { recurring: false, interval: 1, unit: "Weeks" };
+
+        const locationId = String(body.locationId || "general") || "general";
+        const currentWork = await loadAddisonWork();
+        const duplicate = currentWork.tasks.find((task: any) => {
+          const meta = addisonTaskMeta(task);
+          const sameFrequency =
+            (!recurrence.recurring && !task.recurring) ||
+            (recurrence.recurring &&
+              Boolean(task.recurring) &&
+              Number(meta?.recurrenceInterval || 1) === recurrence.interval &&
+              String(meta?.recurrenceUnit || "Weeks") === recurrence.unit);
+          return (
+            String(meta?.status || "") !== "Completed" &&
+            String(task.title || "").trim().toLowerCase() === title.toLowerCase() &&
+            String(meta?.dueDate || "").slice(0, 10) === dueDate &&
+            String(task.locationId || "general") === locationId &&
+            sameFrequency
+          );
+        });
+        if (duplicate) {
+          return NextResponse.json(
+            { ok: false, error: "That Addison task already exists." },
+            { status: 409 },
+          );
+        }
+
         const id = `task-addison-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const createdAt = new Date().toISOString();
+        const instructions = String(body.instructions || "");
+        const priority =
+          body.priority === "High" || body.priority === "Low"
+            ? String(body.priority)
+            : "Medium";
+        const minutes = Math.max(5, Number(body.minutes || 30));
+
         const taskMeta = {
           assignee: "Addison",
           dueDate,
           status: "Open",
-          assignmentScope: "This occurrence",
+          assignmentScope: recurrence.recurring
+            ? "All future occurrences"
+            : "This occurrence",
+          recurrenceInterval: recurrence.interval,
+          recurrenceUnit: recurrence.unit,
+          recurrenceEndDate: "",
+          completionHistory: [],
+          lastCompletedDate: "",
           completedAt: undefined,
           needsReview: false,
+          instructions,
+          notes: instructions,
           createdAt,
           updatedAt: createdAt,
         };
         const record = {
           id,
           title,
-          minutes: 30,
-          priority: "Medium",
+          minutes,
+          priority,
           category: "General",
-          locationId: "general",
+          locationId,
           preferredDay: "Auto",
           locked: false,
-          recurring: false,
+          recurring: recurrence.recurring,
           fixedTime: "",
-          notes: "",
+          notes: instructions,
           ...taskMeta,
           taskMeta,
           propertyId: "2000",
@@ -891,26 +1177,126 @@ export async function PATCH(request: NextRequest) {
             record = EXCLUDED.record,
             updated_at = NOW()
         `;
-        return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
+        return NextResponse.json({
+          ok: true,
+          mode: "addison",
+          addison: await loadAddisonWork(),
+        });
       }
 
       if (action === "task-update") {
         const taskId = String(body.taskId || "");
         const currentWork = await loadAddisonWork();
-        const currentTask = currentWork.tasks.find((task: any) => String(task.id) === taskId);
+        const currentTask = currentWork.tasks.find(
+          (task: any) => String(task.id) === taskId,
+        );
         if (!currentTask) {
-          return NextResponse.json({ ok: false, error: "Addison task not found." }, { status: 404 });
+          return NextResponse.json(
+            { ok: false, error: "Addison task not found." },
+            { status: 404 },
+          );
         }
+
         const currentMeta = addisonTaskMeta(currentTask);
-        const title = String(body.title || currentTask.title || "").trim();
-        const dueDate = String(body.dueDate || currentMeta?.dueDate || "").slice(0, 10);
+        const title = String(body.title ?? currentTask.title ?? "").trim();
+        if (!title) {
+          return NextResponse.json(
+            { ok: false, error: "Task title is required." },
+            { status: 400 },
+          );
+        }
+
+        const dueDate = String(
+          body.dueDate ?? currentMeta?.dueDate ?? today,
+        ).slice(0, 10);
+
+        const currentFrequency = !currentTask.recurring
+          ? "One-time"
+          : Number(currentMeta?.recurrenceInterval || 1) === 2 &&
+              String(currentMeta?.recurrenceUnit || "") === "Weeks"
+            ? "Biweekly"
+            : String(currentMeta?.recurrenceUnit || "") === "Days"
+              ? "Daily"
+              : String(currentMeta?.recurrenceUnit || "") === "Months"
+                ? "Monthly"
+                : "Weekly";
+
+        const frequency = String(body.frequency || currentFrequency);
+        const recurrence =
+          frequency === "Daily"
+            ? { recurring: true, interval: 1, unit: "Days" }
+            : frequency === "Weekly"
+              ? { recurring: true, interval: 1, unit: "Weeks" }
+              : frequency === "Biweekly"
+                ? { recurring: true, interval: 2, unit: "Weeks" }
+                : frequency === "Monthly"
+                  ? { recurring: true, interval: 1, unit: "Months" }
+                  : { recurring: false, interval: 1, unit: "Weeks" };
+
+        const instructions = String(
+          body.instructions ??
+            currentMeta?.instructions ??
+            currentTask.notes ??
+            "",
+        );
+        const locationId = String(
+          body.locationId ?? currentTask.locationId ?? "general",
+        ) || "general";
+        const priority =
+          body.priority === "High" ||
+          body.priority === "Medium" ||
+          body.priority === "Low"
+            ? String(body.priority)
+            : String(currentTask.priority || "Medium");
+        const minutes = Math.max(
+          5,
+          Number(body.minutes ?? currentTask.minutes ?? 30),
+        );
+
+        const duplicate = currentWork.tasks.find((task: any) => {
+          if (String(task.id || "") === taskId) return false;
+          const meta = addisonTaskMeta(task);
+          const sameFrequency =
+            (!recurrence.recurring && !task.recurring) ||
+            (recurrence.recurring &&
+              Boolean(task.recurring) &&
+              Number(meta?.recurrenceInterval || 1) === recurrence.interval &&
+              String(meta?.recurrenceUnit || "Weeks") === recurrence.unit);
+          return (
+            String(meta?.status || "") !== "Completed" &&
+            String(task.title || "").trim().toLowerCase() === title.toLowerCase() &&
+            String(meta?.dueDate || "").slice(0, 10) === dueDate &&
+            String(task.locationId || "general") === locationId &&
+            sameFrequency
+          );
+        });
+        if (duplicate) {
+          return NextResponse.json(
+            { ok: false, error: "That Addison task already exists." },
+            { status: 409 },
+          );
+        }
+
         const patch: Record<string, unknown> = {
-          ...(dueDate ? { dueDate } : {}),
+          dueDate,
+          recurrenceInterval: recurrence.interval,
+          recurrenceUnit: recurrence.unit,
+          recurrenceEndDate: "",
+          assignmentScope: recurrence.recurring
+            ? "All future occurrences"
+            : "This occurrence",
+          instructions,
+          notes: instructions,
         };
+
         const ok = await patchAddisonTask(taskId, patch);
         if (!ok) {
-          return NextResponse.json({ ok: false, error: "Addison task not found." }, { status: 404 });
+          return NextResponse.json(
+            { ok: false, error: "Addison task not found." },
+            { status: 404 },
+          );
         }
+
         const sql = getSql();
         const rows = await sql`
           SELECT record
@@ -921,10 +1307,25 @@ export async function PATCH(request: NextRequest) {
           LIMIT 1
         `;
         if (rows[0]?.record) {
-          const nextRecord = {
-            ...rows[0].record,
-            title,
+          const existing = rows[0].record;
+          const existingMeta = addisonTaskMeta(existing) || {};
+          const nextMeta = {
+            ...existingMeta,
+            ...patch,
+            assignee: "Addison",
             updatedAt: new Date().toISOString(),
+          };
+          const nextRecord = {
+            ...existing,
+            title,
+            recurring: recurrence.recurring,
+            locationId,
+            priority,
+            minutes,
+            notes: instructions,
+            ...nextMeta,
+            taskMeta: nextMeta,
+            updatedAt: nextMeta.updatedAt,
           };
           await sql`
             UPDATE atlas_operational_records
@@ -935,7 +1336,12 @@ export async function PATCH(request: NextRequest) {
               AND id = ${taskId}
           `;
         }
-        return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
+
+        return NextResponse.json({
+          ok: true,
+          mode: "addison",
+          addison: await loadAddisonWork(),
+        });
       }
 
       if (action === "task-delete") {
