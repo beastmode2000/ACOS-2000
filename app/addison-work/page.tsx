@@ -412,9 +412,9 @@ export default function LandscapeHelpPage() {
                 display: "block",
                 color: colors.navy,
                 textDecoration: completed ? "line-through" : "none",
-              }}>{title}</strong>
+              }}>{Number(meta.addisonOrder || 0) > 0 ? `${Number(meta.addisonOrder)}. ` : ""}{title}</strong>
               {meta.dueDate ? (
-                <small style={{ color: colors.muted }}>Due {formatDate(String(meta.dueDate).slice(0,10))}</small>
+                <small style={{ color: colors.muted }}>Due {formatDate(String(meta.dueDate).slice(0,10))}{String(meta.preferredDay || item.preferredDay || "Auto") !== "Auto" ? ` · ${String(meta.preferredDay || item.preferredDay)}` : ""}</small>
               ) : null}
               {nothingNeeded ? <small style={{ display:"block", color: colors.muted, marginTop: 3 }}>Checked — nothing needed</small> : null}
             </div>
