@@ -18547,7 +18547,108 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function renderDashboard() {
-    return <AtlasDashboardWorkspace {...{
+    const addisonDashboardTasks = workPlanTasks.filter(
+      (task) => String(taskDetails(task.id).assignee || "").trim().toLowerCase() === "addison",
+    );
+    const addisonDashboardOpen = addisonDashboardTasks.filter(
+      (task) => taskDetails(task.id).status !== "Completed",
+    );
+    const addisonDashboardCompletedToday = addisonDashboardTasks.filter((task) => {
+      const meta = taskDetails(task.id);
+      return (
+        String(meta.status || "") === "Completed" &&
+        (
+          String(meta.completedAt || "").slice(0, 10) === todayISO() ||
+          String(meta.lastCompletedDate || "").slice(0, 10) === todayISO() ||
+          (Array.isArray(meta.completionHistory) &&
+            meta.completionHistory.map(String).includes(todayISO()))
+        )
+      );
+    });
+    const addisonDashboardFlagged = addisonDashboardOpen.filter((task) => {
+      const meta = taskDetails(task.id) as any;
+      return Boolean(meta.needsNick || meta.problemFound || meta.problemFlag);
+    });
+
+    return (
+      <>
+        {activePropertyId === "2000" && !isAddisonUser ? (
+          <section
+            style={{
+              ...sectionStyle,
+              marginBottom: 12,
+              padding: 14,
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <div style={eyebrowStyle}>ADDISON</div>
+                <h2 style={{ margin: "3px 0", color: colors.navy, fontSize: 20 }}>
+                  Addison
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScreen("team")}
+                style={goldButtonStyle}
+              >
+                Manage Addison
+              </button>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "repeat(3,minmax(0,1fr))"
+                  : "repeat(3,minmax(120px,1fr))",
+                gap: 8,
+              }}
+            >
+              {[
+                ["Open", addisonDashboardOpen.length],
+                ["Completed Today", addisonDashboardCompletedToday.length],
+                ["Needs Review", addisonDashboardFlagged.length],
+              ].map(([label, value]) => (
+                <div
+                  key={String(label)}
+                  style={{
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 10,
+                    padding: 10,
+                    background: colors.card,
+                  }}
+                >
+                  <small style={fieldLabelStyle}>{String(label).toUpperCase()}</small>
+                  <strong
+                    style={{
+                      display: "block",
+                      marginTop: 3,
+                      color: colors.navy,
+                      fontSize: 18,
+                    }}
+                  >
+                    {value}
+                  </strong>
+                </div>
+              ))}
+            </div>
+            <small style={mutedSmallStyle}>
+              Live shared task status. Open Manage Addison to add, edit, delete, or review his work.
+            </small>
+          </section>
+        ) : null}
+
+        <AtlasDashboardWorkspace {...{
       activePropertyId,
       addAtlasTask,
       addDashboardWorkOrder,
@@ -18697,7 +18798,9 @@ ${notes.trim()}` : notes.trim(),
       workPlanDays,
       workPlanTargetHours,
       workPlanTasks
-    }} />;
+    }} />
+      </>
+    );
   }
   function renderRoutines() {
     const today = todayISO();
