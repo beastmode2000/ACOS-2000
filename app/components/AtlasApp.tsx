@@ -3645,8 +3645,6 @@ export default function AtlasApp() {
                   assignee:
                     nestedMeta.assignee ||
                     record.assignee ||
-                    record.assignedTo ||
-                    record.assigned_to ||
                     "Unassigned",
                   dueDate:
                     nestedMeta.dueDate ||
