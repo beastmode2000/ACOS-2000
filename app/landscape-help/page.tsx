@@ -37,8 +37,6 @@ type AddisonWorkData = {
   tasks: Array<Record<string, any>>;
   dailyNote?: string;
   dailyNoteUpdatedAt?: string;
-  routine: { date: string; name: string; tasks: Array<Record<string, any>> };
-  nextRoutine?: { date: string; name: string; tasks: Array<Record<string, any>> } | null;
 };
 
 type LandscapeApiData = {
@@ -251,7 +249,7 @@ export default function LandscapeHelpPage() {
     }
   }
 
-  async function uploadAddisonPhoto(kind: "task" | "routine", itemId: string, file: File) {
+  async function uploadAddisonPhoto(itemId: string, file: File) {
     if (!shareToken || !file) return;
     setUploadingItemId(itemId);
     setAddisonSync("syncing");
@@ -269,7 +267,7 @@ export default function LandscapeHelpPage() {
           contentType: file.type || undefined,
         },
       );
-      await patchAddison(kind === "task" ? "task-photo" : "routine-photo", {
+      await patchAddison("task-photo", {
         taskId: itemId,
         photo: {
           url: blob.url,
@@ -425,11 +423,10 @@ export default function LandscapeHelpPage() {
       /\bas needed\b|dog area|dock|geese|trash/i.test(title);
 
     const itemCard = (
-      kind: "task" | "routine",
       item: Record<string, any>,
       completed: boolean,
     ) => {
-      const meta = kind === "task" ? taskMeta(item) : item;
+      const meta = taskMeta(item);
       const photos = Array.isArray(meta.photos) ? meta.photos : [];
       const note = String(meta.addisonNote || meta.note || "");
       const flagged = Boolean(meta.needsNick);
@@ -437,7 +434,7 @@ export default function LandscapeHelpPage() {
       const nothingNeeded = Boolean(meta.checkedNothingNeeded);
       const title = String(item.title || "Work item");
       return (
-        <div key={`${kind}-${String(item.id)}`} style={{
+        <div key={`task-${String(item.id)}`} style={{
           border: `1px solid ${problem || flagged ? colors.gold : colors.line}`,
           borderRadius: 14,
           padding: 12,
@@ -450,12 +447,10 @@ export default function LandscapeHelpPage() {
               checked={completed}
               disabled={saving}
               onChange={() =>
-                void patchAddison(
-                  kind === "task" ? "task-status" : "routine-toggle",
-                  kind === "task"
-                    ? { taskId: item.id, status: completed ? "Open" : "Completed" }
-                    : { taskId: item.id },
-                )
+                void patchAddison("task-status", {
+                  taskId: item.id,
+                  status: completed ? "Open" : "Completed",
+                })
               }
               style={{ width: 21, height: 21, marginTop: 2 }}
             />
@@ -465,7 +460,7 @@ export default function LandscapeHelpPage() {
                 color: colors.navy,
                 textDecoration: completed ? "line-through" : "none",
               }}>{title}</strong>
-              {kind === "task" && meta.dueDate ? (
+              {meta.dueDate ? (
                 <small style={{ color: colors.muted }}>Due {formatDate(String(meta.dueDate).slice(0,10))}</small>
               ) : null}
               {nothingNeeded ? <small style={{ display:"block", color: colors.muted, marginTop: 3 }}>Checked — nothing needed</small> : null}
@@ -476,7 +471,7 @@ export default function LandscapeHelpPage() {
             defaultValue={note}
             placeholder="Add a note…"
             onBlur={(event) =>
-              void patchAddison(kind === "task" ? "task-note" : "routine-note", {
+              void patchAddison("task-note", {
                 taskId: item.id,
                 note: event.currentTarget.value,
               })
@@ -489,7 +484,7 @@ export default function LandscapeHelpPage() {
               <button
                 type="button"
                 onClick={() => void patchAddison(
-                  kind === "task" ? "task-nothing-needed" : "routine-nothing-needed",
+                  "task-nothing-needed",
                   { taskId: item.id, value: !nothingNeeded }
                 )}
                 style={styles.secondaryButton}
@@ -500,7 +495,7 @@ export default function LandscapeHelpPage() {
             <button
               type="button"
               onClick={() => void patchAddison(
-                kind === "task" ? "task-flag" : "routine-flag",
+                "task-flag",
                 { taskId: item.id, needsNick: !flagged }
               )}
               style={{ ...styles.secondaryButton, borderColor: flagged ? colors.gold : colors.line }}
@@ -510,7 +505,7 @@ export default function LandscapeHelpPage() {
             <button
               type="button"
               onClick={() => void patchAddison(
-                kind === "task" ? "task-problem" : "routine-problem",
+                "task-problem",
                 { taskId: item.id, problemFound: !problem }
               )}
               style={{ ...styles.secondaryButton, color: problem ? colors.red : colors.text }}
@@ -527,7 +522,7 @@ export default function LandscapeHelpPage() {
                 disabled={uploadingItemId === String(item.id)}
                 onChange={(event) => {
                   const file = event.currentTarget.files?.[0];
-                  if (file) void uploadAddisonPhoto(kind, String(item.id), file);
+                  if (file) void uploadAddisonPhoto(String(item.id), file);
                   event.currentTarget.value = "";
                 }}
               />
@@ -666,7 +661,7 @@ export default function LandscapeHelpPage() {
             <strong>{activeTasks.length} open</strong>
           </div>
           <div style={{ display:"grid", gap:9 }}>
-            {activeTasks.map((item) => itemCard("task", item, false))}
+            {activeTasks.map((item) => itemCard(item, false))}
             {!activeTasks.length ? <p style={styles.muted}>No open assigned tasks.</p> : null}
           </div>
         </section>
@@ -677,7 +672,7 @@ export default function LandscapeHelpPage() {
               Completed Today · {completedTasks.length}
             </summary>
             <div style={{ display:"grid", gap:8, marginTop:10 }}>
-              {completedTasks.map((item) => itemCard("task", item, true))}
+              {completedTasks.map((item) => itemCard(item, true))}
             </div>
           </details>
         ) : null}
