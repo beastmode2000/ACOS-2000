@@ -278,9 +278,19 @@ async function loadAddisonWork() {
     .sort((a, b) => {
       const am = addisonTaskMeta(a);
       const bm = addisonTaskMeta(b);
-      return String(am?.dueDate || '9999-12-31').localeCompare(
+      const ao = Number(am?.addisonOrder || 0);
+      const bo = Number(bm?.addisonOrder || 0);
+      if (ao > 0 || bo > 0) {
+        if (ao <= 0) return 1;
+        if (bo <= 0) return -1;
+        if (ao !== bo) return ao - bo;
+      }
+      const dueCompare = String(am?.dueDate || '9999-12-31').localeCompare(
         String(bm?.dueDate || '9999-12-31'),
       );
+      if (dueCompare) return dueCompare;
+      const weight: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
+      return (weight[String(a.priority || 'Medium')] ?? 1) - (weight[String(b.priority || 'Medium')] ?? 1);
     });
 
   const dailyNoteRows = await sql`
@@ -968,6 +978,9 @@ export async function PATCH(request: NextRequest) {
                   : { recurring: false, interval: 1, unit: "Weeks" };
 
         const locationId = String(body.locationId || "general") || "general";
+        const preferredDay = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].includes(String(body.preferredDay || ""))
+          ? String(body.preferredDay)
+          : "Auto";
         const currentWork = await loadAddisonWork();
         const duplicate = currentWork.tasks.find((task: any) => {
           const meta = addisonTaskMeta(task);
@@ -1017,6 +1030,8 @@ export async function PATCH(request: NextRequest) {
           needsReview: false,
           instructions,
           notes: instructions,
+          preferredDay,
+          addisonOrder: 0,
           createdAt,
           updatedAt: createdAt,
         };
@@ -1027,7 +1042,7 @@ export async function PATCH(request: NextRequest) {
           priority,
           category: "General",
           locationId,
-          preferredDay: "Auto",
+          preferredDay,
           locked: false,
           recurring: recurrence.recurring,
           fixedTime: "",
@@ -1117,6 +1132,9 @@ export async function PATCH(request: NextRequest) {
         const locationId = String(
           body.locationId ?? currentTask.locationId ?? "general",
         ) || "general";
+        const preferredDay = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].includes(String(body.preferredDay || ""))
+          ? String(body.preferredDay)
+          : String(currentTask.preferredDay || currentMeta?.preferredDay || "Auto");
         const priority =
           body.priority === "High" ||
           body.priority === "Medium" ||
@@ -1162,6 +1180,7 @@ export async function PATCH(request: NextRequest) {
             : "This occurrence",
           instructions,
           notes: instructions,
+          preferredDay,
         };
 
         const ok = await patchAddisonTask(taskId, patch);
@@ -1195,6 +1214,7 @@ export async function PATCH(request: NextRequest) {
             title,
             recurring: recurrence.recurring,
             locationId,
+            preferredDay,
             priority,
             minutes,
             notes: instructions,
@@ -1217,6 +1237,39 @@ export async function PATCH(request: NextRequest) {
           mode: "addison",
           addison: await loadAddisonWork(),
         });
+      }
+
+      if (action === "task-prioritize") {
+        const orderedTaskIds = Array.isArray(body.orderedTaskIds)
+          ? body.orderedTaskIds.map(String).filter(Boolean)
+          : [];
+        const currentWork = await loadAddisonWork();
+        const validIds = new Set(currentWork.tasks.map((task: any) => String(task.id || "")));
+        const cleanIds = orderedTaskIds.filter((id: string) => validIds.has(id));
+        const sql = getSql();
+        for (let index = 0; index < cleanIds.length; index += 1) {
+          const taskId = cleanIds[index];
+          const rows = await sql`
+            SELECT record
+            FROM atlas_operational_records
+            WHERE record_type = 'tasks'
+              AND property_id = '2000'
+              AND id = ${taskId}
+            LIMIT 1
+          `;
+          const existing = rows[0]?.record;
+          if (!existing) continue;
+          const meta = addisonTaskMeta(existing) || {};
+          const updatedAt = new Date().toISOString();
+          const nextMeta = { ...meta, assignee: "Addison", addisonOrder: index + 1, updatedAt };
+          const nextRecord = { ...existing, ...nextMeta, taskMeta: nextMeta, updatedAt };
+          await sql`
+            UPDATE atlas_operational_records
+            SET record = ${JSON.stringify(nextRecord)}::jsonb, updated_at = NOW()
+            WHERE record_type = 'tasks' AND property_id = '2000' AND id = ${taskId}
+          `;
+        }
+        return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
       }
 
       if (action === "task-delete") {
