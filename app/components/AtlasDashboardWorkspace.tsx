@@ -279,7 +279,6 @@ export default function AtlasDashboardWorkspace(props: any) {
     workPlanTargetHours,
     workPlanTasks
   } = props;
-  const [dashboardRoutinePerson, setDashboardRoutinePerson] = useState<"Nick" | "Addison">("Nick");
   const dashboardNotesOpenStorageKey = `atlas-dashboard-notes-open-${activePropertyId}`;
   const [dashboardNotesOpen, setDashboardNotesOpen] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -435,28 +434,7 @@ export default function AtlasDashboardWorkspace(props: any) {
         sharedListTaskId: task.id,
       };
     });
-    const addisonRoutineFallback = [
-      { id: "addison-dog-turf", text: "Clean and inspect the dog turf area", completed: false, workOrderId: "routine", workOrderTitle: "Daily Property Routine" },
-      { id: "addison-packages", text: "Check and deliver packages", completed: false, workOrderId: "routine", workOrderTitle: "Daily Property Routine" },
-      { id: "addison-garage-garbage", text: "Check garage garbage and disposal areas", completed: false, workOrderId: "routine", workOrderTitle: "Daily Property Routine" },
-      { id: "addison-sweep", text: "Sweep primary walkways, patios, and courtyard", completed: false, workOrderId: "routine", workOrderTitle: "Daily Grounds Routine" },
-      { id: "addison-pots", text: "Check pots and dry areas for watering needs", completed: false, workOrderId: "routine", workOrderTitle: "Daily Grounds Routine" },
-      { id: "addison-fountain", text: "Inspect fountain condition and water level", completed: false, workOrderId: "routine", workOrderTitle: "Daily Grounds Routine" },
-      { id: "addison-weeding", text: "Complete assigned weeding and grounds work", completed: false, workOrderId: "routine", workOrderTitle: "Assigned Grounds Work" },
-      { id: "addison-final-walk", text: "Complete final property walkthrough and report issues", completed: false, workOrderId: "routine", workOrderTitle: "End-of-Day Check" },
-    ];
-    const storedRoutineChecklistItems = dashboardRoutineItems.map((item) => ({
-      id: item.id,
-      text: item.title,
-      completed: completedDashboardRoutineIds.includes(item.id),
-      workOrderId: "routine",
-      workOrderTitle: item.detail || "Daily Routine",
-    }));
-    const teamChecklistItems = isAddisonUser
-      ? [...storedRoutineChecklistItems, ...assignedChecklistItems, ...sharedListChecklistItems].length
-        ? [...storedRoutineChecklistItems, ...assignedChecklistItems, ...sharedListChecklistItems]
-        : addisonRoutineFallback
-      : [...assignedChecklistItems, ...sharedListChecklistItems];
+    const teamChecklistItems = [...assignedChecklistItems, ...sharedListChecklistItems];
     const completedChecklistCount = teamChecklistItems.filter(
       (item) => item.completed,
     ).length;
@@ -2192,62 +2170,17 @@ export default function AtlasDashboardWorkspace(props: any) {
       </section>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.35fr) minmax(300px,.65fr)", gap: 12, alignItems: "start" }}>
         <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
-              padding: "0 2px",
-            }}
-          >
-            <div>
-              <div style={eyebrowStyle}>Routine View</div>
-              <strong style={{ color: colors.navy }}>
-                {dashboardRoutinePerson === "Nick" ? "My Routine" : "Addison’s Routine"}
-              </strong>
-            </div>
-            <div
-              role="group"
-              aria-label="Routine person"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 4,
-                padding: 4,
-                border: `1px solid ${colors.line}`,
-                borderRadius: 11,
-                background: "#F8FAFC",
-              }}
-            >
-              {(["Nick", "Addison"] as const).map((person) => (
-                <button
-                  key={person}
-                  type="button"
-                  onClick={() => setDashboardRoutinePerson(person)}
-                  style={{
-                    ...(dashboardRoutinePerson === person
-                      ? goldButtonStyle
-                      : secondaryButtonStyle),
-                    minHeight: 32,
-                    padding: "5px 10px",
-                    fontSize: 12,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {person === "Nick" ? "My Routine" : "Addison"}
-                </button>
-              ))}
-            </div>
+          <div style={{ padding: "0 2px" }}>
+            <div style={eyebrowStyle}>Routine View</div>
+            <strong style={{ color: colors.navy }}>My Routine</strong>
           </div>
 
           <AtlasRoutines
             mode="dashboard"
             isMobile={isMobile}
             activePropertyId={activePropertyId}
-            assigneeFilter={dashboardRoutinePerson}
-            defaultTodayAssignee={dashboardRoutinePerson}
+            assigneeFilter="Nick"
+            defaultTodayAssignee="Nick"
             onOpenManager={() => setScreen("routines")}
             onAddPhoto={addRoutinePhoto}
             onAddNote={addRoutineNote}
