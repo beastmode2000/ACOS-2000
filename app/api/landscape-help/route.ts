@@ -157,6 +157,31 @@ function nextRecurringDate(
   return date.toISOString().slice(0, 10);
 }
 
+function addDateKeyDays(dateKey: string, days: number) {
+  const date = new Date(`${dateKey}T12:00:00-07:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function mondayForDateKey(dateKey: string) {
+  const date = new Date(`${dateKey}T12:00:00-07:00`);
+  const day = date.getDay();
+  const offset = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
+function weekdayLabel(dateKey: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    weekday: "long",
+  }).format(new Date(`${dateKey}T12:00:00-07:00`));
+}
+
+function cleanHistoryText(value: unknown) {
+  return String(value || "").trim();
+}
+
 async function loadAddisonWork() {
   await ensureAddisonBackingTables();
 
@@ -248,15 +273,33 @@ async function loadAddisonWork() {
     });
 
   const dailyNoteRows = await sql`
-    SELECT record
+    SELECT id, record, updated_at
     FROM atlas_operational_records
     WHERE record_type = 'addison_daily_note'
       AND property_id = '2000'
-      AND id = ${today}
-    LIMIT 1
+    ORDER BY id DESC
+    LIMIT 45
   `;
 
-  const dailyNoteRecord = dailyNoteRows[0]?.record || {};
+  const dailyNoteRecord = dailyNoteRows.find((row: any) => String(row.id || "") === today)?.record || {};
+
+  const completionRows = await sql`
+    SELECT id, record, updated_at
+    FROM atlas_operational_records
+    WHERE record_type = 'addison_completion_history'
+      AND property_id = '2000'
+    ORDER BY updated_at DESC
+    LIMIT 250
+  `;
+
+  const taskNoteRows = await sql`
+    SELECT id, record, updated_at
+    FROM atlas_operational_records
+    WHERE record_type = 'addison_note_history'
+      AND property_id = '2000'
+    ORDER BY updated_at DESC
+    LIMIT 150
+  `;
 
   const locationRows = await sql`
     SELECT id, record
@@ -272,12 +315,136 @@ async function loadAddisonWork() {
   }));
 
 
+  const locationNameById = new Map(
+    locations.map((location: any) => [String(location.id || ""), String(location.name || "")]),
+  );
+
+  const storedHistory = completionRows.map((row: any) => {
+    const record = row.record || {};
+    const locationId = String(record.locationId || "general");
+    return {
+      id: String(row.id || record.id || ""),
+      taskId: String(record.taskId || ""),
+      title: String(record.title || "Task"),
+      date: String(record.date || "").slice(0, 10),
+      completedAt: String(record.completedAt || row.updated_at || ""),
+      locationId,
+      locationName: String(record.locationName || locationNameById.get(locationId) || (locationId === "general" ? "General" : locationId)),
+      note: String(record.note || ""),
+      instructions: String(record.instructions || ""),
+      recurring: Boolean(record.recurring),
+      frequency: String(record.frequency || ""),
+    };
+  }).filter((item: any) => item.date && item.taskId);
+
+  // Backfill completion history from the task metadata so completions made before
+  // the permanent history table existed are still visible to Nick.
+  const virtualHistory: Array<Record<string, any>> = [];
+  for (const task of allTasks.filter(isAddisonAssigned)) {
+    const meta = addisonTaskMeta(task) || {};
+    const dates = Array.isArray(meta?.completionHistory)
+      ? meta.completionHistory.map((value: unknown) => String(value || "").slice(0, 10)).filter(Boolean)
+      : [];
+    for (const date of dates) {
+      const locationId = String(task.locationId || "general");
+      virtualHistory.push({
+        id: `legacy::${date}::${String(task.id || "")}`,
+        taskId: String(task.id || ""),
+        title: String(task.title || "Task"),
+        date,
+        completedAt: date === String(meta?.lastCompletedDate || "").slice(0, 10)
+          ? String(meta?.completedAt || `${date}T12:00:00-07:00`)
+          : `${date}T12:00:00-07:00`,
+        locationId,
+        locationName: String(locationNameById.get(locationId) || (locationId === "general" ? "General" : locationId)),
+        note: String(meta?.addisonNote || ""),
+        instructions: String(meta?.instructions || task.notes || ""),
+        recurring: Boolean(task.recurring),
+        frequency: task.recurring
+          ? `${Math.max(1, Number(meta?.recurrenceInterval || 1))} ${String(meta?.recurrenceUnit || "Weeks")}`
+          : "One-time",
+      });
+    }
+  }
+
+  const historyByKey = new Map<string, Record<string, any>>();
+  for (const item of [...virtualHistory, ...storedHistory]) {
+    historyByKey.set(`${String(item.taskId)}::${String(item.date)}`, item);
+  }
+  const history = Array.from(historyByKey.values())
+    .sort((a, b) => String(b.completedAt || b.date).localeCompare(String(a.completedAt || a.date)))
+    .slice(0, 250);
+
+  const dailyNotes = dailyNoteRows
+    .map((row: any) => ({
+      id: String(row.id || ""),
+      date: String(row.id || row.record?.date || "").slice(0, 10),
+      note: cleanHistoryText(row.record?.note),
+      updatedAt: String(row.record?.updatedAt || row.updated_at || ""),
+    }))
+    .filter((item: any) => item.date && item.note);
+
+  const persistedTaskNotes = taskNoteRows
+    .map((row: any) => ({
+      id: String(row.id || ""),
+      taskId: String(row.record?.taskId || ""),
+      taskTitle: String(row.record?.taskTitle || "Task"),
+      date: String(row.record?.date || pacificDateKey(new Date(row.updated_at))).slice(0, 10),
+      note: cleanHistoryText(row.record?.note),
+      updatedAt: String(row.record?.updatedAt || row.updated_at || ""),
+    }))
+    .filter((item: any) => item.note);
+
+  const taskNoteKeys = new Set(persistedTaskNotes.map((item: any) => `${item.taskId}::${item.note}`));
+  const currentTaskNotes = allTasks
+    .filter(isAddisonAssigned)
+    .map((task) => {
+      const meta = addisonTaskMeta(task) || {};
+      const note = cleanHistoryText(meta?.addisonNote);
+      const updatedAt = String(meta?.updatedAt || task.updatedAt || task.serverUpdatedAt || "");
+      const taskId = String(task.id || "");
+      return {
+        id: `current-note::${taskId}`,
+        taskId,
+        taskTitle: String(task.title || "Task"),
+        date: updatedAt ? pacificDateKey(new Date(updatedAt)) : today,
+        note,
+        updatedAt,
+      };
+    })
+    .filter((item) => item.note && !taskNoteKeys.has(`${item.taskId}::${item.note}`));
+
+  const taskNotes = [...persistedTaskNotes, ...currentTaskNotes]
+    .sort((a, b) => String(b.updatedAt || b.date).localeCompare(String(a.updatedAt || a.date)))
+    .slice(0, 150);
+
+  const weekStart = mondayForDateKey(today);
+  const weekEnd = addDateKeyDays(weekStart, 6);
+  const weekHistory = history.filter((item: any) => item.date >= weekStart && item.date <= weekEnd);
+  const weekDailyNotes = dailyNotes.filter((item: any) => item.date >= weekStart && item.date <= weekEnd);
+  const lines = ["Addison"];
+  for (let offset = 0; offset < 7; offset += 1) {
+    const date = addDateKeyDays(weekStart, offset);
+    const completed = weekHistory.filter((item: any) => item.date === date);
+    const dayNotes = weekDailyNotes.filter((item: any) => item.date === date);
+    if (!completed.length && !dayNotes.length) continue;
+    const parts: string[] = [];
+    if (completed.length) parts.push(completed.map((item: any) => item.title).join(", "));
+    for (const note of dayNotes) parts.push(`Note: ${note.note}`);
+    lines.push(`${weekdayLabel(date)} — ${parts.join("; ")}`);
+  }
+
   return {
     today,
     tasks,
     locations,
     dailyNote: String(dailyNoteRecord.note || ''),
     dailyNoteUpdatedAt: String(dailyNoteRecord.updatedAt || ''),
+    history,
+    dailyNotes,
+    taskNotes,
+    weekStart,
+    weeklySummary: lines.join("\n"),
   };
 }
 
@@ -1072,6 +1239,7 @@ export async function PATCH(request: NextRequest) {
           : history.filter((value: string) => value !== today);
 
         const recurring = Boolean(currentTask?.recurring);
+        const completedAt = completed ? new Date().toISOString() : "";
         const ok = await patchAddisonTask(
           taskId,
           completed && recurring
@@ -1079,7 +1247,7 @@ export async function PATCH(request: NextRequest) {
                 // Keep the completed occurrence completed and visible. Store the next
                 // due date separately; loadAddisonWork reopens it only when that date arrives.
                 status: "Completed",
-                completedAt: new Date().toISOString(),
+                completedAt,
                 lastCompletedDate: today,
                 completionHistory: nextHistory,
                 nextDueDate: nextRecurringDate(
@@ -1091,7 +1259,7 @@ export async function PATCH(request: NextRequest) {
               }
             : {
                 status,
-                completedAt: completed ? new Date().toISOString() : undefined,
+                completedAt: completed ? completedAt : undefined,
                 lastCompletedDate: completed
                   ? today
                   : String(currentMeta?.lastCompletedDate || "").slice(0, 10) === today
@@ -1103,6 +1271,62 @@ export async function PATCH(request: NextRequest) {
               },
         );
         if (!ok) return NextResponse.json({ ok: false, error: "Addison task not found." }, { status: 404 });
+
+        const sql = getSql();
+        const historyId = `${today}::${taskId}`;
+        if (completed && currentTask) {
+          const locationId = String(currentTask.locationId || "general");
+          const locationRows = await sql`
+            SELECT record
+            FROM atlas_operational_records
+            WHERE record_type = 'locations'
+              AND property_id = '2000'
+              AND id = ${locationId}
+            LIMIT 1
+          `;
+          const locationName = String(
+            locationRows[0]?.record?.name ||
+            locationRows[0]?.record?.title ||
+            (locationId === "general" ? "General" : locationId),
+          );
+          const historyRecord = {
+            id: historyId,
+            taskId,
+            title: String(currentTask.title || "Task"),
+            date: today,
+            completedAt,
+            locationId,
+            locationName,
+            note: String(currentMeta?.addisonNote || ""),
+            instructions: String(currentMeta?.instructions || currentTask.notes || ""),
+            recurring,
+            frequency: recurring
+              ? `${Math.max(1, Number(currentMeta?.recurrenceInterval || 1))} ${String(currentMeta?.recurrenceUnit || "Weeks")}`
+              : "One-time",
+          };
+          await sql`
+            INSERT INTO atlas_operational_records (
+              record_type, id, property_id, record, updated_at
+            )
+            VALUES (
+              'addison_completion_history', ${historyId}, '2000',
+              ${JSON.stringify(historyRecord)}::jsonb, NOW()
+            )
+            ON CONFLICT (record_type, id)
+            DO UPDATE SET
+              property_id = EXCLUDED.property_id,
+              record = EXCLUDED.record,
+              updated_at = NOW()
+          `;
+        } else if (!completed) {
+          await sql`
+            DELETE FROM atlas_operational_records
+            WHERE record_type = 'addison_completion_history'
+              AND property_id = '2000'
+              AND id = ${historyId}
+          `;
+        }
+
         return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
       }
 
@@ -1148,8 +1372,36 @@ export async function PATCH(request: NextRequest) {
       if (action === "task-note") {
         const taskId = String(body.taskId || "");
         const note = String(body.note || "");
-        const ok = await patchAddisonTask(taskId, { addisonNote: note });
+        const currentWork = await loadAddisonWork();
+        const currentTask = currentWork.tasks.find((task: any) => String(task.id || "") === taskId);
+        const currentMeta = currentTask ? addisonTaskMeta(currentTask) : {};
+        const previousNote = String(currentMeta?.addisonNote || "");
+        const updatedAt = new Date().toISOString();
+        const ok = await patchAddisonTask(taskId, { addisonNote: note, addisonNoteUpdatedAt: updatedAt });
         if (!ok) return NextResponse.json({ ok: false, error: "Addison task not found." }, { status: 404 });
+
+        if (note.trim() && note.trim() !== previousNote.trim()) {
+          const sql = getSql();
+          const noteId = `${taskId}::${Date.now()}::${Math.random().toString(36).slice(2, 7)}`;
+          const noteRecord = {
+            id: noteId,
+            taskId,
+            taskTitle: String(currentTask?.title || "Task"),
+            date: today,
+            note,
+            updatedAt,
+          };
+          await sql`
+            INSERT INTO atlas_operational_records (
+              record_type, id, property_id, record, updated_at
+            )
+            VALUES (
+              'addison_note_history', ${noteId}, '2000',
+              ${JSON.stringify(noteRecord)}::jsonb, NOW()
+            )
+          `;
+        }
+
         return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
       }
 
