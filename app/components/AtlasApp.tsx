@@ -18546,6 +18546,84 @@ ${notes.trim()}` : notes.trim(),
     );
   }
 
+  async function createAddisonDashboardTask(titleValue: string) {
+    const title = String(titleValue || "").trim();
+    if (!title || activePropertyId !== "2000") return "";
+
+    const dueDate = todayISO();
+    const duplicate = workPlanTasks.find((task) => {
+      const meta = taskDetails(task.id);
+      return (
+        meta.status !== "Completed" &&
+        String(meta.assignee || "").trim().toLowerCase() === "addison" &&
+        String(meta.dueDate || "").slice(0, 10) === dueDate &&
+        String(task.title || "").trim().toLowerCase() === title.toLowerCase()
+      );
+    });
+    if (duplicate) {
+      setSelectedTaskId(duplicate.id);
+      showSaveToast("That Addison task already exists.");
+      return duplicate.id;
+    }
+
+    const createdAt = new Date().toISOString();
+    const category = inferTaskCategory(title);
+    const task: WorkPlanTask = {
+      id: uid("task"),
+      title,
+      minutes: 30,
+      priority: "Medium",
+      category,
+      locationId: "general",
+      preferredDay: inferTaskDay(title, category),
+      locked: false,
+      recurring: false,
+      fixedTime: "",
+      notes: "",
+    };
+    const meta: AtlasTaskMeta = {
+      status: "Open",
+      dueDate,
+      assignee: "Addison",
+      createdAt,
+      completedAt: undefined,
+      notes: "",
+      instructions: "",
+      addisonNote: "",
+      problemFlag: "",
+      recurrenceInterval: 1,
+      recurrenceUnit: "Weeks",
+      recurrenceEndDate: "",
+      lastCompletedDate: "",
+      completionHistory: [],
+      season: "Year-Round",
+      weatherDependency: "None",
+      flexibleTime: true,
+      skippable: true,
+      assignmentScope: "This occurrence",
+      needsReview: false,
+      updatedAt: createdAt,
+    };
+
+    clearTaskTombstone(task.id);
+    setWorkPlanTasks((current) => [task, ...current]);
+    setTaskMeta((current) => ({ ...current, [task.id]: meta }));
+    setSelectedTaskId(task.id);
+
+    const saved = await postAtlasRecord("tasks" as AtlasTable, {
+      ...task,
+      ...meta,
+      taskMeta: meta,
+      propertyId: activePropertyId,
+      updatedAt: createdAt,
+    });
+
+    recordAtlasAudit("Task assigned", `${task.title} → Addison · ${formatDate(dueDate)}`);
+    if (saved) showSaveToast(`${task.title} added to Addison.`);
+    else showSaveToast("Task is visible here, but shared Atlas has not confirmed it yet.", "warning");
+    return task.id;
+  }
+
   function renderDashboard() {
     const addisonDashboardTasks = workPlanTasks.filter(
       (task) => String(taskDetails(task.id).assignee || "").trim().toLowerCase() === "addison",
@@ -18651,6 +18729,7 @@ ${notes.trim()}` : notes.trim(),
         <AtlasDashboardWorkspace {...{
       activePropertyId,
       addAtlasTask,
+      createAddisonDashboardTask,
       addDashboardWorkOrder,
       addRoutineNote,
       addRoutinePhoto,
