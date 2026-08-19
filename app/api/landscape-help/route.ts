@@ -1564,4 +1564,3 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
-
