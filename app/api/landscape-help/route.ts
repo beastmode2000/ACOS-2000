@@ -188,6 +188,16 @@ async function loadAddisonWork() {
   const sql = getSql();
   const today = pacificDateKey();
 
+  const deletedTaskRows = await sql`
+    SELECT id
+    FROM atlas_operational_records
+    WHERE record_type = 'addison_task_tombstone'
+      AND property_id = '2000'
+  `;
+  const deletedTaskIds = new Set(
+    deletedTaskRows.map((row: any) => String(row.id || "")).filter(Boolean),
+  );
+
   const rows = await sql`
     SELECT id, record, updated_at
     FROM atlas_operational_records
@@ -247,6 +257,7 @@ async function loadAddisonWork() {
 
   const seenTasks = new Set<string>();
   const tasks = allTasks
+    .filter((task) => !deletedTaskIds.has(String(task.id || "")))
     .filter(isAddisonAssigned)
     .filter((task) => {
       const meta = addisonTaskMeta(task);
@@ -445,6 +456,7 @@ async function loadAddisonWork() {
     taskNotes,
     weekStart,
     weeklySummary: lines.join("\n"),
+    deletedTaskIds: Array.from(deletedTaskIds),
   };
 }
 
@@ -1208,19 +1220,54 @@ export async function PATCH(request: NextRequest) {
       }
 
       if (action === "task-delete") {
-        const taskId = String(body.taskId || "");
-        const currentWork = await loadAddisonWork();
-        const currentTask = currentWork.tasks.find((task: any) => String(task.id) === taskId);
-        if (!currentTask) {
-          return NextResponse.json({ ok: false, error: "Addison task not found." }, { status: 404 });
+        const taskId = String(body.taskId || "").trim();
+        if (!taskId) {
+          return NextResponse.json({ ok: false, error: "Missing Addison task id." }, { status: 400 });
         }
+
         const sql = getSql();
+        const existingRows = await sql`
+          SELECT record
+          FROM atlas_operational_records
+          WHERE record_type = 'tasks'
+            AND property_id = '2000'
+            AND id = ${taskId}
+          LIMIT 1
+        `;
+        const existingRecord = existingRows[0]?.record || {};
+        const deletedAt = new Date().toISOString();
+        const tombstoneRecord = {
+          taskId,
+          title: String(existingRecord?.title || "Addison task"),
+          deletedAt,
+          deletedBy: "Atlas Admin",
+        };
+
+        // Persist the deletion independently from the task row. Atlas has multiple
+        // task sync paths; this tombstone prevents an older browser snapshot from
+        // recreating a task that Nick intentionally removed from Addison's master list.
+        await sql`
+          INSERT INTO atlas_operational_records (
+            record_type, id, property_id, record, updated_at
+          )
+          VALUES (
+            'addison_task_tombstone', ${taskId}, '2000',
+            ${JSON.stringify(tombstoneRecord)}::jsonb, NOW()
+          )
+          ON CONFLICT (record_type, id)
+          DO UPDATE SET
+            property_id = EXCLUDED.property_id,
+            record = EXCLUDED.record,
+            updated_at = NOW()
+        `;
+
         await sql`
           DELETE FROM atlas_operational_records
           WHERE record_type = 'tasks'
             AND property_id = '2000'
             AND id = ${taskId}
         `;
+
         return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
       }
 
