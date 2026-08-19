@@ -96,31 +96,6 @@ function task(
 function starterLists(): TeamList[] {
   return [
     {
-      id: "addison-daily-routine",
-      name: "Addison Daily Routine",
-      description:
-        "Daily appearance, cleanup, watering, inspections, and reporting.",
-      defaultAssignee: "Addison",
-      propertyIds: ["2000"],
-      schedule: "Monday-Friday",
-      active: true,
-      tasks: [
-        task("Walk the property and report anything unusual", "Addison"),
-        task(
-          "Clean the dog turf and trampoline area",
-          "Addison",
-          "Trampoline / Dog",
-        ),
-        task("Pick up litter, branches, and visible debris", "Addison"),
-        task("Check packages and garage garbage", "Addison", "Garages"),
-        task("Check and refill fountains as needed", "Addison", "Courtyard"),
-        task("Water pots and obvious dry spots", "Addison"),
-        task("Sweep courtyard, patios, and main walkways", "Addison"),
-        task("Walk the dock and remove goose debris", "Addison", "Dock"),
-        task("Put tools away and report unfinished work", "Addison"),
-      ],
-    },
-    {
       id: "pat-tuesday-landscaping",
       name: "Tuesday Landscaping Crew",
       description:
@@ -250,8 +225,15 @@ export default function AtlasTeamWork({
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       const parsed = raw ? (JSON.parse(raw) as TeamList[]) : null;
-      const next =
-        Array.isArray(parsed) && parsed.length ? parsed : starterLists();
+      const stored = Array.isArray(parsed) ? parsed : [];
+      const withoutLegacyAddisonRoutine = stored.filter(
+        (list) =>
+          list.id !== "addison-daily-routine" &&
+          list.name.trim().toLowerCase() !== "addison daily routine",
+      );
+      const next = withoutLegacyAddisonRoutine.length
+        ? withoutLegacyAddisonRoutine
+        : starterLists();
       setLists(next);
       setSelectedListId(next[0]?.id || "");
     } catch {
