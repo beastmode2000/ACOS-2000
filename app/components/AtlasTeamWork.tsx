@@ -74,11 +74,6 @@ type AddisonLiveWork = {
   locations?: Array<{ id: string; name: string }>;
   dailyNote?: string;
   dailyNoteUpdatedAt?: string;
-  routine?: {
-    date: string;
-    name: string;
-    tasks: Array<Record<string, any>>;
-  };
 };
 
 function addisonMeta(task: Record<string, any>) {
@@ -238,17 +233,6 @@ export default function AtlasTeamWork({
   const [editingPriority, setEditingPriority] =
     useState<"High" | "Medium" | "Low">("Medium");
   const [editingMinutes, setEditingMinutes] = useState(30);
-  const [routineName, setRoutineName] = useState("Addison Routine");
-  const [routineTasks, setRoutineTasks] = useState<Array<Record<string, any>>>([]);
-  const [routineSaving, setRoutineSaving] = useState(false);
-  const [routineAddOpen, setRoutineAddOpen] = useState(false);
-  const [newRoutineTitle, setNewRoutineTitle] = useState("");
-  const [newRoutineFrequency, setNewRoutineFrequency] = useState<"Daily" | "Weekly" | "Biweekly" | "Monthly">("Daily");
-  const [newRoutineStartDate, setNewRoutineStartDate] = useState(() => {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    return now.toISOString().slice(0, 10);
-  });
 
   async function loadAddisonWork(showLoading = false) {
     if (activePropertyId !== "2000") {
@@ -267,10 +251,6 @@ export default function AtlasTeamWork({
       }
       const work = payload.addison as AddisonLiveWork;
       setAddisonWork(work);
-      if (showLoading) {
-        setRoutineName(work.routine?.name || "Addison Routine");
-        setRoutineTasks(Array.isArray(work.routine?.tasks) ? work.routine!.tasks : []);
-      }
       setAddisonLiveMessage("");
     } catch (error) {
       setAddisonLiveMessage(
@@ -305,10 +285,6 @@ export default function AtlasTeamWork({
     if (payload.addison) {
       const work = payload.addison as AddisonLiveWork;
       setAddisonWork(work);
-      if (action === "routine-save") {
-        setRoutineName(work.routine?.name || "Addison Routine");
-        setRoutineTasks(Array.isArray(work.routine?.tasks) ? work.routine!.tasks : []);
-      }
     }
     if (successMessage) setAddisonLiveMessage(successMessage);
     return payload;
@@ -718,108 +694,6 @@ export default function AtlasTeamWork({
     }
   }
 
-  function addRoutineItem() {
-    setRoutineTasks((current) => [
-      ...current,
-      {
-        id: `addison-routine-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        title: "New routine item",
-        enabled: true,
-        frequency: "Daily",
-        startDate: new Date().toISOString().slice(0, 10),
-      },
-    ]);
-  }
-
-  function updateRoutineItem(id: string, patch: Record<string, unknown>) {
-    setRoutineTasks((current) =>
-      current.map((item) => (String(item.id) === id ? { ...item, ...patch } : item)),
-    );
-  }
-
-  function moveRoutineItem(index: number, direction: -1 | 1) {
-    setRoutineTasks((current) => {
-      const target = index + direction;
-      if (target < 0 || target >= current.length) return current;
-      const next = [...current];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  }
-
-  async function saveRoutine() {
-    if (routineSaving) return;
-    setRoutineSaving(true);
-    try {
-      await patchAddisonLive(
-        "routine-save",
-        {
-          name: routineName.trim() || "Addison Routine",
-          tasks: routineTasks.map((item) => ({
-            id: String(item.id || ""),
-            title: String(item.title || "").trim(),
-            enabled: item.enabled !== false,
-            frequency: String(item.frequency || "Daily"),
-            startDate: String(item.startDate || new Date().toISOString().slice(0, 10)),
-          })),
-        },
-        "Routine saved.",
-      );
-    } catch (error) {
-      setAddisonLiveMessage(
-        error instanceof Error ? error.message : "Could not save routine.",
-      );
-    } finally {
-      setRoutineSaving(false);
-    }
-  }
-
-  async function saveNewRoutineItem() {
-    const title = newRoutineTitle.trim();
-    if (!title || routineSaving) return;
-    const next = [
-      ...routineTasks,
-      {
-        id: `addison-routine-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        title,
-        enabled: true,
-        frequency: newRoutineFrequency,
-        startDate: newRoutineStartDate,
-      },
-    ];
-    setRoutineSaving(true);
-    try {
-      await patchAddisonLive(
-        "routine-save",
-        { name: routineName.trim() || "Addison Routine", tasks: next },
-        "Routine added.",
-      );
-      setNewRoutineTitle("");
-      setNewRoutineFrequency("Daily");
-      setRoutineAddOpen(false);
-    } catch (error) {
-      setAddisonLiveMessage(error instanceof Error ? error.message : "Could not add routine.");
-    } finally {
-      setRoutineSaving(false);
-    }
-  }
-
-  async function deleteRoutineItemNow(itemId: string) {
-    if (!window.confirm("Delete this routine item?")) return;
-    const next = routineTasks.filter((item) => String(item.id) !== itemId);
-    setRoutineSaving(true);
-    try {
-      await patchAddisonLive(
-        "routine-save",
-        { name: routineName.trim() || "Addison Routine", tasks: next },
-        "Routine deleted.",
-      );
-    } catch (error) {
-      setAddisonLiveMessage(error instanceof Error ? error.message : "Could not delete routine.");
-    } finally {
-      setRoutineSaving(false);
-    }
-  }
 
   return (
     <section style={{ display: "grid", gap: 16 }}>
@@ -829,7 +703,7 @@ export default function AtlasTeamWork({
           <h1 style={titleStyle}>{teamView === "addison" ? "Addison" : "Team"}</h1>
           <p style={heroCopyStyle}>
             {teamView === "addison"
-              ? "Add tasks and routines here. Changes sync directly with Addison."
+              ? "Add tasks here. Changes sync directly with Addison."
               : `Manage people, helpers, assignments, roles, and property access for ${activePropertyId}.`}
           </p>
         </div>
@@ -846,16 +720,6 @@ export default function AtlasTeamWork({
                 }}
               >
                 {assignmentOpen ? "Close Add Task" : "Add Task"}
-              </button>
-              <button
-                type="button"
-                style={lightButtonStyle}
-                onClick={() => {
-                  setRoutineAddOpen((open) => !open);
-                  setAddisonLiveMessage("");
-                }}
-              >
-                {routineAddOpen ? "Close Add Routine" : "Add Routine"}
               </button>
               <button
                 type="button"
@@ -899,24 +763,6 @@ export default function AtlasTeamWork({
         </div>
       ) : null}
 
-      {teamView === "addison" && routineAddOpen ? (
-        <div style={{ ...panelStyle, display: "grid", gap: 12 }}>
-          <div>
-            <div style={eyebrowStyle}>ADDISON</div>
-            <h2 style={{ margin: "4px 0", color: colors.text }}>Add Routine</h2>
-          </div>
-          <div className="atlas-addison-assignment-grid" style={{ display: "grid", gridTemplateColumns: "minmax(260px,1.5fr) minmax(150px,.7fr) minmax(150px,.7fr)", gap: 10 }}>
-            <label style={labelStyle}>Routine<input value={newRoutineTitle} onChange={(event) => setNewRoutineTitle(event.currentTarget.value)} placeholder="Routine item" style={fieldStyle} autoFocus /></label>
-            <label style={labelStyle}>Repeat<select value={newRoutineFrequency} onChange={(event) => setNewRoutineFrequency(event.currentTarget.value as "Daily" | "Weekly" | "Biweekly" | "Monthly")} style={fieldStyle}><option value="Daily">Daily</option><option value="Weekly">Weekly</option><option value="Biweekly">Every 2 weeks</option><option value="Monthly">Monthly</option></select></label>
-            <label style={labelStyle}>Starts<input type="date" value={newRoutineStartDate} onChange={(event) => setNewRoutineStartDate(event.currentTarget.value)} style={fieldStyle} /></label>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" style={goldButtonStyle} disabled={routineSaving || !newRoutineTitle.trim()} onClick={() => void saveNewRoutineItem()}>{routineSaving ? "Saving…" : "Add Routine"}</button>
-            <button type="button" style={lightButtonStyle} onClick={() => { setRoutineAddOpen(false); setNewRoutineTitle(""); }}>Cancel</button>
-          </div>
-        </div>
-      ) : null}
-
       {teamView === "addison" ? (
         activePropertyId !== "2000" ? (
           <div style={emptyStyle}>Addison is assigned to property 2000.</div>
@@ -934,12 +780,6 @@ export default function AtlasTeamWork({
                 value={(addisonWork?.tasks || []).filter(
                   (task) => String(addisonMeta(task)?.status || "") === "Completed",
                 ).length}
-              />
-              <Stat
-                label="Routine"
-                value={`${(addisonWork?.routine?.tasks || []).filter(
-                  (item) => Boolean(item.completed) || String(item.status || "") === "completed",
-                ).length}/${addisonWork?.routine?.tasks?.length || 0}`}
               />
               <Stat label="Sync" value={addisonLoading ? "Loading" : "Live"} />
             </div>
@@ -1037,42 +877,6 @@ export default function AtlasTeamWork({
               </div>
             </div>
 
-            <div id="addison-routine-manager" style={panelStyle}>
-              <div style={editorHeaderStyle}>
-                <div>
-                  <div style={eyebrowStyle}>ROUTINE</div>
-                  <h2 style={{ margin: "3px 0", color: colors.text }}>Routine</h2>
-                </div>
-                <button type="button" style={goldButtonStyle} disabled={routineSaving} onClick={() => void saveRoutine()}>
-                  {routineSaving ? "Saving…" : "Save Changes"}
-                </button>
-              </div>
-              <label style={{ ...labelStyle, marginTop: 12 }}>
-                Routine name
-                <input value={routineName} onChange={(e) => setRoutineName(e.currentTarget.value)} style={fieldStyle} />
-              </label>
-              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                {routineTasks.map((item, index) => (
-                  <div key={String(item.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(125px,.45fr) minmax(140px,.5fr) auto", gap: 8, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 10, padding: 9 }}>
-                    <input
-                      value={String(item.title || "")}
-                      onChange={(e) => updateRoutineItem(String(item.id), { title: e.currentTarget.value })}
-                      style={fieldStyle}
-                    />
-                    <select value={String(item.frequency || "Daily")} onChange={(e) => updateRoutineItem(String(item.id), { frequency: e.currentTarget.value })} style={fieldStyle}>
-                      <option value="Daily">Daily</option><option value="Weekly">Weekly</option><option value="Biweekly">Every 2 weeks</option><option value="Monthly">Monthly</option>
-                    </select>
-                    <input type="date" value={String(item.startDate || new Date().toISOString().slice(0,10))} onChange={(e) => updateRoutineItem(String(item.id), { startDate: e.currentTarget.value })} style={fieldStyle} />
-                    <div style={{ display: "flex", gap: 5 }}>
-                      <button type="button" disabled={index === 0} onClick={() => moveRoutineItem(index, -1)} style={iconButtonStyle}>↑</button>
-                      <button type="button" disabled={index === routineTasks.length - 1} onClick={() => moveRoutineItem(index, 1)} style={iconButtonStyle}>↓</button>
-                      <button type="button" onClick={() => void deleteRoutineItemNow(String(item.id))} style={{ ...iconButtonStyle, color: colors.red }}>×</button>
-                    </div>
-                  </div>
-                ))}
-                {!routineTasks.length ? <div style={emptyStyle}>No routine items.</div> : null}
-              </div>
-            </div>
           </div>
         )
       ) : null}
