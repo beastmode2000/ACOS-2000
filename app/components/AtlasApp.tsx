@@ -18773,10 +18773,11 @@ ${notes.trim()}` : notes.trim(),
     if (!title || activePropertyId !== "2000") return "";
 
     try {
-      const response = await fetch("/api/landscape-help?addison=1", {
+      const response = await fetch("/api/landscape-help?token=addison-2000-7f94f468dca84de3a7b8c2d942ca3819", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          token: "addison-2000-7f94f468dca84de3a7b8c2d942ca3819",
           action: "task-create",
           title,
           dueDate: todayISO(),
@@ -18899,10 +18900,10 @@ ${notes.trim()}` : notes.trim(),
         };
       }
 
-      const response = await fetch("/api/landscape-help?addison=1", {
+      const response = await fetch("/api/landscape-help?token=addison-2000-7f94f468dca84de3a7b8c2d942ca3819", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ token: "addison-2000-7f94f468dca84de3a7b8c2d942ca3819", ...body }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload?.ok || payload?.mode !== "addison") {
