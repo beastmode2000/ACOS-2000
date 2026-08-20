@@ -267,7 +267,7 @@ export default function AtlasTeamWork({
   const [lists, setLists] = useState<TeamList[]>([]);
   const [selectedListId, setSelectedListId] = useState("");
   const [search, setSearch] = useState("");
-  const [teamView, setTeamView] = useState<"addison" | "assignments" | "people">("addison");
+  const [teamView, setTeamView] = useState<"addison" | "assignments" | "people">("people");
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [memberMessage, setMemberMessage] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
