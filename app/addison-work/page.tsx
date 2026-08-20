@@ -364,9 +364,19 @@ export default function LandscapeHelpPage() {
     const today = addisonData.today;
     const taskMeta = (task: Record<string, any>) =>
       task.taskMeta && typeof task.taskMeta === "object" ? task.taskMeta : task;
-    const activeTasks = addisonData.tasks.filter((task) => taskMeta(task).status !== "Completed");
-    const completedTasks = addisonData.tasks.filter((task) => taskMeta(task).status === "Completed");
-    const total = addisonData.tasks.length;
+    const isPaused = (task: Record<string, any>) => Boolean(taskMeta(task).paused);
+    const isDueNow = (task: Record<string, any>) => {
+      const dueDate = String(taskMeta(task).dueDate || "").slice(0, 10);
+      return !dueDate || dueDate <= today;
+    };
+    const completedToday = (task: Record<string, any>) => {
+      const meta = taskMeta(task);
+      const history = Array.isArray(meta.completionHistory) ? meta.completionHistory.map(String) : [];
+      return history.includes(today) || String(meta.completedAt || "").slice(0, 10) === today || String(meta.lastCompletedDate || "").slice(0, 10) === today;
+    };
+    const activeTasks = addisonData.tasks.filter((task) => taskMeta(task).status !== "Completed" && !isPaused(task) && isDueNow(task));
+    const completedTasks = addisonData.tasks.filter((task) => taskMeta(task).status === "Completed" && completedToday(task));
+    const total = activeTasks.length + completedTasks.length;
     const done = completedTasks.length;
     const progress = total ? Math.round((done / total) * 100) : 0;
     const prettyToday = new Date(`${today}T12:00:00`).toLocaleDateString(undefined, {
@@ -374,6 +384,8 @@ export default function LandscapeHelpPage() {
     });
     const isAsNeeded = (title: string) =>
       /\bas needed\b|dog area|dock|geese|trash/i.test(title);
+    const priorityLabel = (priority: unknown) =>
+      priority === "High" ? "Must Do" : priority === "Low" ? "If Time" : "Normal";
 
     const itemCard = (
       item: Record<string, any>,
@@ -414,8 +426,8 @@ export default function LandscapeHelpPage() {
                 textDecoration: completed ? "line-through" : "none",
               }}>{Number(meta.addisonOrder || 0) > 0 ? `${Number(meta.addisonOrder)}. ` : ""}{title}</strong>
               {meta.dueDate ? (
-                <small style={{ color: colors.muted }}>Due {formatDate(String(meta.dueDate).slice(0,10))}{String(meta.preferredDay || item.preferredDay || "Auto") !== "Auto" ? ` · ${String(meta.preferredDay || item.preferredDay)}` : ""}</small>
-              ) : null}
+                <small style={{ color: colors.muted }}>Due {formatDate(String(meta.dueDate).slice(0,10))}{String(meta.preferredDay || item.preferredDay || "Auto") !== "Auto" ? ` · ${String(meta.preferredDay || item.preferredDay)}` : ""} · {priorityLabel(item.priority)}</small>
+              ) : <small style={{ color: colors.muted }}>{priorityLabel(item.priority)}</small>}
               {nothingNeeded ? <small style={{ display:"block", color: colors.muted, marginTop: 3 }}>Checked — nothing needed</small> : null}
             </div>
           </div>
