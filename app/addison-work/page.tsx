@@ -375,6 +375,12 @@ export default function LandscapeHelpPage() {
       return history.includes(today) || String(meta.completedAt || "").slice(0, 10) === today || String(meta.lastCompletedDate || "").slice(0, 10) === today;
     };
     const activeTasks = addisonData.tasks.filter((task) => taskMeta(task).status !== "Completed" && !isPaused(task) && isDueNow(task));
+    const todayTasks = activeTasks.filter((task) => String(taskMeta(task).dueDate || "").slice(0, 10) === today);
+    const notCompletedTasks = activeTasks.filter((task) => {
+      const dueDate = String(taskMeta(task).dueDate || "").slice(0, 10);
+      return Boolean(dueDate && dueDate < today);
+    });
+    const asNeededTasks = activeTasks.filter((task) => !String(taskMeta(task).dueDate || "").slice(0, 10));
     const completedTasks = addisonData.tasks.filter((task) => taskMeta(task).status === "Completed" && completedToday(task));
     const total = activeTasks.length + completedTasks.length;
     const done = completedTasks.length;
@@ -541,15 +547,33 @@ export default function LandscapeHelpPage() {
           <div style={styles.rowBetween}>
             <div>
               <div style={styles.eyebrow}>Assigned Work</div>
-              <h2 style={styles.cardTitle}>My Tasks</h2>
+              <h2 style={styles.cardTitle}>Today</h2>
             </div>
-            <strong>{activeTasks.length} open</strong>
+            <strong>{todayTasks.length} open</strong>
           </div>
           <div style={{ display:"grid", gap:9 }}>
-            {activeTasks.map((item) => itemCard(item, false))}
-            {!activeTasks.length ? <p style={styles.muted}>No open assigned tasks.</p> : null}
+            {todayTasks.map((item) => itemCard(item, false))}
+            {!todayTasks.length ? <p style={styles.muted}>No work due today.</p> : null}
           </div>
         </section>
+
+        {notCompletedTasks.length ? (
+          <details open style={{ ...styles.card, padding: 14, marginBottom:14 }}>
+            <summary style={{ cursor:"pointer", fontWeight:900, color:colors.red }}>Not Completed · {notCompletedTasks.length}</summary>
+            <div style={{ display:"grid", gap:8, marginTop:10 }}>
+              {notCompletedTasks.map((item) => itemCard(item, false))}
+            </div>
+          </details>
+        ) : null}
+
+        {asNeededTasks.length ? (
+          <details style={{ ...styles.card, padding: 14, marginBottom:14 }}>
+            <summary style={{ cursor:"pointer", fontWeight:900, color:colors.navy }}>As Needed · {asNeededTasks.length}</summary>
+            <div style={{ display:"grid", gap:8, marginTop:10 }}>
+              {asNeededTasks.map((item) => itemCard(item, false))}
+            </div>
+          </details>
+        ) : null}
 
         {completedTasks.length ? (
           <details style={{ ...styles.card, padding: 14, marginBottom:14 }}>
