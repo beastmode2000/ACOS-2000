@@ -1941,7 +1941,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     if (meta.assignee !== "Addison") return false;
     const completedToday = meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today;
     const paused = Boolean((meta as any).paused);
-    const dueNow = meta.status !== "Completed" && !paused && (!meta.dueDate || meta.dueDate === today);
+    const dueNow = meta.status !== "Completed" && !paused && (!meta.dueDate || meta.dueDate <= today);
     return Boolean(completedToday || dueNow);
   }).sort((a, b) => {
     const aDone = taskDetails(a.id).completionHistory?.includes(today) || taskDetails(a.id).completedAt?.slice(0, 10) === today;
@@ -1960,7 +1960,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     const completedToday = meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today;
     if (person === "Addison") {
       const paused = Boolean((meta as any).paused);
-      const dueNow = meta.status !== "Completed" && !paused && (!meta.dueDate || meta.dueDate === today);
+      const dueNow = meta.status !== "Completed" && !paused && (!meta.dueDate || meta.dueDate <= today);
       return Boolean(completedToday || dueNow);
     }
     if (meta.listId) return false;
@@ -2294,6 +2294,12 @@ export default function AtlasDashboardWorkspace(props: any) {
                 const meta = taskDetails(task.id);
                 return !Boolean(meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today);
               });
+              const addisonTodayTasks = person === "Addison" ? activeTasks.filter((task) => taskDetails(task.id).dueDate === today) : activeTasks;
+              const addisonNotCompletedTasks = person === "Addison" ? activeTasks.filter((task) => {
+                const dueDate = String(taskDetails(task.id).dueDate || "").slice(0, 10);
+                return Boolean(dueDate && dueDate < today);
+              }) : [];
+              const addisonAsNeededTasks = person === "Addison" ? activeTasks.filter((task) => !String(taskDetails(task.id).dueDate || "").slice(0, 10)) : [];
               const completedTodayTasks = tasks.filter((task) => {
                 const meta = taskDetails(task.id);
                 return Boolean(meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today);
@@ -2309,7 +2315,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                       <input type="checkbox" checked={done} onChange={() => done ? updateTaskDetails(task.id, { status: "Open", completedAt: undefined, completionHistory: (meta.completionHistory || []).filter((date) => date !== today), needsReview: false, dueDate: today }) : completeAtlasTask(task)} />
                       <button type="button" onClick={() => openDashboardTaskEditor(task)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", minWidth: 0, cursor: "pointer" }}>
                         <strong style={{ display: "block", color: colors.navy, textDecoration: done ? "line-through" : "none", opacity: done ? 0.6 : 1, overflow: "hidden", textOverflow: "ellipsis" }}>{task.title}</strong>
-                        <small style={{ color: "#000000", fontSize: 11, fontWeight: 400, lineHeight: 1.35, display: "block" }}>{meta.dueDate ? formatDate(meta.dueDate) : "Today"} · {minutesLabel(task.minutes)}</small>
+                        <small style={{ color: "#000000", fontSize: 11, fontWeight: 400, lineHeight: 1.35, display: "block" }}>{meta.dueDate ? formatDate(meta.dueDate) : person === "Addison" ? "As Needed" : "Today"} · {minutesLabel(task.minutes)}</small>
                       </button>
                       <button type="button" onClick={() => openDashboardTaskEditor(task)} style={{ ...compactUtilityButtonStyle }}>{editing ? "Close" : "Edit"}</button>
                     </div>
@@ -2343,7 +2349,15 @@ export default function AtlasDashboardWorkspace(props: any) {
                     <input ref={person === "Nick" ? dashboardNickQuickAddRef : dashboardAddisonQuickAddRef} defaultValue="" autoComplete="off" onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addDashboardTaskFor(person); } }} placeholder="Add task…" style={{ ...inputStyle, minHeight: 34 }}/>
                     <button type="button" onClick={() => addDashboardTaskFor(person)} style={{ ...goldButtonStyle, minHeight: 34, padding: "6px 10px" }}>Add</button>
                   </div>
-                  <div style={{ display: "grid", gap: 6, marginTop: 9 }}>{activeTasks.map((task) => renderDashboardTaskRow(task, false))}{!activeTasks.length ? <div style={noticeStyle}>No active work today.</div> : null}</div>
+                  {person === "Addison" ? (
+                    <>
+                      <div style={{ display: "grid", gap: 6, marginTop: 9 }}>{addisonTodayTasks.map((task) => renderDashboardTaskRow(task, false))}{!addisonTodayTasks.length ? <div style={noticeStyle}>No work due today.</div> : null}</div>
+                      {addisonNotCompletedTasks.length ? <details open style={{ marginTop: 9 }}><summary style={{ cursor: "pointer", fontWeight: 900, color: colors.red }}>Not Completed · {addisonNotCompletedTasks.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 7 }}>{addisonNotCompletedTasks.map((task) => renderDashboardTaskRow(task, false))}</div></details> : null}
+                      {addisonAsNeededTasks.length ? <details style={{ marginTop: 9 }}><summary style={{ cursor: "pointer", fontWeight: 900, color: colors.navy }}>As Needed · {addisonAsNeededTasks.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 7 }}>{addisonAsNeededTasks.map((task) => renderDashboardTaskRow(task, false))}</div></details> : null}
+                    </>
+                  ) : (
+                    <div style={{ display: "grid", gap: 6, marginTop: 9 }}>{activeTasks.map((task) => renderDashboardTaskRow(task, false))}{!activeTasks.length ? <div style={noticeStyle}>No active work today.</div> : null}</div>
+                  )}
                   {completedTodayTasks.length ? <details style={{ marginTop: 9 }}><summary style={{ cursor: "pointer", fontWeight: 900, color: colors.navy }}>Completed today · {completedTodayTasks.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 7 }}>{completedTodayTasks.map((task) => renderDashboardTaskRow(task, true))}</div></details> : null}
                   {history.length ? <details style={{ marginTop: 8 }}><summary style={{ cursor: "pointer", fontWeight: 850, color: colors.muted }}>Earlier completed · {history.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 7 }}>{history.map((task) => <div key={`history-${person}-${task.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, padding: 7, borderRadius: 8, background: "#F3F5F7" }}><span style={{ color: colors.navy, fontWeight: 800, textDecoration: "line-through", opacity: 0.5 }}>{task.title}</span><button type="button" onClick={() => updateTaskDetails(task.id, { status: "Open", completedAt: undefined, dueDate: today })} style={compactUtilityButtonStyle}>Reopen</button></div>)}</div></details> : null}
                 </section>
