@@ -1941,7 +1941,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     if (meta.assignee !== "Addison") return false;
     const completedToday = meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today;
     const paused = Boolean((meta as any).paused);
-    const dueNow = meta.status !== "Completed" && !paused && (!meta.dueDate || meta.dueDate <= today);
+    const dueNow = meta.status !== "Completed" && !paused && (!meta.dueDate || meta.dueDate === today);
     return Boolean(completedToday || dueNow);
   }).sort((a, b) => {
     const aDone = taskDetails(a.id).completionHistory?.includes(today) || taskDetails(a.id).completedAt?.slice(0, 10) === today;
@@ -1960,7 +1960,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     const completedToday = meta.completionHistory?.includes(today) || meta.completedAt?.slice(0, 10) === today;
     if (person === "Addison") {
       const paused = Boolean((meta as any).paused);
-      const dueNow = meta.status !== "Completed" && !paused && (!meta.dueDate || meta.dueDate <= today);
+      const dueNow = meta.status !== "Completed" && !paused && (!meta.dueDate || meta.dueDate === today);
       return Boolean(completedToday || dueNow);
     }
     if (meta.listId) return false;
