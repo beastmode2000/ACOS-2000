@@ -359,6 +359,7 @@ async function loadAddisonWork() {
       instructions: String(record.instructions || ""),
       recurring: Boolean(record.recurring),
       frequency: String(record.frequency || ""),
+      photos: Array.isArray(record.photos) ? record.photos : [],
     };
   }).filter((item: any) => item.date && item.taskId);
 
@@ -388,6 +389,7 @@ async function loadAddisonWork() {
         frequency: task.recurring
           ? `${Math.max(1, Number(meta?.recurrenceInterval || 1))} ${String(meta?.recurrenceUnit || "Weeks")}`
           : "One-time",
+        photos: Array.isArray(meta?.photos) ? meta.photos : [],
       });
     }
   }
@@ -1416,6 +1418,7 @@ export async function PATCH(request: NextRequest) {
             frequency: recurring
               ? `${Math.max(1, Number(currentMeta?.recurrenceInterval || 1))} ${String(currentMeta?.recurrenceUnit || "Weeks")}`
               : "One-time",
+            photos: Array.isArray(currentMeta?.photos) ? currentMeta.photos : [],
           };
           await sql`
             INSERT INTO atlas_operational_records (
@@ -1525,8 +1528,31 @@ export async function PATCH(request: NextRequest) {
         if (!currentTask) return NextResponse.json({ ok:false, error:"Addison task not found." }, { status:404 });
         const meta = addisonTaskMeta(currentTask);
         const photos = Array.isArray(meta?.photos) ? meta.photos : [];
-        const ok = await patchAddisonTask(taskId, { photos: [...photos, body.photo].filter(Boolean) });
+        const nextPhotos = [...photos, body.photo].filter(Boolean);
+        const ok = await patchAddisonTask(taskId, { photos: nextPhotos });
         if (!ok) return NextResponse.json({ ok:false, error:"Addison task not found." }, { status:404 });
+
+        const historyId = `${today}::${taskId}`;
+        const sql = getSql();
+        const historyRows = await sql`
+          SELECT record
+          FROM atlas_operational_records
+          WHERE record_type = 'addison_completion_history'
+            AND property_id = '2000'
+            AND id = ${historyId}
+          LIMIT 1
+        `;
+        if (historyRows[0]?.record) {
+          const historyRecord = { ...historyRows[0].record, photos: nextPhotos };
+          await sql`
+            UPDATE atlas_operational_records
+            SET record = ${JSON.stringify(historyRecord)}::jsonb, updated_at = NOW()
+            WHERE record_type = 'addison_completion_history'
+              AND property_id = '2000'
+              AND id = ${historyId}
+          `;
+        }
+
         return NextResponse.json({ ok:true, mode:"addison", addison:await loadAddisonWork() });
       }
 
