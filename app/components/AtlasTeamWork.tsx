@@ -79,6 +79,7 @@ type AddisonHistoryItem = {
   note?: string;
   recurring?: boolean;
   frequency?: string;
+  photos?: Array<Record<string, any>>;
 };
 
 type AddisonNoteHistoryItem = {
@@ -1103,6 +1104,19 @@ export default function AtlasTeamWork({
                               <strong>Completed:</strong> {item.title}
                               {item.locationName ? ` · ${item.locationName}` : ""}
                               {item.note ? <div style={{ ...mutedStyle, marginTop: 3 }}>Addison note: {item.note}</div> : null}
+                              {Array.isArray(item.photos) && item.photos.length ? (
+                                <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 7 }}>
+                                  {item.photos.map((photo, photoIndex) => {
+                                    const src = String(photo?.url || photo?.dataUrl || photo?.data_url || photo?.src || "");
+                                    if (!src) return null;
+                                    return (
+                                      <a key={`${item.id}-photo-${photoIndex}`} href={src} target="_blank" rel="noreferrer" style={{ display: "block" }}>
+                                        <img src={src} alt={`${item.title} photo ${photoIndex + 1}`} style={{ width: 84, height: 64, objectFit: "cover", borderRadius: 8, border: `1px solid ${colors.line}` }} />
+                                      </a>
+                                    );
+                                  })}
+                                </div>
+                              ) : null}
                             </div>
                           ))}
                           {dayDailyNotes.map((item) => (
