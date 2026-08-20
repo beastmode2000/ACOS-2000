@@ -217,6 +217,7 @@ async function loadAddisonWork() {
   for (const task of allTasks) {
     if (!isAddisonAssigned(task) || !task.recurring) continue;
     const meta = addisonTaskMeta(task) || {};
+    if (Boolean(meta?.paused)) continue;
     const nextDueDate = String(meta?.nextDueDate || '').slice(0, 10);
     if (
       String(meta?.status || '') !== 'Completed' ||
@@ -278,6 +279,9 @@ async function loadAddisonWork() {
     .sort((a, b) => {
       const am = addisonTaskMeta(a);
       const bm = addisonTaskMeta(b);
+      const aPaused = Boolean(am?.paused);
+      const bPaused = Boolean(bm?.paused);
+      if (aPaused !== bPaused) return aPaused ? 1 : -1;
       const ao = Number(am?.addisonOrder || 0);
       const bo = Number(bm?.addisonOrder || 0);
       if (ao > 0 || bo > 0) {
@@ -1028,6 +1032,7 @@ export async function PATCH(request: NextRequest) {
           lastCompletedDate: "",
           completedAt: undefined,
           needsReview: false,
+          paused: false,
           instructions,
           notes: instructions,
           preferredDay,
@@ -1237,6 +1242,14 @@ export async function PATCH(request: NextRequest) {
           mode: "addison",
           addison: await loadAddisonWork(),
         });
+      }
+
+      if (action === "task-pause") {
+        const taskId = String(body.taskId || "");
+        const paused = Boolean(body.paused);
+        const ok = await patchAddisonTask(taskId, { paused, needsReview: false });
+        if (!ok) return NextResponse.json({ ok: false, error: "Addison task not found." }, { status: 404 });
+        return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
       }
 
       if (action === "task-prioritize") {
