@@ -222,7 +222,10 @@ async function loadAddisonWork() {
     if (
       String(meta?.status || '') !== 'Completed' ||
       !nextDueDate ||
-      nextDueDate > today
+      nextDueDate > today ||
+      // A completion made today must never reopen again today, even if an
+      // older/bad recurrence value left nextDueDate equal to or before today.
+      String(meta?.lastCompletedDate || '').slice(0, 10) === today
     ) continue;
 
     const updatedAt = new Date().toISOString();
@@ -1366,7 +1369,13 @@ export async function PATCH(request: NextRequest) {
                 lastCompletedDate: today,
                 completionHistory: nextHistory,
                 nextDueDate: nextRecurringDate(
-                  String(currentMeta?.dueDate || today).slice(0, 10),
+                  // Advance from today when a recurring task is completed late.
+                  // Advancing from an overdue dueDate can produce a nextDueDate that
+                  // is still today or in the past, which makes loadAddisonWork reopen
+                  // the task immediately after refresh.
+                  String(currentMeta?.dueDate || today).slice(0, 10) > today
+                    ? String(currentMeta?.dueDate || today).slice(0, 10)
+                    : today,
                   currentMeta?.recurrenceInterval,
                   currentMeta?.recurrenceUnit,
                 ),
