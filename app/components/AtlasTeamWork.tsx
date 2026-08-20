@@ -120,6 +120,18 @@ function addisonFrequency(task: Record<string, any>): AssignmentFrequency {
   return "Weekly";
 }
 
+
+function addisonPriorityLabel(priority: unknown) {
+  if (priority === "High") return "Must Do";
+  if (priority === "Low") return "If Time";
+  return "Normal";
+}
+
+function addisonPaused(task: Record<string, any>) {
+  const meta = addisonMeta(task);
+  return Boolean(meta?.paused);
+}
+
 function formatAddisonHistoryDate(dateKey: string) {
   if (!dateKey) return "";
   const date = new Date(`${dateKey}T12:00:00-07:00`);
@@ -742,6 +754,38 @@ export default function AtlasTeamWork({
     }
   }
 
+  async function toggleAddisonPause(task: Record<string, any>) {
+    const taskId = String(task.id || "");
+    if (!taskId) return;
+    try {
+      await patchAddisonLive(
+        "task-pause",
+        { taskId, paused: !addisonPaused(task) },
+        addisonPaused(task) ? "Task resumed." : "Task paused.",
+      );
+    } catch (error) {
+      setAddisonLiveMessage(
+        error instanceof Error ? error.message : "Could not update task.",
+      );
+    }
+  }
+
+  async function moveAddisonTask(taskId: string, direction: -1 | 1) {
+    const openTasks = (addisonWork?.tasks || []).filter(
+      (task) => String(addisonMeta(task)?.status || "") !== "Completed" && !addisonPaused(task),
+    );
+    const index = openTasks.findIndex((task) => String(task.id || "") === taskId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= openTasks.length) return;
+    const next = [...openTasks];
+    [next[index], next[target]] = [next[target], next[index]];
+    await patchAddisonLive(
+      "task-prioritize",
+      { orderedTaskIds: next.map((task) => String(task.id || "")) },
+      "Order saved.",
+    );
+  }
+
   async function toggleAddisonLiveTask(task: Record<string, any>) {
     const meta = addisonMeta(task);
     const completed = String(meta?.status || "") === "Completed";
@@ -760,7 +804,7 @@ export default function AtlasTeamWork({
 
   async function prioritizeAddisonDay() {
     const tasks = (addisonWork?.tasks || []).filter(
-      (task) => String(addisonMeta(task)?.status || "") !== "Completed",
+      (task) => String(addisonMeta(task)?.status || "") !== "Completed" && !addisonPaused(task),
     );
     const priorityWeight: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
     const orderedTaskIds = [...tasks]
@@ -862,7 +906,7 @@ export default function AtlasTeamWork({
             <label style={labelStyle}>Repeat<select value={assignmentFrequency} onChange={(event) => setAssignmentFrequency(event.currentTarget.value as AssignmentFrequency)} style={fieldStyle}><option value="One-time">One time</option><option value="Daily">Daily</option><option value="Weekly">Weekly</option><option value="Biweekly">Every 2 weeks</option><option value="Monthly">Monthly</option></select></label>
             <div style={{ ...labelStyle, gridColumn: "1 / -1" }}><span>Day</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{ADDISON_WEEKDAYS.map((day)=><button key={day} type="button" onClick={()=>{setAssignmentDay(day);setAssignmentDueDate(nextDateForWeekday(day));}} style={{...lightButtonStyle,background:assignmentDay===day?colors.navy3:colors.card,color:assignmentDay===day?"#fff":colors.text,borderColor:assignmentDay===day?colors.navy3:colors.line}}>{day.slice(0,3)}</button>)}</div></div>
             <label style={labelStyle}>Area<select value={assignmentLocationId} onChange={(event) => setAssignmentLocationId(event.currentTarget.value)} style={fieldStyle}><option value="">Anywhere / General</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
-            <label style={labelStyle}>Priority<select value={assignmentPriority} onChange={(event)=>setAssignmentPriority(event.currentTarget.value as "High"|"Medium"|"Low")} style={fieldStyle}><option>High</option><option>Medium</option><option>Low</option></select></label>
+            <label style={labelStyle}>Priority<select value={assignmentPriority} onChange={(event)=>setAssignmentPriority(event.currentTarget.value as "High"|"Medium"|"Low")} style={fieldStyle}><option value="High">Must Do</option><option value="Medium">Normal</option><option value="Low">If Time</option></select></label>
             <label style={{ ...labelStyle, gridColumn: "span 2" }}>Notes<textarea value={assignmentInstructions} onChange={(event) => setAssignmentInstructions(event.currentTarget.value)} placeholder="Optional" style={{ ...fieldStyle, minHeight: 58, resize: "vertical" }} /></label>
           </div>
           {assignmentMessage ? <div style={{ padding: "9px 11px", border: `1px solid ${colors.line}`, borderRadius: 10, background: colors.panel, color: colors.text, fontSize: 12, fontWeight: 800 }}>{assignmentMessage}</div> : null}
@@ -903,8 +947,8 @@ export default function AtlasTeamWork({
             <div style={panelStyle}>
               <div style={editorHeaderStyle}>
                 <div>
-                  <div style={eyebrowStyle}>LIVE LIST</div>
-                  <h2 style={{ margin: "3px 0", color: colors.text }}>Addison's Live List</h2>
+                  <div style={eyebrowStyle}>ASSIGNMENTS</div>
+                  <h2 style={{ margin: "3px 0", color: colors.text }}>Addison Master Assignments</h2>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button type="button" style={goldButtonStyle} onClick={() => void prioritizeAddisonDay()}>
@@ -937,9 +981,9 @@ export default function AtlasTeamWork({
                             <label style={labelStyle}>Task<input value={editingTitle} onChange={(e) => setEditingTitle(e.currentTarget.value)} style={fieldStyle} /></label>
                             <label style={labelStyle}>Due date<input type="date" value={editingDueDate} onChange={(e) => { setEditingDueDate(e.currentTarget.value); setEditingDay("Auto"); }} style={fieldStyle} /></label>
                             <label style={labelStyle}>Frequency<select value={editingFrequency} onChange={(e) => setEditingFrequency(e.currentTarget.value as AssignmentFrequency)} style={fieldStyle}><option>One-time</option><option>Daily</option><option>Weekly</option><option>Biweekly</option><option>Monthly</option></select></label>
-                            <div style={{ ...labelStyle, gridColumn:"1 / -1" }}><span>Day</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{ADDISON_WEEKDAYS.map((day)=><button key={day} type="button" onClick={()=>{setEditingDay(day);setEditingDueDate(nextDateForWeekday(day));}} style={{...lightButtonStyle,background:editingDay===day?colors.navy3:colors.card,color:editingDay===day?"#fff":colors.text,borderColor:editingDay===day?colors.navy3:colors.line}}>{day.slice(0,3)}</button>)}</div></div>
+                            <div style={{ ...labelStyle, gridColumn:"1 / -1" }}><span>Day</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{ADDISON_WEEKDAYS.map((day)=><button key={day} type="button" onClick={()=>{setEditingDay(day);setEditingDueDate(nextDateForWeekday(day));}} style={{...lightButtonStyle,background:editingDay===day?colors.navy3:colors.card,color:editingDay===day?"#fff":colors.text,borderColor:editingDay===day?colors.navy3:colors.line}}>{day.slice(0,3)}</button>)}<button type="button" onClick={()=>setEditingDay("Auto")} style={{...lightButtonStyle,background:editingDay==="Auto"?colors.navy3:colors.card,color:editingDay==="Auto"?"#fff":colors.text,borderColor:editingDay==="Auto"?colors.navy3:colors.line}}>As Needed</button></div></div>
                             <label style={labelStyle}>Location<select value={editingLocationId} onChange={(e) => setEditingLocationId(e.currentTarget.value)} style={fieldStyle}><option value="general">General property</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
-                            <label style={labelStyle}>Priority<select value={editingPriority} onChange={(e) => setEditingPriority(e.currentTarget.value as "High" | "Medium" | "Low")} style={fieldStyle}><option>High</option><option>Medium</option><option>Low</option></select></label>
+                            <label style={labelStyle}>Priority<select value={editingPriority} onChange={(e) => setEditingPriority(e.currentTarget.value as "High" | "Medium" | "Low")} style={fieldStyle}><option value="High">Must Do</option><option value="Medium">Normal</option><option value="Low">If Time</option></select></label>
                             <label style={labelStyle}>Time<select value={editingMinutes} onChange={(e) => setEditingMinutes(Number(e.currentTarget.value))} style={fieldStyle}><option value={15}>15 min</option><option value={30}>30 min</option><option value={60}>1 hour</option><option value={120}>2 hours</option><option value={240}>Half day</option><option value={480}>Full day</option></select></label>
                           </div>
                           <label style={labelStyle}>Instructions<textarea value={editingInstructions} onChange={(e) => setEditingInstructions(e.currentTarget.value)} style={{ ...fieldStyle, minHeight: 72, resize: "vertical" }} /></label>
@@ -964,7 +1008,7 @@ export default function AtlasTeamWork({
                               {meta?.dueDate ? `Due ${String(meta.dueDate).slice(0,10)} · ` : ""}
                               {addisonFrequency(task)} · {locationLabel}
                               {dayFromTask(task) !== "Auto" ? ` · ${dayFromTask(task)}` : ""}
-                              {task.priority ? ` · ${String(task.priority)}` : ""}
+                              {task.priority ? ` · ${addisonPriorityLabel(task.priority)}` : ""}{addisonPaused(task) ? " · Paused" : ""}
                             </div>
                             {String(meta?.instructions || task.notes || "").trim() ? (
                               <div style={{ ...mutedStyle, marginTop: 5, color: colors.text }}>
@@ -978,7 +1022,10 @@ export default function AtlasTeamWork({
                             ) : null}
                           </div>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            {!completed && !addisonPaused(task) ? <button type="button" style={lightButtonStyle} onClick={() => void moveAddisonTask(taskId, -1)}>↑</button> : null}
+                            {!completed && !addisonPaused(task) ? <button type="button" style={lightButtonStyle} onClick={() => void moveAddisonTask(taskId, 1)}>↓</button> : null}
                             <button type="button" style={lightButtonStyle} onClick={() => beginEditAddisonTask(task)}>Edit</button>
+                            {!completed ? <button type="button" style={lightButtonStyle} onClick={() => void toggleAddisonPause(task)}>{addisonPaused(task) ? "Resume" : "Pause"}</button> : null}
                             <button type="button" style={{ ...lightButtonStyle, color: colors.red }} onClick={() => void deleteAddisonLiveTask(taskId)}>Delete</button>
                           </div>
                         </div>
