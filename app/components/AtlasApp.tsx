@@ -2559,170 +2559,6 @@ export default function AtlasApp() {
   }, [ready, operationsHydrated, activePropertyId]);
 
   useEffect(() => {
-    if (
-      !ready ||
-      !operationsHydrated ||
-      activePropertyId !== "2000" ||
-      (screen !== "dashboard" && screen !== "team")
-    ) return;
-    let cancelled = false;
-
-    const refreshAddisonDashboardTasks = async () => {
-      try {
-        const response = await fetch(
-          `/api/landscape-help?addison=1&dashboardSync=${Date.now()}`,
-          { cache: "no-store" },
-        );
-        if (!response.ok) return;
-        const payload = await response.json();
-        if (cancelled || !payload?.ok || payload?.mode !== "addison") return;
-        const remoteRecords = Array.isArray(payload?.addison?.tasks)
-          ? payload.addison.tasks
-          : [];
-        const deletedAddisonTaskIds = new Set<string>(
-          Array.isArray(payload?.addison?.deletedTaskIds)
-            ? payload.addison.deletedTaskIds.map((value: unknown) => String(value || "")).filter(Boolean)
-            : [],
-        );
-
-        // A deletion made from Team -> Addison must win over every older local
-        // task snapshot. Mirror the server tombstone into Atlas's existing local
-        // tombstone system so normal task autosave cannot recreate the deleted task.
-        if (deletedAddisonTaskIds.size) {
-          deletedAddisonTaskIds.forEach((taskId) => addTaskTombstone(taskId));
-          setWorkPlanTasks((current) => {
-            const next = current.filter((task) => !deletedAddisonTaskIds.has(String(task.id)));
-            return next.length === current.length ? current : next;
-          });
-          setTaskMeta((current) => {
-            let changed = false;
-            const next = { ...current };
-            deletedAddisonTaskIds.forEach((taskId) => {
-              if (Object.prototype.hasOwnProperty.call(next, taskId)) {
-                delete next[taskId];
-                changed = true;
-              }
-            });
-            return changed ? next : current;
-          });
-        }
-
-        operationsRemoteRefreshRef.current = true;
-        if (operationsRemoteRefreshTimerRef.current) {
-          window.clearTimeout(operationsRemoteRefreshTimerRef.current);
-        }
-        operationsRemoteRefreshTimerRef.current = window.setTimeout(() => {
-          operationsRemoteRefreshRef.current = false;
-        }, 2000);
-
-        const remoteById = new Map<string, Record<string, any>>(
-          remoteRecords
-            .filter(
-              (record: Record<string, any>) =>
-                Boolean(record?.id) &&
-                !deletedAddisonTaskIds.has(String(record.id)),
-            )
-            .map((record: Record<string, any>) => [String(record.id), record]),
-        );
-
-        setWorkPlanTasks((current) => {
-          let changed = false;
-          const existingIds = new Set(current.map((task) => task.id));
-          const next = current.map((task) => {
-            const remote = remoteById.get(task.id);
-            if (!remote) return task;
-            const merged: WorkPlanTask = {
-              ...task,
-              title: String(remote.title || task.title),
-              minutes: Math.max(5, Number(remote.minutes || task.minutes || 30)),
-              priority: (remote.priority || task.priority || "Medium") as WorkPlanTask["priority"],
-              category: String(remote.category || task.category || "General"),
-              locationId: String(remote.locationId || task.locationId || "general"),
-              preferredDay: (remote.preferredDay || task.preferredDay || "Auto") as WorkPlanTask["preferredDay"],
-              scheduledDay: (remote.scheduledDay || task.scheduledDay) as WorkPlanTask["scheduledDay"],
-              scheduledDate: String(remote.scheduledDate || task.scheduledDate || "") || undefined,
-              locked: Boolean(remote.locked),
-              recurring: Boolean(remote.recurring),
-              fixedTime: String(remote.fixedTime || ""),
-              notes: String(remote.notes || task.notes || ""),
-            };
-            if (JSON.stringify(merged) !== JSON.stringify(task)) changed = true;
-            return merged;
-          });
-
-          for (const remote of remoteRecords as Record<string, any>[]) {
-            const id = String(remote?.id || "");
-            if (!id || deletedAddisonTaskIds.has(id) || existingIds.has(id)) continue;
-            next.push({
-              id,
-              title: String(remote.title || "Addison task"),
-              minutes: Math.max(5, Number(remote.minutes || 30)),
-              priority: (remote.priority || "Medium") as WorkPlanTask["priority"],
-              category: String(remote.category || "General"),
-              locationId: String(remote.locationId || "general"),
-              preferredDay: (remote.preferredDay || "Auto") as WorkPlanTask["preferredDay"],
-              scheduledDay: remote.scheduledDay as WorkPlanTask["scheduledDay"],
-              scheduledDate: String(remote.scheduledDate || "") || undefined,
-              locked: Boolean(remote.locked),
-              recurring: Boolean(remote.recurring),
-              fixedTime: String(remote.fixedTime || ""),
-              notes: String(remote.notes || ""),
-            });
-            existingIds.add(id);
-            changed = true;
-          }
-
-          return changed ? next : current;
-        });
-
-        setTaskMeta((current) => {
-          let changed = false;
-          const next = { ...current };
-          for (const [id, remote] of remoteById) {
-            const nestedMeta = (
-              remote.taskMeta && typeof remote.taskMeta === "object"
-                ? remote.taskMeta
-                : {}
-            ) as Partial<AtlasTaskMeta>;
-            const baseMeta = current[id] || taskDetails(id);
-            const merged: AtlasTaskMeta = {
-              ...baseMeta,
-              ...nestedMeta,
-              assignee: (nestedMeta.assignee || remote.assignee || "Addison") as AtlasTaskMeta["assignee"],
-              dueDate: String(nestedMeta.dueDate || remote.dueDate || baseMeta.dueDate || ""),
-              status: (nestedMeta.status || remote.status || baseMeta.status || "Open") as AtlasTaskMeta["status"],
-              createdAt: String(nestedMeta.createdAt || baseMeta.createdAt || new Date().toISOString()),
-              updatedAt: String(nestedMeta.updatedAt || remote.updatedAt || baseMeta.updatedAt || new Date().toISOString()),
-            };
-            if (JSON.stringify(merged) !== JSON.stringify(current[id])) {
-              next[id] = merged;
-              changed = true;
-            }
-          }
-          return changed ? next : current;
-        });
-      } catch {
-        // Addison's normal shared task sync remains available if this live dashboard refresh misses a cycle.
-      }
-    };
-
-    const onFocus = () => { void refreshAddisonDashboardTasks(); };
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") void refreshAddisonDashboardTasks();
-    };
-    void refreshAddisonDashboardTasks();
-    const timer = window.setInterval(() => { void refreshAddisonDashboardTasks(); }, 1000);
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [ready, operationsHydrated, activePropertyId, screen]);
-
-  useEffect(() => {
     if (!ready || !operationsHydrated) return;
     let cancelled = false;
 
@@ -2856,9 +2692,16 @@ export default function AtlasApp() {
     };
 
     const onFocus = () => { void refreshSharedTasks(); };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refreshSharedTasks();
+    };
     void refreshSharedTasks();
-    const timer = window.setInterval(() => { void refreshSharedTasks(); }, 5000);
+    // One shared task refresh path for every device. Dashboard and Team stay
+    // near-live without a second Addison-only API poll competing with Atlas.
+    const refreshIntervalMs = screen === "dashboard" || screen === "team" ? 1500 : 5000;
+    const timer = window.setInterval(() => { void refreshSharedTasks(); }, refreshIntervalMs);
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
@@ -2868,8 +2711,9 @@ export default function AtlasApp() {
       }
       operationsRemoteRefreshRef.current = false;
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [ready, operationsHydrated, activePropertyId]);
+  }, [ready, operationsHydrated, activePropertyId, screen]);
 
   useEffect(() => {
     if (
