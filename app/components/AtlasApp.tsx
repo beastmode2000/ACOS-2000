@@ -10293,6 +10293,9 @@ export default function AtlasApp() {
       savedAt: new Date().toISOString(),
       tasks: cleanedTaskState.tasks
         .filter((task) => !taskTombstones.has(String(task.id)))
+        // Addison is persisted through /api/landscape-help. Never bulk-write an
+        // older Dashboard copy back over a change made from his phone or Team.
+        .filter((task) => String((cleanedTaskState.meta[task.id] || taskDetails(task.id)).assignee || "").trim().toLowerCase() !== "addison")
         .map((task) => ({ ...task, ...(cleanedTaskState.meta[task.id] || taskDetails(task.id)), taskMeta: cleanedTaskState.meta[task.id] || taskDetails(task.id), propertyId: activePropertyId, updatedAt: (cleanedTaskState.meta[task.id] || taskDetails(task.id)).updatedAt || new Date().toISOString() })),
       vehicles: vehicleCare.map((vehicle) => ({ ...vehicle, propertyId: activePropertyId, updatedAt: vehicle.updatedAt || new Date().toISOString() })),
       daySessions: daySessions.map((session) => ({ ...session, propertyId: activePropertyId })),
@@ -18804,6 +18807,126 @@ ${notes.trim()}` : notes.trim(),
     }
   }
 
+  async function updateAddisonDashboardTask(
+    taskId: string,
+    patch: { status?: "Open" | "Completed"; dueDate?: string; notes?: string },
+  ) {
+    if (activePropertyId !== "2000") return false;
+    const task = workPlanTasks.find((item) => item.id === taskId);
+    const meta = taskDetails(taskId);
+    if (!task || String(meta.assignee || "").trim().toLowerCase() !== "addison") return false;
+
+    const applyServerAddisonTasks = (records: Array<Record<string, any>>) => {
+      operationsRemoteRefreshRef.current = true;
+      if (operationsRemoteRefreshTimerRef.current) {
+        window.clearTimeout(operationsRemoteRefreshTimerRef.current);
+      }
+      operationsRemoteRefreshTimerRef.current = window.setTimeout(() => {
+        operationsRemoteRefreshRef.current = false;
+      }, 2000);
+
+      const remoteIds = new Set(records.map((record) => String(record.id || "")));
+      setWorkPlanTasks((current) => {
+        const nonAddison = current.filter((item) => {
+          if (remoteIds.has(item.id)) return false;
+          return String(taskDetails(item.id).assignee || "").trim().toLowerCase() !== "addison";
+        });
+        const remoteTasks = records.map((record) => ({
+          id: String(record.id || ""),
+          title: String(record.title || "Task"),
+          minutes: Math.max(5, Number(record.minutes || 30)),
+          priority: (record.priority || "Medium") as WorkPlanTask["priority"],
+          category: String(record.category || "General"),
+          locationId: String(record.locationId || "general"),
+          preferredDay: (record.preferredDay || "Auto") as WorkPlanTask["preferredDay"],
+          locked: Boolean(record.locked),
+          recurring: Boolean(record.recurring),
+          fixedTime: String(record.fixedTime || ""),
+          notes: String(record.notes || ""),
+        })) as WorkPlanTask[];
+        return dedupeTaskState([...remoteTasks, ...nonAddison], taskMeta).tasks;
+      });
+      setTaskMeta((current) => {
+        const next = { ...current };
+        for (const [id, existingMeta] of Object.entries(next) as Array<[string, AtlasTaskMeta]>) {
+          if (
+            String(existingMeta.assignee || "").trim().toLowerCase() === "addison" &&
+            !remoteIds.has(id)
+          ) {
+            delete next[id];
+          }
+        }
+        for (const record of records) {
+          const id = String(record.id || "");
+          const nestedMeta = record.taskMeta && typeof record.taskMeta === "object"
+            ? record.taskMeta as AtlasTaskMeta
+            : record as AtlasTaskMeta;
+          next[id] = {
+            ...(current[id] || taskDetails(id)),
+            ...nestedMeta,
+            assignee: "Addison",
+          };
+        }
+        return next;
+      });
+    };
+
+    try {
+      let body: Record<string, unknown>;
+      if (patch.status) {
+        body = { action: "task-status", taskId, status: patch.status };
+      } else {
+        const frequency = !task.recurring
+          ? "One-time"
+          : Number(meta.recurrenceInterval || 1) === 2 && meta.recurrenceUnit === "Weeks"
+            ? "Biweekly"
+            : meta.recurrenceUnit === "Days"
+              ? "Daily"
+              : meta.recurrenceUnit === "Months"
+                ? "Monthly"
+                : "Weekly";
+        body = {
+          action: "task-update",
+          taskId,
+          title: task.title,
+          dueDate: patch.dueDate ?? meta.dueDate ?? todayISO(),
+          frequency,
+          preferredDay: task.preferredDay || "Auto",
+          locationId: task.locationId || "general",
+          instructions: patch.notes ?? meta.instructions ?? meta.notes ?? task.notes ?? "",
+          priority: task.priority || "Medium",
+          minutes: task.minutes || 30,
+        };
+      }
+
+      const response = await fetch("/api/landscape-help?addison=1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok || payload?.mode !== "addison") {
+        throw new Error(payload?.error || "Could not save Addison task.");
+      }
+      const records = Array.isArray(payload?.addison?.tasks) ? payload.addison.tasks : [];
+      applyServerAddisonTasks(records);
+      showSaveToast(
+        patch.status === "Completed"
+          ? `${task.title} completed.`
+          : patch.status === "Open"
+            ? `${task.title} reopened.`
+            : `${task.title} saved.`,
+      );
+      return true;
+    } catch (error) {
+      showSaveToast(
+        error instanceof Error ? error.message : "Could not save Addison task.",
+        "warning",
+      );
+      return false;
+    }
+  }
+
   function renderDashboard() {
     return (
       <>
@@ -18948,6 +19071,7 @@ ${notes.trim()}` : notes.trim(),
       todayLogText,
       upcomingEvents,
       updateLandscapeAssignment,
+      updateAddisonDashboardTask,
       updateTaskDetails,
       updateTeamAssignment,
       updateWorkPlanTask,
