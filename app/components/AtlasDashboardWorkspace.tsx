@@ -1926,10 +1926,28 @@ export default function AtlasDashboardWorkspace(props: any) {
   const cardStyle: React.CSSProperties = { border: `1px solid ${colors.line}`, borderRadius: 14, background: "#FFFFFF", padding: isMobile ? 13 : 15, boxShadow: "0 5px 18px rgba(15, 35, 55, 0.05)", minWidth: 0 };
 
   const foremanSchedule = nonRoutineTodayEvents.slice().sort((a, b) => String(a.time || "99:99").localeCompare(String(b.time || "99:99")));
+  const addisonFlaggedTasks = workPlanTasks.filter((task) => {
+    const meta = taskDetails(task.id);
+    if (task.category === "Atlas List Definition" || meta.listId || meta.assignee !== "Addison" || meta.status === "Completed") return false;
+    return Boolean((meta as any).needsNick) || Boolean((meta as any).problemFound);
+  });
   const foremanProblems = [
+    ...addisonFlaggedTasks.map((task) => {
+      const meta = taskDetails(task.id);
+      const needsNick = Boolean((meta as any).needsNick);
+      const problemFound = Boolean((meta as any).problemFound);
+      const flagLabel = needsNick && problemFound ? "Needs Nick · Problem Found" : needsNick ? "Needs Nick" : "Problem Found";
+      const note = String(meta.notes || task.notes || "").trim();
+      return {
+        id: `addison-flag-${task.id}`,
+        title: `Addison · ${task.title}`,
+        detail: note ? `${flagLabel} · ${note}` : flagLabel,
+        action: () => { openTaskById(task.id); },
+      };
+    }),
     ...dashboardOpenTasks.filter((task) => taskDetails(task.id).status === "Blocked").map((task) => ({ id: `task-${task.id}`, title: task.title, detail: "Blocked task", action: () => { openTaskById(task.id); } })),
     ...overdueWork.map((record) => ({ id: `work-${record.id}`, title: record.title, detail: record.date ? `Overdue since ${formatDate(record.date)}` : "Overdue work", action: () => openWorkOrderById(record.id) })),
-  ].slice(0, 5);
+  ].filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index).slice(0, 8);
   const foremanAssignments = (["Nick", "Addison", "Pat", "Sean"] as const).map((person) => {
     const tasks = dashboardTodayTasks.filter((task) => String(taskDetails(task.id).assignee || "Nick") === person);
     const work = dueToday.filter((record) => String((record as AtlasServiceRecord & { assignedTo?: string }).assignedTo || "").toLowerCase() === person.toLowerCase());
