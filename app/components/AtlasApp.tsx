@@ -2777,10 +2777,10 @@ export default function AtlasApp() {
           const localOnly = current.filter((task) => {
             if (remoteIds.has(task.id)) return false;
             if (pendingDeleteIds.has(task.id) || tombstones.has(task.id)) return false;
-            // Keep local tasks until shared Atlas confirms them. This is especially
-            // important for newly-added Addison work: the dashboard/task UI may create
-            // the local record a moment before the next server refresh sees it. Explicit
-            // deletes are still blocked by pendingDeleteIds/tombstones above.
+            const localMeta = taskDetails(task.id);
+            // Addison has one authoritative shared task source. Once the server answers,
+            // a local-only Addison copy is stale and must not survive or be re-uploaded.
+            if (String(localMeta.assignee || "").trim().toLowerCase() === "addison") return false;
             return true;
           });
           const remoteTasks = remote.map((record: any) => ({
@@ -2845,9 +2845,7 @@ export default function AtlasApp() {
           }
           for (const [id, meta] of Object.entries(current)) {
             if (remoteIds.has(id) || pendingDeleteIds.has(id) || tombstones.has(id)) continue;
-            // Preserve unsynced local metadata until the matching shared task arrives.
-            // Without this, a newly-created Addison task loses its assignee/details on
-            // the next 5-second refresh and appears to delete itself.
+            if (String(meta.assignee || "").trim().toLowerCase() === "addison") continue;
             next[id] = meta;
           }
           return JSON.stringify(next) === JSON.stringify(current) ? current : next;
@@ -18927,78 +18925,39 @@ ${notes.trim()}` : notes.trim(),
     const title = String(titleValue || "").trim();
     if (!title || activePropertyId !== "2000") return "";
 
-    const dueDate = todayISO();
-    const duplicate = workPlanTasks.find((task) => {
-      const meta = taskDetails(task.id);
-      return (
-        meta.status !== "Completed" &&
-        String(meta.assignee || "").trim().toLowerCase() === "addison" &&
-        String(meta.dueDate || "").slice(0, 10) === dueDate &&
-        String(task.title || "").trim().toLowerCase() === title.toLowerCase()
-      );
-    });
-    if (duplicate) {
-      setSelectedTaskId(duplicate.id);
-      showSaveToast("That Addison task already exists.");
-      return duplicate.id;
+    try {
+      const response = await fetch("/api/landscape-help?addison=1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "task-create",
+          title,
+          dueDate: todayISO(),
+          frequency: "One-time",
+          preferredDay: "Auto",
+          locationId: "general",
+          instructions: "",
+          priority: "Medium",
+          minutes: 30,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok || payload?.mode !== "addison") {
+        throw new Error(payload?.error || "Could not add Addison task.");
+      }
+      const created = Array.isArray(payload?.addison?.tasks)
+        ? payload.addison.tasks.find((record: Record<string, any>) =>
+            String(record?.title || "").trim().toLowerCase() === title.toLowerCase() &&
+            String((record?.taskMeta || record)?.dueDate || "").slice(0, 10) === todayISO()
+          )
+        : null;
+      showSaveToast(`${title} added to Addison.`);
+      recordAtlasAudit("Task assigned", `${title} → Addison · ${formatDate(todayISO())}`);
+      return String(created?.id || "");
+    } catch (error) {
+      showSaveToast(error instanceof Error ? error.message : "Could not add Addison task.", "warning");
+      return "";
     }
-
-    const createdAt = new Date().toISOString();
-    const category = inferTaskCategory(title);
-    const task: WorkPlanTask = {
-      id: uid("task"),
-      title,
-      minutes: 30,
-      priority: "Medium",
-      category,
-      locationId: "general",
-      preferredDay: inferTaskDay(title, category),
-      locked: false,
-      recurring: false,
-      fixedTime: "",
-      notes: "",
-    };
-    const meta: AtlasTaskMeta = {
-      status: "Open",
-      dueDate,
-      assignee: "Addison",
-      createdAt,
-      completedAt: undefined,
-      notes: "",
-      instructions: "",
-      addisonNote: "",
-      problemFlag: "",
-      recurrenceInterval: 1,
-      recurrenceUnit: "Weeks",
-      recurrenceEndDate: "",
-      lastCompletedDate: "",
-      completionHistory: [],
-      season: "Year-Round",
-      weatherDependency: "None",
-      flexibleTime: true,
-      skippable: true,
-      assignmentScope: "This occurrence",
-      needsReview: false,
-      updatedAt: createdAt,
-    };
-
-    clearTaskTombstone(task.id);
-    setWorkPlanTasks((current) => [task, ...current]);
-    setTaskMeta((current) => ({ ...current, [task.id]: meta }));
-    setSelectedTaskId(task.id);
-
-    const saved = await postAtlasRecord("tasks" as AtlasTable, {
-      ...task,
-      ...meta,
-      taskMeta: meta,
-      propertyId: activePropertyId,
-      updatedAt: createdAt,
-    });
-
-    recordAtlasAudit("Task assigned", `${task.title} → Addison · ${formatDate(dueDate)}`);
-    if (saved) showSaveToast(`${task.title} added to Addison.`);
-    else showSaveToast("Task is visible here, but shared Atlas has not confirmed it yet.", "warning");
-    return task.id;
   }
 
   function renderDashboard() {
