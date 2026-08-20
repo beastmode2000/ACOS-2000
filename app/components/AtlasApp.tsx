@@ -3029,7 +3029,12 @@ export default function AtlasApp() {
     if (typeof window === "undefined") return "";
     const params = new URLSearchParams(window.location.search);
     const query = params.toString();
-    return `${window.location.pathname}${query ? `?${query}` : ""}#${next}`;
+
+    // Atlas screens are hash-routed from the production root. Never preserve a
+    // stale/legacy pathname (for example /dashboard, /team, or another alias),
+    // because a later refresh would ask Next/Vercel for that physical route and
+    // can return a 404. Internal navigation always normalizes back to /#screen.
+    return `/${query ? `?${query}` : ""}#${next}`;
   }
 
   function setScreen(next: AtlasScreen, options?: { replace?: boolean }) {
