@@ -194,6 +194,55 @@ export default function AtlasRoutines({
   const [dashboardChecklistExpanded, setDashboardChecklistExpanded] = useState(false);
   const weeklySetupRunningRef = useRef(false);
 
+  async function parseRoutineResponse(response: Response) {
+    const text = await response.text();
+    if (!text.trim()) return {};
+
+    try {
+      return JSON.parse(text) as Record<string, any>;
+    } catch {
+      if (response.status === 401 || response.status === 403) {
+        return {
+          ok: false,
+          error: "Atlas session was interrupted. Please try again.",
+        };
+      }
+
+      return {
+        ok: false,
+        error: response.ok
+          ? "Atlas returned an unreadable response. Please try again."
+          : `Atlas request returned HTTP ${response.status}.`,
+      };
+    }
+  }
+
+  async function routineGetJson(url: string) {
+    let lastResponse: Response | null = null;
+    let lastPayload: Record<string, any> = {};
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await fetch(url, { cache: "no-store" });
+      const payload = await parseRoutineResponse(response);
+      lastResponse = response;
+      lastPayload = payload;
+
+      if (response.ok && payload?.ok !== false) {
+        return { response, payload };
+      }
+
+      const sessionInterrupted = response.status === 401 || response.status === 403;
+      if (sessionInterrupted && attempt === 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, 700));
+        continue;
+      }
+
+      break;
+    }
+
+    return { response: lastResponse, payload: lastPayload };
+  }
+
   async function routinePost(body: Record<string, unknown>) {
     let lastError = "Routine save failed.";
 
@@ -205,7 +254,7 @@ export default function AtlasRoutines({
         body: JSON.stringify(body),
       });
 
-      const payload = await response.json().catch(() => ({}));
+      const payload = await parseRoutineResponse(response);
 
       if (response.ok && payload?.ok !== false) {
         return payload;
@@ -267,8 +316,10 @@ export default function AtlasRoutines({
             tasks: template.tasks,
           }),
         });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || payload.ok === false) throw new Error(payload.error || `${dayNames[template.day]} routine did not save`);
+        const payload = await parseRoutineResponse(response);
+        if (!response.ok || payload.ok === false) {
+          throw new Error(payload.error || `${dayNames[template.day]} routine did not save`);
+        }
       }
       const operationsDays = new Set(atlasWeeklyOperations.map((template) => template.day));
       const untouchedTemplates = currentTemplates.filter((template) => !operationsDays.has(template.day));
@@ -282,17 +333,17 @@ export default function AtlasRoutines({
     setStatus("Loading routines…");
 
     try {
-      const response = await fetch(
+      const { response, payload } = await routineGetJson(
         `/api/atlas-routines?date=${todayKey()}&propertyId=${encodeURIComponent(activePropertyId)}`,
-        {
-          cache: "no-store",
-        }
       );
 
-      const payload = await response.json();
-
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "Could not load routines");
+      if (!response || !response.ok || !payload.ok) {
+        throw new Error(
+          payload.error ||
+            (response?.status === 401 || response?.status === 403
+              ? "Atlas session was interrupted. Please try again."
+              : "Could not load routines"),
+        );
       }
 
       const loadedTemplates = Array.isArray(payload.templates) ? payload.templates : [];
