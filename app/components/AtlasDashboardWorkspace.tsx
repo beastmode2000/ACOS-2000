@@ -268,6 +268,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     todayLogText,
     upcomingEvents,
     updateLandscapeAssignment,
+    updateAddisonDashboardTask,
     updateTaskDetails,
     updateTeamAssignment,
     updateWorkPlanTask,
@@ -2330,7 +2331,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                 return (
                   <div key={`dashboard-person-task-${task.id}`} style={{ border: `1px solid ${done ? "#D6E3DC" : colors.line}`, borderRadius: 10, background: done ? "#F5F8F6" : "#FFFFFF", padding: 8, opacity: done ? 0.76 : 1 }}>
                     <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center" }}>
-                      <input type="checkbox" checked={done} onChange={() => done ? updateTaskDetails(task.id, { status: "Open", completedAt: undefined, completionHistory: (meta.completionHistory || []).filter((date) => date !== today), needsReview: false, dueDate: today }) : completeAtlasTask(task)} />
+                      <input type="checkbox" checked={done} onChange={() => person === "Addison" ? void updateAddisonDashboardTask(task.id, { status: done ? "Open" : "Completed" }) : done ? updateTaskDetails(task.id, { status: "Open", completedAt: undefined, completionHistory: (meta.completionHistory || []).filter((date: string) => date !== today), needsReview: false, dueDate: today }) : completeAtlasTask(task)} />
                       <button type="button" onClick={() => openDashboardTaskEditor(task)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", minWidth: 0, cursor: "pointer" }}>
                         <strong style={{ display: "block", color: colors.navy, textDecoration: done ? "line-through" : "none", opacity: done ? 0.6 : 1, overflow: "hidden", textOverflow: "ellipsis" }}>{task.title}</strong>
                         <small style={{ color: "#000000", fontSize: 11, fontWeight: 400, lineHeight: 1.35, display: "block" }}>{meta.dueDate ? formatDate(meta.dueDate) : person === "Addison" ? "As Needed" : "Today"} · {minutesLabel(task.minutes)}</small>
@@ -2341,13 +2342,13 @@ export default function AtlasDashboardWorkspace(props: any) {
                       <div style={{ display: "grid", gap: 7, marginTop: 9, paddingTop: 9, borderTop: `1px solid ${colors.line}` }}>
                         <input key={`dashboard-task-title-${task.id}-${dashboardTaskEditorId}`} defaultValue={task.title} onBlur={(event) => { const nextTitle = event.currentTarget.value.trim(); if (nextTitle && nextTitle !== task.title) updateWorkPlanTask(task.id, { title: nextTitle }); else if (!nextTitle) event.currentTarget.value = task.title; }} style={inputStyle}/>
                         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 7 }}>
-                          <input type="date" defaultValue={meta.dueDate || today} onBlur={(event) => { const nextDate = event.currentTarget.value; if (nextDate !== (meta.dueDate || today)) updateTaskDetails(task.id, { dueDate: nextDate }); }} style={inputStyle}/>
+                          <input type="date" defaultValue={meta.dueDate || today} onBlur={(event) => { const nextDate = event.currentTarget.value; if (nextDate !== (meta.dueDate || today)) { if (person === "Addison") void updateAddisonDashboardTask(task.id, { dueDate: nextDate }); else updateTaskDetails(task.id, { dueDate: nextDate }); } }} style={inputStyle}/>
                           <select defaultValue={meta.assignee === "Addison" ? "Addison" : "Nick"} onChange={(event) => updateTaskDetails(task.id, { assignee: event.currentTarget.value as "Nick" | "Addison" })} style={inputStyle}><option value="Nick">Nick</option><option value="Addison">Addison</option></select>
                           <input type="number" min={5} step={5} defaultValue={task.minutes} onBlur={(event) => { const nextMinutes = Math.max(5, Number(event.currentTarget.value) || 5); if (nextMinutes !== task.minutes) updateWorkPlanTask(task.id, { minutes: nextMinutes }); }} style={inputStyle}/>
                         </div>
-                        <textarea key={`dashboard-task-note-${task.id}-${dashboardTaskEditorId}`} defaultValue={meta.notes || task.notes || ""} onBlur={(event) => { const nextNote = event.currentTarget.value; if (nextNote !== (meta.notes || task.notes || "")) updateTaskDetails(task.id, { notes: nextNote }); }} placeholder="Notes or instructions" rows={2} style={{ ...inputStyle, resize: "vertical" }}/>
+                        <textarea key={`dashboard-task-note-${task.id}-${dashboardTaskEditorId}`} defaultValue={meta.notes || task.notes || ""} onBlur={(event) => { const nextNote = event.currentTarget.value; if (nextNote !== (meta.notes || task.notes || "")) { if (person === "Addison") void updateAddisonDashboardTask(task.id, { notes: nextNote }); else updateTaskDetails(task.id, { notes: nextNote }); } }} placeholder="Notes or instructions" rows={2} style={{ ...inputStyle, resize: "vertical" }}/>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          <button type="button" onClick={() => updateTaskDetails(task.id, { dueDate: addDays(today, 1), status: "Open", completedAt: undefined })} style={secondaryButtonStyle}>Move Tomorrow</button>
+                          <button type="button" onClick={() => person === "Addison" ? void updateAddisonDashboardTask(task.id, { dueDate: addDays(today, 1) }) : updateTaskDetails(task.id, { dueDate: addDays(today, 1), status: "Open", completedAt: undefined })} style={secondaryButtonStyle}>Move Tomorrow</button>
                           <button type="button" onClick={() => updateTaskDetails(task.id, { assignee: person === "Nick" ? "Addison" : "Nick", status: "Open" })} style={secondaryButtonStyle}>Move to {person === "Nick" ? "Addison" : "Nick"}</button>
                           <button type="button" onClick={() => { if (window.confirm(`Delete ${task.title}?`)) { deleteAtlasTask(task.id); setDashboardTaskEditorId(""); } }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
                         </div>
@@ -2377,7 +2378,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                     <div style={{ display: "grid", gap: 6, marginTop: 9 }}>{activeTasks.map((task) => renderDashboardTaskRow(task, false))}{!activeTasks.length ? <div style={noticeStyle}>No active work today.</div> : null}</div>
                   )}
                   {completedTodayTasks.length ? <details style={{ marginTop: 9 }}><summary style={{ cursor: "pointer", fontWeight: 900, color: colors.navy }}>Completed today · {completedTodayTasks.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 7 }}>{completedTodayTasks.map((task) => renderDashboardTaskRow(task, true))}</div></details> : null}
-                  {history.length ? <details style={{ marginTop: 8 }}><summary style={{ cursor: "pointer", fontWeight: 850, color: colors.muted }}>Earlier completed · {history.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 7 }}>{history.map((task) => <div key={`history-${person}-${task.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, padding: 7, borderRadius: 8, background: "#F3F5F7" }}><span style={{ color: colors.navy, fontWeight: 800, textDecoration: "line-through", opacity: 0.5 }}>{task.title}</span><button type="button" onClick={() => updateTaskDetails(task.id, { status: "Open", completedAt: undefined, dueDate: today })} style={compactUtilityButtonStyle}>Reopen</button></div>)}</div></details> : null}
+                  {history.length ? <details style={{ marginTop: 8 }}><summary style={{ cursor: "pointer", fontWeight: 850, color: colors.muted }}>Earlier completed · {history.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 7 }}>{history.map((task) => <div key={`history-${person}-${task.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, padding: 7, borderRadius: 8, background: "#F3F5F7" }}><span style={{ color: colors.navy, fontWeight: 800, textDecoration: "line-through", opacity: 0.5 }}>{task.title}</span><button type="button" onClick={() => person === "Addison" ? void updateAddisonDashboardTask(task.id, { status: "Open" }) : updateTaskDetails(task.id, { status: "Open", completedAt: undefined, dueDate: today })} style={compactUtilityButtonStyle}>Reopen</button></div>)}</div></details> : null}
                 </section>
               );
             })}
