@@ -270,6 +270,8 @@ export default function AtlasTeamWork({
   const [teamView, setTeamView] = useState<"addison" | "assignments" | "people">("people");
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [memberMessage, setMemberMessage] = useState("");
+  const [fieldLinkUrls, setFieldLinkUrls] = useState<Record<string, string>>({});
+  const [fieldLinkBusyId, setFieldLinkBusyId] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [newMemberRole, setNewMemberRole] = useState<TeamRole>("Employee");
@@ -653,21 +655,67 @@ export default function AtlasTeamWork({
   }
 
   async function manageFieldLink(member: TeamMember, revoke = false) {
-    setMemberMessage(revoke ? "Revoking My Work link…" : "Creating My Work link…");
+    if (fieldLinkBusyId) return;
+    setFieldLinkBusyId(member.id);
+    setMemberMessage(revoke ? "Revoking My Work link…" : member.fieldLinkActive ? "Replacing My Work link…" : "Creating My Work link…");
     try {
-      const response = await fetch("/api/atlas-team", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:revoke ? "field-link-revoke" : "field-link", memberId:member.id }) });
-      const payload = await response.json().catch(()=>({}));
-      if(!response.ok || !payload?.ok) throw new Error(payload?.error || "Could not update My Work link.");
-      if(revoke) {
-        setMembers((current)=>current.map((item)=>item.id===member.id?{...item,fieldLinkActive:false}:item));
-        setMemberMessage("My Work link revoked.");
+      const response = await fetch("/api/atlas-team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: revoke ? "field-link-revoke" : "field-link", memberId: member.id }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Could not update My Work link.");
+
+      if (revoke) {
+        setMembers((current) => current.map((item) => item.id === member.id ? { ...item, fieldLinkActive: false } : item));
+        setFieldLinkUrls((current) => {
+          const next = { ...current };
+          delete next[member.id];
+          return next;
+        });
+        setMemberMessage(`${member.name}'s My Work link was revoked.`);
         return;
       }
+
       const link = `${window.location.origin}${payload.fieldPath}`;
-      await navigator.clipboard?.writeText(link);
-      setMembers((current)=>current.map((item)=>item.id===member.id?{...item,fieldLinkActive:true}:item));
-      setMemberMessage(`My Work link copied: ${link}`);
-    } catch(error) { setMemberMessage(error instanceof Error ? error.message : "Could not update My Work link."); }
+      setFieldLinkUrls((current) => ({ ...current, [member.id]: link }));
+      setMembers((current) => current.map((item) => item.id === member.id ? { ...item, fieldLinkActive: true } : item));
+
+      try {
+        await navigator.clipboard?.writeText(link);
+        setMemberMessage(`${member.name}'s My Work link was created and copied.`);
+      } catch {
+        setMemberMessage(`${member.name}'s My Work link was created. Use Copy Link below.`);
+      }
+    } catch (error) {
+      setMemberMessage(error instanceof Error ? error.message : "Could not update My Work link.");
+    } finally {
+      setFieldLinkBusyId("");
+    }
+  }
+
+  async function copyFieldLink(member: TeamMember) {
+    const link = fieldLinkUrls[member.id];
+    if (!link) {
+      setMemberMessage("For security, Atlas does not store the readable link. Use Replace & Copy Link to create a new one.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(link);
+      setMemberMessage(`${member.name}'s My Work link copied.`);
+    } catch {
+      setMemberMessage(link);
+    }
+  }
+
+  function openFieldLink(member: TeamMember) {
+    const link = fieldLinkUrls[member.id];
+    if (!link) {
+      setMemberMessage("For security, Atlas does not store the readable link. Use Replace & Copy Link to create a new one.");
+      return;
+    }
+    window.open(link, "_blank", "noopener,noreferrer");
   }
 
   function resetAssignmentForm() {
@@ -1533,7 +1581,7 @@ export default function AtlasTeamWork({
                       <div><div style={labelStyle}>Properties</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{PROPERTY_IDS.map((propertyId)=>{const on=member.propertyIds.includes(propertyId);return <button key={propertyId} type="button" onClick={()=>updateMember(member.id,{propertyIds:on?member.propertyIds.filter((id)=>id!==propertyId):[...member.propertyIds,propertyId]})} style={{...propertyChipStyle,background:on?colors.navy3:colors.card,color:on?'#fff':colors.text}}>{propertyId==='hangar'?'Hangar':propertyId}</button>})}</div></div>
                       <div><div style={labelStyle}>Permissions</div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}>{(['view','edit','approve','delete','manageUsers'] as const).map((permission)=><label key={permission} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:800}}><input type="checkbox" checked={member.permissions[permission]} onChange={(e)=>updateMember(member.id,{permissions:{...member.permissions,[permission]:e.target.checked}})}/>{permission==='manageUsers'?'Manage users':permission[0].toUpperCase()+permission.slice(1)}</label>)}</div></div>
                       <div><div style={labelStyle}>Operating areas</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{ACCESS_PROFILES.map(([id,label])=>{const on=member.accessProfiles.includes(id);return <button key={id} type="button" onClick={()=>updateMember(member.id,{accessProfiles:on?member.accessProfiles.filter((value)=>value!==id):[...member.accessProfiles,id]})} style={{...propertyChipStyle,background:on?'#FFF3CF':colors.card,borderColor:on?colors.gold:colors.line}}>{label}</button>})}</div></div>
-                      <div style={{fontSize:11,color:colors.muted,fontWeight:800}}>Invite status: {member.inviteStatus || '—'}</div>{member.role === "Employee" ? <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}><button type="button" onClick={()=>void manageFieldLink(member,false)} style={goldButtonStyle}>{member.fieldLinkActive ? "Replace My Work Link" : "Create My Work Link"}</button>{member.fieldLinkActive ? <button type="button" onClick={()=>void manageFieldLink(member,true)} style={lightButtonStyle}>Revoke Link</button> : null}<span style={{fontSize:11,color:colors.muted,fontWeight:800}}>No Atlas login required</span></div> : null}
+                      <div style={{fontSize:11,color:colors.muted,fontWeight:800}}>Invite status: {member.inviteStatus || '—'}</div>{member.role === "Employee" ? <div style={{display:"grid",gap:7}}><div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}><button type="button" disabled={fieldLinkBusyId === member.id} onClick={()=>void manageFieldLink(member,false)} style={goldButtonStyle}>{fieldLinkBusyId === member.id ? "Working…" : member.fieldLinkActive ? (fieldLinkUrls[member.id] ? "Replace Link" : "Replace & Copy Link") : "Create My Work Link"}</button>{member.fieldLinkActive && fieldLinkUrls[member.id] ? <><button type="button" onClick={()=>void copyFieldLink(member)} style={lightButtonStyle}>Copy Link</button><button type="button" onClick={()=>openFieldLink(member)} style={lightButtonStyle}>Open</button></> : null}{member.fieldLinkActive ? <button type="button" disabled={fieldLinkBusyId === member.id} onClick={()=>void manageFieldLink(member,true)} style={lightButtonStyle}>Revoke</button> : null}<span style={{fontSize:11,color:colors.muted,fontWeight:800}}>No Atlas login required</span></div>{member.fieldLinkActive ? <div style={{fontSize:11,color:colors.muted,fontWeight:700}}>{fieldLinkUrls[member.id] ? "Link ready to send or test." : "Link active. Readable link is not stored; replace it when you need a new copy."}</div> : null}</div> : null}
                     </div>
                   </details>
                 </div>
