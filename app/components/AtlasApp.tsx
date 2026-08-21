@@ -12,6 +12,7 @@ import AtlasRoutines from "./AtlasRoutines";
 import AtlasTeamWork from "./AtlasTeamWork";
 import AtlasWorkOrders from "./AtlasWorkOrders";
 import ReportsAccessCenter from "./ReportsAccessCenter";
+import AtlasOwnerReport from "./AtlasOwnerReport";
 import {
   Field,
   SelectField,
@@ -5060,7 +5061,7 @@ export default function AtlasApp() {
     : (() => {
         return [
           { label: "Overview", items: ["dashboard", "notes"] as AtlasScreen[] },
-          { label: "Work", items: ["planner", "routines", "history"] as AtlasScreen[] },
+          { label: "Work", items: ["planner", "routines", "history", "ownerReport", "reports"] as AtlasScreen[] },
           { label: "Property", items: ["assets", "locations", "calendar"] as AtlasScreen[] },
           { label: "People", items: ["contacts", "vendors", "team"] as AtlasScreen[] },
           { label: "Intake", items: ["intake"] as AtlasScreen[] },
@@ -5073,7 +5074,7 @@ export default function AtlasApp() {
     : (() => {
         const primaryIds = new Set<AtlasScreen>([
           "dashboard", "notes", "planner", "routines", "history", "assets",
-          "locations", "calendar", "contacts", "vendors", "team", "intake",
+          "locations", "calendar", "contacts", "vendors", "team", "intake", "ownerReport", "reports",
         ]);
         const remaining = screens
           .map((item) => item.id)
@@ -27403,6 +27404,24 @@ ${notes.trim()}` : notes.trim(),
     );
   }
 
+  function renderOwnerReport() {
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Operations"
+          title="Owner Report"
+          detail="Review completed work before saving or sending the weekly owner report."
+        />
+        <AtlasOwnerReport
+          propertyId={activePropertyId}
+          workOrders={serviceRecords}
+          colors={colors}
+          isMobile={isMobile}
+        />
+      </section>
+    );
+  }
+
   function renderReportsAccess() {
     return (
       <section style={sectionStyle}>
@@ -29469,6 +29488,7 @@ ${notes.trim()}` : notes.trim(),
     else if (screen === "links") content = renderWorkLinks();
     else if (screen === "qr") content = renderQRCodes();
     else if (screen === "scan") content = renderQRScanner();
+    else if (screen === "ownerReport") content = renderOwnerReport();
     else if (screen === "reports") content = renderReportsAccess();
     else content = renderAssistant();
 
