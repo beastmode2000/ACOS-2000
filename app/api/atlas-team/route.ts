@@ -29,6 +29,7 @@ type Member = {
   propertyIds?: string[];
   permissions?: Permissions;
   accessProfiles?: string[];
+  fieldOnly?: boolean;
 };
 
 const rolePermissions: Record<Role, Permissions> = {
@@ -75,6 +76,20 @@ const rolePermissions: Record<Role, Permissions> = {
     manageUsers: false,
   },
 };
+
+function fieldOnlyEmail(memberId: string) {
+  const safeId = String(memberId || "field")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "") || "field";
+
+  return `field-${safeId}@field.atlas.invalid`;
+}
+
+function isFieldOnlyEmail(value: unknown) {
+  return /^field-[^@]+@field\.atlas\.invalid$/i.test(String(value || ""));
+}
 
 function normalizeRole(value: unknown): Role {
   const role = String(value || "").toLowerCase();
@@ -416,8 +431,9 @@ export async function GET(request: NextRequest) {
         accessProfiles: Array.isArray(row.access_profiles)
           ? row.access_profiles.map(String)
           : [],
-        inviteStatus: row.invite_status,
+        inviteStatus: isFieldOnlyEmail(email) ? "No Login" : row.invite_status,
         fieldLinkActive: row.field_link_active === true,
+        fieldOnly: isFieldOnlyEmail(email),
       };
     });
 
@@ -516,11 +532,78 @@ export async function POST(request: NextRequest) {
       action?: string;
       member?: Member;
       memberId?: string;
+      name?: string;
+      propertyId?: string;
     };
 
     const sql = getSql();
 
     await ensureTable(sql);
+
+    if (body.action === "field-employee-create") {
+      const name = String(body.name || "").trim();
+      const propertyId = String(body.propertyId || "2000").trim() || "2000";
+
+      if (!name) {
+        return NextResponse.json(
+          { ok: false, error: "Enter the field employee name." },
+          { status: 400 },
+        );
+      }
+
+      const id = `field-${Date.now()}-${randomBytes(4).toString("hex")}`;
+      const internalEmail = fieldOnlyEmail(id);
+      const permissions = rolePermissions.employee;
+      const token = randomBytes(32).toString("hex");
+      const hash = createHash("sha256").update(token).digest("hex");
+
+      await sql`
+        INSERT INTO atlas_team_access (
+          id,
+          name,
+          email,
+          role,
+          active,
+          property_ids,
+          permissions,
+          access_profiles,
+          field_token_hash,
+          field_token_created_at,
+          updated_at
+        )
+        VALUES (
+          ${id},
+          ${name},
+          ${internalEmail},
+          'employee',
+          true,
+          ${[propertyId]},
+          ${JSON.stringify(permissions)}::jsonb,
+          ${[]},
+          ${hash},
+          NOW(),
+          NOW()
+        )
+      `;
+
+      return NextResponse.json({
+        ok: true,
+        member: {
+          id,
+          name,
+          email: "",
+          role: "employee",
+          active: true,
+          propertyIds: [propertyId],
+          permissions,
+          accessProfiles: [],
+          inviteStatus: "No Login",
+          fieldLinkActive: true,
+          fieldOnly: true,
+        },
+        fieldPath: `/landscape-help?token=${encodeURIComponent(token)}`,
+      });
+    }
 
     if (body.action === "field-link" || body.action === "field-link-revoke") {
       const memberId = String(body.memberId || "").trim();
@@ -805,7 +888,7 @@ export async function POST(request: NextRequest) {
         VALUES (
           ${member.id},
           ${member.name},
-          ${member.email.toLowerCase()},
+          ${member.fieldOnly ? fieldOnlyEmail(member.id) : member.email.toLowerCase()},
           ${finalRole},
           ${isNick ? true : member.active},
           ${propertyIds},
