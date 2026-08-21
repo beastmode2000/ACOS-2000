@@ -2783,6 +2783,15 @@ export default function AtlasApp() {
         const retainedAutoIds = new Set<string>();
 
         desired.forEach((source) => {
+          const sourceTombstones = readCalendarDeleteTombstones(activePropertyId);
+          const sourceLinkKey = calendarSourceKey(source.linkedType, source.linkedId);
+          if (
+            sourceTombstones.has(`id:${source.preferredId}`) ||
+            (sourceLinkKey && sourceTombstones.has(sourceLinkKey))
+          ) {
+            return;
+          }
+
           let recordIndex = nextCalendar.findIndex(
             (item) => item.id === source.preferredId,
           );
@@ -2799,6 +2808,12 @@ export default function AtlasApp() {
           const existing = recordIndex >= 0 ? nextCalendar[recordIndex] : undefined;
           const recordId = existing?.id || source.preferredId;
           if (recordId.startsWith(`atlas-auto-`)) retainedAutoIds.add(recordId);
+
+          // Once a generated calendar row is manually edited, it becomes authoritative.
+          // Keep the source link for navigation, but do not let background sync overwrite it.
+          if (existing && isCalendarManualOverride(recordId)) {
+            return;
+          }
 
           const nextRecord = normalizeCalendar({
             ...(existing || {}),
@@ -2853,9 +2868,9 @@ export default function AtlasApp() {
         ).filter((item) => !retainedAutoIds.has(item.id));
 
         const staleIds = new Set(staleAutoRecords.map((item) => item.id));
-        const finalCalendar = staleIds.size
-          ? nextCalendar.filter((item) => !staleIds.has(item.id))
-          : nextCalendar;
+        const finalCalendar = nextCalendar.filter(
+          (item) => !staleIds.has(item.id) && !isCalendarRecordDeleted(item),
+        );
 
         if (cancelled) return;
 
@@ -9155,15 +9170,30 @@ export default function AtlasApp() {
       return;
     }
     atlasActionLocksRef.current.add(actionKey);
+    addWorkOrderTombstone(record.id);
     const deleted = await deleteAtlasRecord("work_orders", record.id);
     atlasActionLocksRef.current.delete(actionKey);
     if (!deleted) {
+      clearWorkOrderTombstone(record.id);
       showSaveToast("Atlas could not delete that work order.", "warning");
       return;
     }
     setServiceRecords((current) =>
       current.filter((item) => item.id !== record.id),
     );
+    const linkedCalendarRecords = calendarItems.filter(
+      (item) =>
+        String(item.linkedType || "").toLowerCase() === "work order" &&
+        String(item.linkedId || "") === String(record.id),
+    );
+    linkedCalendarRecords.forEach((item) => {
+      rememberCalendarDeletion(item);
+      void deleteAtlasRecord("calendar", item.id);
+    });
+    if (linkedCalendarRecords.length) {
+      const linkedIds = new Set(linkedCalendarRecords.map((item) => item.id));
+      setCalendarItems((current) => current.filter((item) => !linkedIds.has(item.id)));
+    }
     setSelectedServiceId("");
     showSaveToast(`${record.title || "Work order"} deleted.`);
   }
@@ -10154,6 +10184,18 @@ export default function AtlasApp() {
       }
     }
 
+    if (table === "calendar" && normalizedRecord.id) {
+      if (isCalendarRecordDeleted(normalizedRecord as unknown as AtlasCalendarItem)) {
+        return true;
+      }
+    }
+
+    if (table === "work_orders" && normalizedRecord.id) {
+      if (readWorkOrderTombstones(String(normalizedRecord.propertyId || activePropertyId)).has(String(normalizedRecord.id))) {
+        return true;
+      }
+    }
+
     const key = atlasRecordKey(table, normalizedRecord);
     const serialized = JSON.stringify(normalizedRecord);
 
@@ -10184,6 +10226,18 @@ export default function AtlasApp() {
             deletedIds.has(String(normalizedRecord.id)) ||
             (normalizedName && deletedGeneratedNames.has(normalizedName))
           ) {
+            return true;
+          }
+        }
+
+        if (table === "calendar" && normalizedRecord.id) {
+          if (isCalendarRecordDeleted(normalizedRecord as unknown as AtlasCalendarItem)) {
+            return true;
+          }
+        }
+
+        if (table === "work_orders" && normalizedRecord.id) {
+          if (readWorkOrderTombstones(String(normalizedRecord.propertyId || activePropertyId)).has(String(normalizedRecord.id))) {
             return true;
           }
         }
@@ -11753,6 +11807,18 @@ export default function AtlasApp() {
         : String(calendarDraft.ownerUserId || ""),
     });
 
+    if (originalSeriesRecord) {
+      clearCalendarDeletion(originalSeriesRecord);
+      if (
+        String(originalSeriesRecord.id || "").startsWith("atlas-auto-") ||
+        originalSeriesRecord.source === "task" ||
+        originalSeriesRecord.source === "work-order" ||
+        Boolean(originalSeriesRecord.linkedId)
+      ) {
+        rememberCalendarManualOverride(record.id);
+      }
+    }
+
     setDatabaseStatus("Saving calendar event to shared Atlas...");
 
     const saved = await postAtlasRecord("calendar", {
@@ -12070,8 +12136,14 @@ export default function AtlasApp() {
     const record = calendarItems.find((item) => item.id === id);
     if (!window.confirm(`Delete ${record?.title || "this calendar item"}?`))
       return;
+    if (record) rememberCalendarDeletion(record);
+    else rememberCalendarDeletion({ id });
     const deleted = await deleteAtlasRecord("calendar", id);
-    if (!deleted) return;
+    if (!deleted) {
+      if (record) clearCalendarDeletion(record);
+      else clearCalendarDeletion({ id });
+      return;
+    }
     const remaining = byTitle(
       calendarItems.filter((item) => item.id !== id),
     );
@@ -14708,6 +14780,105 @@ export default function AtlasApp() {
       locations.find((location) => location.id === locationId)?.name ||
       "General"
     );
+  }
+
+  function calendarDeleteTombstoneKey(propertyId = activePropertyId) {
+    return `atlas-calendar-delete-tombstones-v1-${propertyId}`;
+  }
+
+  function calendarManualOverrideKey(propertyId = activePropertyId) {
+    return `atlas-calendar-manual-overrides-v1-${propertyId}`;
+  }
+
+  function calendarSourceKey(
+    linkedType: unknown,
+    linkedId: unknown,
+  ) {
+    const type = String(linkedType || "").trim().toLowerCase();
+    const id = String(linkedId || "").trim();
+    return type && id ? `link:${type}:${id}` : "";
+  }
+
+  function readCalendarDeleteTombstones(propertyId = activePropertyId) {
+    return new Set(
+      readStoredArray<string>([calendarDeleteTombstoneKey(propertyId)], []).map(String),
+    );
+  }
+
+  function rememberCalendarDeletion(record?: Partial<AtlasCalendarItem> | null) {
+    if (!record) return;
+    const current = readCalendarDeleteTombstones();
+    const id = String(record.id || "").trim();
+    const linkKey = calendarSourceKey(record.linkedType, record.linkedId);
+    if (id) current.add(`id:${id}`);
+    if (linkKey) current.add(linkKey);
+    saveStoredArray(calendarDeleteTombstoneKey(), Array.from(current));
+  }
+
+  function clearCalendarDeletion(record?: Partial<AtlasCalendarItem> | null) {
+    if (!record) return;
+    const current = readCalendarDeleteTombstones();
+    const id = String(record.id || "").trim();
+    const linkKey = calendarSourceKey(record.linkedType, record.linkedId);
+    let changed = false;
+    if (id) changed = current.delete(`id:${id}`) || changed;
+    if (linkKey) changed = current.delete(linkKey) || changed;
+    if (changed) saveStoredArray(calendarDeleteTombstoneKey(), Array.from(current));
+  }
+
+  function isCalendarRecordDeleted(record?: Partial<AtlasCalendarItem> | null) {
+    if (!record) return false;
+    const tombstones = readCalendarDeleteTombstones();
+    const id = String(record.id || "").trim();
+    const linkKey = calendarSourceKey(record.linkedType, record.linkedId);
+    return Boolean(
+      (id && tombstones.has(`id:${id}`)) ||
+      (linkKey && tombstones.has(linkKey))
+    );
+  }
+
+  function rememberCalendarManualOverride(id: string) {
+    const cleanId = String(id || "").trim();
+    if (!cleanId) return;
+    const current = new Set(
+      readStoredArray<string>([calendarManualOverrideKey()], []).map(String),
+    );
+    current.add(cleanId);
+    saveStoredArray(calendarManualOverrideKey(), Array.from(current));
+  }
+
+  function isCalendarManualOverride(id: string) {
+    const cleanId = String(id || "").trim();
+    if (!cleanId) return false;
+    return readStoredArray<string>([calendarManualOverrideKey()], [])
+      .map(String)
+      .includes(cleanId);
+  }
+
+  function workOrderTombstoneKey(propertyId = activePropertyId) {
+    return `atlas-work-order-tombstones-v1-${propertyId}`;
+  }
+
+  function readWorkOrderTombstones(propertyId = activePropertyId) {
+    return new Set(
+      readStoredArray<string>([workOrderTombstoneKey(propertyId)], []).map(String),
+    );
+  }
+
+  function addWorkOrderTombstone(id: string) {
+    const cleanId = String(id || "").trim();
+    if (!cleanId) return;
+    const current = readWorkOrderTombstones();
+    current.add(cleanId);
+    saveStoredArray(workOrderTombstoneKey(), Array.from(current));
+  }
+
+  function clearWorkOrderTombstone(id: string) {
+    const cleanId = String(id || "").trim();
+    if (!cleanId) return;
+    const current = readWorkOrderTombstones();
+    if (!current.delete(cleanId)) return;
+    saveStoredArray(workOrderTombstoneKey(), Array.from(current));
   }
 
   function taskTombstoneKey(propertyId = activePropertyId) {
