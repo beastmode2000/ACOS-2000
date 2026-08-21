@@ -173,26 +173,7 @@ export default function LandscapeHelpPage() {
   }, []);
 
   useEffect(() => {
-    if (employeeData) {
-    const today = employeeData.today;
-    const taskMeta = (task: Record<string, any>) => task.taskMeta && typeof task.taskMeta === "object" ? task.taskMeta : task;
-    const activeTasks = employeeData.tasks.filter((task) => String(taskMeta(task).status || "Open") !== "Completed");
-    const completedTasks = employeeData.tasks.filter((task) => String(taskMeta(task).status || "") === "Completed");
-    const prettyToday = new Date(`${today}T12:00:00`).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});
-    const renderTask = (item:Record<string,any>, completed:boolean) => {
-      const meta=taskMeta(item); const photos=Array.isArray(meta.photos)?meta.photos:[]; const note=String(meta.addisonNote||meta.note||"");
-      const flagged=Boolean(meta.needsNick), problem=Boolean(meta.problemFound), nothingNeeded=Boolean(meta.checkedNothingNeeded);
-      return <div key={String(item.id)} style={{border:`1px solid ${problem||flagged?colors.gold:colors.line}`,borderRadius:14,padding:12,background:completed||nothingNeeded?"#F7FAFC":colors.card,display:"grid",gap:9}}>
-        <label style={{display:"flex",gap:10,alignItems:"flex-start"}}><input type="checkbox" checked={completed} onChange={(e)=>void patchAddison("task-status",{taskId:item.id,status:e.target.checked?"Completed":"Open"})} style={{width:21,height:21,marginTop:2}}/><span><strong style={{display:"block",color:colors.navy,textDecoration:completed?"line-through":"none"}}>{String(item.title||"Work item")}</strong>{meta.dueDate?<small style={{color:colors.muted}}>Due {formatDate(String(meta.dueDate).slice(0,10))}</small>:null}</span></label>
-        <textarea defaultValue={note} placeholder="Add a note…" onBlur={(e)=>void patchAddison("task-note",{taskId:item.id,note:e.currentTarget.value})} style={{...styles.textarea,minHeight:58}}/>
-        <div style={{display:"flex",gap:7,flexWrap:"wrap"}}><button type="button" onClick={()=>void patchAddison("task-flag",{taskId:item.id,needsNick:!flagged})} style={styles.secondaryButton}>{flagged?"Needs Nick ✓":"Needs Nick"}</button><button type="button" onClick={()=>void patchAddison("task-problem",{taskId:item.id,problemFound:!problem})} style={{...styles.secondaryButton,color:problem?colors.red:colors.text}}>{problem?"Problem Found ✓":"Problem Found"}</button><label style={{...styles.secondaryButton,cursor:"pointer"}}>{uploadingItemId===String(item.id)?"Uploading…":"Add Photo"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={(e)=>{const f=e.currentTarget.files?.[0];if(f)void uploadAddisonPhoto(String(item.id),f);e.currentTarget.value="";}}/></label></div>
-        {photos.length?<div style={{display:"flex",gap:7,overflowX:"auto"}}>{photos.map((photo:any,i:number)=><a key={`${photo.url}-${i}`} href={String(photo.url)} target="_blank" rel="noreferrer"><img src={String(photo.url)} alt={String(photo.name||"Photo")} style={{width:72,height:72,objectFit:"cover",borderRadius:10,border:`1px solid ${colors.line}`}}/></a>)}</div>:null}
-      </div>;
-    };
-    return <main style={{...styles.page,padding:14,maxWidth:760}}><section style={{...styles.header,padding:18,borderRadius:18,marginBottom:12}}><div><h1 style={{...styles.title,fontSize:30,marginBottom:2}}>Atlas Today</h1><div style={{color:"white",fontWeight:800,fontSize:14}}>{employeeData.employeeName} · {employeeData.propertyIds.join(", ")}</div><p style={{...styles.subtitle,marginTop:3}}>{prettyToday}</p></div></section><section style={styles.card}><div style={styles.eyebrow}>MY WORK</div><h2 style={styles.cardTitle}>Today</h2><div style={{display:"grid",gap:9}}>{activeTasks.map((t)=>renderTask(t,false))}{!activeTasks.length?<div style={styles.muted}>No open work assigned.</div>:null}</div></section>{completedTasks.length?<details style={styles.card}><summary style={{cursor:"pointer",fontWeight:900}}>Completed Today · {completedTasks.length}</summary><div style={{display:"grid",gap:9,marginTop:10}}>{completedTasks.map((t)=>renderTask(t,true))}</div></details>:null}</main>;
-  }
-
-  if (addisonData) {
+    if (addisonData) {
       setQuickNote(String(addisonData.dailyNote || ""));
     }
   }, [addisonData?.today, addisonData?.dailyNote]);
