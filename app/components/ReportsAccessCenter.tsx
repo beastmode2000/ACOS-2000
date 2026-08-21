@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import AtlasOwnerReport from "./AtlasOwnerReport";
 
 type Row = Record<string, unknown>;
 type Role = "Master" | "Administrator" | "Manager" | "Employee" | "Vendor" | "Viewer";
@@ -483,6 +484,8 @@ export default function ReportsAccessCenter({ data, colors, isMobile, analytics 
 
       {centerSection === "reports" ? (
         <>
+          <AtlasOwnerReport workOrders={data.workOrders} colors={colors} isMobile={isMobile} />
+
           <section style={card}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
               <div>
@@ -559,32 +562,20 @@ export default function ReportsAccessCenter({ data, colors, isMobile, analytics 
             </div>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,1fr)", gap: 8 }}>
               {alerts.map((alert) => (
-                <button
-                  type="button"
-                  onClick={() => openAlert(alert.mode)}
-                  key={alert.label}
-                  style={{
-                    textAlign: "left",
-                    padding: 12,
-                    border: `1px solid ${alertMode === alert.mode ? colors.gold : colors.line}`,
-                    borderRadius: 11,
-                    background: alertMode === alert.mode ? "#FFF8E5" : colors.panel,
-                    cursor: "pointer",
-                  }}
-                >
-                  <strong style={{ fontSize: 22, color: colors.navy }}>{alert.count}</strong>
-                  <div style={{ color: colors.muted, fontSize: 12, fontWeight: 800 }}>{alert.label}</div>
+                <button type="button" onClick={() => openAlert(alert.mode)} key={alert.label} style={{ textAlign:"left", padding:12, border:`1px solid ${alertMode===alert.mode?colors.gold:colors.line}`, borderRadius:11, background:alertMode===alert.mode?"#FFF8E5":colors.panel, cursor:"pointer" }}>
+                  <strong style={{ fontSize:22, color:colors.navy }}>{alert.count}</strong>
+                  <div style={{ color:colors.muted, fontSize:12, fontWeight:800 }}>{alert.label}</div>
                 </button>
               ))}
             </div>
             {alertMode ? (
-              <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
-                {filteredRows.length ? filteredRows.slice(0, 25).map((row) => (
-                  <div key={String(row.id)} style={{ padding: "8px 10px", border: `1px solid ${colors.line}`, borderRadius: 9, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                    <strong style={{ color: colors.navy, fontSize: 12 }}>{String(row.title || "Untitled work order")}</strong>
-                    <span style={{ color: colors.muted, fontSize: 11 }}>{String(row.date || "No date")} · {String(row.priority || "Medium")} · {String(row.status || "Open")}</span>
+              <div style={{ display:"grid", gap:6, marginTop:10 }}>
+                {filteredRows.length ? filteredRows.slice(0,25).map((row) => (
+                  <div key={String(row.id)} style={{ padding:"8px 10px", border:`1px solid ${colors.line}`, borderRadius:9, display:"flex", justifyContent:"space-between", gap:10, alignItems:"center", flexWrap:"wrap" }}>
+                    <strong style={{ color:colors.navy, fontSize:12 }}>{String(row.title || "Untitled work order")}</strong>
+                    <span style={{ color:colors.muted, fontSize:11 }}>{String(row.date || "No date")} · {String(row.priority || "Medium")} · {String(row.status || "Open")}</span>
                   </div>
-                )) : <div style={{ color: colors.muted, fontSize: 12 }}>No matching work orders.</div>}
+                )) : <div style={{ color:colors.muted, fontSize:12 }}>No matching work orders.</div>}
               </div>
             ) : null}
           </section>
@@ -595,104 +586,118 @@ export default function ReportsAccessCenter({ data, colors, isMobile, analytics 
         <section style={card}>
           <div style={{ marginBottom: 12 }}>
             <div style={sectionLabel}>Analytics</div>
-            <h2 style={{ margin: "4px 0 2px", color: colors.navy, fontSize: 20 }}>Operations Analytics</h2>
-            <p style={{ margin: 0, color: colors.muted, fontSize: 13 }}>Operational trends and workload analysis without accounting or expense tracking.</p>
+            <h2 style={{ margin:"4px 0 2px", color:colors.navy, fontSize:20 }}>Operations Analytics</h2>
+            <p style={{ margin:0, color:colors.muted, fontSize:13 }}>Operational trends and workload analysis without accounting or expense tracking.</p>
           </div>
-          {analytics || <div style={{ color: colors.muted, fontSize: 13 }}>Operations analytics are not available in this view.</div>}
+          {analytics || <div style={{ color:colors.muted, fontSize:13 }}>Operations analytics are not available in this view.</div>}
         </section>
       ) : null}
 
       {centerSection === "access" ? (
         <section style={card}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 13 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, flexWrap:"wrap", marginBottom:13 }}>
             <div>
               <div style={sectionLabel}>Team Access</div>
-              <h2 style={{ margin: "4px 0 2px", color: colors.navy, fontSize: 20 }}>People & permissions</h2>
-              <p style={{ margin: 0, color: colors.muted, fontSize: 13 }}>Keep property access, operating-area access, and permissions together for each person.</p>
+              <h2 style={{ margin:"4px 0 2px", color:colors.navy, fontSize:20 }}>People & permissions</h2>
+              <p style={{ margin:0, color:colors.muted, fontSize:13 }}>Keep property access, operating-area access, and permissions together for each person.</p>
             </div>
             <button type="button" onClick={() => void saveAccess()} style={button}>Save Access</button>
           </div>
-
-          {message ? <div style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: "9px 11px", background: colors.panel, color: colors.navy, fontSize: 12, fontWeight: 850, marginBottom: 10 }}>{message}</div> : null}
-
-          <div style={{ display: "grid", gap: 8 }}>
+          {message ? <div style={{ border:`1px solid ${colors.line}`, borderRadius:10, padding:"9px 11px", background:colors.panel, color:colors.navy, fontSize:12, fontWeight:850, marginBottom:10 }}>{message}</div> : null}
+          <div style={{ display:"grid", gap:8 }}>
             {team.map((member) => (
-              <div key={member.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 11, background: "#fff", display: "grid", gap: 9 }}>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(180px,1.2fr) minmax(220px,1.35fr) minmax(150px,.7fr) auto", gap: 8, alignItems: "center" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <strong style={{ display: "block", color: colors.navy }}>{member.name}</strong>
-                    <span style={{ color: colors.muted, fontSize: 11 }}>{member.inviteStatus || "Existing access"}</span>
+              <div key={member.id} style={{ border:`1px solid ${colors.line}`, borderRadius:12, padding:11, background:"#fff", display:"grid", gap:9 }}>
+                <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"minmax(180px,1.2fr) minmax(220px,1.35fr) minmax(150px,.7fr) auto", gap:8, alignItems:"center" }}>
+                  <div style={{ minWidth:0 }}>
+                    <strong style={{ display:"block", color:colors.navy }}>{member.name}</strong>
+                    <span style={{ color:colors.muted, fontSize:11 }}>{member.inviteStatus || "Existing access"}</span>
                   </div>
-                  <span style={{ color: colors.muted, fontSize: 12, overflowWrap: "anywhere" }}>{member.email}</span>
-                  <select value={member.role} disabled={member.role === "Master"} onChange={(event) => { const role = event.currentTarget.value as Role; updateMember(member.id, { role, permissions: roleDefaults[role] }); }} style={control}>
-                    {(["Master", "Administrator", "Manager", "Employee", "Vendor", "Viewer"] as Role[]).map((role) => <option key={role}>{role}</option>)}
+                  <span style={{ color:colors.muted, fontSize:12, overflowWrap:"anywhere" }}>{member.email}</span>
+                  <select value={member.role} disabled={member.role==="Master"} onChange={(event)=>{ const role=event.currentTarget.value as Role; updateMember(member.id,{role,permissions:roleDefaults[role]}); }} style={control}>
+                    {(["Master","Administrator","Manager","Employee","Vendor","Viewer"] as Role[]).map((role)=><option key={role}>{role}</option>)}
                   </select>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 900, whiteSpace: "nowrap" }}>
-                    <input type="checkbox" checked={member.active} disabled={member.role === "Master"} onChange={(event) => updateMember(member.id, { active: event.currentTarget.checked })} /> Active
+                  <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, fontWeight:900, whiteSpace:"nowrap" }}>
+                    <input type="checkbox" checked={member.active} disabled={member.role==="Master"} onChange={(event)=>updateMember(member.id,{active:event.currentTarget.checked})}/> Active
                   </label>
                 </div>
-
-                <div style={{ color: colors.muted, fontSize: 11 }}>{descriptions[member.role]}</div>
-
-                <div style={{ display: "grid", gap: 6, paddingTop: 7, borderTop: `1px solid ${colors.line}` }}>
-                  <strong style={{ color: colors.navy, fontSize: 11 }}>Properties</strong>
-                  <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-                    {properties.map(([id, label]) => <label key={id} style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11, fontWeight: 800 }}><input type="checkbox" disabled={member.role === "Master"} checked={member.propertyIds.includes(id)} onChange={(event) => updateMember(member.id, { propertyIds: event.currentTarget.checked ? [...member.propertyIds, id] : member.propertyIds.filter((value) => value !== id) })} />{label}</label>)}
+                <div style={{ color:colors.muted, fontSize:11 }}>{descriptions[member.role]}</div>
+                <div style={{ display:"grid", gap:6, paddingTop:7, borderTop:`1px solid ${colors.line}` }}>
+                  <strong style={{ color:colors.navy, fontSize:11 }}>Properties</strong>
+                  <div style={{ display:"flex", gap:9, flexWrap:"wrap" }}>
+                    {properties.map(([id,label])=>(
+                      <label key={id} style={{ display:"flex", gap:5, alignItems:"center", fontSize:11, fontWeight:800 }}>
+                        <input type="checkbox" disabled={member.role==="Master"} checked={member.propertyIds.includes(id)} onChange={(event)=>updateMember(member.id,{propertyIds:event.currentTarget.checked?[...member.propertyIds,id]:member.propertyIds.filter((value)=>value!==id)})}/>
+                        {label}
+                      </label>
+                    ))}
                   </div>
                 </div>
-
-                <div style={{ display: "grid", gap: 6 }}>
-                  <strong style={{ color: colors.navy, fontSize: 11 }}>Operating areas</strong>
-                  <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-                    {member.role === "Master" || member.role === "Administrator" ? (
-                      <span style={{ fontSize: 11, color: colors.muted, fontWeight: 800 }}>All Atlas records</span>
-                    ) : accessProfileOptions.map(([id, label]) => <label key={id} style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11, fontWeight: 800 }}><input type="checkbox" checked={member.accessProfiles.includes(id)} onChange={(event) => updateMember(member.id, { accessProfiles: event.currentTarget.checked ? [...member.accessProfiles, id] : member.accessProfiles.filter((value) => value !== id) })} />{label}</label>)}
-                    {member.role !== "Master" && member.role !== "Administrator" && !member.accessProfiles.length ? <span style={{ fontSize: 11, color: colors.muted }}>No profile selected = legacy unrestricted access</span> : null}
+                <div style={{ display:"grid", gap:6 }}>
+                  <strong style={{ color:colors.navy, fontSize:11 }}>Operating areas</strong>
+                  <div style={{ display:"flex", gap:9, flexWrap:"wrap" }}>
+                    {member.role==="Master" || member.role==="Administrator" ? <span style={{ fontSize:11, color:colors.muted, fontWeight:800 }}>All Atlas records</span> : accessProfileOptions.map(([id,label])=>(
+                      <label key={id} style={{ display:"flex", gap:5, alignItems:"center", fontSize:11, fontWeight:800 }}>
+                        <input type="checkbox" checked={member.accessProfiles.includes(id)} onChange={(event)=>updateMember(member.id,{accessProfiles:event.currentTarget.checked?[...member.accessProfiles,id]:member.accessProfiles.filter((value)=>value!==id)})}/>
+                        {label}
+                      </label>
+                    ))}
+                    {member.role!=="Master" && member.role!=="Administrator" && !member.accessProfiles.length ? <span style={{ fontSize:11, color:colors.muted }}>No profile selected = legacy unrestricted access</span> : null}
                   </div>
                 </div>
-
-                <div style={{ display: "grid", gap: 6 }}>
-                  <strong style={{ color: colors.navy, fontSize: 11 }}>Permissions</strong>
-                  <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-                    {permissionLabels.map(([key, label]) => <label key={key} style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11, fontWeight: 800 }}><input type="checkbox" disabled={member.role === "Master"} checked={member.permissions[key]} onChange={(event) => updateMember(member.id, { permissions: { ...member.permissions, [key]: event.currentTarget.checked } })} />{label}</label>)}
+                <div style={{ display:"grid", gap:6 }}>
+                  <strong style={{ color:colors.navy, fontSize:11 }}>Permissions</strong>
+                  <div style={{ display:"flex", gap:9, flexWrap:"wrap" }}>
+                    {permissionLabels.map(([key,label])=>(
+                      <label key={key} style={{ display:"flex", gap:5, alignItems:"center", fontSize:11, fontWeight:800 }}>
+                        <input type="checkbox" disabled={member.role==="Master"} checked={member.permissions[key]} onChange={(event)=>updateMember(member.id,{permissions:{...member.permissions,[key]:event.currentTarget.checked}})}/>
+                        {label}
+                      </label>
+                    ))}
                   </div>
                 </div>
               </div>
             ))}
           </div>
 
-          <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${colors.line}`, display: "grid", gap: 9 }}>
+          <div style={{ marginTop:14, paddingTop:14, borderTop:`1px solid ${colors.line}`, display:"grid", gap:9 }}>
             <div>
-              <strong style={{ color: colors.navy }}>Invite team member</strong>
-              <div style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>Create a secure Atlas invitation with the right property and operating-area access.</div>
+              <strong style={{ color:colors.navy }}>Invite team member</strong>
+              <div style={{ color:colors.muted, fontSize:11, marginTop:2 }}>Create a secure Atlas invitation with the right property and operating-area access.</div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1.3fr .8fr auto", gap: 8 }}>
-              <input value={newName} onChange={(e) => setNewName(e.currentTarget.value)} placeholder="Name" style={control} />
-              <input value={newEmail} onChange={(e) => setNewEmail(e.currentTarget.value)} placeholder="Email" style={control} />
-              <select value={newRole} onChange={(e) => setNewRole(e.currentTarget.value as Role)} style={control}><option>Administrator</option><option>Manager</option><option>Employee</option><option>Vendor</option><option>Viewer</option></select>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1.3fr .8fr auto", gap:8 }}>
+              <input value={newName} onChange={(e)=>setNewName(e.currentTarget.value)} placeholder="Name" style={control}/>
+              <input value={newEmail} onChange={(e)=>setNewEmail(e.currentTarget.value)} placeholder="Email" style={control}/>
+              <select value={newRole} onChange={(e)=>setNewRole(e.currentTarget.value as Role)} style={control}>
+                <option>Administrator</option><option>Manager</option><option>Employee</option><option>Vendor</option><option>Viewer</option>
+              </select>
               <button type="button" onClick={() => void createInvite()} style={button}>Create Invite</button>
             </div>
-            <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
-              <strong style={{ color: colors.navy, fontSize: 11 }}>Properties</strong>
-              {properties.map(([id, label]) => (
-                <label key={id} style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11, fontWeight: 800 }}>
-                  <input type="checkbox" checked={newPropertyIds.includes(id)} onChange={(event) => { const checked = event.currentTarget.checked; setNewPropertyIds((current) => checked ? Array.from(new Set([...current, id])) : current.filter((value) => value !== id)); }} />
+            <div style={{ display:"flex", gap:9, flexWrap:"wrap", alignItems:"center" }}>
+              <strong style={{ color:colors.navy, fontSize:11 }}>Properties</strong>
+              {properties.map(([id,label])=>(
+                <label key={id} style={{ display:"flex", gap:5, alignItems:"center", fontSize:11, fontWeight:800 }}>
+                  <input type="checkbox" checked={newPropertyIds.includes(id)} onChange={(event)=>{ const checked=event.currentTarget.checked; setNewPropertyIds((current)=>checked?Array.from(new Set([...current,id])):current.filter((value)=>value!==id)); }}/>
                   {label}
                 </label>
               ))}
             </div>
-            {newRole !== "Administrator" ? (
-              <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
-                <strong style={{ color: colors.navy, fontSize: 11 }}>Operating areas</strong>
-                {accessProfileOptions.map(([id, label]) => (
-                  <label key={id} style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11, fontWeight: 800 }}>
-                    <input type="checkbox" checked={newAccessProfiles.includes(id)} onChange={(event) => setNewAccessProfiles((current) => event.currentTarget.checked ? Array.from(new Set([...current, id])) : current.filter((value) => value !== id))} />
+            {newRole!=="Administrator" ? (
+              <div style={{ display:"flex", gap:9, flexWrap:"wrap", alignItems:"center" }}>
+                <strong style={{ color:colors.navy, fontSize:11 }}>Operating areas</strong>
+                {accessProfileOptions.map(([id,label])=>(
+                  <label key={id} style={{ display:"flex", gap:5, alignItems:"center", fontSize:11, fontWeight:800 }}>
+                    <input type="checkbox" checked={newAccessProfiles.includes(id)} onChange={(event)=>setNewAccessProfiles((current)=>event.currentTarget.checked?Array.from(new Set([...current,id])):current.filter((value)=>value!==id))}/>
                     {label}
                   </label>
                 ))}
               </div>
             ) : null}
-            {inviteLink ? <div style={{ display: "grid", gap: 5 }}><span style={{ fontSize: 11, color: colors.muted }}>Invitation expires in 7 days.</span><input readOnly value={inviteLink} onFocus={(e) => e.currentTarget.select()} style={control} /></div> : null}
+            {inviteLink ? (
+              <div style={{ display:"grid", gap:5 }}>
+                <span style={{ fontSize:11, color:colors.muted }}>Invitation expires in 7 days.</span>
+                <input readOnly value={inviteLink} onFocus={(e)=>e.currentTarget.select()} style={control}/>
+              </div>
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -700,39 +705,39 @@ export default function ReportsAccessCenter({ data, colors, isMobile, analytics 
       {centerSection === "system" ? (
         <>
           <section style={card}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"flex-start", flexWrap:"wrap" }}>
               <div>
                 <div style={sectionLabel}>Backup & Recovery</div>
-                <h2 style={{ margin: "4px 0 2px", color: colors.navy, fontSize: 20 }}>Atlas backups</h2>
-                <p style={{ margin: 0, color: colors.muted, fontSize: 13 }}>Create a protected server backup or download the records currently loaded in Atlas.</p>
+                <h2 style={{ margin:"4px 0 2px", color:colors.navy, fontSize:20 }}>Atlas backups</h2>
+                <p style={{ margin:0, color:colors.muted, fontSize:13 }}>Create a protected server backup or download the records currently loaded in Atlas.</p>
               </div>
-              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>
                 <button type="button" onClick={downloadBackup} style={quietButton}>Download Current Data</button>
                 <button type="button" onClick={() => void createServerBackup()} style={button}>Create Protected Backup</button>
               </div>
             </div>
-            {message ? <div style={{ marginTop: 10, color: colors.navy, fontSize: 12, fontWeight: 850 }}>{message}</div> : null}
-            <div style={{ display: "grid", gap: 6, marginTop: 12 }}>
-              {backups.length ? backups.slice(0, 5).map((backup) => (
-                <div key={String(backup.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, flexWrap: "wrap" }}>
-                  <span style={{ color: colors.navy, fontSize: 12 }}>{new Date(String(backup.created_at)).toLocaleString()} · {String(backup.reason)}</span>
-                  <button type="button" onClick={() => void downloadProtectedBackup(String(backup.id))} style={{ ...quietButton, padding: "7px 9px" }}>Download</button>
+            {message ? <div style={{ marginTop:10, color:colors.navy, fontSize:12, fontWeight:850 }}>{message}</div> : null}
+            <div style={{ display:"grid", gap:6, marginTop:12 }}>
+              {backups.length ? backups.slice(0,5).map((backup)=>(
+                <div key={String(backup.id)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, padding:"9px 10px", border:`1px solid ${colors.line}`, borderRadius:10, flexWrap:"wrap" }}>
+                  <span style={{ color:colors.navy, fontSize:12 }}>{new Date(String(backup.created_at)).toLocaleString()} · {String(backup.reason)}</span>
+                  <button type="button" onClick={() => void downloadProtectedBackup(String(backup.id))} style={{ ...quietButton, padding:"7px 9px" }}>Download</button>
                 </div>
-              )) : <div style={{ color: colors.muted, fontSize: 12 }}>No protected backups listed.</div>}
+              )) : <div style={{ color:colors.muted, fontSize:12 }}>No protected backups listed.</div>}
             </div>
           </section>
 
           <section style={card}>
             <div style={sectionLabel}>System History</div>
-            <h2 style={{ margin: "4px 0 10px", color: colors.navy, fontSize: 20 }}>Recent changes</h2>
-            <div style={{ display: "grid", gap: 6 }}>
-              {history.length ? history.slice(0, 12).map((entry) => (
-                <div key={String(entry.id)} style={{ padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(180px,.8fr) minmax(180px,1fr) auto", gap: 6, alignItems: "center", fontSize: 12 }}>
-                  <strong style={{ color: colors.navy }}>{String(entry.action).toUpperCase()} · {String(entry.table_name)}</strong>
-                  <span style={{ color: colors.muted }}>{String(entry.actor || "Atlas user")}</span>
-                  <span style={{ color: colors.muted, fontSize: 11 }}>{new Date(String(entry.created_at)).toLocaleString()}</span>
+            <h2 style={{ margin:"4px 0 10px", color:colors.navy, fontSize:20 }}>Recent changes</h2>
+            <div style={{ display:"grid", gap:6 }}>
+              {history.length ? history.slice(0,12).map((entry)=>(
+                <div key={String(entry.id)} style={{ padding:"9px 10px", border:`1px solid ${colors.line}`, borderRadius:10, display:"grid", gridTemplateColumns:isMobile?"1fr":"minmax(180px,.8fr) minmax(180px,1fr) auto", gap:6, alignItems:"center", fontSize:12 }}>
+                  <strong style={{ color:colors.navy }}>{String(entry.action).toUpperCase()} · {String(entry.table_name)}</strong>
+                  <span style={{ color:colors.muted }}>{String(entry.actor || "Atlas user")}</span>
+                  <span style={{ color:colors.muted, fontSize:11 }}>{new Date(String(entry.created_at)).toLocaleString()}</span>
                 </div>
-              )) : <div style={{ color: colors.muted, fontSize: 12 }}>No change history available.</div>}
+              )) : <div style={{ color:colors.muted, fontSize:12 }}>No change history available.</div>}
             </div>
           </section>
         </>
