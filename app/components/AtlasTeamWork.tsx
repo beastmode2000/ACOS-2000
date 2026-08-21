@@ -28,7 +28,7 @@ type TeamList = {
 
 type TeamRole = "Master" | "Administrator" | "Manager" | "Employee" | "Vendor" | "Viewer";
 type TeamPermissions = { view:boolean; edit:boolean; approve:boolean; delete:boolean; manageUsers:boolean };
-type TeamMember = { id:string; name:string; email:string; role:TeamRole; active:boolean; propertyIds:string[]; permissions:TeamPermissions; accessProfiles:string[]; inviteStatus?:string; fieldLinkActive?:boolean };
+type TeamMember = { id:string; name:string; email:string; role:TeamRole; active:boolean; propertyIds:string[]; permissions:TeamPermissions; accessProfiles:string[]; inviteStatus?:string; fieldLinkActive?:boolean; fieldOnly?:boolean };
 
 const ROLE_DEFAULTS: Record<TeamRole, TeamPermissions> = {
   Master:{view:true,edit:true,approve:true,delete:true,manageUsers:true},
@@ -275,6 +275,9 @@ export default function AtlasTeamWork({
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [newMemberRole, setNewMemberRole] = useState<TeamRole>("Employee");
+  const [fieldEmployeeName, setFieldEmployeeName] = useState("");
+  const [fieldEmployeePropertyId, setFieldEmployeePropertyId] = useState(activePropertyId);
+  const [fieldEmployeeBusy, setFieldEmployeeBusy] = useState(false);
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [assignmentTitle, setAssignmentTitle] = useState("");
   const assignmentTitleRef = useRef<HTMLInputElement | null>(null);
@@ -308,6 +311,10 @@ export default function AtlasTeamWork({
     useState<"High" | "Medium" | "Low">("Medium");
   const [editingMinutes, setEditingMinutes] = useState(30);
   const [historyCopied, setHistoryCopied] = useState(false);
+
+  useEffect(() => {
+    setFieldEmployeePropertyId(activePropertyId);
+  }, [activePropertyId]);
 
   async function loadAddisonWork(showLoading = false) {
     if (activePropertyId !== "2000") {
@@ -621,6 +628,54 @@ export default function AtlasTeamWork({
   function updateMember(id: string, patch: Partial<TeamMember>) {
     setMembers((current) => current.map((member) => member.id === id ? { ...member, ...patch } : member));
     setMemberMessage("");
+  }
+
+  async function addFieldEmployee() {
+    const name = fieldEmployeeName.trim();
+    if (!name) {
+      setMemberMessage("Enter the field employee name.");
+      return;
+    }
+    if (fieldEmployeeBusy) return;
+
+    setFieldEmployeeBusy(true);
+    setMemberMessage("Creating field employee…");
+    try {
+      const response = await fetch("/api/atlas-team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "field-employee-create",
+          name,
+          propertyId: fieldEmployeePropertyId || activePropertyId,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok || !payload?.member || !payload?.fieldPath) {
+        throw new Error(payload?.error || "Could not create field employee.");
+      }
+
+      const member = payload.member as TeamMember;
+      const link = `${window.location.origin}${payload.fieldPath}`;
+      setMembers((current) => [
+        ...current.filter((item) => item.id !== member.id),
+        member,
+      ]);
+      setFieldLinkUrls((current) => ({ ...current, [member.id]: link }));
+      setFieldEmployeeName("");
+      setFieldEmployeePropertyId(activePropertyId);
+
+      try {
+        await navigator.clipboard?.writeText(link);
+        setMemberMessage(`${member.name} added. My Work link created and copied.`);
+      } catch {
+        setMemberMessage(`${member.name} added. Open Access details to copy the My Work link.`);
+      }
+    } catch (error) {
+      setMemberMessage(error instanceof Error ? error.message : "Could not create field employee.");
+    } finally {
+      setFieldEmployeeBusy(false);
+    }
   }
 
   async function saveMembers() {
@@ -1568,7 +1623,7 @@ export default function AtlasTeamWork({
                 <div key={member.id} style={{border:`1px solid ${colors.line}`,borderRadius:14,padding:13,background:colors.card}}>
                   <div style={{display:"grid",gridTemplateColumns:"minmax(180px,1.2fr) minmax(190px,1.4fr) minmax(140px,.7fr) auto auto",gap:8,alignItems:"center"}}>
                     <input value={member.name} onChange={(e)=>updateMember(member.id,{name:e.target.value})} style={{...fieldStyle,fontWeight:900}} />
-                    <input value={member.email} onChange={(e)=>updateMember(member.id,{email:e.target.value})} style={fieldStyle} />
+                    {member.fieldOnly ? <div style={{...fieldStyle,display:"flex",alignItems:"center",color:colors.muted,fontWeight:800}}>No login · My Work link only</div> : <input value={member.email} onChange={(e)=>updateMember(member.id,{email:e.target.value})} style={fieldStyle} />}
                     <select value={member.role} onChange={(e)=>{const role=e.target.value as TeamRole;updateMember(member.id,{role,permissions:{...ROLE_DEFAULTS[role]}})}} style={fieldStyle}>
                       {Object.keys(ROLE_DEFAULTS).map((role)=><option key={role}>{role}</option>)}
                     </select>
@@ -1581,11 +1636,23 @@ export default function AtlasTeamWork({
                       <div><div style={labelStyle}>Properties</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{PROPERTY_IDS.map((propertyId)=>{const on=member.propertyIds.includes(propertyId);return <button key={propertyId} type="button" onClick={()=>updateMember(member.id,{propertyIds:on?member.propertyIds.filter((id)=>id!==propertyId):[...member.propertyIds,propertyId]})} style={{...propertyChipStyle,background:on?colors.navy3:colors.card,color:on?'#fff':colors.text}}>{propertyId==='hangar'?'Hangar':propertyId}</button>})}</div></div>
                       <div><div style={labelStyle}>Permissions</div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}>{(['view','edit','approve','delete','manageUsers'] as const).map((permission)=><label key={permission} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:800}}><input type="checkbox" checked={member.permissions[permission]} onChange={(e)=>updateMember(member.id,{permissions:{...member.permissions,[permission]:e.target.checked}})}/>{permission==='manageUsers'?'Manage users':permission[0].toUpperCase()+permission.slice(1)}</label>)}</div></div>
                       <div><div style={labelStyle}>Operating areas</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{ACCESS_PROFILES.map(([id,label])=>{const on=member.accessProfiles.includes(id);return <button key={id} type="button" onClick={()=>updateMember(member.id,{accessProfiles:on?member.accessProfiles.filter((value)=>value!==id):[...member.accessProfiles,id]})} style={{...propertyChipStyle,background:on?'#FFF3CF':colors.card,borderColor:on?colors.gold:colors.line}}>{label}</button>})}</div></div>
-                      <div style={{fontSize:11,color:colors.muted,fontWeight:800}}>Invite status: {member.inviteStatus || '—'}</div>{member.role === "Employee" ? <div style={{display:"grid",gap:7}}><div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}><button type="button" disabled={fieldLinkBusyId === member.id} onClick={()=>void manageFieldLink(member,false)} style={goldButtonStyle}>{fieldLinkBusyId === member.id ? "Working…" : member.fieldLinkActive ? (fieldLinkUrls[member.id] ? "Replace Link" : "Replace & Copy Link") : "Create My Work Link"}</button>{member.fieldLinkActive && fieldLinkUrls[member.id] ? <><button type="button" onClick={()=>void copyFieldLink(member)} style={lightButtonStyle}>Copy Link</button><button type="button" onClick={()=>openFieldLink(member)} style={lightButtonStyle}>Open</button></> : null}{member.fieldLinkActive ? <button type="button" disabled={fieldLinkBusyId === member.id} onClick={()=>void manageFieldLink(member,true)} style={lightButtonStyle}>Revoke</button> : null}<span style={{fontSize:11,color:colors.muted,fontWeight:800}}>No Atlas login required</span></div>{member.fieldLinkActive ? <div style={{fontSize:11,color:colors.muted,fontWeight:700}}>{fieldLinkUrls[member.id] ? "Link ready to send or test." : "Link active. Readable link is not stored; replace it when you need a new copy."}</div> : null}</div> : null}
+                      <div style={{fontSize:11,color:colors.muted,fontWeight:800}}>{member.fieldOnly ? "Access: My Work link only" : `Invite status: ${member.inviteStatus || '—'}`}</div>{member.role === "Employee" ? <div style={{display:"grid",gap:7}}><div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}><button type="button" disabled={fieldLinkBusyId === member.id} onClick={()=>void manageFieldLink(member,false)} style={goldButtonStyle}>{fieldLinkBusyId === member.id ? "Working…" : member.fieldLinkActive ? (fieldLinkUrls[member.id] ? "Replace Link" : "Replace & Copy Link") : "Create My Work Link"}</button>{member.fieldLinkActive && fieldLinkUrls[member.id] ? <><button type="button" onClick={()=>void copyFieldLink(member)} style={lightButtonStyle}>Copy Link</button><button type="button" onClick={()=>openFieldLink(member)} style={lightButtonStyle}>Open</button></> : null}{member.fieldLinkActive ? <button type="button" disabled={fieldLinkBusyId === member.id} onClick={()=>void manageFieldLink(member,true)} style={lightButtonStyle}>Revoke</button> : null}<span style={{fontSize:11,color:colors.muted,fontWeight:800}}>No Atlas login required</span></div>{member.fieldLinkActive ? <div style={{fontSize:11,color:colors.muted,fontWeight:700}}>{fieldLinkUrls[member.id] ? "Link ready to send or test." : "Link active. Readable link is not stored; replace it when you need a new copy."}</div> : null}</div> : null}
                     </div>
                   </details>
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div style={panelStyle}>
+            <h2 style={{margin:"0 0 4px",color:colors.text}}>Add Field Employee</h2>
+            <p style={{...mutedStyle,margin:"0 0 12px"}}>No Atlas login or password. Creates a private My Work link for assigned tasks.</p>
+            <div className="atlas-field-employee-create-grid" style={{display:"grid",gridTemplateColumns:"minmax(180px,1.3fr) minmax(170px,.8fr) auto",gap:8}}>
+              <input value={fieldEmployeeName} onChange={(e)=>setFieldEmployeeName(e.target.value)} placeholder="Name" style={fieldStyle}/>
+              <select value={fieldEmployeePropertyId} onChange={(e)=>setFieldEmployeePropertyId(e.target.value)} style={fieldStyle}>
+                {PROPERTY_IDS.map((propertyId)=><option key={propertyId} value={propertyId}>{propertyId==='hangar'?'Hangar':propertyId}</option>)}
+              </select>
+              <button type="button" disabled={fieldEmployeeBusy} style={goldButtonStyle} onClick={()=>void addFieldEmployee()}>{fieldEmployeeBusy ? "Adding…" : "Add Field Employee"}</button>
             </div>
           </div>
 
@@ -1619,6 +1686,9 @@ export default function AtlasTeamWork({
             grid-column: 2;
           }
           .atlas-team-task-details {
+            grid-template-columns: 1fr !important;
+          }
+          .atlas-field-employee-create-grid {
             grid-template-columns: 1fr !important;
           }
           .atlas-addison-assignment-grid,
