@@ -362,11 +362,22 @@ async function ensureTable(sql: ReturnType<typeof neon>) {
   }
 }
 
+async function ensureTeamWorkListsTable(sql: ReturnType<typeof neon>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_team_work_lists (
+      id text PRIMARY KEY,
+      record jsonb NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const sql = getSql();
 
     await ensureTable(sql);
+    await ensureTeamWorkListsTable(sql);
 
     const rows = (await sql`
       SELECT
@@ -460,9 +471,19 @@ export async function GET(request: NextRequest) {
       current?.role === "master" ||
       !email;
 
+    const workListRows = (await sql`
+      SELECT record
+      FROM atlas_team_work_lists
+      ORDER BY updated_at DESC
+    `) as unknown as Array<{ record: unknown }>;
+    const workLists = workListRows
+      .map((row) => row.record)
+      .filter((record) => record && typeof record === "object");
+
     return NextResponse.json({
       ok: true,
       members,
+      workLists,
       currentUser: {
         email,
         role: isMaster ? "master" : currentRole,
@@ -534,11 +555,39 @@ export async function POST(request: NextRequest) {
       memberId?: string;
       name?: string;
       propertyId?: string;
+      workLists?: unknown[];
     };
 
     const sql = getSql();
 
     await ensureTable(sql);
+    await ensureTeamWorkListsTable(sql);
+
+    if (body.action === "team-work-lists-save") {
+      const workLists = Array.isArray(body.workLists) ? body.workLists : [];
+      const cleanLists = workLists.filter((item): item is Record<string, unknown> =>
+        Boolean(item && typeof item === "object" && String((item as Record<string, unknown>).id || "").trim()),
+      );
+      const ids = cleanLists.map((item) => String(item.id));
+
+      for (const list of cleanLists) {
+        const id = String(list.id);
+        await sql`
+          INSERT INTO atlas_team_work_lists (id, record, updated_at)
+          VALUES (${id}, ${JSON.stringify(list)}::jsonb, NOW())
+          ON CONFLICT (id)
+          DO UPDATE SET record = EXCLUDED.record, updated_at = NOW()
+        `;
+      }
+
+      if (ids.length) {
+        await sql`DELETE FROM atlas_team_work_lists WHERE NOT (id = ANY(${ids}::text[]))`;
+      } else {
+        await sql`DELETE FROM atlas_team_work_lists`;
+      }
+
+      return NextResponse.json({ ok: true, workLists: cleanLists });
+    }
 
     if (body.action === "field-employee-create") {
       const name = String(body.name || "").trim();
