@@ -48,6 +48,9 @@ type FieldEmployeeWorkData = {
   marineAssets?: Array<{ id:string; name:string; category?:string; locationId?:string }>;
   marineWorkOrders?: Array<{ id:string; title:string; status?:string; assetId?:string; locationId?:string }>;
   marineVisits?: Array<Record<string, any>>;
+  landscapeWorkOrders?: Array<{ id:string; title:string; status?:string; assetId?:string; locationId?:string }>;
+  landscapeVisits?: Array<Record<string, any>>;
+  landscapeAreas?: string[];
 };
 
 type LandscapeApiData = {
@@ -169,6 +172,17 @@ export default function LandscapeHelpPage() {
   const [marineVisitUploading, setMarineVisitUploading] = useState(false);
   const [marineVisitSaving, setMarineVisitSaving] = useState(false);
   const [marineVisitMessage, setMarineVisitMessage] = useState("");
+  const [landscapeVisitSummary, setLandscapeVisitSummary] = useState("");
+  const [landscapeVisitArea, setLandscapeVisitArea] = useState("");
+  const [landscapeVisitCrew, setLandscapeVisitCrew] = useState("Pat / Crew");
+  const [landscapeVisitWorkOrderId, setLandscapeVisitWorkOrderId] = useState("");
+  const [landscapeVisitTaskId, setLandscapeVisitTaskId] = useState("");
+  const [landscapeVisitFollowUp, setLandscapeVisitFollowUp] = useState("");
+  const [landscapeVisitMaterials, setLandscapeVisitMaterials] = useState("");
+  const [landscapeVisitPhotos, setLandscapeVisitPhotos] = useState<Array<{url:string;name:string;createdAt:string}>>([]);
+  const [landscapeVisitUploading, setLandscapeVisitUploading] = useState(false);
+  const [landscapeVisitSaving, setLandscapeVisitSaving] = useState(false);
+  const [landscapeVisitMessage, setLandscapeVisitMessage] = useState("");
   const [quickNote, setQuickNote] = useState("");
   const [todayWeather, setTodayWeather] = useState<{
     temperature: number;
@@ -501,6 +515,87 @@ export default function LandscapeHelpPage() {
     }
   }
 
+  async function uploadLandscapeVisitPhoto(file: File) {
+    if (!shareToken || !employeeData || !file) return;
+    setLandscapeVisitUploading(true);
+    setLandscapeVisitMessage("");
+    try {
+      const safeName = (file.name || "photo")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+      const blob = await upload(
+        `atlas-field/${employeeData.employeeId}/landscape-visits/${Date.now()}-${safeName || "photo"}`,
+        file,
+        {
+          access: "public",
+          handleUploadUrl: `/api/addison-upload?token=${encodeURIComponent(shareToken)}`,
+          contentType: file.type || undefined,
+        },
+      );
+      setLandscapeVisitPhotos((current) => [...current, {
+        url: blob.url,
+        name: file.name || "Photo",
+        createdAt: new Date().toISOString(),
+      }]);
+    } catch (error) {
+      setLandscapeVisitMessage(error instanceof Error ? error.message : "Photo upload failed.");
+    } finally {
+      setLandscapeVisitUploading(false);
+    }
+  }
+
+  async function saveLandscapeVisit() {
+    if (!employeeData || !shareToken || landscapeVisitSaving) return;
+    if (!landscapeVisitSummary.trim()) {
+      setLandscapeVisitMessage("Enter what was done during this visit.");
+      return;
+    }
+    const selectedWorkOrder = (employeeData.landscapeWorkOrders || []).find((item) => item.id === landscapeVisitWorkOrderId);
+    const selectedTask = employeeData.tasks.find((item) => String(item.id) === landscapeVisitTaskId);
+    setLandscapeVisitSaving(true);
+    setLandscapeVisitMessage("Saving…");
+    try {
+      const response = await fetch(landscapeApiUrl(shareToken), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: shareToken,
+          action: "landscape-visit-log",
+          propertyId: employeeData.propertyIds[0] || "2000",
+          visitDate: employeeData.today,
+          summary: landscapeVisitSummary.trim(),
+          area: landscapeVisitArea.trim(),
+          crew: landscapeVisitCrew.trim(),
+          workOrderId: landscapeVisitWorkOrderId,
+          workOrderTitle: selectedWorkOrder?.title || "",
+          taskId: landscapeVisitTaskId,
+          taskTitle: String(selectedTask?.title || ""),
+          followUp: landscapeVisitFollowUp.trim(),
+          materialsNeeded: landscapeVisitMaterials.trim(),
+          photos: landscapeVisitPhotos,
+        }),
+      });
+      const data = await readLandscapeJson(response, "Could not save landscaping visit.");
+      if (!data.ok || data.mode !== "employee" || !data.employee) throw new Error(data.error || "Could not save landscaping visit.");
+      setEmployeeData(data.employee);
+      setLandscapeVisitSummary("");
+      setLandscapeVisitArea("");
+      setLandscapeVisitCrew("Pat / Crew");
+      setLandscapeVisitWorkOrderId("");
+      setLandscapeVisitTaskId("");
+      setLandscapeVisitFollowUp("");
+      setLandscapeVisitMaterials("");
+      setLandscapeVisitPhotos([]);
+      setLandscapeVisitMessage("Visit saved to Pat history and Landscaping & Irrigation.");
+    } catch (error) {
+      setLandscapeVisitMessage(error instanceof Error ? error.message : "Could not save landscaping visit.");
+    } finally {
+      setLandscapeVisitSaving(false);
+      setSaving(false);
+    }
+  }
+
   async function copyShareLink() {
     if (!shareLink) return;
 
@@ -531,6 +626,7 @@ export default function LandscapeHelpPage() {
     const completedTasks = employeeData.tasks.filter((task) => String(taskMeta(task).status || "") === "Completed");
     const prettyToday = new Date(`${today}T12:00:00`).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});
     const isSean = /^sean(?:\s|$)/i.test(employeeData.employeeName);
+    const isPat = /^(pat|patrick)(?:\s|$)/i.test(employeeData.employeeName);
     const renderTask=(item:Record<string,any>,completed:boolean)=>{const meta=taskMeta(item);const photos=Array.isArray(meta.photos)?meta.photos:[];const note=String(meta.addisonNote||meta.note||item.notes||"");const flagged=Boolean(meta.needsNick);const problem=Boolean(meta.problemFound);return <div key={String(item.id)} style={{border:`1px solid ${problem||flagged?colors.gold:colors.line}`,borderRadius:14,padding:12,background:completed?"#F7FAFC":colors.card}}><div style={{display:"flex",gap:9,alignItems:"flex-start"}}><input type="checkbox" checked={completed} onChange={()=>void patchAddison("task-status",{taskId:item.id,status:completed?"Open":"Completed"})} style={{width:21,height:21,marginTop:2}}/><div style={{flex:1}}><strong style={{display:"block",color:colors.navy,textDecoration:completed?"line-through":"none"}}>{String(item.title||"Work item")}</strong>{meta.dueDate?<small style={{color:colors.muted}}>Due {formatDate(String(meta.dueDate).slice(0,10))}</small>:null}</div></div><textarea defaultValue={note} placeholder="Add a note…" onBlur={(e)=>void patchAddison("task-note",{taskId:item.id,note:e.currentTarget.value})} style={{...styles.textarea,minHeight:58,marginTop:9}}/><div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:8}}><button type="button" onClick={()=>void patchAddison("task-flag",{taskId:item.id,needsNick:!flagged})} style={{...styles.secondaryButton,borderColor:flagged?colors.gold:colors.line}}>{flagged?"Needs Nick ✓":"Needs Nick"}</button><button type="button" onClick={()=>void patchAddison("task-problem",{taskId:item.id,problemFound:!problem})} style={{...styles.secondaryButton,color:problem?colors.red:colors.text}}>{problem?"Problem Found ✓":"Problem Found"}</button><label style={{...styles.secondaryButton,cursor:"pointer",display:"inline-flex",alignItems:"center"}}>{uploadingItemId===String(item.id)?"Uploading…":"Add Photo"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} disabled={uploadingItemId===String(item.id)} onChange={(e)=>{const file=e.currentTarget.files?.[0];if(file)void uploadAddisonPhoto(String(item.id),file);e.currentTarget.value="";}}/></label></div>{photos.length?<div style={{display:"flex",gap:7,overflowX:"auto",marginTop:9}}>{photos.map((photo:any,index:number)=><a key={`${photo.url}-${index}`} href={String(photo.url)} target="_blank" rel="noreferrer"><img src={String(photo.url)} alt={String(photo.name||"Photo")} style={{width:72,height:72,objectFit:"cover",borderRadius:10,border:`1px solid ${colors.line}`}}/></a>)}</div>:null}</div>};
 
     return (
@@ -567,6 +663,36 @@ export default function LandscapeHelpPage() {
             </div>
             {marineVisitPhotos.length?<div style={{display:"flex",gap:7,overflowX:"auto",marginTop:9}}>{marineVisitPhotos.map((photo,index)=><a key={`${photo.url}-${index}`} href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={photo.name||"Marine visit photo"} style={{width:72,height:72,objectFit:"cover",borderRadius:10,border:`1px solid ${colors.line}`}}/></a>)}</div>:null}
             {(employeeData.marineVisits || []).length ? <details style={{marginTop:12}}><summary style={{cursor:"pointer",fontWeight:900,color:colors.navy}}>Recent Visits · {(employeeData.marineVisits || []).length}</summary><div style={{display:"grid",gap:8,marginTop:8}}>{(employeeData.marineVisits || []).slice(0,8).map((visit:any)=><div key={String(visit.id)} style={{border:`1px solid ${colors.line}`,borderRadius:10,padding:10}}><strong style={{display:"block",color:colors.navy}}>{String(visit.assetName || visit.workOrderTitle || "Dock & Marine")}</strong><small style={{color:colors.muted}}>{formatDate(String(visit.visitDate || ""))}</small><div style={{marginTop:4,fontSize:13}}>{String(visit.summary || "")}</div></div>)}</div></details> : null}
+          </section>
+        ) : null}
+
+        {isPat ? (
+          <section style={styles.card}>
+            <div style={styles.eyebrow}>LANDSCAPING &amp; IRRIGATION</div>
+            <h2 style={styles.cardTitle}>Landscaping Visit Log</h2>
+            <textarea value={landscapeVisitSummary} onChange={(e)=>setLandscapeVisitSummary(e.target.value)} placeholder="What did you / the crew do today?" style={{...styles.textarea,minHeight:90}} />
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:8,marginTop:8}}>
+              <input list="atlas-landscape-areas" value={landscapeVisitArea} onChange={(e)=>setLandscapeVisitArea(e.target.value)} placeholder="Area / location (optional)" style={styles.input} />
+              <datalist id="atlas-landscape-areas">{(employeeData.landscapeAreas || []).map((area)=><option key={area} value={area}/>)}</datalist>
+              <input value={landscapeVisitCrew} onChange={(e)=>setLandscapeVisitCrew(e.target.value)} placeholder="Who did the work?" style={styles.input} />
+              <select value={landscapeVisitWorkOrderId} onChange={(e)=>setLandscapeVisitWorkOrderId(e.target.value)} style={styles.input}>
+                <option value="">Related work order (optional)</option>
+                {(employeeData.landscapeWorkOrders || []).map((work)=><option key={work.id} value={work.id}>{work.title}</option>)}
+              </select>
+              <select value={landscapeVisitTaskId} onChange={(e)=>setLandscapeVisitTaskId(e.target.value)} style={styles.input}>
+                <option value="">Related assigned task (optional)</option>
+                {employeeData.tasks.map((task)=><option key={String(task.id)} value={String(task.id)}>{String(task.title || "Task")}</option>)}
+              </select>
+            </div>
+            <input value={landscapeVisitFollowUp} onChange={(e)=>setLandscapeVisitFollowUp(e.target.value)} placeholder="Follow-up needed (optional)" style={{...styles.input,marginTop:8}} />
+            <input value={landscapeVisitMaterials} onChange={(e)=>setLandscapeVisitMaterials(e.target.value)} placeholder="Materials / plants / parts needed (optional)" style={{...styles.input,marginTop:8}} />
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:9,alignItems:"center"}}>
+              <label style={{...styles.secondaryButton,cursor:"pointer",display:"inline-flex",alignItems:"center"}}>{landscapeVisitUploading?"Uploading…":"Add Photo"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} disabled={landscapeVisitUploading} onChange={(e)=>{const file=e.currentTarget.files?.[0];if(file)void uploadLandscapeVisitPhoto(file);e.currentTarget.value="";}}/></label>
+              <button type="button" onClick={()=>void saveLandscapeVisit()} disabled={landscapeVisitSaving} style={styles.primaryButton}>{landscapeVisitSaving?"Saving…":"Save Visit"}</button>
+              {landscapeVisitMessage?<span style={{fontSize:12,fontWeight:800,color:landscapeVisitMessage.startsWith("Visit saved")?"#087443":colors.muted}}>{landscapeVisitMessage}</span>:null}
+            </div>
+            {landscapeVisitPhotos.length?<div style={{display:"flex",gap:7,overflowX:"auto",marginTop:9}}>{landscapeVisitPhotos.map((photo,index)=><a key={`${photo.url}-${index}`} href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={photo.name||"Landscaping visit photo"} style={{width:72,height:72,objectFit:"cover",borderRadius:10,border:`1px solid ${colors.line}`}}/></a>)}</div>:null}
+            {(employeeData.landscapeVisits || []).length ? <details style={{marginTop:12}}><summary style={{cursor:"pointer",fontWeight:900,color:colors.navy}}>Recent Visits · {(employeeData.landscapeVisits || []).length}</summary><div style={{display:"grid",gap:8,marginTop:8}}>{(employeeData.landscapeVisits || []).slice(0,8).map((visit:any)=><div key={String(visit.id)} style={{border:`1px solid ${colors.line}`,borderRadius:10,padding:10}}><strong style={{display:"block",color:colors.navy}}>{String(visit.area || visit.workOrderTitle || "Landscaping & Irrigation")}</strong><small style={{color:colors.muted}}>{formatDate(String(visit.visitDate || ""))} · {String(visit.crew || "Pat / Crew")}</small><div style={{marginTop:4,fontSize:13}}>{String(visit.summary || "")}</div></div>)}</div></details> : null}
           </section>
         ) : null}
 
