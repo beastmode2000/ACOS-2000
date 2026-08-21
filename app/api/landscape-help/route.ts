@@ -842,6 +842,70 @@ async function ensureTeamEmployeeHistoryTableForField(sql: ReturnType<typeof neo
   `;
 }
 
+async function ensureEmployeeAlertInboxTable(sql: ReturnType<typeof neon>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_inbox_items (
+      id text PRIMARY KEY,
+      title text NOT NULL,
+      intake_type text NOT NULL DEFAULT 'Document',
+      status text NOT NULL DEFAULT 'New',
+      source text NOT NULL DEFAULT 'Fast Intake',
+      notes text NOT NULL DEFAULT '',
+      pasted_text text NOT NULL DEFAULT '',
+      files jsonb NOT NULL DEFAULT '[]'::jsonb,
+      target_type text NOT NULL DEFAULT 'General',
+      target_id text NOT NULL DEFAULT '',
+      target_name text NOT NULL DEFAULT '',
+      proposed_action text NOT NULL DEFAULT 'Attach to Existing',
+      extracted_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `;
+}
+
+async function upsertEmployeeAlertInboxItem(
+  employee: { id: string; name: string; propertyIds: string[] },
+  task: Record<string, any>,
+  alertType: "Needs Nick" | "Problem Found",
+) {
+  const sql = getSql();
+  await ensureEmployeeAlertInboxTable(sql);
+  const meta = addisonTaskMeta(task as AddisonTaskRecord) || task;
+  const taskId = String(task.id || "");
+  const taskTitle = String(task.title || "Assigned work");
+  const propertyId = String(task.propertyId || employee.propertyIds[0] || "2000");
+  const locationId = String(meta?.locationId || task.locationId || "");
+  const locationName = String(meta?.locationName || task.locationName || task.location || "");
+  const note = String(meta?.addisonNote || meta?.note || task.notes || "").trim();
+  const photos = Array.isArray(meta?.photos) ? meta.photos : Array.isArray(task.photos) ? task.photos : [];
+  const alertKey = `${employee.id}|${propertyId}|${taskId}|${alertType}`;
+  const id = `employee-alert-${createHash("sha256").update(alertKey).digest("hex").slice(0, 24)}`;
+  const extractedData = {
+    propertyId, reportType: "Employee Alert", alertType,
+    submittedBy: employee.name, submittedById: employee.id,
+    employeeId: employee.id, employeeName: employee.name,
+    taskId, taskTitle, locationId, locationName,
+    employeeAlertKey: alertKey, suggestedAction: "Review Employee Alert",
+  };
+  await sql`
+    INSERT INTO atlas_inbox_items (
+      id, title, intake_type, status, source, notes, pasted_text, files,
+      target_type, target_id, target_name, proposed_action, extracted_data, created_at, updated_at
+    ) VALUES (
+      ${id}, ${`${alertType} — ${employee.name} — ${taskTitle}`}, 'Employee Alert', 'Needs Review',
+      'Employee My Work', ${note}, '', ${JSON.stringify(photos)}::jsonb,
+      ${locationId ? 'Location' : 'General'}, ${locationId}, ${locationName},
+      'Attach to Existing', ${JSON.stringify(extractedData)}::jsonb, NOW(), NOW()
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      title = EXCLUDED.title, status = 'Needs Review', source = EXCLUDED.source,
+      notes = EXCLUDED.notes, files = EXCLUDED.files, target_type = EXCLUDED.target_type,
+      target_id = EXCLUDED.target_id, target_name = EXCLUDED.target_name,
+      extracted_data = EXCLUDED.extracted_data, updated_at = NOW()
+  `;
+}
+
 async function upsertFieldEmployeeHistory(
   sql: ReturnType<typeof neon>,
   employee: { id: string; name: string; propertyIds: string[] },
@@ -1125,7 +1189,15 @@ export async function PATCH(request: NextRequest) {
       else if(action==="task-problem") patch={problemFound:Boolean(body.problemFound)};
       else if(action==="task-nothing-needed") patch={checkedNothingNeeded:Boolean(body.value)};
       else return NextResponse.json({ok:false,error:"Unsupported employee action."},{status:400});
+      const beforeUpdate = await loadFieldEmployeeWork(fieldEmployee);
+      const alertTask = beforeUpdate.tasks.find((task:any)=>String(task.id)===taskId);
       const ok=await patchFieldEmployeeTask(fieldEmployee,taskId,patch); if(!ok) return NextResponse.json({ok:false,error:"Assigned task not found."},{status:404});
+      if (alertTask && action === "task-flag" && Boolean(body.needsNick)) {
+        await upsertEmployeeAlertInboxItem(fieldEmployee, alertTask, "Needs Nick");
+      }
+      if (alertTask && action === "task-problem" && Boolean(body.problemFound)) {
+        await upsertEmployeeAlertInboxItem(fieldEmployee, alertTask, "Problem Found");
+      }
       return NextResponse.json({ok:true,mode:"employee",employee:await loadFieldEmployeeWork(fieldEmployee)});
     }
 
