@@ -8,258 +8,49 @@ function hasShareToken(request: NextRequest) {
   return request.nextUrl.searchParams.has("token");
 }
 
-function hasAssetShareToken(request: NextRequest) {
-  return request.nextUrl.searchParams.has("assetShareToken");
-}
-
-function redirectLegacyDashboardPath(request: NextRequest) {
-  const pathname = request.nextUrl.pathname.replace(/\/+$/, "") || "/";
-
-  if (pathname !== "/dashboard") return null;
-
-  const url = new URL(request.url);
-  url.pathname = "/";
-  url.hash = "#dashboard";
-
-  return NextResponse.redirect(url);
-}
-
 function isPublicPath(request: NextRequest) {
   const p = request.nextUrl.pathname;
-
   if (p.startsWith("/_next/")) return true;
-
-  if (
-    [
-      "/favicon.ico",
-      "/manifest.json",
-      "/robots.txt",
-      "/site.webmanifest",
-      "/sw.js",
-      "/atlas-icon-192.png",
-      "/atlas-icon-512.png",
-      "/apple-touch-icon.png",
-      "/login",
-      "/invite",
-      "/api/atlas-login",
-      "/api/atlas-logout",
-      "/api/atlas-invite",
-    ].includes(p)
-  ) {
-    return true;
-  }
-
-  if (
-    /\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(p)
-  ) {
-    return true;
-  }
-
+  if (["/favicon.ico","/manifest.json","/robots.txt","/site.webmanifest","/sw.js","/atlas-icon-192.png","/atlas-icon-512.png","/apple-touch-icon.png","/login","/invite","/api/atlas-login","/api/atlas-logout","/api/atlas-invite"].includes(p)) return true;
+  if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(p)) return true;
   if (p === "/landscape-help" && hasShareToken(request)) return true;
   if (p === "/api/landscape-help" && hasShareToken(request)) return true;
-  if (p === "/api/addison-upload" && hasShareToken(request)) return true;
   if (p === "/request") return true;
   if (p === "/api/atlas-requests" && hasShareToken(request)) return true;
-  if (p === "/reset-password" && hasShareToken(request)) return true;
-  if (p === "/api/atlas-password-reset") return true;
-  if (p === "/asset-share" && hasShareToken(request)) return true;
-  if (p === "/api/atlas" && hasAssetShareToken(request)) return true;
-
   return false;
 }
 
-function b64bytes(bytes: Uint8Array) {
-  let s = "";
+function b64bytes(bytes: Uint8Array) { let s=""; for (const b of bytes) s+=String.fromCharCode(b); return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,""); }
+function decode(v:string){ const p=v.replace(/-/g,"+").replace(/_/g,"/")+"===".slice((v.length+3)%4); const bin=atob(p); const bytes=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i); return new TextDecoder().decode(bytes); }
+async function sign(payload:string, secret:string){ const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]); return b64bytes(new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(payload)))); }
 
-  for (const b of bytes) {
-    s += String.fromCharCode(b);
-  }
-
-  return btoa(s)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+type Session={v?:number;email?:string;role?:string;expiresAt?:number};
+async function readSession(value:string|undefined,secret:string):Promise<Session|null>{
+  if(!value) return null; const [payload,sig]=value.split("."); if(!payload||!sig) return null;
+  if(await sign(payload,secret)!==sig) return null;
+  try { const data=JSON.parse(decode(payload)) as Session; if(data.v!==SESSION_VERSION||!data.email||!data.expiresAt||Date.now()>data.expiresAt) return null; return data; } catch { return null; }
 }
+function basic(username:string,password:string){ return `Basic ${btoa(`${username}:${password}`)}`; }
+function toLogin(request:NextRequest){ const u=request.nextUrl.clone(); u.pathname="/login"; u.search=""; u.searchParams.set("next",`${request.nextUrl.pathname}${request.nextUrl.search}`); return NextResponse.redirect(u); }
 
-function decode(v: string) {
-  const p =
-    v.replace(/-/g, "+").replace(/_/g, "/") +
-    "===".slice((v.length + 3) % 4);
+export async function middleware(request:NextRequest){
+  if(isPublicPath(request)) return NextResponse.next();
+  const adminUser=process.env.ATLAS_ACCESS_USERNAME||"";
+  const adminPass=process.env.ATLAS_ACCESS_PASSWORD||"";
+  const secret=process.env.ATLAS_SESSION_SECRET||adminPass;
+  if(!adminUser||!adminPass||!secret) return new NextResponse("Atlas access is not configured.",{status:500});
 
-  const bin = atob(p);
-  const bytes = new Uint8Array(bin.length);
-
-  for (let i = 0; i < bin.length; i += 1) {
-    bytes[i] = bin.charCodeAt(i);
-  }
-
-  return new TextDecoder().decode(bytes);
-}
-
-async function sign(payload: string, secret: string) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    {
-      name: "HMAC",
-      hash: "SHA-256",
-    },
-    false,
-    ["sign"],
-  );
-
-  return b64bytes(
-    new Uint8Array(
-      await crypto.subtle.sign(
-        "HMAC",
-        key,
-        new TextEncoder().encode(payload),
-      ),
-    ),
-  );
-}
-
-type Session = {
-  v?: number;
-  username?: string;
-  email?: string;
-  role?: string;
-  expiresAt?: number;
-};
-
-async function readSession(
-  value: string | undefined,
-  secrets: string[],
-  expectedUsername: string,
-): Promise<Session | null> {
-  if (!value) return null;
-
-  const [payload, sig] = value.split(".");
-
-  if (!payload || !sig) return null;
-
-  let signatureMatches = false;
-
-  for (const secret of secrets) {
-    if (secret && (await sign(payload, secret)) === sig) {
-      signatureMatches = true;
-      break;
-    }
-  }
-
-  if (!signatureMatches) return null;
-
-  try {
-    const data = JSON.parse(decode(payload)) as Session;
-
-    if (!data.expiresAt || Date.now() > data.expiresAt) {
-      return null;
-    }
-
-    if (data.v === SESSION_VERSION && data.email) {
-      return data;
-    }
-
-    if (data.v === undefined && data.username === expectedUsername) {
-      return data;
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function basic(username: string, password: string) {
-  return `Basic ${btoa(`${username}:${password}`)}`;
-}
-
-function toLogin(request: NextRequest) {
-  const u = request.nextUrl.clone();
-
-  u.pathname = "/login";
-  u.search = "";
-  u.searchParams.set(
-    "next",
-    `${request.nextUrl.pathname}${request.nextUrl.search}`,
-  );
-
-  return NextResponse.redirect(u);
-}
-
-export async function middleware(request: NextRequest) {
-  /*
-   * Atlas navigation is hash-based.
-   *
-   * A browser, bookmark, PWA, or old Atlas link can still request
-   * /dashboard directly. There is no physical Next.js /dashboard page,
-   * so allowing that request through produces a Vercel/Next 404 before
-   * AtlasApp has a chance to normalize the URL.
-   *
-   * Normalize the legacy dashboard pathname at the server boundary.
-   */
-  const dashboardRedirect = redirectLegacyDashboardPath(request);
-
-  if (dashboardRedirect) {
-    return dashboardRedirect;
-  }
-
-  if (isPublicPath(request)) {
-    return NextResponse.next();
-  }
-
-  const adminUser = process.env.ATLAS_ACCESS_USERNAME || "";
-  const adminPass = process.env.ATLAS_ACCESS_PASSWORD || "";
-  const configuredSecret = process.env.ATLAS_SESSION_SECRET || "";
-
-  if (!adminUser || !adminPass) {
-    return new NextResponse("Atlas access is not configured.", {
-      status: 500,
-    });
-  }
-
-  const session = await readSession(
-    request.cookies.get(SESSION_COOKIE)?.value,
-    [adminPass, configuredSecret].filter(
-      (value, index, all) =>
-        Boolean(value) && all.indexOf(value) === index,
-    ),
-    adminUser,
-  );
-
-  if (!session) {
-    if (request.nextUrl.pathname.startsWith("/api/")) {
-      return new NextResponse("Atlas login required.", {
-        status: 401,
-      });
-    }
-
+  const session=await readSession(request.cookies.get(SESSION_COOKIE)?.value,secret);
+  if(!session){
+    if(request.nextUrl.pathname.startsWith("/api/")) return new NextResponse("Atlas login required.",{status:401});
     return toLogin(request);
   }
 
-  const headers = new Headers(request.headers);
-
-  headers.set("authorization", basic(adminUser, adminPass));
-
-  if (session.email) {
-    headers.set("x-atlas-user-email", session.email);
-  } else {
-    headers.delete("x-atlas-user-email");
-  }
-
-  if (session.role) {
-    headers.set("x-atlas-user-role", session.role);
-  } else {
-    headers.delete("x-atlas-user-role");
-  }
-
-  return NextResponse.next({
-    request: {
-      headers,
-    },
-  });
+  const headers=new Headers(request.headers);
+  headers.set("authorization",basic(adminUser,adminPass));
+  headers.set("x-atlas-user-email",session.email!);
+  headers.set("x-atlas-user-role",session.role||"viewer");
+  return NextResponse.next({request:{headers}});
 }
 
-export const config = {
-  matcher: ["/((?!_next/static|_next/image).*)"],
-};
+export const config={matcher:["/((?!_next/static|_next/image).*)"]};
