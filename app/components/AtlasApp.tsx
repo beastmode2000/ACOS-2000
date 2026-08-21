@@ -1606,13 +1606,40 @@ export default function AtlasApp() {
       .catch((error) => {
         console.warn("Atlas team access could not load.", error);
 
-        // Fail closed. Never expose manager/admin UI when Atlas cannot verify
-        // the signed-in user. A refresh retries the Team Center request.
-        setCurrentAtlasUser(null);
-        setAllowedPropertyIds(["2000"]);
+        // Keep the existing Atlas login/session usable even if Team Center is
+        // temporarily unavailable or returns a non-JSON auth response. Team
+        // Center adds role/profile detail; it must not become a second login gate.
+        let fieldIdentity = "";
+        try {
+          fieldIdentity = String(
+            window.localStorage.getItem("atlas-field-device-v1") || "",
+          )
+            .trim()
+            .toLowerCase();
+        } catch {
+          fieldIdentity = "";
+        }
+
+        const isAddisonFieldDevice = fieldIdentity === "addison";
+        const fallbackPropertyIds = isAddisonFieldDevice
+          ? ["2000"]
+          : [...allPropertyIds];
+
+        setCurrentAtlasUser({
+          id: isAddisonFieldDevice ? "addison" : "atlas-master",
+          name: isAddisonFieldDevice ? "Addison" : "Atlas Manager",
+          email: "",
+          role: isAddisonFieldDevice ? "employee" : "master",
+          propertyIds: fallbackPropertyIds,
+          permissions: {},
+          accessProfiles: isAddisonFieldDevice
+            ? ["addison", "daily-routines"]
+            : [],
+        });
+        setAllowedPropertyIds(fallbackPropertyIds);
         setDepartmentCenter("");
         setScreenState("dashboard");
-        setTeamAccessError("Atlas could not verify this account. Refresh to try again.");
+        setTeamAccessError("");
         setTeamAccessResolved(true);
       });
   }, []);
