@@ -807,6 +807,23 @@ function isAssignedToName(record: AddisonTaskRecord, name: string) {
   return Boolean(assigned && (assigned === target || assigned === first || assigned.startsWith(`${first} `)));
 }
 
+async function ensureTeamWorkListsTableForField(sql: ReturnType<typeof neon>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_team_work_lists (
+      id text PRIMARY KEY,
+      record jsonb NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `;
+}
+
+function isTeamTaskAssignedToName(task: Record<string, any>, name: string) {
+  const assigned = String(task.assignee || task.assignedTo || task.assigned_to || "").trim().toLowerCase();
+  const target = name.trim().toLowerCase();
+  const first = target.split(/\s+/)[0] || target;
+  return Boolean(assigned && (assigned === target || assigned === first || assigned.startsWith(`${first} `)));
+}
+
 async function loadFieldEmployeeWork(employee: {id:string;name:string;propertyIds:string[]}) {
   await ensureAddisonBackingTables();
   const sql = getSql();
@@ -825,19 +842,73 @@ async function loadFieldEmployeeWork(employee: {id:string;name:string;propertyId
       const completed=String(meta?.completedAt||"").slice(0,10)===today || (Array.isArray(meta?.completionHistory)&&meta.completionHistory.includes(today));
       return status !== "Completed" || completed;
     });
-  return { today, employeeId:employee.id, employeeName:employee.name, propertyIds:properties, tasks };
+
+  await ensureTeamWorkListsTableForField(sql);
+  const listRows = await sql`SELECT id, record FROM atlas_team_work_lists ORDER BY updated_at DESC`;
+  const listTasks = (listRows as any[]).flatMap((row:any) => {
+    const list = row.record && typeof row.record === "object" ? row.record : {};
+    if (list.active === false) return [];
+    const listProperties = Array.isArray(list.propertyIds) ? list.propertyIds.map(String) : ["2000"];
+    const matchingProperties = listProperties.filter((propertyId:string) => properties.includes(propertyId));
+    if (!matchingProperties.length) return [];
+    const sourceTasks = Array.isArray(list.tasks) ? list.tasks : [];
+    return sourceTasks
+      .filter((task:Record<string,any>) => isTeamTaskAssignedToName(task, employee.name))
+      .map((task:Record<string,any>) => ({
+        ...task,
+        id: String(task.id || ""),
+        propertyId: matchingProperties[0],
+        source: "team-work-list",
+        sourceListId: String(list.id || row.id || ""),
+        taskMeta: {
+          ...task,
+          status: String(task.status || "Open"),
+          assignee: String(task.assignee || employee.name),
+          addisonNote: String(task.addisonNote || task.notes || ""),
+        },
+      }));
+  });
+
+  const merged = [...tasks, ...listTasks].filter((task:any,index:number,all:any[]) =>
+    task.id && all.findIndex((candidate:any) => String(candidate.id) === String(task.id)) === index
+  );
+  return { today, employeeId:employee.id, employeeName:employee.name, propertyIds:properties, tasks:merged };
 }
 
 async function patchFieldEmployeeTask(employee:{id:string;name:string;propertyIds:string[]}, taskId:string, patch:Record<string,unknown>) {
   const sql=getSql();
   const properties=employee.propertyIds.length?employee.propertyIds:["2000"];
   const rows=await sql`SELECT property_id, record FROM atlas_operational_records WHERE record_type='tasks' AND id=${taskId} AND property_id = ANY(${properties}::text[]) LIMIT 1`;
-  const row=rows[0] as any; if(!row) return false;
-  const record={...(row.record||{}), id:taskId}; if(!isAssignedToName(record, employee.name)) return false;
-  const meta=addisonTaskMeta(record)||{}; const updatedAt=new Date().toISOString();
-  const nextMeta={...meta,...patch,updatedAt}; const next={...record,...nextMeta,taskMeta:nextMeta,propertyId:String(row.property_id),updatedAt};
-  await sql`UPDATE atlas_operational_records SET record=${JSON.stringify(next)}::jsonb, updated_at=NOW() WHERE record_type='tasks' AND property_id=${String(row.property_id)} AND id=${taskId}`;
-  return true;
+  const row=rows[0] as any;
+  if(row) {
+    const record={...(row.record||{}), id:taskId};
+    if(!isAssignedToName(record, employee.name)) return false;
+    const meta=addisonTaskMeta(record)||{}; const updatedAt=new Date().toISOString();
+    const nextMeta={...meta,...patch,updatedAt}; const next={...record,...nextMeta,taskMeta:nextMeta,propertyId:String(row.property_id),updatedAt};
+    await sql`UPDATE atlas_operational_records SET record=${JSON.stringify(next)}::jsonb, updated_at=NOW() WHERE record_type='tasks' AND property_id=${String(row.property_id)} AND id=${taskId}`;
+    return true;
+  }
+
+  await ensureTeamWorkListsTableForField(sql);
+  const listRows = await sql`SELECT id, record FROM atlas_team_work_lists ORDER BY updated_at DESC`;
+  for (const listRow of listRows as any[]) {
+    const list = listRow.record && typeof listRow.record === "object" ? { ...listRow.record } : {};
+    const listProperties = Array.isArray(list.propertyIds) ? list.propertyIds.map(String) : ["2000"];
+    if (!listProperties.some((propertyId:string) => properties.includes(propertyId))) continue;
+    const sourceTasks = Array.isArray(list.tasks) ? list.tasks : [];
+    const index = sourceTasks.findIndex((task:Record<string,any>) => String(task.id) === taskId && isTeamTaskAssignedToName(task, employee.name));
+    if (index < 0) continue;
+    const updatedAt = new Date().toISOString();
+    const currentTask = sourceTasks[index] || {};
+    const nextTask = { ...currentTask, ...patch, updatedAt };
+    if (typeof patch.addisonNote === "string") nextTask.notes = patch.addisonNote;
+    const nextTasks = [...sourceTasks];
+    nextTasks[index] = nextTask;
+    const nextList = { ...list, tasks: nextTasks };
+    await sql`UPDATE atlas_team_work_lists SET record=${JSON.stringify(nextList)}::jsonb, updated_at=NOW() WHERE id=${String(listRow.id)}`;
+    return true;
+  }
+  return false;
 }
 
 export async function GET(request: NextRequest) {
