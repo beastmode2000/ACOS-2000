@@ -13,6 +13,29 @@ type TeamTask = {
   notes: string;
   status: TeamTaskStatus;
   requirePhoto: boolean;
+  completedAt?: string;
+  needsNick?: boolean;
+  problemFound?: boolean;
+  photos?: Array<Record<string, any>>;
+  addisonNote?: string;
+};
+
+type EmployeeWorkHistoryItem = {
+  id: string;
+  memberId: string;
+  employeeName: string;
+  propertyId: string;
+  source: string;
+  listId: string;
+  listName: string;
+  taskId: string;
+  taskTitle: string;
+  location: string;
+  note: string;
+  completedAt: string;
+  needsNick: boolean;
+  problemFound: boolean;
+  photos: Array<Record<string, any>>;
 };
 
 type TeamList = {
@@ -270,6 +293,7 @@ export default function AtlasTeamWork({
   const [search, setSearch] = useState("");
   const [teamView, setTeamView] = useState<"addison" | "assignments" | "people">("people");
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [workHistory, setWorkHistory] = useState<EmployeeWorkHistoryItem[]>([]);
   const [memberMessage, setMemberMessage] = useState("");
   const [fieldLinkUrls, setFieldLinkUrls] = useState<Record<string, string>>({});
   const [fieldLinkBusyId, setFieldLinkBusyId] = useState("");
@@ -406,7 +430,39 @@ export default function AtlasTeamWork({
           permissions: { ...ROLE_DEFAULTS.Viewer, ...(member.permissions || {}) },
           accessProfiles: Array.isArray(member.accessProfiles) ? member.accessProfiles.map(String) : [],
         })));
-        const remoteLists = Array.isArray(payload.workLists) ? payload.workLists as TeamList[] : [];
+        const remoteLists = Array.isArray(payload.workLists)
+          ? (payload.workLists as TeamList[]).map((list) => ({
+              ...list,
+              tasks: Array.isArray(list.tasks)
+                ? list.tasks.map((task) =>
+                    task.status === "Completed" && !task.completedAt
+                      ? { ...task, completedAt: new Date().toISOString() }
+                      : task,
+                  )
+                : [],
+            }))
+          : [];
+        setWorkHistory(
+          Array.isArray(payload.workHistory)
+            ? payload.workHistory.map((item: any) => ({
+                id: String(item.id || ""),
+                memberId: String(item.memberId || ""),
+                employeeName: String(item.employeeName || ""),
+                propertyId: String(item.propertyId || ""),
+                source: String(item.source || ""),
+                listId: String(item.listId || ""),
+                listName: String(item.listName || ""),
+                taskId: String(item.taskId || ""),
+                taskTitle: String(item.taskTitle || ""),
+                location: String(item.location || ""),
+                note: String(item.note || ""),
+                completedAt: String(item.completedAt || ""),
+                needsNick: Boolean(item.needsNick),
+                problemFound: Boolean(item.problemFound),
+                photos: Array.isArray(item.photos) ? item.photos : [],
+              }))
+            : [],
+        );
         if (remoteLists.length) {
           setLists(remoteLists);
           setSelectedListId((current) => remoteLists.some((list) => list.id === current) ? current : remoteLists[0]?.id || "");
@@ -507,6 +563,38 @@ export default function AtlasTeamWork({
     .filter((list) => list.propertyIds.includes(activePropertyId))
     .flatMap((list) => list.tasks);
 
+  function employeeHistory(member: TeamMember) {
+    const memberId = member.id.trim().toLowerCase();
+    const memberName = member.name.trim().toLowerCase();
+    const shared = workHistory.filter((item) =>
+      (item.memberId && item.memberId.trim().toLowerCase() === memberId) ||
+      item.employeeName.trim().toLowerCase() === memberName
+    );
+    const addison =
+      /^addison(?:\s|$)/i.test(member.name) && Array.isArray(addisonWork?.history)
+        ? addisonWork.history.map((item) => ({
+            id: `addison-${item.id}`,
+            memberId: member.id,
+            employeeName: member.name,
+            propertyId: "2000",
+            source: "addison",
+            listId: "",
+            listName: "Addison Work",
+            taskId: item.taskId,
+            taskTitle: item.title,
+            location: item.locationName || "",
+            note: item.note || "",
+            completedAt: item.completedAt || item.date,
+            needsNick: false,
+            problemFound: false,
+            photos: Array.isArray(item.photos) ? item.photos : [],
+          }))
+        : [];
+    return [...shared, ...addison]
+      .filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index)
+      .sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)));
+  }
+
   function updateList(id: string, patch: Partial<TeamList>) {
     setLists((current) =>
       current.map((list) => (list.id === id ? { ...list, ...patch } : list)),
@@ -524,9 +612,16 @@ export default function AtlasTeamWork({
           ? list
           : {
               ...list,
-              tasks: list.tasks.map((item) =>
-                item.id === taskId ? { ...item, ...patch } : item,
-              ),
+              tasks: list.tasks.map((item) => {
+                if (item.id !== taskId) return item;
+                const next = { ...item, ...patch };
+                if (patch.status === "Completed" && item.status !== "Completed") {
+                  next.completedAt = new Date().toISOString();
+                } else if (patch.status && patch.status !== "Completed") {
+                  next.completedAt = undefined;
+                }
+                return next;
+              }),
             },
       ),
     );
@@ -1663,6 +1758,43 @@ export default function AtlasTeamWork({
                       <div style={{fontSize:11,color:colors.muted,fontWeight:800}}>{member.fieldOnly ? "Access: My Work link only" : `Invite status: ${member.inviteStatus || '—'}`}</div>{member.role === "Employee" ? <div style={{display:"grid",gap:7}}><div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}><button type="button" disabled={fieldLinkBusyId === member.id} onClick={()=>void manageFieldLink(member,false)} style={goldButtonStyle}>{fieldLinkBusyId === member.id ? "Working…" : member.fieldLinkActive ? (fieldLinkUrls[member.id] ? "Replace Link" : "Replace & Copy Link") : "Create My Work Link"}</button>{member.fieldLinkActive && fieldLinkUrls[member.id] ? <><button type="button" onClick={()=>void copyFieldLink(member)} style={lightButtonStyle}>Copy Link</button><button type="button" onClick={()=>openFieldLink(member)} style={lightButtonStyle}>Open</button></> : null}{member.fieldLinkActive ? <button type="button" disabled={fieldLinkBusyId === member.id} onClick={()=>void manageFieldLink(member,true)} style={lightButtonStyle}>Revoke</button> : null}<span style={{fontSize:11,color:colors.muted,fontWeight:800}}>No Atlas login required</span></div>{member.fieldLinkActive ? <div style={{fontSize:11,color:colors.muted,fontWeight:700}}>{fieldLinkUrls[member.id] ? "Link ready to send or test." : "Link active. Readable link is not stored; replace it when you need a new copy."}</div> : null}</div> : null}
                     </div>
                   </details>
+                  {(() => {
+                    const history = employeeHistory(member);
+                    return (
+                      <details style={{marginTop:8}}>
+                        <summary style={{cursor:"pointer",fontSize:12,fontWeight:900,color:colors.navy}}>
+                          Work history · {history.length}
+                        </summary>
+                        <div style={{marginTop:9,display:"grid",gap:7}}>
+                          {!history.length ? (
+                            <div style={{fontSize:12,color:colors.muted}}>No completed work recorded yet.</div>
+                          ) : history.slice(0,100).map((item) => (
+                            <div key={item.id} style={{border:`1px solid ${colors.line}`,borderRadius:10,padding:"9px 10px",background:colors.panel}}>
+                              <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",flexWrap:"wrap"}}>
+                                <div style={{minWidth:0}}>
+                                  <strong style={{display:"block",color:colors.text,fontSize:12}}>{item.taskTitle}</strong>
+                                  <div style={{fontSize:11,color:colors.muted,marginTop:2}}>
+                                    {[item.listName, item.propertyId, item.location].filter(Boolean).join(" · ")}
+                                  </div>
+                                </div>
+                                <div style={{fontSize:11,color:colors.muted,fontWeight:800}}>
+                                  {item.completedAt ? new Date(item.completedAt).toLocaleString() : "Completed"}
+                                </div>
+                              </div>
+                              {item.note ? <div style={{fontSize:11,color:colors.text,marginTop:6,whiteSpace:"pre-wrap"}}>{item.note}</div> : null}
+                              {(item.needsNick || item.problemFound || item.photos.length) ? (
+                                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:7}}>
+                                  {item.needsNick ? <span style={{...propertyChipStyle,background:"#FFF3CF",borderColor:colors.gold}}>Needs Nick</span> : null}
+                                  {item.problemFound ? <span style={{...propertyChipStyle,color:colors.red}}>Problem Found</span> : null}
+                                  {item.photos.length ? <span style={propertyChipStyle}>{item.photos.length} photo{item.photos.length === 1 ? "" : "s"}</span> : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
