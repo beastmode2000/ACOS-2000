@@ -817,6 +817,85 @@ async function ensureTeamWorkListsTableForField(sql: ReturnType<typeof neon>) {
   `;
 }
 
+async function ensureTeamEmployeeHistoryTableForField(sql: ReturnType<typeof neon>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_team_work_history (
+      id text PRIMARY KEY,
+      event_key text UNIQUE NOT NULL,
+      member_id text,
+      employee_name text NOT NULL,
+      property_id text NOT NULL,
+      source text NOT NULL,
+      list_id text,
+      list_name text,
+      task_id text NOT NULL,
+      task_title text NOT NULL,
+      location text,
+      note text,
+      completed_at timestamptz NOT NULL,
+      needs_nick boolean NOT NULL DEFAULT false,
+      problem_found boolean NOT NULL DEFAULT false,
+      photos jsonb NOT NULL DEFAULT '[]'::jsonb,
+      snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `;
+}
+
+async function upsertFieldEmployeeHistory(
+  sql: ReturnType<typeof neon>,
+  employee: { id: string; name: string; propertyIds: string[] },
+  task: Record<string, any>,
+  context: { source: string; propertyId: string; listId?: string; listName?: string },
+) {
+  const meta = addisonTaskMeta(task as AddisonTaskRecord) || task;
+  if (String(meta?.status || task.status || "Open") !== "Completed") return;
+  const completedAt = String(meta?.completedAt || task.completedAt || new Date().toISOString());
+  const taskId = String(task.id || "");
+  if (!taskId) return;
+  const listId = String(context.listId || "");
+  const eventKey = `${context.source}:${context.propertyId}:${listId}:${taskId}:${completedAt}`;
+  const historyId = `history-${createHash("sha256").update(eventKey).digest("hex").slice(0, 24)}`;
+  const photos = Array.isArray(meta?.photos) ? meta.photos : Array.isArray(task.photos) ? task.photos : [];
+  const note = String(meta?.addisonNote || meta?.notes || task.notes || "");
+  const snapshot = {
+    ...task,
+    taskMeta: meta,
+    source: context.source,
+    propertyId: context.propertyId,
+    listId,
+    listName: String(context.listName || ""),
+    completedAt,
+  };
+
+  await ensureTeamEmployeeHistoryTableForField(sql);
+  await sql`
+    INSERT INTO atlas_team_work_history (
+      id, event_key, member_id, employee_name, property_id, source,
+      list_id, list_name, task_id, task_title, location, note,
+      completed_at, needs_nick, problem_found, photos, snapshot, updated_at
+    )
+    VALUES (
+      ${historyId}, ${eventKey}, ${employee.id}, ${employee.name}, ${context.propertyId}, ${context.source},
+      ${listId || null}, ${String(context.listName || "") || null}, ${taskId}, ${String(task.title || "Task")},
+      ${String(task.location || meta?.location || "") || null}, ${note || null}, ${completedAt}::timestamptz,
+      ${Boolean(meta?.needsNick || task.needsNick)}, ${Boolean(meta?.problemFound || task.problemFound)},
+      ${JSON.stringify(photos)}::jsonb, ${JSON.stringify(snapshot)}::jsonb, NOW()
+    )
+    ON CONFLICT (event_key)
+    DO UPDATE SET
+      employee_name = EXCLUDED.employee_name,
+      task_title = EXCLUDED.task_title,
+      location = EXCLUDED.location,
+      note = EXCLUDED.note,
+      needs_nick = EXCLUDED.needs_nick,
+      problem_found = EXCLUDED.problem_found,
+      photos = EXCLUDED.photos,
+      snapshot = EXCLUDED.snapshot,
+      updated_at = NOW()
+  `;
+}
+
 function isTeamTaskAssignedToName(task: Record<string, any>, name: string) {
   const assigned = String(task.assignee || task.assignedTo || task.assigned_to || "").trim().toLowerCase();
   const target = name.trim().toLowerCase();
@@ -886,6 +965,10 @@ async function patchFieldEmployeeTask(employee:{id:string;name:string;propertyId
     const meta=addisonTaskMeta(record)||{}; const updatedAt=new Date().toISOString();
     const nextMeta={...meta,...patch,updatedAt}; const next={...record,...nextMeta,taskMeta:nextMeta,propertyId:String(row.property_id),updatedAt};
     await sql`UPDATE atlas_operational_records SET record=${JSON.stringify(next)}::jsonb, updated_at=NOW() WHERE record_type='tasks' AND property_id=${String(row.property_id)} AND id=${taskId}`;
+    await upsertFieldEmployeeHistory(sql, employee, next, {
+      source: "atlas-task",
+      propertyId: String(row.property_id),
+    });
     return true;
   }
 
@@ -906,6 +989,12 @@ async function patchFieldEmployeeTask(employee:{id:string;name:string;propertyId
     nextTasks[index] = nextTask;
     const nextList = { ...list, tasks: nextTasks };
     await sql`UPDATE atlas_team_work_lists SET record=${JSON.stringify(nextList)}::jsonb, updated_at=NOW() WHERE id=${String(listRow.id)}`;
+    await upsertFieldEmployeeHistory(sql, employee, nextTask, {
+      source: "team-work-list",
+      propertyId: listProperties.find((propertyId:string) => properties.includes(propertyId)) || properties[0] || "2000",
+      listId: String(list.id || listRow.id || ""),
+      listName: String(list.name || ""),
+    });
     return true;
   }
   return false;
