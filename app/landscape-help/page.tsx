@@ -45,6 +45,9 @@ type FieldEmployeeWorkData = {
   employeeName: string;
   propertyIds: string[];
   tasks: Array<Record<string, any>>;
+  marineAssets?: Array<{ id:string; name:string; category?:string; locationId?:string }>;
+  marineWorkOrders?: Array<{ id:string; title:string; status?:string; assetId?:string; locationId?:string }>;
+  marineVisits?: Array<Record<string, any>>;
 };
 
 type LandscapeApiData = {
@@ -156,6 +159,16 @@ export default function LandscapeHelpPage() {
   const [employeeData, setEmployeeData] = useState<FieldEmployeeWorkData | null>(null);
   const [addisonSync, setAddisonSync] = useState<"saved" | "syncing" | "offline">("saved");
   const [uploadingItemId, setUploadingItemId] = useState("");
+  const [marineVisitSummary, setMarineVisitSummary] = useState("");
+  const [marineVisitAssetId, setMarineVisitAssetId] = useState("");
+  const [marineVisitWorkOrderId, setMarineVisitWorkOrderId] = useState("");
+  const [marineVisitTaskId, setMarineVisitTaskId] = useState("");
+  const [marineVisitFollowUp, setMarineVisitFollowUp] = useState("");
+  const [marineVisitParts, setMarineVisitParts] = useState("");
+  const [marineVisitPhotos, setMarineVisitPhotos] = useState<Array<{url:string;name:string;createdAt:string}>>([]);
+  const [marineVisitUploading, setMarineVisitUploading] = useState(false);
+  const [marineVisitSaving, setMarineVisitSaving] = useState(false);
+  const [marineVisitMessage, setMarineVisitMessage] = useState("");
   const [quickNote, setQuickNote] = useState("");
   const [todayWeather, setTodayWeather] = useState<{
     temperature: number;
@@ -292,6 +305,89 @@ export default function LandscapeHelpPage() {
       setMessage(error instanceof Error ? error.message : "Photo upload failed.");
     } finally {
       setUploadingItemId("");
+    }
+  }
+
+
+  async function uploadMarineVisitPhoto(file: File) {
+    if (!shareToken || !employeeData || !file) return;
+    setMarineVisitUploading(true);
+    setMarineVisitMessage("");
+    try {
+      const safeName = (file.name || "photo")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+      const blob = await upload(
+        `atlas-field/${employeeData.employeeId}/marine-visits/${Date.now()}-${safeName || "photo"}`,
+        file,
+        {
+          access: "public",
+          handleUploadUrl: `/api/addison-upload?token=${encodeURIComponent(shareToken)}`,
+          contentType: file.type || undefined,
+        },
+      );
+      setMarineVisitPhotos((current) => [...current, {
+        url: blob.url,
+        name: file.name || "Photo",
+        createdAt: new Date().toISOString(),
+      }]);
+    } catch (error) {
+      setMarineVisitMessage(error instanceof Error ? error.message : "Photo upload failed.");
+    } finally {
+      setMarineVisitUploading(false);
+    }
+  }
+
+  async function saveMarineVisit() {
+    if (!employeeData || !shareToken || marineVisitSaving) return;
+    if (!marineVisitSummary.trim()) {
+      setMarineVisitMessage("Enter what you did during this visit.");
+      return;
+    }
+    const selectedAsset = (employeeData.marineAssets || []).find((item) => item.id === marineVisitAssetId);
+    const selectedWorkOrder = (employeeData.marineWorkOrders || []).find((item) => item.id === marineVisitWorkOrderId);
+    const selectedTask = employeeData.tasks.find((item) => String(item.id) === marineVisitTaskId);
+    setMarineVisitSaving(true);
+    setMarineVisitMessage("Saving…");
+    try {
+      const response = await fetch(landscapeApiUrl(shareToken), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: shareToken,
+          action: "marine-visit-log",
+          propertyId: employeeData.propertyIds[0] || "2000",
+          visitDate: employeeData.today,
+          summary: marineVisitSummary.trim(),
+          assetId: marineVisitAssetId,
+          assetName: selectedAsset?.name || "",
+          workOrderId: marineVisitWorkOrderId,
+          workOrderTitle: selectedWorkOrder?.title || "",
+          taskId: marineVisitTaskId,
+          taskTitle: String(selectedTask?.title || ""),
+          followUp: marineVisitFollowUp.trim(),
+          partsNeeded: marineVisitParts.trim(),
+          photos: marineVisitPhotos,
+        }),
+      });
+      const data = await readLandscapeJson(response, "Could not save marine visit.");
+      if (!data.ok || data.mode !== "employee" || !data.employee) {
+        throw new Error(data.error || "Could not save marine visit.");
+      }
+      setEmployeeData(data.employee);
+      setMarineVisitSummary("");
+      setMarineVisitAssetId("");
+      setMarineVisitWorkOrderId("");
+      setMarineVisitTaskId("");
+      setMarineVisitFollowUp("");
+      setMarineVisitParts("");
+      setMarineVisitPhotos([]);
+      setMarineVisitMessage("Visit saved to Sean history and Dock & Marine.");
+    } catch (error) {
+      setMarineVisitMessage(error instanceof Error ? error.message : "Could not save marine visit.");
+    } finally {
+      setMarineVisitSaving(false);
     }
   }
 
@@ -434,17 +530,50 @@ export default function LandscapeHelpPage() {
     const activeTasks = employeeData.tasks.filter((task) => String(taskMeta(task).status || "Open") !== "Completed");
     const completedTasks = employeeData.tasks.filter((task) => String(taskMeta(task).status || "") === "Completed");
     const prettyToday = new Date(`${today}T12:00:00`).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});
-    const renderTask = (item:Record<string,any>, completed:boolean) => {
-      const meta=taskMeta(item); const photos=Array.isArray(meta.photos)?meta.photos:[]; const note=String(meta.addisonNote||meta.note||"");
-      const flagged=Boolean(meta.needsNick), problem=Boolean(meta.problemFound), nothingNeeded=Boolean(meta.checkedNothingNeeded);
-      return <div key={String(item.id)} style={{border:`1px solid ${problem||flagged?colors.gold:colors.line}`,borderRadius:14,padding:12,background:completed||nothingNeeded?"#F7FAFC":colors.card,display:"grid",gap:9}}>
-        <label style={{display:"flex",gap:10,alignItems:"flex-start"}}><input type="checkbox" checked={completed} onChange={(e)=>void patchAddison("task-status",{taskId:item.id,status:e.target.checked?"Completed":"Open"})} style={{width:21,height:21,marginTop:2}}/><span><strong style={{display:"block",color:colors.navy,textDecoration:completed?"line-through":"none"}}>{String(item.title||"Work item")}</strong>{meta.dueDate?<small style={{color:colors.muted}}>Due {formatDate(String(meta.dueDate).slice(0,10))}</small>:null}</span></label>
-        <textarea defaultValue={note} placeholder="Add a note…" onBlur={(e)=>void patchAddison("task-note",{taskId:item.id,note:e.currentTarget.value})} style={{...styles.textarea,minHeight:58}}/>
-        <div style={{display:"flex",gap:7,flexWrap:"wrap"}}><button type="button" onClick={()=>void patchAddison("task-flag",{taskId:item.id,needsNick:!flagged})} style={styles.secondaryButton}>{flagged?"Needs Nick ✓":"Needs Nick"}</button><button type="button" onClick={()=>void patchAddison("task-problem",{taskId:item.id,problemFound:!problem})} style={{...styles.secondaryButton,color:problem?colors.red:colors.text}}>{problem?"Problem Found ✓":"Problem Found"}</button><label style={{...styles.secondaryButton,cursor:"pointer"}}>{uploadingItemId===String(item.id)?"Uploading…":"Add Photo"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={(e)=>{const f=e.currentTarget.files?.[0];if(f)void uploadAddisonPhoto(String(item.id),f);e.currentTarget.value="";}}/></label></div>
-        {photos.length?<div style={{display:"flex",gap:7,overflowX:"auto"}}>{photos.map((photo:any,i:number)=><a key={`${photo.url}-${i}`} href={String(photo.url)} target="_blank" rel="noreferrer"><img src={String(photo.url)} alt={String(photo.name||"Photo")} style={{width:72,height:72,objectFit:"cover",borderRadius:10,border:`1px solid ${colors.line}`}}/></a>)}</div>:null}
-      </div>;
-    };
-    return <main style={{...styles.page,padding:14,maxWidth:760}}><section style={{...styles.header,padding:18,borderRadius:18,marginBottom:12}}><div><h1 style={{...styles.title,fontSize:30,marginBottom:2}}>Atlas Today</h1><div style={{color:"white",fontWeight:800,fontSize:14}}>{employeeData.employeeName} · {employeeData.propertyIds.join(", ")}</div><p style={{...styles.subtitle,marginTop:3}}>{prettyToday}</p></div></section><section style={styles.card}><div style={styles.eyebrow}>MY WORK</div><h2 style={styles.cardTitle}>Today</h2><div style={{display:"grid",gap:9}}>{activeTasks.map((t)=>renderTask(t,false))}{!activeTasks.length?<div style={styles.muted}>No open work assigned.</div>:null}</div></section>{completedTasks.length?<details style={styles.card}><summary style={{cursor:"pointer",fontWeight:900}}>Completed Today · {completedTasks.length}</summary><div style={{display:"grid",gap:9,marginTop:10}}>{completedTasks.map((t)=>renderTask(t,true))}</div></details>:null}</main>;
+    const isSean = /^sean(?:\s|$)/i.test(employeeData.employeeName);
+    const renderTask=(item:Record<string,any>,completed:boolean)=>{const meta=taskMeta(item);const photos=Array.isArray(meta.photos)?meta.photos:[];const note=String(meta.addisonNote||meta.note||item.notes||"");const flagged=Boolean(meta.needsNick);const problem=Boolean(meta.problemFound);return <div key={String(item.id)} style={{border:`1px solid ${problem||flagged?colors.gold:colors.line}`,borderRadius:14,padding:12,background:completed?"#F7FAFC":colors.card}}><div style={{display:"flex",gap:9,alignItems:"flex-start"}}><input type="checkbox" checked={completed} onChange={()=>void patchAddison("task-status",{taskId:item.id,status:completed?"Open":"Completed"})} style={{width:21,height:21,marginTop:2}}/><div style={{flex:1}}><strong style={{display:"block",color:colors.navy,textDecoration:completed?"line-through":"none"}}>{String(item.title||"Work item")}</strong>{meta.dueDate?<small style={{color:colors.muted}}>Due {formatDate(String(meta.dueDate).slice(0,10))}</small>:null}</div></div><textarea defaultValue={note} placeholder="Add a note…" onBlur={(e)=>void patchAddison("task-note",{taskId:item.id,note:e.currentTarget.value})} style={{...styles.textarea,minHeight:58,marginTop:9}}/><div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:8}}><button type="button" onClick={()=>void patchAddison("task-flag",{taskId:item.id,needsNick:!flagged})} style={{...styles.secondaryButton,borderColor:flagged?colors.gold:colors.line}}>{flagged?"Needs Nick ✓":"Needs Nick"}</button><button type="button" onClick={()=>void patchAddison("task-problem",{taskId:item.id,problemFound:!problem})} style={{...styles.secondaryButton,color:problem?colors.red:colors.text}}>{problem?"Problem Found ✓":"Problem Found"}</button><label style={{...styles.secondaryButton,cursor:"pointer",display:"inline-flex",alignItems:"center"}}>{uploadingItemId===String(item.id)?"Uploading…":"Add Photo"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} disabled={uploadingItemId===String(item.id)} onChange={(e)=>{const file=e.currentTarget.files?.[0];if(file)void uploadAddisonPhoto(String(item.id),file);e.currentTarget.value="";}}/></label></div>{photos.length?<div style={{display:"flex",gap:7,overflowX:"auto",marginTop:9}}>{photos.map((photo:any,index:number)=><a key={`${photo.url}-${index}`} href={String(photo.url)} target="_blank" rel="noreferrer"><img src={String(photo.url)} alt={String(photo.name||"Photo")} style={{width:72,height:72,objectFit:"cover",borderRadius:10,border:`1px solid ${colors.line}`}}/></a>)}</div>:null}</div>};
+
+    return (
+      <main style={{...styles.page,padding:14,maxWidth:760}}>
+        <section style={{...styles.header,padding:18,borderRadius:18,marginBottom:12}}>
+          <div><h1 style={{...styles.title,fontSize:30,marginBottom:2}}>Atlas Today</h1><div style={{color:"white",fontWeight:800,fontSize:14}}>{employeeData.employeeName} · {employeeData.propertyIds.join(", ")}</div><p style={{...styles.subtitle,marginTop:3}}>{prettyToday}</p></div>
+        </section>
+
+        {isSean ? (
+          <section style={styles.card}>
+            <div style={styles.eyebrow}>DOCK & MARINE</div>
+            <h2 style={styles.cardTitle}>Marine Visit Log</h2>
+            <textarea value={marineVisitSummary} onChange={(e)=>setMarineVisitSummary(e.target.value)} placeholder="What did you do today?" style={{...styles.textarea,minHeight:90}} />
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:8,marginTop:8}}>
+              <select value={marineVisitAssetId} onChange={(e)=>setMarineVisitAssetId(e.target.value)} style={styles.input}>
+                <option value="">Asset / dock area (optional)</option>
+                {(employeeData.marineAssets || []).map((asset)=><option key={asset.id} value={asset.id}>{asset.name}</option>)}
+              </select>
+              <select value={marineVisitWorkOrderId} onChange={(e)=>setMarineVisitWorkOrderId(e.target.value)} style={styles.input}>
+                <option value="">Related work order (optional)</option>
+                {(employeeData.marineWorkOrders || []).map((work)=><option key={work.id} value={work.id}>{work.title}</option>)}
+              </select>
+              <select value={marineVisitTaskId} onChange={(e)=>setMarineVisitTaskId(e.target.value)} style={styles.input}>
+                <option value="">Related assigned task (optional)</option>
+                {employeeData.tasks.map((task)=><option key={String(task.id)} value={String(task.id)}>{String(task.title || "Task")}</option>)}
+              </select>
+            </div>
+            <input value={marineVisitFollowUp} onChange={(e)=>setMarineVisitFollowUp(e.target.value)} placeholder="Follow-up needed (optional)" style={{...styles.input,marginTop:8}} />
+            <input value={marineVisitParts} onChange={(e)=>setMarineVisitParts(e.target.value)} placeholder="Parts / materials needed (optional)" style={{...styles.input,marginTop:8}} />
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:9,alignItems:"center"}}>
+              <label style={{...styles.secondaryButton,cursor:"pointer",display:"inline-flex",alignItems:"center"}}>{marineVisitUploading?"Uploading…":"Add Photo"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} disabled={marineVisitUploading} onChange={(e)=>{const file=e.currentTarget.files?.[0];if(file)void uploadMarineVisitPhoto(file);e.currentTarget.value="";}}/></label>
+              <button type="button" onClick={()=>void saveMarineVisit()} disabled={marineVisitSaving} style={styles.primaryButton}>{marineVisitSaving?"Saving…":"Save Visit"}</button>
+              {marineVisitMessage?<span style={{fontSize:12,fontWeight:800,color:marineVisitMessage.startsWith("Visit saved")?"#087443":colors.muted}}>{marineVisitMessage}</span>:null}
+            </div>
+            {marineVisitPhotos.length?<div style={{display:"flex",gap:7,overflowX:"auto",marginTop:9}}>{marineVisitPhotos.map((photo,index)=><a key={`${photo.url}-${index}`} href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={photo.name||"Marine visit photo"} style={{width:72,height:72,objectFit:"cover",borderRadius:10,border:`1px solid ${colors.line}`}}/></a>)}</div>:null}
+            {(employeeData.marineVisits || []).length ? <details style={{marginTop:12}}><summary style={{cursor:"pointer",fontWeight:900,color:colors.navy}}>Recent Visits · {(employeeData.marineVisits || []).length}</summary><div style={{display:"grid",gap:8,marginTop:8}}>{(employeeData.marineVisits || []).slice(0,8).map((visit:any)=><div key={String(visit.id)} style={{border:`1px solid ${colors.line}`,borderRadius:10,padding:10}}><strong style={{display:"block",color:colors.navy}}>{String(visit.assetName || visit.workOrderTitle || "Dock & Marine")}</strong><small style={{color:colors.muted}}>{formatDate(String(visit.visitDate || ""))}</small><div style={{marginTop:4,fontSize:13}}>{String(visit.summary || "")}</div></div>)}</div></details> : null}
+          </section>
+        ) : null}
+
+        <section style={styles.card}><div style={styles.eyebrow}>MY WORK</div><h2 style={styles.cardTitle}>Today</h2><div style={{display:"grid",gap:9}}>{activeTasks.map((t)=>renderTask(t,false))}{!activeTasks.length?<div style={styles.muted}>No open work assigned.</div>:null}</div></section>
+        {completedTasks.length?<details style={styles.card}><summary style={{cursor:"pointer",fontWeight:900}}>Completed Today · {completedTasks.length}</summary><div style={{display:"grid",gap:9,marginTop:10}}>{completedTasks.map((t)=>renderTask(t,true))}</div></details>:null}
+      </main>
+    );
   }
 
   if (addisonData) {
