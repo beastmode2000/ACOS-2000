@@ -2289,53 +2289,6 @@ export default function AtlasApp() {
   }, [ready, operationsHydrated, activePropertyId]);
 
   useEffect(() => {
-    if (!ready || !operationsHydrated || activePropertyId !== "2000" || typeof window === "undefined") return;
-    const migrationKey = "atlas-stop-legacy-mercedes-honda-cleaning-v1-2000";
-    if (window.localStorage.getItem(migrationKey) === "done") return;
-
-    const names = new Set(["mercedes", "honda"]);
-    const targetVehicles = vehicleCare.filter((vehicle) => names.has(vehicle.name.trim().toLowerCase()));
-    if (!targetVehicles.length) return;
-
-    targetVehicles.forEach((vehicle) => suppressVehicleCleaningTask(vehicle));
-    const targetVehicleIds = new Set(targetVehicles.map((vehicle) => vehicle.id));
-    const staleTasks = workPlanTasks.filter((task) => {
-      const meta = taskDetails(task.id);
-      const cleanedName = String(task.title || "").replace(/^clean\s+/i, "").trim().toLowerCase();
-      return /^clean\s+/i.test(task.title || "") &&
-        (targetVehicleIds.has(String(meta.vehicleId || "")) || names.has(cleanedName));
-    });
-    const staleTaskIds = new Set(staleTasks.map((task) => task.id));
-
-    if (staleTaskIds.size) {
-      setWorkPlanTasks((current) => current.filter((task) => !staleTaskIds.has(task.id)));
-      setTaskMeta((current) => {
-        const next = { ...current };
-        staleTaskIds.forEach((id) => {
-          delete next[id];
-          addTaskTombstone(id);
-        });
-        return next;
-      });
-      staleTaskIds.forEach((id) => void deleteOperationalRecord("tasks" as AtlasTable, id));
-    }
-
-    const staleCalendar = calendarItems.filter((item) =>
-      targetVehicles.some((vehicle) =>
-        item.id === `fleet-clean-${vehicle.id}` ||
-        normalizeLocationName(item.title) === normalizeLocationName(`Clean ${vehicle.name}`),
-      ),
-    );
-    if (staleCalendar.length) {
-      const staleCalendarIds = new Set(staleCalendar.map((item) => item.id));
-      setCalendarItems((current) => current.filter((item) => !staleCalendarIds.has(item.id)));
-      staleCalendar.forEach((item) => void deleteAtlasRecord("calendar", item.id));
-    }
-
-    window.localStorage.setItem(migrationKey, "done");
-  }, [ready, operationsHydrated, activePropertyId]);
-
-  useEffect(() => {
     if (!ready || !operationsHydrated || activePropertyId !== "2000") return;
     const migrationKey =
       "atlas-porsche-rivian-cleaned-2026-08-17-v1-2000";
@@ -3029,12 +2982,7 @@ export default function AtlasApp() {
     if (typeof window === "undefined") return "";
     const params = new URLSearchParams(window.location.search);
     const query = params.toString();
-
-    // Atlas screens are hash-routed from the production root. Never preserve a
-    // stale/legacy pathname (for example /dashboard, /team, or another alias),
-    // because a later refresh would ask Next/Vercel for that physical route and
-    // can return a 404. Internal navigation always normalizes back to /#screen.
-    return `/${query ? `?${query}` : ""}#${next}`;
+    return `${window.location.pathname}${query ? `?${query}` : ""}#${next}`;
   }
 
   function setScreen(next: AtlasScreen, options?: { replace?: boolean }) {
@@ -14786,36 +14734,6 @@ export default function AtlasApp() {
     saveStoredArray(taskTombstoneKey(), Array.from(current));
   }
 
-  function vehicleCleaningSuppressionKey(propertyId = activePropertyId) {
-    return `atlas-vehicle-cleaning-suppressions-v1-${propertyId}`;
-  }
-
-  function vehicleCleaningIdentity(vehicle: Pick<AtlasVehicleCare, "id" | "name">) {
-    return `${String(vehicle.id || "").trim().toLowerCase()}|${normalizeLocationName(vehicle.name)}`;
-  }
-
-  function readVehicleCleaningSuppressions(propertyId = activePropertyId) {
-    return new Set(
-      readStoredArray<string>([vehicleCleaningSuppressionKey(propertyId)], []).map(String),
-    );
-  }
-
-  function suppressVehicleCleaningTask(vehicle: Pick<AtlasVehicleCare, "id" | "name">) {
-    const current = readVehicleCleaningSuppressions();
-    current.add(vehicleCleaningIdentity(vehicle));
-    saveStoredArray(vehicleCleaningSuppressionKey(), Array.from(current));
-  }
-
-  function allowVehicleCleaningTask(vehicle: Pick<AtlasVehicleCare, "id" | "name">) {
-    const current = readVehicleCleaningSuppressions();
-    if (!current.delete(vehicleCleaningIdentity(vehicle))) return;
-    saveStoredArray(vehicleCleaningSuppressionKey(), Array.from(current));
-  }
-
-  function isVehicleCleaningTaskSuppressed(vehicle: Pick<AtlasVehicleCare, "id" | "name">) {
-    return readVehicleCleaningSuppressions().has(vehicleCleaningIdentity(vehicle));
-  }
-
   function normalizedTaskIdentity(
     task: WorkPlanTask,
     meta: AtlasTaskMeta = taskDetails(task.id),
@@ -15203,15 +15121,6 @@ export default function AtlasApp() {
 
     addTaskTombstone(taskId);
     const meta = taskDetails(taskId);
-    const cleanedVehicleName = String(task.title || "").replace(/^clean\s+/i, "").trim();
-    const linkedVehicle = vehicleCare.find(
-      (vehicle) =>
-        String(meta.vehicleId || "") === vehicle.id ||
-        normalizeLocationName(vehicle.name) === normalizeLocationName(cleanedVehicleName),
-    );
-    if (/^clean\s+/i.test(task.title || "") && linkedVehicle) {
-      suppressVehicleCleaningTask(linkedVehicle);
-    }
     setTaskUndo({ task, meta });
     if (taskUndoTimerRef.current !== null) window.clearTimeout(taskUndoTimerRef.current);
     taskUndoTimerRef.current = window.setTimeout(() => {
@@ -15390,9 +15299,6 @@ export default function AtlasApp() {
   }
 
   function createVehicleCleaningTask(vehicle: AtlasVehicleCare) {
-    // Explicit creation is the only action that restores a vehicle-cleaning task
-    // after the user deleted/suppressed the generated one.
-    allowVehicleCleaningTask(vehicle);
     const task: WorkPlanTask = {
       id: uid("plan-task"),
       title: `Clean ${vehicle.name}`,
@@ -15573,61 +15479,46 @@ ${notes.trim()}` : notes.trim(),
           nextVehicles[vehicleIndex] = { ...nextVehicles[vehicleIndex], cleaningIntervalDays: 7 };
         }
         const cleaningDueDate = vehicle.lastCleaned ? addDays(vehicle.lastCleaned, cleaningInterval) : todayISO();
-        const cleaningSuppressed = isVehicleCleaningTaskSuppressed(vehicle);
         let cleaningTask = nextTasks.find((task) => taskDetails(task.id).vehicleId === vehicle.id) || nextTasks.find((task) => normalizeLocationName(task.title) === normalizeLocationName(`Clean ${vehicle.name}`));
-        if (cleaningSuppressed && cleaningTask) {
-          const suppressedTaskId = cleaningTask.id;
-          const suppressedIndex = nextTasks.findIndex((task) => task.id === suppressedTaskId);
-          if (suppressedIndex >= 0) nextTasks.splice(suppressedIndex, 1);
-          delete nextTaskMeta[suppressedTaskId];
-          addTaskTombstone(suppressedTaskId);
-          void deleteOperationalRecord("tasks" as AtlasTable, suppressedTaskId);
-          cleaningTask = undefined;
-        }
-        if (!cleaningSuppressed) {
-          if (!cleaningTask) {
-            cleaningTask = {
-              id: uid("fleet-task"),
-              title: `Clean ${vehicle.name}`,
-              minutes: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? 75 : 45,
-              priority: vehicle.priority === "High" ? "High" : "Medium",
-              category: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Boat / Dock" : "Garage",
-              locationId: vehicle.locationId || asset.locationId || "general",
-              preferredDay: "Thursday",
-              locked: false,
-              recurring: true,
-              fixedTime: "",
-              notes: `Weekly Garage cleaning for ${vehicle.name}. Use Skip when the cleaning cannot be completed that week.`,
-            };
-            nextTasks.push(cleaningTask);
-            createdTasks += 1;
-          } else {
-            const taskIndex = nextTasks.findIndex((task) => task.id === cleaningTask!.id);
-            nextTasks[taskIndex] = { ...cleaningTask, recurring: true, locationId: vehicle.locationId || asset.locationId || "general" };
-            cleaningTask = nextTasks[taskIndex];
-          }
-          const existingCleaningMeta = nextTaskMeta[cleaningTask.id] || taskDetails(cleaningTask.id);
-          const cleaningAssignee = vehicle.assignedTo === "Addison" ? "Addison" : "Nick";
-          const completedDate = String(existingCleaningMeta.lastCompletedDate || existingCleaningMeta.completedAt || "").slice(0, 10);
-          const nextDueAfterCompletion = completedDate ? addDays(completedDate, cleaningInterval) : cleaningDueDate;
-          nextTaskMeta[cleaningTask.id] = {
-            ...existingCleaningMeta,
-            status: existingCleaningMeta.status,
-            dueDate: existingCleaningMeta.status === "Completed"
-              ? (nextDueAfterCompletion > todayISO() ? nextDueAfterCompletion : cleaningDueDate)
-              : (existingCleaningMeta.dueDate || cleaningDueDate),
-            assignee: cleaningAssignee,
-            createdAt: existingCleaningMeta.createdAt || new Date().toISOString(),
-            assetId: asset.id,
-            vehicleId: vehicle.id,
-            recurrenceInterval: cleaningInterval,
-            recurrenceUnit: "Days",
-            season: "Year-Round",
-            skippable: true,
-            flexibleTime: true,
-            updatedAt: new Date().toISOString(),
+        if (!cleaningTask) {
+          cleaningTask = {
+            id: uid("fleet-task"),
+            title: `Clean ${vehicle.name}`,
+            minutes: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? 75 : 45,
+            priority: vehicle.priority === "High" ? "High" : "Medium",
+            category: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Boat / Dock" : "Garage",
+            locationId: vehicle.locationId || asset.locationId || "general",
+            preferredDay: "Thursday",
+            locked: false,
+            recurring: true,
+            fixedTime: "",
+            notes: `Weekly Garage cleaning for ${vehicle.name}. Use Skip when the cleaning cannot be completed that week.`,
           };
+          nextTasks.push(cleaningTask);
+          createdTasks += 1;
+        } else {
+          const taskIndex = nextTasks.findIndex((task) => task.id === cleaningTask!.id);
+          nextTasks[taskIndex] = { ...cleaningTask, recurring: true, locationId: vehicle.locationId || asset.locationId || "general" };
+          cleaningTask = nextTasks[taskIndex];
         }
+        const existingCleaningMeta = nextTaskMeta[cleaningTask.id] || taskDetails(cleaningTask.id);
+        const cleaningAssignee =
+          vehicle.assignedTo === "Addison" ? "Addison" : "Nick";
+        nextTaskMeta[cleaningTask.id] = {
+          ...existingCleaningMeta,
+          status: existingCleaningMeta.status === "Completed" ? "Open" : existingCleaningMeta.status,
+          dueDate: existingCleaningMeta.dueDate || cleaningDueDate,
+          assignee: cleaningAssignee,
+          createdAt: existingCleaningMeta.createdAt || new Date().toISOString(),
+          assetId: asset.id,
+          vehicleId: vehicle.id,
+          recurrenceInterval: cleaningInterval,
+          recurrenceUnit: "Days",
+          season: "Year-Round",
+          skippable: true,
+          flexibleTime: true,
+          updatedAt: new Date().toISOString(),
+        };
 
         const serviceInterval = Math.max(1, Number(vehicle.serviceIntervalDays || 180));
         const serviceDueDate = vehicle.nextServiceDate || addDays(vehicle.lastServiced || todayISO(), serviceInterval);
@@ -15656,23 +15547,8 @@ ${notes.trim()}` : notes.trim(),
           recordsToSave.push({ table: "work_orders", record: { ...serviceWorkOrder, propertyId: activePropertyId } });
         }
 
-        if (cleaningSuppressed) {
-          const staleCleaningCalendar = nextCalendar.filter(
-            (item) => item.id === `fleet-clean-${vehicle.id}` ||
-              normalizeLocationName(item.title) === normalizeLocationName(`Clean ${vehicle.name}`),
-          );
-          if (staleCleaningCalendar.length) {
-            const staleIds = new Set(staleCleaningCalendar.map((item) => item.id));
-            for (let index = nextCalendar.length - 1; index >= 0; index -= 1) {
-              if (staleIds.has(nextCalendar[index].id)) nextCalendar.splice(index, 1);
-            }
-            staleCleaningCalendar.forEach((item) => void deleteAtlasRecord("calendar", item.id));
-          }
-        }
         const calendarDefinitions: AtlasCalendarItem[] = [
-          ...(!cleaningSuppressed && cleaningTask ? [
-            normalizeCalendar({ id: `fleet-clean-${vehicle.id}`, propertyId: activePropertyId, date: nextTaskMeta[cleaningTask.id].dueDate, title: `Clean ${vehicle.name}`, area: "Garage", categoryLabel: "Garage", allDay: true, repeat: cleaningInterval === 7 ? "Weekly" : "Custom", reminder: "Morning of", notes: `Recurring every ${cleaningInterval} days. Use Skip when needed. Linked to the Garage Asset and Task.`, linkedType: "Task", linkedId: cleaningTask.id, linkedName: cleaningTask.title, source: "task", status: "Scheduled" }),
-          ] : []),
+          normalizeCalendar({ id: `fleet-clean-${vehicle.id}`, propertyId: activePropertyId, date: nextTaskMeta[cleaningTask.id].dueDate, title: `Clean ${vehicle.name}`, area: "Garage", categoryLabel: "Garage", allDay: true, repeat: cleaningInterval === 7 ? "Weekly" : "Custom", reminder: "Morning of", notes: `Recurring every ${cleaningInterval} days. Use Skip when needed. Linked to the Garage Asset and Task.`, linkedType: "Task", linkedId: cleaningTask.id, linkedName: cleaningTask.title, source: "task", status: "Scheduled" }),
           normalizeCalendar({ id: `fleet-service-${vehicle.id}`, propertyId: activePropertyId, date: serviceWorkOrder.date || serviceDueDate, title: `${vehicle.name} service`, area: "Garage", categoryLabel: "Garage", allDay: true, repeat: "Custom", reminder: "Week before", notes: `Recurring every ${serviceInterval} days. Open the linked Work Order for service history, documents, and cost.`, linkedType: "Work Order", linkedId: serviceWorkOrder.id, linkedName: serviceWorkOrder.title, source: "work-order", status: "Scheduled" }),
         ];
         for (const calendarRecord of calendarDefinitions) {
