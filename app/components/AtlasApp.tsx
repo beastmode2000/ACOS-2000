@@ -15037,7 +15037,79 @@ export default function AtlasApp() {
     };
   }
 
+  function syncTaskProblemToInbox(taskId: string, problemText: string) {
+    const description = String(problemText || "").trim();
+    if (!description) return;
+
+    const task = workPlanTasks.find((item) => item.id === taskId);
+    if (!task) return;
+
+    const submittedBy = String(currentAtlasUser?.name || "Team Member").trim() || "Team Member";
+    const submittedById = String(currentAtlasUser?.id || currentAtlasUser?.email || submittedBy).trim().toLowerCase();
+    const problemKey = [
+      activePropertyId,
+      taskId,
+      description.toLowerCase().replace(/\s+/g, " "),
+    ].join("|");
+
+    const alreadyWaiting = inboxItems.some((item) => {
+      if (item.status === "Archived") return false;
+      const data = (item.extractedData || {}) as Record<string, unknown>;
+      return String(data.taskProblemKey || "") === problemKey;
+    });
+    if (alreadyWaiting) return;
+
+    const meta = taskDetails(taskId);
+    const reportLocationName = task.locationId ? locationName(task.locationId) : "General property";
+
+    void fetch("/api/atlas-inbox", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: `Problem found — ${task.title}`,
+        intakeType: "Work Order Issue",
+        status: "Needs Review",
+        source: "Employee Task Problem",
+        notes: description,
+        pastedText: "",
+        files: meta.photos || [],
+        targetType: task.locationId ? "Location" : "General",
+        targetId: task.locationId || "",
+        targetName: reportLocationName,
+        proposedAction: "Attach to Existing",
+        extractedData: {
+          propertyId: activePropertyId,
+          reportType: "Task Problem",
+          submittedBy,
+          submittedById,
+          taskId,
+          taskTitle: task.title,
+          locationId: task.locationId || "",
+          locationName: reportLocationName,
+          taskProblemKey: problemKey,
+          suggestedAction: "Review / Create Task or Work Order",
+        },
+      }),
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.ok === false || !payload?.item) return;
+        const saved = payload.item as InboxItemRecord;
+        setInboxItems((current) => [
+          saved,
+          ...current.filter((item) => item.id !== saved.id),
+        ]);
+      })
+      .catch(() => {
+        // The task problem remains saved on the task even if Inbox delivery retries later.
+      });
+  }
+
   function updateTaskDetails(taskId: string, patch: Partial<AtlasTaskMeta>) {
+    if (typeof patch.problemFlag === "string" && patch.problemFlag.trim()) {
+      syncTaskProblemToInbox(taskId, patch.problemFlag);
+    }
+
     setTaskMeta((current) => {
       const base = current[taskId] || taskDetails(taskId);
       const updated = {
@@ -35484,3 +35556,5 @@ const photoStyle: React.CSSProperties = {
 
 
       
+
+                     
