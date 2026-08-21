@@ -5,6 +5,7 @@ export type AtlasScreen =
   | "timeline"
   | "insights"
   | "reports"
+  | "ownerReport"
   | "access"
   | "notes";
 
@@ -59,7 +60,8 @@ export const screens: { id: AtlasScreen; label: string }[] = [
   { id: "weather", label: "Weather" },
   { id: "manuals", label: "Manuals" },
   { id: "assistant", label: "Ask Atlas" },
-  { id: "reports", label: "Reports" },
+  { id: "ownerReport", label: "Owner Report" },
+  { id: "reports", label: "Reports & Access" },
 ];
 
 export const logoCandidates = [
