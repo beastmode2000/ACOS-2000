@@ -265,6 +265,7 @@ export default function AtlasTeamWork({
   createAddisonAssignment,
 }: Props) {
   const [lists, setLists] = useState<TeamList[]>([]);
+  const [sharedListsReady, setSharedListsReady] = useState(false);
   const [selectedListId, setSelectedListId] = useState("");
   const [search, setSearch] = useState("");
   const [teamView, setTeamView] = useState<"addison" | "assignments" | "people">("people");
@@ -405,8 +406,17 @@ export default function AtlasTeamWork({
           permissions: { ...ROLE_DEFAULTS.Viewer, ...(member.permissions || {}) },
           accessProfiles: Array.isArray(member.accessProfiles) ? member.accessProfiles.map(String) : [],
         })));
+        const remoteLists = Array.isArray(payload.workLists) ? payload.workLists as TeamList[] : [];
+        if (remoteLists.length) {
+          setLists(remoteLists);
+          setSelectedListId((current) => remoteLists.some((list) => list.id === current) ? current : remoteLists[0]?.id || "");
+        }
+        setSharedListsReady(true);
       })
-      .catch(() => setMemberMessage("Atlas could not load team users."));
+      .catch(() => {
+        setSharedListsReady(true);
+        setMemberMessage("Atlas could not load team users.");
+      });
   }, []);
 
   useEffect(() => {
@@ -438,7 +448,21 @@ export default function AtlasTeamWork({
     } catch {
       // Keep the page usable if browser storage is unavailable.
     }
-  }, [lists]);
+    if (!sharedListsReady) return;
+    const timer = window.setTimeout(() => {
+      void fetch("/api/atlas-team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "team-work-lists-save", workLists: lists }),
+      })
+        .then(async (response) => {
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || payload?.ok === false) throw new Error(payload?.error || "Could not sync Team assignments.");
+        })
+        .catch(() => setMemberMessage("Team assignments are saved on this device but shared sync failed."));
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [lists, sharedListsReady]);
 
   const visibleLists = useMemo(() => {
     const query = search.trim().toLowerCase();
