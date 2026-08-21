@@ -29,7 +29,6 @@ type Member = {
   propertyIds?: string[];
   permissions?: Permissions;
   accessProfiles?: string[];
-  fieldLinkActive?: boolean;
 };
 
 const rolePermissions: Record<Role, Permissions> = {
@@ -256,6 +255,16 @@ async function ensureTable(sql: ReturnType<typeof neon>) {
     ALTER TABLE atlas_team_access
     ADD COLUMN IF NOT EXISTS access_profiles text[]
     NOT NULL DEFAULT '{}'::text[]
+  `;
+
+  await sql`
+    ALTER TABLE atlas_team_access
+    ADD COLUMN IF NOT EXISTS field_token_hash text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_team_access
+    ADD COLUMN IF NOT EXISTS field_token_created_at timestamptz
   `;
 
   await sql`
@@ -515,26 +524,63 @@ export async function POST(request: NextRequest) {
 
     if (body.action === "field-link" || body.action === "field-link-revoke") {
       const memberId = String(body.memberId || "").trim();
-      if (!memberId) return NextResponse.json({ ok:false, error:"Missing team member." }, { status:400 });
-      const rows = await sql`
-        SELECT id, name, role, active, property_ids
+
+      if (!memberId) {
+        return NextResponse.json(
+          { ok: false, error: "Missing team member." },
+          { status: 400 },
+        );
+      }
+
+      const rows = (await sql`
+        SELECT id, role, active
         FROM atlas_team_access
         WHERE id = ${memberId}
         LIMIT 1
-      `;
-      const member = rows[0] as any;
-      if (!member) return NextResponse.json({ ok:false, error:"Team member not found." }, { status:404 });
+      `) as unknown as Array<{ id: string; role: string; active: boolean }>;
+
+      const member = rows[0];
+      if (!member) {
+        return NextResponse.json(
+          { ok: false, error: "Team member not found." },
+          { status: 404 },
+        );
+      }
+
       if (normalizeRole(member.role) !== "employee") {
-        return NextResponse.json({ ok:false, error:"My Work links are only for employees." }, { status:400 });
+        return NextResponse.json(
+          { ok: false, error: "My Work links are only for employees." },
+          { status: 400 },
+        );
       }
+
       if (body.action === "field-link-revoke") {
-        await sql`UPDATE atlas_team_access SET field_token_hash=NULL, field_token_created_at=NULL, updated_at=NOW() WHERE id=${memberId}`;
-        return NextResponse.json({ ok:true, revoked:true });
+        await sql`
+          UPDATE atlas_team_access
+          SET field_token_hash = NULL,
+              field_token_created_at = NULL,
+              updated_at = NOW()
+          WHERE id = ${memberId}
+        `;
+
+        return NextResponse.json({ ok: true, revoked: true });
       }
-      const token = `field-${randomBytes(32).toString("hex")}`;
+
+      const token = randomBytes(32).toString("hex");
       const hash = createHash("sha256").update(token).digest("hex");
-      await sql`UPDATE atlas_team_access SET field_token_hash=${hash}, field_token_created_at=NOW(), updated_at=NOW() WHERE id=${memberId}`;
-      return NextResponse.json({ ok:true, fieldPath:`/landscape-help?token=${encodeURIComponent(token)}` });
+
+      await sql`
+        UPDATE atlas_team_access
+        SET field_token_hash = ${hash},
+            field_token_created_at = NOW(),
+            updated_at = NOW()
+        WHERE id = ${memberId}
+      `;
+
+      return NextResponse.json({
+        ok: true,
+        fieldPath: `/landscape-help?token=${encodeURIComponent(token)}`,
+      });
     }
 
     if (body.action === "delete") {
