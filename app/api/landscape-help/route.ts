@@ -967,6 +967,130 @@ function isTeamTaskAssignedToName(task: Record<string, any>, name: string) {
   return Boolean(assigned && (assigned === target || assigned === first || assigned.startsWith(`${first} `)));
 }
 
+
+function isSeanFieldEmployee(employee: { name: string }) {
+  return /^sean(?:\s|$)/i.test(String(employee.name || "").trim());
+}
+
+function marineRecordText(...values: unknown[]) {
+  return values.map((value) => {
+    if (typeof value === "string" || typeof value === "number") return String(value);
+    try { return JSON.stringify(value || ""); } catch { return ""; }
+  }).join(" ").toLowerCase();
+}
+
+const marineRecordPattern = /marine|dock|boat|cobalt|sea.?doo|jet.?ski|pwc|lift|water trampoline/i;
+
+async function saveSeanMarineVisit(
+  employee: { id: string; name: string; propertyIds: string[] },
+  body: Record<string, any>,
+) {
+  if (!isSeanFieldEmployee(employee)) throw new Error("Marine visit logging is only available for Sean.");
+  const summary = String(body.summary || "").trim();
+  if (!summary) throw new Error("Enter what you did during this visit.");
+  const properties = employee.propertyIds.length ? employee.propertyIds : ["2000"];
+  const requestedProperty = String(body.propertyId || properties[0] || "2000");
+  const propertyId = properties.includes(requestedProperty) ? requestedProperty : properties[0];
+  const sql = getSql();
+  const now = new Date().toISOString();
+  const visitDate = String(body.visitDate || pacificDateKey()).slice(0, 10);
+  const assetId = String(body.assetId || "");
+  const workOrderId = String(body.workOrderId || "");
+  const taskId = String(body.taskId || "");
+  const taskTitle = String(body.taskTitle || "");
+  const followUp = String(body.followUp || "").trim();
+  const partsNeeded = String(body.partsNeeded || "").trim();
+  const photos = Array.isArray(body.photos) ? body.photos.filter(Boolean) : [];
+
+  let assetName = String(body.assetName || "").trim();
+  if (assetId) {
+    const rows = await sql`
+      SELECT id, name, category, location_id
+      FROM atlas_assets
+      WHERE id=${assetId} AND property_id=${propertyId}
+      LIMIT 1
+    `;
+    const row = rows[0] as any;
+    if (row) assetName = String(row.name || assetName || "");
+  }
+
+  let workOrderTitle = String(body.workOrderTitle || "").trim();
+  if (workOrderId) {
+    const rows = await sql`
+      SELECT id, title
+      FROM atlas_work_orders
+      WHERE id=${workOrderId} AND property_id=${propertyId}
+      LIMIT 1
+    `;
+    const row = rows[0] as any;
+    if (row) workOrderTitle = String(row.title || workOrderTitle || "");
+  }
+
+  const visitId = `marine-visit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const record = {
+    id: visitId,
+    employeeId: employee.id,
+    employeeName: employee.name,
+    propertyId,
+    department: "Dock & Marine",
+    departmentKey: "dock",
+    category: "Marine Visit",
+    visitDate,
+    summary,
+    assetId,
+    assetName,
+    workOrderId,
+    workOrderTitle,
+    taskId,
+    taskTitle,
+    followUp,
+    partsNeeded,
+    photos,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await sql`
+    INSERT INTO atlas_operational_records (record_type, id, property_id, record, updated_at)
+    VALUES ('marine_visit_log', ${visitId}, ${propertyId}, ${JSON.stringify(record)}::jsonb, NOW())
+    ON CONFLICT (record_type, id, property_id)
+    DO UPDATE SET record=EXCLUDED.record, updated_at=NOW()
+  `;
+
+  await ensureTeamEmployeeHistoryTableForField(sql);
+  const eventKey = `marine-visit:${propertyId}:${visitId}`;
+  const historyId = `history-${createHash("sha256").update(eventKey).digest("hex").slice(0, 24)}`;
+  const displayTitle = assetName
+    ? `Marine Visit · ${assetName}`
+    : workOrderTitle
+      ? `Marine Visit · ${workOrderTitle}`
+      : "Marine Visit · Dock & Marine";
+  const historyNote = [summary, followUp ? `Follow-up: ${followUp}` : "", partsNeeded ? `Parts/materials: ${partsNeeded}` : ""]
+    .filter(Boolean)
+    .join("\n");
+  await sql`
+    INSERT INTO atlas_team_work_history (
+      id, event_key, member_id, employee_name, property_id, source,
+      list_id, list_name, task_id, task_title, location, note,
+      completed_at, needs_nick, problem_found, photos, snapshot, updated_at
+    ) VALUES (
+      ${historyId}, ${eventKey}, ${employee.id}, ${employee.name}, ${propertyId}, 'marine-visit',
+      ${workOrderId || null}, 'Dock & Marine', ${visitId}, ${displayTitle}, ${assetName || 'Dock & Marine'},
+      ${historyNote}, ${now}::timestamptz, false, false,
+      ${JSON.stringify(photos)}::jsonb, ${JSON.stringify(record)}::jsonb, NOW()
+    )
+    ON CONFLICT (event_key) DO UPDATE SET
+      task_title=EXCLUDED.task_title,
+      location=EXCLUDED.location,
+      note=EXCLUDED.note,
+      photos=EXCLUDED.photos,
+      snapshot=EXCLUDED.snapshot,
+      updated_at=NOW()
+  `;
+
+  return record;
+}
+
 async function loadFieldEmployeeWork(employee: {id:string;name:string;propertyIds:string[]}) {
   await ensureAddisonBackingTables();
   const sql = getSql();
@@ -1015,7 +1139,47 @@ async function loadFieldEmployeeWork(employee: {id:string;name:string;propertyId
   const merged = [...tasks, ...listTasks].filter((task:any,index:number,all:any[]) =>
     task.id && all.findIndex((candidate:any) => String(candidate.id) === String(task.id)) === index
   );
-  return { today, employeeId:employee.id, employeeName:employee.name, propertyIds:properties, tasks:merged };
+
+  let marineAssets: Array<Record<string, any>> = [];
+  let marineWorkOrders: Array<Record<string, any>> = [];
+  let marineVisits: Array<Record<string, any>> = [];
+  if (isSeanFieldEmployee(employee)) {
+    const assetRows = await sql`
+      SELECT id, name, category, location_id
+      FROM atlas_assets
+      WHERE property_id = ANY(${properties}::text[])
+      ORDER BY name ASC
+    `;
+    marineAssets = (assetRows as any[])
+      .filter((row:any) => marineRecordPattern.test(marineRecordText(row.name, row.category, row.location_id)))
+      .map((row:any) => ({ id:String(row.id || ""), name:String(row.name || "Marine asset"), category:String(row.category || ""), locationId:String(row.location_id || "") }));
+
+    const workRows = await sql`
+      SELECT id, title, status, asset_id, location_id, assigned_to, work_type, work_category, responsibility_area
+      FROM atlas_work_orders
+      WHERE property_id = ANY(${properties}::text[])
+      ORDER BY updated_at DESC
+      LIMIT 100
+    `;
+    marineWorkOrders = (workRows as any[])
+      .filter((row:any) => marineRecordPattern.test(marineRecordText(row.title, row.work_type, row.work_category, row.responsibility_area, row.assigned_to)))
+      .map((row:any) => ({ id:String(row.id || ""), title:String(row.title || "Work order"), status:String(row.status || ""), assetId:String(row.asset_id || ""), locationId:String(row.location_id || "") }))
+      .slice(0, 40);
+
+    const visitRows = await sql`
+      SELECT record
+      FROM atlas_operational_records
+      WHERE record_type='marine_visit_log'
+        AND property_id = ANY(${properties}::text[])
+      ORDER BY updated_at DESC
+      LIMIT 30
+    `;
+    marineVisits = (visitRows as any[])
+      .map((row:any) => row.record && typeof row.record === "object" ? row.record : {})
+      .filter((visit:any) => String(visit.employeeId || "") === employee.id || /^sean(?:\s|$)/i.test(String(visit.employeeName || "")));
+  }
+
+  return { today, employeeId:employee.id, employeeName:employee.name, propertyIds:properties, tasks:merged, marineAssets, marineWorkOrders, marineVisits };
 }
 
 async function patchFieldEmployeeTask(employee:{id:string;name:string;propertyIds:string[]}, taskId:string, patch:Record<string,unknown>) {
@@ -1175,6 +1339,14 @@ export async function PATCH(request: NextRequest) {
     const fieldEmployee = token ? await resolveFieldEmployee(token) : null;
     if (fieldEmployee) {
       const action=String(body.action||"");
+      if (action === "marine-visit-log") {
+        try {
+          await saveSeanMarineVisit(fieldEmployee, body as Record<string, any>);
+          return NextResponse.json({ok:true,mode:"employee",employee:await loadFieldEmployeeWork(fieldEmployee)});
+        } catch (error) {
+          return NextResponse.json({ok:false,error:error instanceof Error ? error.message : "Could not save marine visit."},{status:400});
+        }
+      }
       const taskId=String(body.taskId||"");
       if (!taskId) return NextResponse.json({ok:false,error:"Missing task."},{status:400});
       let patch:Record<string,unknown>={};
