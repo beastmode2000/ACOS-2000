@@ -15052,6 +15052,16 @@ export default function AtlasApp() {
         updatedAt: new Date().toISOString(),
       };
       const next = { ...current, [taskId]: updated };
+      const taskRecord = workPlanTasks.find((item) => item.id === taskId);
+      if (taskRecord) {
+        void postAtlasRecord("tasks" as AtlasTable, {
+          ...taskRecord,
+          ...updated,
+          taskMeta: updated,
+          propertyId: activePropertyId,
+          updatedAt: updated.updatedAt,
+        });
+      }
       try {
         window.localStorage.setItem(
           `atlas-task-meta-v1-${activePropertyId}`,
@@ -15813,7 +15823,7 @@ ${notes.trim()}` : notes.trim(),
           task = nextTasks[taskIndex];
         }
         const existingMeta = taskDetails(task.id);
-        nextTaskMeta[task.id] = { ...existingMeta, status: existingMeta.status === "Completed" ? "Open" : existingMeta.status, dueDate: existingMeta.dueDate || addDays(todayISO(), definition.offsetDays), assignee: existingMeta.assignee === "Unassigned" ? "Nick" : existingMeta.assignee, createdAt: existingMeta.createdAt || new Date().toISOString(), assetId: definition.asset.id, recurrenceInterval: definition.everyWeeks, recurrenceUnit: "Weeks", season: "Year-Round", skippable: true, flexibleTime: true, notes: definition.notes, updatedAt: new Date().toISOString() };
+        nextTaskMeta[task.id] = { ...existingMeta, status: existingMeta.status, dueDate: existingMeta.dueDate || addDays(todayISO(), definition.offsetDays), assignee: existingMeta.assignee === "Unassigned" ? "Nick" : existingMeta.assignee, createdAt: existingMeta.createdAt || new Date().toISOString(), assetId: definition.asset.id, recurrenceInterval: definition.everyWeeks, recurrenceUnit: "Weeks", season: "Year-Round", skippable: true, flexibleTime: true, notes: definition.notes, updatedAt: existingMeta.updatedAt || new Date().toISOString() };
         const calendarRecord = normalizeCalendar({ id: `care-${definition.key}`, propertyId: activePropertyId, date: nextTaskMeta[task.id].dueDate, title: definition.title, area: "Pool & Spa", categoryLabel: "Pool & Spa", allDay: true, repeat: definition.everyWeeks === 1 ? "Weekly" : "Custom", reminder: "Morning of", notes: definition.notes, linkedType: "Task", linkedId: task.id, linkedName: task.title, source: "task", status: "Scheduled" });
         const calendarIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id);
         if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
