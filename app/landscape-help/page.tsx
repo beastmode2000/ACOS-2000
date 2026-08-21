@@ -37,6 +37,9 @@ type AddisonWorkData = {
   tasks: Array<Record<string, any>>;
   dailyNote?: string;
   dailyNoteUpdatedAt?: string;
+  workerName?: string;
+  workerId?: string;
+  propertyId?: string;
 };
 
 type LandscapeApiData = {
@@ -259,7 +262,7 @@ export default function LandscapeHelpPage() {
         .replace(/-+/g, "-")
         .replace(/^-|-$/g, "");
       const blob = await upload(
-        `atlas-addison/2000/${Date.now()}-${safeName || "photo"}`,
+        `${addisonData?.workerId && addisonData.workerId !== "addison" ? `atlas-field/${addisonData.propertyId || "2000"}/${addisonData.workerId}` : "atlas-addison/2000"}/${Date.now()}-${safeName || "photo"}`,
         file,
         {
           access: "public",
@@ -535,7 +538,7 @@ export default function LandscapeHelpPage() {
                 <a key={`${photo.url}-${index}`} href={String(photo.url)} target="_blank" rel="noreferrer">
                   <img
                     src={String(photo.url)}
-                    alt={String(photo.name || "Addison photo")}
+                    alt={String(photo.name || "Field photo")}
                     style={{ width:72, height:72, objectFit:"cover", borderRadius:10, border:`1px solid ${colors.line}` }}
                   />
                 </a>
@@ -579,7 +582,7 @@ export default function LandscapeHelpPage() {
                 />
                 <div style={{ minWidth:0 }}>
                   <h1 style={{ ...styles.title, fontSize:30, marginBottom:2 }}>Atlas Today</h1>
-                  <div style={{ color:"white", fontWeight:800, fontSize:14 }}>Addison Hutton · 2000</div>
+                  <div style={{ color:"white", fontWeight:800, fontSize:14 }}>{addisonData.workerName || "Addison Hutton"} · {addisonData.propertyId || "2000"}</div>
                   <p style={{ ...styles.subtitle, marginTop:3 }}>{prettyToday}</p>
                 </div>
               </div>
