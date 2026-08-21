@@ -1091,6 +1091,114 @@ async function saveSeanMarineVisit(
   return record;
 }
 
+function isPatFieldEmployee(employee: { name: string }) {
+  return /^(pat|patrick)(?:\\s|$)/i.test(String(employee.name || "").trim());
+}
+
+const landscapeRecordPattern = /landscap|irrigat|fertiliz|lawn|garden|yard|plant|tree|shrub|hedge|bed|weeding|watering/i;
+
+async function savePatLandscapeVisit(
+  employee: { id: string; name: string; propertyIds: string[] },
+  body: Record<string, any>,
+) {
+  if (!isPatFieldEmployee(employee)) throw new Error("Landscaping visit logging is only available for Pat.");
+  const summary = String(body.summary || "").trim();
+  if (!summary) throw new Error("Enter what was done during this visit.");
+  const properties = employee.propertyIds.length ? employee.propertyIds : ["2000"];
+  const requestedProperty = String(body.propertyId || properties[0] || "2000");
+  const propertyId = properties.includes(requestedProperty) ? requestedProperty : properties[0];
+  const sql = getSql();
+  const now = new Date().toISOString();
+  const visitDate = String(body.visitDate || pacificDateKey()).slice(0, 10);
+  const area = String(body.area || "").trim();
+  const workOrderId = String(body.workOrderId || "");
+  const taskId = String(body.taskId || "");
+  const taskTitle = String(body.taskTitle || "");
+  const crew = String(body.crew || "Pat / Crew").trim() || "Pat / Crew";
+  const followUp = String(body.followUp || "").trim();
+  const materialsNeeded = String(body.materialsNeeded || "").trim();
+  const photos = Array.isArray(body.photos) ? body.photos.filter(Boolean) : [];
+
+  let workOrderTitle = String(body.workOrderTitle || "").trim();
+  if (workOrderId) {
+    const rows = await sql`
+      SELECT id, title
+      FROM atlas_work_orders
+      WHERE id=${workOrderId} AND property_id=${propertyId}
+      LIMIT 1
+    `;
+    const row = rows[0] as any;
+    if (row) workOrderTitle = String(row.title || workOrderTitle || "");
+  }
+
+  const visitId = `landscape-visit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const record = {
+    id: visitId,
+    employeeId: employee.id,
+    employeeName: employee.name,
+    propertyId,
+    department: "Landscaping & Irrigation",
+    departmentKey: "landscape",
+    category: "Landscaping Visit",
+    visitDate,
+    area,
+    crew,
+    summary,
+    workOrderId,
+    workOrderTitle,
+    taskId,
+    taskTitle,
+    followUp,
+    materialsNeeded,
+    photos,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await sql`
+    INSERT INTO atlas_operational_records (record_type, id, property_id, record, updated_at)
+    VALUES ('landscape_visit_log', ${visitId}, ${propertyId}, ${JSON.stringify(record)}::jsonb, NOW())
+    ON CONFLICT (record_type, id, property_id)
+    DO UPDATE SET record=EXCLUDED.record, updated_at=NOW()
+  `;
+
+  await ensureTeamEmployeeHistoryTableForField(sql);
+  const eventKey = `landscape-visit:${propertyId}:${visitId}`;
+  const historyId = `history-${createHash("sha256").update(eventKey).digest("hex").slice(0, 24)}`;
+  const displayTitle = area
+    ? `Landscaping Visit · ${area}`
+    : workOrderTitle
+      ? `Landscaping Visit · ${workOrderTitle}`
+      : "Landscaping Visit · Landscaping & Irrigation";
+  const historyNote = [
+    summary,
+    crew ? `Completed by: ${crew}` : "",
+    followUp ? `Follow-up: ${followUp}` : "",
+    materialsNeeded ? `Materials: ${materialsNeeded}` : "",
+  ].filter(Boolean).join("\\n");
+  await sql`
+    INSERT INTO atlas_team_work_history (
+      id, event_key, member_id, employee_name, property_id, source,
+      list_id, list_name, task_id, task_title, location, note,
+      completed_at, needs_nick, problem_found, photos, snapshot, updated_at
+    ) VALUES (
+      ${historyId}, ${eventKey}, ${employee.id}, ${employee.name}, ${propertyId}, 'landscape-visit',
+      ${workOrderId || null}, 'Landscaping & Irrigation', ${visitId}, ${displayTitle}, ${area || 'Landscaping & Irrigation'},
+      ${historyNote}, ${now}::timestamptz, false, false,
+      ${JSON.stringify(photos)}::jsonb, ${JSON.stringify(record)}::jsonb, NOW()
+    )
+    ON CONFLICT (event_key) DO UPDATE SET
+      task_title=EXCLUDED.task_title,
+      location=EXCLUDED.location,
+      note=EXCLUDED.note,
+      photos=EXCLUDED.photos,
+      snapshot=EXCLUDED.snapshot,
+      updated_at=NOW()
+  `;
+
+  return record;
+}
+
 async function loadFieldEmployeeWork(employee: {id:string;name:string;propertyIds:string[]}) {
   await ensureAddisonBackingTables();
   const sql = getSql();
@@ -1143,6 +1251,9 @@ async function loadFieldEmployeeWork(employee: {id:string;name:string;propertyId
   let marineAssets: Array<Record<string, any>> = [];
   let marineWorkOrders: Array<Record<string, any>> = [];
   let marineVisits: Array<Record<string, any>> = [];
+  let landscapeWorkOrders: Array<Record<string, any>> = [];
+  let landscapeVisits: Array<Record<string, any>> = [];
+  let landscapeAreas: string[] = [];
   if (isSeanFieldEmployee(employee)) {
     const assetRows = await sql`
       SELECT id, name, category, location_id
@@ -1179,7 +1290,35 @@ async function loadFieldEmployeeWork(employee: {id:string;name:string;propertyId
       .filter((visit:any) => String(visit.employeeId || "") === employee.id || /^sean(?:\s|$)/i.test(String(visit.employeeName || "")));
   }
 
-  return { today, employeeId:employee.id, employeeName:employee.name, propertyIds:properties, tasks:merged, marineAssets, marineWorkOrders, marineVisits };
+  if (isPatFieldEmployee(employee)) {
+    const workRows = await sql`
+      SELECT id, title, status, asset_id, location_id, assigned_to, work_type, work_category, responsibility_area
+      FROM atlas_work_orders
+      WHERE property_id = ANY(${properties}::text[])
+      ORDER BY updated_at DESC
+      LIMIT 120
+    `;
+    landscapeWorkOrders = (workRows as any[])
+      .filter((row:any) => landscapeRecordPattern.test(marineRecordText(row.title, row.work_type, row.work_category, row.responsibility_area, row.assigned_to)))
+      .map((row:any) => ({ id:String(row.id || ""), title:String(row.title || "Work order"), status:String(row.status || ""), assetId:String(row.asset_id || ""), locationId:String(row.location_id || "") }))
+      .slice(0, 50);
+
+    landscapeAreas = Array.from(new Set(merged.map((task:any) => String(task.location || task.taskMeta?.location || "").trim()).filter(Boolean))).sort();
+
+    const visitRows = await sql`
+      SELECT record
+      FROM atlas_operational_records
+      WHERE record_type='landscape_visit_log'
+        AND property_id = ANY(${properties}::text[])
+      ORDER BY updated_at DESC
+      LIMIT 40
+    `;
+    landscapeVisits = (visitRows as any[])
+      .map((row:any) => row.record && typeof row.record === "object" ? row.record : {})
+      .filter((visit:any) => String(visit.employeeId || "") === employee.id || /^(pat|patrick)(?:\s|$)/i.test(String(visit.employeeName || "")));
+  }
+
+  return { today, employeeId:employee.id, employeeName:employee.name, propertyIds:properties, tasks:merged, marineAssets, marineWorkOrders, marineVisits, landscapeWorkOrders, landscapeVisits, landscapeAreas };
 }
 
 async function patchFieldEmployeeTask(employee:{id:string;name:string;propertyIds:string[]}, taskId:string, patch:Record<string,unknown>) {
@@ -1345,6 +1484,14 @@ export async function PATCH(request: NextRequest) {
           return NextResponse.json({ok:true,mode:"employee",employee:await loadFieldEmployeeWork(fieldEmployee)});
         } catch (error) {
           return NextResponse.json({ok:false,error:error instanceof Error ? error.message : "Could not save marine visit."},{status:400});
+        }
+      }
+      if (action === "landscape-visit-log") {
+        try {
+          await savePatLandscapeVisit(fieldEmployee, body as Record<string, any>);
+          return NextResponse.json({ok:true,mode:"employee",employee:await loadFieldEmployeeWork(fieldEmployee)});
+        } catch (error) {
+          return NextResponse.json({ok:false,error:error instanceof Error ? error.message : "Could not save landscaping visit."},{status:400});
         }
       }
       const taskId=String(body.taskId||"");
