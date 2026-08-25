@@ -2701,10 +2701,10 @@ export default function AtlasApp() {
     hondaSchoolYearCleanupRef.current = true;
     const hondaTasks = workPlanTasks.filter((task) => /\bhonda\b/i.test(recordSearchText(task)));
     const hondaWorkOrders = serviceRecords.filter((record) => /\bhonda\b/i.test(recordSearchText(record)));
-    const generatedKiaPorscheTasks = workPlanTasks.filter((task) =>
-      /^clean\s+(kia|porsche)$/i.test(String(task.title || "").trim()),
+    const generatedVehicleCleaningTasks = workPlanTasks.filter((task) =>
+      /^clean\s+(kia|porsche|rivian|subaru)$/i.test(String(task.title || "").trim()),
     );
-    const removedTasks = [...hondaTasks, ...generatedKiaPorscheTasks];
+    const removedTasks = [...hondaTasks, ...generatedVehicleCleaningTasks];
     const removedIds = new Set([...removedTasks.map((task) => task.id), ...hondaWorkOrders.map((record) => record.id)]);
     if (removedTasks.length) {
       setWorkPlanTasks((current) => current.filter((task) => !removedIds.has(task.id)));
@@ -2739,14 +2739,14 @@ export default function AtlasApp() {
     const completedDate = "2026-08-17";
     const nextDate = addDays(completedDate, 7);
     const targetVehicles = vehicleCare.filter((vehicle) =>
-      /^(porsche|rivian)$/i.test(vehicle.name.trim()),
+      /^porsche$/i.test(vehicle.name.trim()),
     );
-    if (targetVehicles.length < 2) return;
+    if (!targetVehicles.length) return;
     window.localStorage.setItem(migrationKey, "done");
 
     setVehicleCare((current) =>
       current.map((vehicle) => {
-        if (!/^(porsche|rivian)$/i.test(vehicle.name.trim())) return vehicle;
+        if (!/^porsche$/i.test(vehicle.name.trim())) return vehicle;
         const alreadyRecorded = (vehicle.history || []).some(
           (entry) =>
             entry.type === "Cleaned" &&
@@ -16424,10 +16424,10 @@ ${notes.trim()}` : notes.trim(),
         if (vehicleIndex >= 0 && isGarageVehicle) {
           nextVehicles[vehicleIndex] = { ...nextVehicles[vehicleIndex], cleaningIntervalDays: 7 };
         }
-        // Do not auto-create cleaning for Mercedes or Honda. Their deleted cleaning
-        // records stay deleted; all other vehicle care behavior remains unchanged.
+        // Do not auto-create cleaning for these vehicles. Their deleted cleaning
+        // records stay deleted; all other Fleet behavior remains unchanged.
         const suppressAutomaticCleaning =
-          activePropertyId === "2000" && /^(mercedes|honda)$/i.test(vehicle.name.trim());
+          activePropertyId === "2000" && /^(mercedes|honda|rivian|subaru)$/i.test(vehicle.name.trim());
         if (suppressAutomaticCleaning) continue;
 
         const cleaningDueDate = vehicle.lastCleaned ? addDays(vehicle.lastCleaned, cleaningInterval) : todayISO();
