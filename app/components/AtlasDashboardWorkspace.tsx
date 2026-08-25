@@ -172,6 +172,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     daySessions,
     daysSince,
     deleteAtlasTask,
+    deleteWorkOrderRecord,
     dismissedDashboardFeedIds,
     draggedDashboardWidgetId,
     eyebrowStyle,
@@ -378,7 +379,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     fontSize: 13,
   };
   if (isTeamScopedUser) {
-    const teamOpen = staffVisibleServiceRecords.filter((record) => record.status !== "Completed");
+    const teamOpen = staffVisibleServiceRecords.filter((record) => !["Completed", "Cancelled"].includes(String(record.status || "")));
     const teamCompleted = staffVisibleServiceRecords.filter((record) => record.status === "Completed");
     const teamToday = teamOpen.filter((record) => record.date === todayISO());
     const teamOverdue = teamOpen.filter(
@@ -1617,7 +1618,7 @@ export default function AtlasDashboardWorkspace(props: any) {
   }
   const today = todayISO();
   const activeProperty = atlasProperties.find((property) => property.id === activePropertyId) || atlasProperties[0];
-  const openWork = serviceRecords.filter((record) => String(record.status || "Open") !== "Completed");
+  const openWork = serviceRecords.filter((record) => !["Completed", "Cancelled"].includes(String(record.status || "Open")));
   const completedWork = serviceRecords.filter((record) => String(record.status || "") === "Completed");
   const dueToday = openWork.filter((record) => record.date === today);
   const overdueWork = openWork.filter((record) => Boolean(record.date) && String(record.date) < today);
@@ -1649,7 +1650,7 @@ export default function AtlasDashboardWorkspace(props: any) {
   const visibleRoutineItems: DashboardRoutineItem[] = dashboardRoutineItems.length ? dashboardRoutineItems : scheduledRoutineEvents.map((item) => ({ id: String(item.instanceId || item.id), title: item.title, detail: item.categoryLabel || item.area || "Recurring routine", time: item.time || "" }));
 
   const dashboardUnifiedWork = serviceRecords
-    .filter((record) => record.status !== "Completed")
+    .filter((record) => !["Completed", "Cancelled"].includes(String(record.status || "")))
     .filter((record) => {
       const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo);
       return dashboardWorkPeople.some((person) => assigned === person);
@@ -2382,9 +2383,18 @@ export default function AtlasDashboardWorkspace(props: any) {
                 <input type="checkbox" checked={false} aria-label={`Complete ${record.title}`} onChange={() => void completeWorkOrder(record as AtlasServiceRecord)} style={{ marginTop: 5 }}/>
                 <div style={{ minWidth: 0 }}>
                   <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, width: "100%", cursor: "pointer" }}><strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title}</strong></button>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(125px,145px) minmax(125px,1fr)", gap: 6, marginTop: 5 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(120px,138px) minmax(115px,1fr) 116px", gap: 6, marginTop: 5 }}>
                     <input type="date" value={String(record.date || "").slice(0, 10)} onChange={(event) => void syncWorkOrderPatch(record, { date: event.currentTarget.value })} aria-label={`Due date for ${record.title}`} style={{ ...inputStyle, minHeight: 30, padding: "3px 5px", fontSize: 11, color: record.date && record.date < today ? colors.red : colors.text }}/>
                     <select value={assigned} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })} aria-label={`Reassign ${record.title}`} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name}</option>)}</select>
+                    <select defaultValue="" onChange={(event) => { const action = event.currentTarget.value; event.currentTarget.value = ""; void handleDashboardWorkAction(record, action); }} aria-label={`Actions for ${record.title}`} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}>
+                      <option value="">Actions</option>
+                      <option value="edit">Edit details</option>
+                      <option value="reschedule">Reschedule</option>
+                      <option value="recurring">{record.recurring ? "Edit recurrence" : "Make recurring"}</option>
+                      {record.recurring ? <option value="skip">Skip occurrence</option> : null}
+                      <option value="cancel">Cancel work</option>
+                      <option value="delete">Delete</option>
+                    </select>
                   </div>
                 </div>
               </div>;
@@ -2755,6 +2765,52 @@ export default function AtlasDashboardWorkspace(props: any) {
   };
   const moveWorkOccurrence = async (record: ServiceRecord, days: number) => {
     await syncWorkOrderPatch(record, { date: addDays(record.date || today, days), status: "Scheduled" });
+  };
+
+  const rescheduleDashboardWork = async (record: ServiceRecord) => {
+    const nextDate = window.prompt("New due date (YYYY-MM-DD)", String(record.date || today).slice(0, 10));
+    if (nextDate === null) return;
+    const value = nextDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(new Date(`${value}T12:00:00`).getTime())) {
+      showSaveToast("Enter the date as YYYY-MM-DD.", "warning");
+      return;
+    }
+    await syncWorkOrderPatch(record, { date: value, status: "Scheduled" });
+  };
+
+  const editDashboardRecurrence = async (record: ServiceRecord) => {
+    const unitAnswer = window.prompt("Repeat by Days, Weeks, Months, or Years", String(record.recurrenceUnit || "Weeks"));
+    if (unitAnswer === null) return;
+    const normalizedUnit = unitAnswer.trim().toLowerCase().replace(/s$/, "");
+    const unitMap: Record<string, WorkOrderRecurrenceUnit> = { day: "Days", week: "Weeks", month: "Months", year: "Years" };
+    const recurrenceUnit = unitMap[normalizedUnit];
+    if (!recurrenceUnit) {
+      showSaveToast("Choose Days, Weeks, Months, or Years.", "warning");
+      return;
+    }
+    const intervalAnswer = window.prompt(`Repeat every how many ${recurrenceUnit.toLowerCase()}?`, String(Math.max(1, Number(record.recurrenceInterval || 1))));
+    if (intervalAnswer === null) return;
+    const recurrenceInterval = Math.floor(Number(intervalAnswer));
+    if (!Number.isFinite(recurrenceInterval) || recurrenceInterval < 1) {
+      showSaveToast("The repeat number must be 1 or more.", "warning");
+      return;
+    }
+    await syncWorkOrderPatch(record, { recurring: true, recurrenceInterval, recurrenceUnit, workType: "Preventive Maintenance", status: "Scheduled" });
+  };
+
+  const cancelDashboardWork = async (record: ServiceRecord) => {
+    if (!window.confirm(`Cancel ${record.title || "this work"}? It will remain in Work history.`)) return;
+    await syncWorkOrderPatch(record, { status: "Cancelled" });
+  };
+
+  const handleDashboardWorkAction = async (record: ServiceRecord, action: string) => {
+    if (!action) return;
+    if (action === "edit") openWorkOrderById(record.id);
+    if (action === "reschedule") await rescheduleDashboardWork(record);
+    if (action === "recurring") await editDashboardRecurrence(record);
+    if (action === "skip" && record.recurring) await skipWorkOccurrence(record);
+    if (action === "cancel") await cancelDashboardWork(record);
+    if (action === "delete") await deleteWorkOrderRecord(record);
   };
 
   const compactWorkList = (title: string, records: ServiceRecord[], emptyText: string) => (
