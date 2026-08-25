@@ -3381,10 +3381,6 @@ export default function AtlasApp() {
   ]);
 
   useEffect(() => {
-    if (!ready || !operationsHydrated || syncState !== "synced" || !vehicleCare.length) return;
-    void setupFleetAssetsAndSchedules();
-  }, [ready, operationsHydrated, syncState, activePropertyId, vehicleCare.length, assetRecords.length, workPlanTasks.length, serviceRecords.length, calendarItems.length]);
-  useEffect(() => {
     if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000") return;
 
     const generatedSeaDooServiceRecords = serviceRecords.filter((record) =>
@@ -3449,56 +3445,9 @@ export default function AtlasApp() {
       }
     })();
   }, [ready, operationsHydrated, syncState, activePropertyId, serviceRecords, calendarItems, vehicleCare]);
-  useEffect(() => {
-    if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000") return;
-    void setupWeeklyOperations();
-  }, [ready, operationsHydrated, syncState, activePropertyId]);
-  useEffect(() => {
-    if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000") return;
-    void setupHousePreventiveMaintenance();
-  }, [ready, operationsHydrated, syncState, activePropertyId]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || !["2000", "hangar"].includes(activePropertyId)) return;
-    void setupConfirmedAssetCatalog();
-  }, [ready, syncState, activePropertyId]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000" || !assetRecords.length) return;
-    void setupApplianceColdSeasonWorkOrders();
-  }, [ready, syncState, activePropertyId, assetRecords.length]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
-    void setupSeasonalPressureWashing();
-  }, [ready, syncState, activePropertyId]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
-    void setupExteriorGlassCare();
-  }, [ready, syncState, activePropertyId]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
-    void setupRoofDrainageCare();
-  }, [ready, syncState, activePropertyId]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
-    void setupHolidayTreeSchedule();
-  }, [ready, syncState, activePropertyId]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000" || !assetRecords.length) return;
-    void setupMarineRegistrationTabs();
-  }, [ready, syncState, activePropertyId, assetRecords.length]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000" || !assetRecords.length) return;
-    if (winterTruckBallastTimerRef.current) window.clearTimeout(winterTruckBallastTimerRef.current);
-    winterTruckBallastTimerRef.current = window.setTimeout(() => { void setupWinterTruckBallast(); }, 2200);
-    return () => { if (winterTruckBallastTimerRef.current) window.clearTimeout(winterTruckBallastTimerRef.current); };
-  }, [ready, syncState, activePropertyId, assetRecords.length, serviceRecords.length]);
-  useEffect(() => {
-    if (!ready || syncState !== "synced" || activePropertyId !== "2000") return;
-    if (workOrderDateReconciliationTimerRef.current) window.clearTimeout(workOrderDateReconciliationTimerRef.current);
-    workOrderDateReconciliationTimerRef.current = window.setTimeout(() => { void reconcileApplianceAndPressureWashingDates(); }, 1800);
-    return () => {
-      if (workOrderDateReconciliationTimerRef.current) window.clearTimeout(workOrderDateReconciliationTimerRef.current);
-    };
-  }, [ready, syncState, activePropertyId, serviceRecords.length, assetRecords.length, calendarItems.length]);
+  // Automatic record generators are intentionally retired. Existing Atlas records remain
+  // user-controlled and may be edited, rescheduled, completed, skipped, or deleted normally.
+  // Do not auto-seed routines, tasks, work orders, assets, or calendar records here.
   useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
@@ -19043,7 +18992,6 @@ ${notes.trim()}` : notes.trim(),
       <div style={{ ...cardStyle, padding: 10, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto auto", gap: 8 }}>
         <input value={newVehicleName} onChange={(event) => setNewVehicleName(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addFleetVehicle(); }} placeholder="Add car, vehicle, boat, or equipment…" style={inputStyle} />
         <button type="button" onClick={addFleetVehicle} style={goldButtonStyle}>Add</button>
-        <button type="button" onClick={() => void setupGarageAndWaterCare()} disabled={fleetSetupState === "working" || waterCareSetupState === "working"} style={fleetSetupState === "ready" && waterCareSetupState === "ready" ? secondaryButtonStyle : goldButtonStyle}>{fleetSetupState === "working" || waterCareSetupState === "working" ? "Setting Up…" : fleetSetupState === "failed" || waterCareSetupState === "failed" ? "Retry Weekly Care" : fleetSetupState === "ready" && waterCareSetupState === "ready" ? "Weekly Care Ready ✓" : "Set Up Weekly Care"}</button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(280px,36%) minmax(0,1fr)", gap: 12, alignItems: "start" }}>
@@ -19526,7 +19474,7 @@ ${notes.trim()}` : notes.trim(),
           renderBacklog,
           renderVehicleCare,
           renderSeasonalWork,
-          renderOperationsTemplates,
+          renderOperationsTemplates: () => null,
           renderGraduationPartyChecklist,
           renderOperationsIntelligence,
           rapidTaskInputRef,
