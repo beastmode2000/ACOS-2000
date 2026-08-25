@@ -281,6 +281,17 @@ export default function AtlasDashboardWorkspace(props: any) {
     workPlanTasks
   } = props;
   const [dashboardRoutinePerson, setDashboardRoutinePerson] = useState<"Nick" | "Addison">("Nick");
+  const dashboardWorkPeople = ["Nick", "Addison", "Pat", "Sean"] as const;
+  const initialDashboardAssignee = (() => {
+    const name = String(currentAtlasUser?.name || "Nick").trim().toLowerCase();
+    if (name.startsWith("addison")) return "Addison";
+    if (name.startsWith("pat")) return "Pat";
+    if (name.startsWith("sean")) return "Sean";
+    return "Nick";
+  })();
+  const [dashboardWorkTitle, setDashboardWorkTitle] = useState("");
+  const [dashboardWorkAssignee, setDashboardWorkAssignee] = useState(initialDashboardAssignee);
+  const [dashboardWorkDate, setDashboardWorkDate] = useState(() => todayISO());
   const dashboardNotesOpenStorageKey = `atlas-dashboard-notes-open-${activePropertyId}`;
   const [dashboardNotesOpen, setDashboardNotesOpen] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -367,7 +378,6 @@ export default function AtlasDashboardWorkspace(props: any) {
       (record) => Boolean(record.date) && String(record.date) < todayISO(),
     );
     const teamUpcoming = teamOpen
-      .filter((record) => !record.date || String(record.date) >= todayISO())
       .sort((a, b) =>
         String(a.date || "9999-12-31").localeCompare(
           String(b.date || "9999-12-31"),
@@ -567,7 +577,7 @@ export default function AtlasDashboardWorkspace(props: any) {
       });
 
 
-    if (isAddisonUser) {
+    if (false && isAddisonUser) {
       const todayKey = todayISO();
       const addisonOpenTasks = workPlanTasks
         .filter((task) => {
@@ -1631,6 +1641,45 @@ export default function AtlasDashboardWorkspace(props: any) {
   const nonRoutineTodayEvents = todayEvents.filter((item) => !Boolean((item as CalendarItem & { recurring?: boolean }).recurring));
   const visibleRoutineItems: DashboardRoutineItem[] = dashboardRoutineItems.length ? dashboardRoutineItems : scheduledRoutineEvents.map((item) => ({ id: String(item.instanceId || item.id), title: item.title, detail: item.categoryLabel || item.area || "Recurring routine", time: item.time || "" }));
 
+  const dashboardUnifiedWork = serviceRecords
+    .filter((record) => record.status !== "Completed")
+    .filter((record) => {
+      const assigned = String((record as AtlasServiceRecord).assignedTo || "").trim().toLowerCase();
+      return dashboardWorkPeople.some((person) => assigned === person.toLowerCase() || (person === "Pat" && assigned.startsWith("pat")));
+    })
+    .filter((record) => !record.date || String(record.date) <= today)
+    .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || priorityRank(a) - priorityRank(b) || a.title.localeCompare(b.title));
+
+  const dashboardCompletedToday = serviceRecords.filter((record) => {
+    const assigned = String((record as AtlasServiceRecord).assignedTo || "").trim().toLowerCase();
+    const belongsToDashboard = dashboardWorkPeople.some((person) => assigned === person.toLowerCase() || (person === "Pat" && assigned.startsWith("pat")));
+    if (!belongsToDashboard) return false;
+    return record.lastCompletedDate === today || (record.completionHistory || []).includes(today) || (record.serviceHistory || []).some((entry) => String(entry.completedAt || "").slice(0, 10) === today);
+  });
+
+  const createDashboardUnifiedWork = async () => {
+    const title = dashboardWorkTitle.trim();
+    if (!title) return;
+    const record = normalizeService({
+      id: uid("work"),
+      propertyId: activePropertyId,
+      title,
+      date: dashboardWorkDate || today,
+      status: "Open",
+      priority: "Medium",
+      workType: "Quick Task",
+      workCategory: "🔧 Maintenance",
+      effort: "30 minutes",
+      assignedTo: dashboardWorkAssignee,
+      assignedPersonIds: [dashboardWorkAssignee],
+      responsibilityArea: "Dashboard · Quick Work",
+    });
+    setServiceRecords((current) => byTitle([record, ...current]));
+    setDashboardWorkTitle("");
+    const saved = await postAtlasRecord("work_orders", record);
+    showSaveToast(saved ? `Added to ${dashboardWorkAssignee}’s Work list.` : "Work was added locally, but shared sync did not finish.", saved ? "success" : "warning");
+  };
+
   const addTodayLogEntry = () => {
     const text = todayLogText.trim();
     if (!text) return;
@@ -2200,7 +2249,7 @@ export default function AtlasDashboardWorkspace(props: any) {
   const dailyForemanPanel = (
     <div style={{ display: "grid", gap: 12 }}>
       <section style={{ ...cardStyle, padding: isMobile ? 12 : 16, background: `linear-gradient(135deg, ${colors.navy}, #173E68)`, color: "#FFFFFF", border: 0 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Mission Control</div><h1 style={{ margin: "3px 0", fontSize: isMobile ? 24 : 29 }}>Today</h1><small style={{ opacity: .82 }}>{new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setMorningBriefOpen(true)} style={teamGoldButtonStyle}>Morning Brief</button><button type="button" onClick={() => setScreen("calendar")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Calendar</button><button type="button" onClick={() => setScreen("routines")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Edit Routine</button></div></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Mission Control</div><h1 style={{ margin: "3px 0", fontSize: isMobile ? 24 : 29 }}>Today</h1><small style={{ opacity: .82 }}>{new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setMorningBriefOpen(true)} style={teamGoldButtonStyle}>Morning Brief</button><button type="button" onClick={() => setScreen("calendar")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Calendar</button><button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Work</button></div></div>
       </section>
       <section style={{ ...cardStyle, padding: isMobile ? 10 : 12, borderColor: "#D7C07A", background: "linear-gradient(135deg,#FFFDF6,#FFFFFF)" }}>
         <button type="button" onClick={toggleDashboardNotes} aria-expanded={dashboardNotesOpen} style={{ display: "flex", width: "100%", justifyContent: "space-between", gap: 8, alignItems: "center", border: 0, background: "transparent", padding: 0, cursor: "pointer", textAlign: "left" }}>
@@ -2227,7 +2276,8 @@ export default function AtlasDashboardWorkspace(props: any) {
           </div>
         </> : null}
       </section>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.35fr) minmax(300px,.65fr)", gap: 12, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, alignItems: "start" }}>
+        {false ? (
         <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
           <div
             style={{
@@ -2292,6 +2342,7 @@ export default function AtlasDashboardWorkspace(props: any) {
             onAssignmentChange={syncRoutineAssignment}
           />
         </div>
+        ) : null}
         <div style={{ display: "grid", gap: 12 }}>
           <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div><span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{foremanSchedule.slice(0, 8).map((event) => <button key={event.instanceId || event.id} type="button" onClick={() => openDashboardCalendarItem(event)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>)}{!foremanSchedule.length ? <div style={noticeStyle}>No meetings, vendors, crew visits, or deliveries are scheduled today.</div> : null}</div></section>
           <section style={{ ...cardStyle, padding: 11 }}>
@@ -2304,6 +2355,43 @@ export default function AtlasDashboardWorkspace(props: any) {
           </section>
         </div>
       </div>
+      <section style={{ ...cardStyle, padding: isMobile ? 11 : 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div><div style={eyebrowStyle}>Unified Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Today’s Work</h2><small style={mutedSmallStyle}>Add work here, assign it, and check it off without leaving the dashboard.</small></div>
+          <button type="button" onClick={() => setScreen("history")} style={secondaryButtonStyle}>Open All Work</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 145px 150px auto", gap: 7, marginTop: 10 }}>
+          <input value={dashboardWorkTitle} onChange={(event) => setDashboardWorkTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void createDashboardUnifiedWork(); }} placeholder="Add work to do…" aria-label="Work title" style={inputStyle}/>
+          <input type="date" value={dashboardWorkDate} onChange={(event) => setDashboardWorkDate(event.currentTarget.value)} aria-label="Work date" style={inputStyle}/>
+          <select value={dashboardWorkAssignee} onChange={(event) => setDashboardWorkAssignee(event.currentTarget.value as typeof dashboardWorkAssignee)} aria-label="Assign new work" style={selectStyle}>
+            {dashboardWorkPeople.map((person) => <option key={person} value={person}>{person === initialDashboardAssignee ? `${person} (me)` : person}</option>)}
+          </select>
+          <button type="button" onClick={() => void createDashboardUnifiedWork()} disabled={!dashboardWorkTitle.trim()} style={{ ...goldButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Add Work</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10, marginTop: 11 }}>
+          {dashboardWorkPeople.map((person) => {
+            const personMatches = (record: ServiceRecord) => {
+              const assigned = String((record as AtlasServiceRecord).assignedTo || "").trim().toLowerCase();
+              return assigned === person.toLowerCase() || (person === "Pat" && assigned.startsWith("pat"));
+            };
+            const assigned = dashboardUnifiedWork.filter(personMatches);
+            const completed = dashboardCompletedToday.filter(personMatches);
+            return <section key={`unified-dashboard-${person}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 10, background: "#FAFCFE", minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><strong style={{ display: "block", color: colors.navy, fontSize: 17 }}>{person}</strong><small style={mutedSmallStyle}>{assigned.length} active · {completed.length} done today</small></div><span style={badgeStyle(assigned.length ? "Scheduled" : completed.length ? "Completed" : "Monitor")}>{assigned.length}</span></div>
+              <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                {assigned.map((record) => <div key={record.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF" }}>
+                  <input type="checkbox" checked={false} aria-label={`Complete ${record.title}`} onChange={() => void completeWorkOrder(record as AtlasServiceRecord)}/>
+                  <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: "pointer" }}><strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{record.title}</strong><small style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "Flexible"}{record.date && record.date < today ? " · Overdue" : ""}</small></button>
+                  <select value={String((record as AtlasServiceRecord).assignedTo || person)} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value, assignedPersonIds: [event.currentTarget.value] })} aria-label={`Reassign ${record.title}`} style={{ ...selectStyle, minHeight: 30, width: 82, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name}</option>)}</select>
+                </div>)}
+                {!assigned.length ? <div style={noticeStyle}>Nothing due.</div> : null}
+              </div>
+              {completed.length ? <details style={{ marginTop: 8 }}><summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 850 }}>Completed today · {completed.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 6 }}>{completed.map((record) => <button key={`done-${record.id}`} type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#F3F7F4", textAlign: "left", color: colors.navy, textDecoration: "line-through", opacity: .7 }}>{record.title}</button>)}</div></details> : null}
+            </section>;
+          })}
+        </div>
+      </section>
+      {false ? (
       <section style={{ ...cardStyle, padding: isMobile ? 11 : 14 }}>
         <div><div style={eyebrowStyle}>Daily Work Lists</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Today’s Lists</h2><small style={mutedSmallStyle}>Add, edit, complete, and move today’s work here.</small></div>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 11, marginTop: 10 }}>
@@ -2384,6 +2472,7 @@ export default function AtlasDashboardWorkspace(props: any) {
             })}
         </div>
       </section>
+      ) : null}
       <section style={{ ...cardStyle, padding: isMobile ? 11 : 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Coming Up</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Upcoming</h2><small style={mutedSmallStyle}>A compact preview so you can move work without opening the planner.</small></div><span style={badgeStyle("Scheduled")}>{dashboardTomorrowTasks.length}</span></div>
         <div style={{ display: "grid", gap: 6, marginTop: 9 }}>{dashboardTomorrowTasks.slice(0, 8).map((task) => { const meta = taskDetails(task.id); return <div key={`tomorrow-${task.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF" }}><button type="button" onClick={() => openDashboardTaskEditor(task)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", color: colors.navy, cursor: "pointer" }}><strong style={{ display: "block" }}>{task.title}</strong><small style={{ color: "#000000", fontSize: 11, fontWeight: 400, lineHeight: 1.35 }}>{meta.assignee || "Nick"} · {minutesLabel(task.minutes)}</small></button><button type="button" onClick={() => updateTaskDetails(task.id, { dueDate: today, status: "Open", completedAt: undefined })} style={compactUtilityButtonStyle}>Move to Today</button></div>; })}{!dashboardTomorrowTasks.length ? <div style={noticeStyle}>Nothing is scheduled for tomorrow yet.</div> : null}</div>
