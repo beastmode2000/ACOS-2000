@@ -288,6 +288,14 @@ function normalizedWorkOrderText(value: unknown) {
     .trim();
 }
 
+function canonicalWorkOrderDuplicateTitle(value: unknown) {
+  return normalizedWorkOrderText(value)
+    .replace(/\bseadoo\b/g, "sea doo")
+    .replace(/\bf150\b/g, "f 150")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function recurringWorkOrderSchedule(record: AtlasServiceRecord) {
   if (record.recurring) {
     return {
@@ -450,7 +458,7 @@ function repairRecurringWorkOrderRecord(
 }
 
 function workOrderDatabaseDuplicateKey(record: AtlasServiceRecord) {
-  const title = normalizedWorkOrderText(record.title);
+  const title = canonicalWorkOrderDuplicateTitle(record.title);
   if (!title || title === "untitled work" || title === "untitled work order") {
     return `id:${record.id}`;
   }
@@ -463,21 +471,39 @@ function workOrderDatabaseDuplicateKey(record: AtlasServiceRecord) {
       title,
     );
   const generatedMarineMaintenance =
-    /^(clean|wash|inspect|service) (cobalt|sea doo|seadoo|boat|dock|lift box|dock box|sunstream)\b/.test(
+    /^(clean|wash|inspect|service) (cobalt|sea doo|boat|dock|lift box|dock box|sunstream)\b/.test(
       title,
     ) ||
-    /^(cobalt|sea doo|seadoo|boat|dock|lift box|dock box|sunstream) .*\b(recurring service|maintenance|cleaning|inspection)\b/.test(
+    /^(cobalt|sea doo|boat|dock|lift box|dock box|sunstream) .*\b(recurring service|maintenance|cleaning|inspection)\b/.test(
       title,
     );
-  if (generatedVehicleMaintenance || generatedMarineMaintenance) {
-    const equipmentName =
-      title.match(
-        /\b(mercedes|rivian|porsche|lucid|ford|f 150|raptor|kia|honda|subaru|cobalt|sea doo|seadoo|boat|dock|lift box|dock box|sunstream)\b/,
-      )?.[0] || "equipment";
-    return `${generatedVehicleMaintenance ? "generated-vehicle-maintenance" : "generated-marine-maintenance"}|${equipmentName}|${title}`;
+
+  const recurringLike =
+    Boolean(record.recurring) ||
+    record.workType === "Preventive Maintenance" ||
+    generatedVehicleMaintenance ||
+    generatedMarineMaintenance;
+
+  if (recurringLike) {
+    const equipmentOrPlace =
+      normalizedWorkOrderText(record.assetId) ||
+      normalizedWorkOrderText(
+        (record as AtlasServiceRecord & { subLocationId?: string; subLocation?: string })
+          .subLocationId ||
+          (record as AtlasServiceRecord & { subLocationId?: string; subLocation?: string })
+            .subLocation,
+      ) ||
+      normalizedWorkOrderText(record.locationId) ||
+      "unlinked";
+
+    // A recurring series is one logical work item. Metadata such as assignee,
+    // category, due date, or a legacy recurrence flag can drift between older
+    // copies; those differences must not create a second recurring record.
+    return `recurring|${title}|${equipmentOrPlace}`;
   }
-  const recurring = Boolean(record.recurring || generatedVehicleMaintenance);
+
   return [
+    "one-time",
     title,
     normalizedWorkOrderText(record.assetId),
     normalizedWorkOrderText(record.locationId),
@@ -488,11 +514,8 @@ function workOrderDatabaseDuplicateKey(record: AtlasServiceRecord) {
           .subLocation,
     ),
     normalizedWorkOrderText(record.workCategory),
-    recurring ? "recurring" : "one-time",
-    recurring ? String(Math.max(1, Number(record.recurrenceInterval || 1))) : "",
-    recurring ? normalizedWorkOrderText(record.recurrenceUnit || "Weeks") : "",
-    recurring ? normalizedWorkOrderText(record.assignedTo) : "",
-    recurring ? "" : String(record.date || ""),
+    normalizedWorkOrderText(record.assignedTo),
+    String(record.date || ""),
   ].join("|");
 }
 
@@ -2701,10 +2724,10 @@ export default function AtlasApp() {
     hondaSchoolYearCleanupRef.current = true;
     const hondaTasks = workPlanTasks.filter((task) => /\bhonda\b/i.test(recordSearchText(task)));
     const hondaWorkOrders = serviceRecords.filter((record) => /\bhonda\b/i.test(recordSearchText(record)));
-    const generatedVehicleCleaningTasks = workPlanTasks.filter((task) =>
-      /^clean\s+(kia|porsche|rivian|subaru|ford)$/i.test(String(task.title || "").trim()),
+    const generatedKiaPorscheTasks = workPlanTasks.filter((task) =>
+      /^clean\s+(kia|porsche)$/i.test(String(task.title || "").trim()),
     );
-    const removedTasks = [...hondaTasks, ...generatedVehicleCleaningTasks];
+    const removedTasks = [...hondaTasks, ...generatedKiaPorscheTasks];
     const removedIds = new Set([...removedTasks.map((task) => task.id), ...hondaWorkOrders.map((record) => record.id)]);
     if (removedTasks.length) {
       setWorkPlanTasks((current) => current.filter((task) => !removedIds.has(task.id)));
@@ -2739,14 +2762,14 @@ export default function AtlasApp() {
     const completedDate = "2026-08-17";
     const nextDate = addDays(completedDate, 7);
     const targetVehicles = vehicleCare.filter((vehicle) =>
-      /^porsche$/i.test(vehicle.name.trim()),
+      /^(porsche|rivian)$/i.test(vehicle.name.trim()),
     );
-    if (!targetVehicles.length) return;
+    if (targetVehicles.length < 2) return;
     window.localStorage.setItem(migrationKey, "done");
 
     setVehicleCare((current) =>
       current.map((vehicle) => {
-        if (!/^porsche$/i.test(vehicle.name.trim())) return vehicle;
+        if (!/^(porsche|rivian)$/i.test(vehicle.name.trim())) return vehicle;
         const alreadyRecorded = (vehicle.history || []).some(
           (entry) =>
             entry.type === "Cleaned" &&
@@ -4069,8 +4092,16 @@ export default function AtlasApp() {
                   index,
                   index + 10,
                 );
+                // Tombstone duplicate IDs before the network delete so an older
+                // queued save or a slow second tab cannot recreate them while
+                // cleanup is in flight.
+                batch.forEach((id) => addWorkOrderTombstone(id));
                 const results = await Promise.all(
-                  batch.map((id) => deleteAtlasRecord("work_orders", id)),
+                  batch.map((id) =>
+                    deleteAtlasRecord("work_orders", id, {
+                      suppressFailureToast: true,
+                    }),
+                  ),
                 );
                 deletedCount += results.filter(Boolean).length;
               }
@@ -9633,27 +9664,58 @@ export default function AtlasApp() {
       return;
     }
     atlasActionLocksRef.current.add(actionKey);
-    addWorkOrderTombstone(record.id);
-    const legacyTaskId = (() => {
-      const unifiedTaskMatch = String(record.id || "").match(/^unified-task-(.+)$/);
-      if (unifiedTaskMatch?.[1]) return unifiedTaskMatch[1];
-      const responsibilityMatch = String(
-        (record as AtlasServiceRecord).responsibilityArea || "",
-      ).match(/legacy task\s+(.+)$/i);
-      return responsibilityMatch?.[1]?.trim() || "";
-    })();
+    const deletedTitle = normalizedWorkOrderText(record.title || "");
+    const targetDuplicateKey = workOrderDatabaseDuplicateKey(record);
+    const matchingWorkOrders = serviceRecords.filter(
+      (item) =>
+        item.id === record.id ||
+        workOrderDatabaseDuplicateKey(item) === targetDuplicateKey,
+    );
+    if (!matchingWorkOrders.some((item) => item.id === record.id)) {
+      matchingWorkOrders.push(record);
+    }
 
-    if (legacyTaskId) {
-      addTaskTombstone(legacyTaskId);
+    const workOrderIds = new Set(
+      matchingWorkOrders.map((item) => String(item.id || "")).filter(Boolean),
+    );
+    workOrderIds.forEach((workOrderId) => addWorkOrderTombstone(workOrderId));
+
+    const legacyTaskIds = new Set<string>();
+    matchingWorkOrders.forEach((item) => {
+      const unifiedTaskMatch = String(item.id || "").match(/^unified-task-(.+)$/);
+      if (unifiedTaskMatch?.[1]) legacyTaskIds.add(unifiedTaskMatch[1]);
+      const responsibilityMatch = String(
+        (item as AtlasServiceRecord).responsibilityArea || "",
+      ).match(/legacy task\s+(.+)$/i);
+      if (responsibilityMatch?.[1]?.trim()) {
+        legacyTaskIds.add(responsibilityMatch[1].trim());
+      }
+    });
+    workPlanTasks.forEach((task) => {
+      if (
+        deletedTitle &&
+        normalizedWorkOrderText(task.title || "") === deletedTitle
+      ) {
+        legacyTaskIds.add(task.id);
+      }
+    });
+
+    legacyTaskIds.forEach((taskId) => {
+      addTaskTombstone(taskId);
+      void deleteOperationalRecord("tasks" as AtlasTable, taskId);
+    });
+    if (legacyTaskIds.size) {
       setWorkPlanTasks((current) => {
-        const next = current.filter((task) => task.id !== legacyTaskId);
+        const next = current.filter((task) => !legacyTaskIds.has(task.id));
         saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, next);
         if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", next);
         return next;
       });
       setTaskMeta((current) => {
         const next = Object.fromEntries(
-          Object.entries(current).filter(([taskId]) => taskId !== legacyTaskId),
+          Object.entries(current).filter(
+            ([taskId]) => !legacyTaskIds.has(taskId),
+          ),
         ) as Record<string, AtlasTaskMeta>;
         try {
           window.localStorage.setItem(
@@ -9666,20 +9728,15 @@ export default function AtlasApp() {
         } catch {}
         return next;
       });
-      void deleteOperationalRecord("tasks" as AtlasTable, legacyTaskId);
     }
 
-    const deleted = await deleteAtlasRecord("work_orders", record.id, {
-      suppressFailureToast: true,
-    });
-    atlasActionLocksRef.current.delete(actionKey);
     setServiceRecords((current) =>
-      current.filter((item) => item.id !== record.id),
+      current.filter((item) => !workOrderIds.has(String(item.id || ""))),
     );
     const linkedCalendarRecords = calendarItems.filter(
       (item) =>
-        String(item.linkedId || "") === String(record.id) ||
-        Boolean(legacyTaskId && String(item.linkedId || "") === legacyTaskId),
+        workOrderIds.has(String(item.linkedId || "")) ||
+        legacyTaskIds.has(String(item.linkedId || "")),
     );
     linkedCalendarRecords.forEach((item) => {
       rememberCalendarDeletion(item);
@@ -9691,11 +9748,22 @@ export default function AtlasApp() {
     }
     setSelectedServiceId("");
     showSaveToast(
-      deleted
-        ? `${record.title || "Work order"} deleted.`
-        : `${record.title || "Work order"} removed. Atlas will keep retrying the database cleanup.`,
-      deleted ? "success" : "warning",
+      `${record.title || "Work order"} deleted${workOrderIds.size > 1 ? ` (${workOrderIds.size} copies)` : ""}.`,
     );
+
+    void (async () => {
+      try {
+        await Promise.all(
+          Array.from(workOrderIds).map((workOrderId) =>
+            deleteAtlasRecord("work_orders", workOrderId, {
+              suppressFailureToast: true,
+            }),
+          ),
+        );
+      } finally {
+        atlasActionLocksRef.current.delete(actionKey);
+      }
+    })();
   }
 
   async function deleteProcedureRecord(record: ProcedureRecord) {
@@ -15897,21 +15965,13 @@ export default function AtlasApp() {
     }
   }
 
-  function skipRecurringTask(task: WorkPlanTask, force = false) {
+  function skipRecurringTask(task: WorkPlanTask) {
     const meta = taskDetails(task.id);
-    if (!task.recurring || (!force && meta.skippable === false)) return;
+    if (!task.recurring || meta.skippable === false) return;
     const interval = Math.max(1, Number(meta.recurrenceInterval || 1));
     const unit = meta.recurrenceUnit || "Weeks";
     const nextDate = nextRecurrenceDate(meta.dueDate || todayISO(), interval, unit);
     updateTaskDetails(task.id, { dueDate: nextDate, status: "Open" });
-    setCalendarItems((current) =>
-      current.map((item) => {
-        if (item.linkedId !== task.id) return item;
-        const updated = { ...item, date: nextDate, status: "Scheduled" as const };
-        void postAtlasRecord("calendar", updated);
-        return updated;
-      }),
-    );
     showSaveToast(`${task.title} skipped. Next due ${formatDate(nextDate)}.`);
   }
 
@@ -16001,22 +16061,6 @@ export default function AtlasApp() {
     const task = workPlanTasks.find((item) => item.id === taskId);
     if (!task) return;
 
-    if (task.recurring) {
-      const deleteAll = window.confirm(
-        `Delete every recurring occurrence of “${task.title}”?\n\nChoose OK to delete the entire series.\nChoose Cancel to delete just this occurrence instead.`,
-      );
-      if (!deleteAll) {
-        const deleteOne = window.confirm(
-          `Delete just this occurrence of “${task.title}”?\n\nFuture recurring occurrences will remain.`,
-        );
-        if (!deleteOne) return;
-        skipRecurringTask(task, true);
-        setSelectedTaskId("");
-        recordAtlasAudit("Recurring task occurrence deleted", task.title);
-        return;
-      }
-    }
-
     addTaskTombstone(taskId);
     const meta = taskDetails(taskId);
     setTaskUndo({ task, meta });
@@ -16053,27 +16097,9 @@ export default function AtlasApp() {
     });
 
     setSelectedTaskId("");
-    const linkedCalendarItems = calendarItems.filter(
-      (item) =>
-        item.linkedId === taskId ||
-        (meta.vehicleId && item.id === `fleet-clean-${meta.vehicleId}`),
-    );
-    if (linkedCalendarItems.length) {
-      const linkedCalendarIds = new Set(linkedCalendarItems.map((item) => item.id));
-      setCalendarItems((current) =>
-        current.filter((item) => !linkedCalendarIds.has(item.id)),
-      );
-      linkedCalendarItems.forEach((item) =>
-        void deleteAtlasRecord("calendar", item.id),
-      );
-    }
     void deleteOperationalRecord("tasks" as AtlasTable, taskId);
-    recordAtlasAudit(task.recurring ? "Recurring task series deleted" : "Task deleted", task.title);
-    showSaveToast(
-      task.recurring
-        ? "Recurring task series deleted."
-        : "Task deleted — Atlas will keep it deleted even if sync has to retry.",
-    );
+    recordAtlasAudit("Task deleted", task.title);
+    showSaveToast("Task deleted — Atlas will keep it deleted even if sync has to retry.");
   }
 
   function moveAtlasTaskToDate(task: WorkPlanTask, value: string) {
@@ -16466,10 +16492,10 @@ ${notes.trim()}` : notes.trim(),
         if (vehicleIndex >= 0 && isGarageVehicle) {
           nextVehicles[vehicleIndex] = { ...nextVehicles[vehicleIndex], cleaningIntervalDays: 7 };
         }
-        // Do not auto-create cleaning for these vehicles. Their deleted cleaning
-        // records stay deleted; all other Fleet behavior remains unchanged.
+        // Do not auto-create cleaning for Mercedes or Honda. Their deleted cleaning
+        // records stay deleted; all other vehicle care behavior remains unchanged.
         const suppressAutomaticCleaning =
-          activePropertyId === "2000" && /^(mercedes|honda|rivian|subaru|ford)$/i.test(vehicle.name.trim());
+          activePropertyId === "2000" && /^(mercedes|honda)$/i.test(vehicle.name.trim());
         if (suppressAutomaticCleaning) continue;
 
         const cleaningDueDate = vehicle.lastCleaned ? addDays(vehicle.lastCleaned, cleaningInterval) : todayISO();
