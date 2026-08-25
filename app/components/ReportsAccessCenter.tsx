@@ -103,9 +103,9 @@ function printReport(title: string, rows: Row[]) {
           ["assetId", "Asset"],
           ["locationId", "Location"],
           ["vendorId", "Vendor"],
-          ["estimatedCost", "Estimated"],
-          ["actualCost", "Actual"],
-          ["invoiceNumber", "Invoice"],
+          // Estimated cost is intentionally excluded from reports.
+          // Actual cost is intentionally excluded from reports.
+          // Invoice cost tracking is intentionally excluded from reports.
         ]
       : reportKey.includes("asset")
         ? [
@@ -226,7 +226,7 @@ function printReport(title: string, rows: Row[]) {
     tr{break-inside:avoid}
   </style></head><body>
     <div class="header"><img class="logo" src="/atlas-logo.png" alt="Atlas"><div><h1>${escape(title)}</h1><div class="meta">${rows.length} records · ${escape(new Date().toLocaleString())}</div></div></div>
-    ${reportKey.includes("work order") ? `<div class="summary"><div class="stat"><span>Work Orders</span><strong>${rows.length}</strong></div><div class="stat"><span>Estimated</span><strong>${escape(money(estimated))}</strong></div><div class="stat"><span>Actual</span><strong>${escape(money(actual))}</strong></div></div>` : ""}
+    <!-- Cost summary intentionally removed. -->
     <table><thead><tr>${columns.map((column)=>`<th>${escape(column.label)}</th>`).join("")}</tr></thead><tbody>${rows.map((row)=>`<tr>${columns.map((column)=>`<td>${escape(formatPrintValue(column.key, row[column.source!]))}</td>`).join("")}</tr>`).join("")}</tbody></table>
   </body></html>`);
   popup.document.close();
@@ -338,23 +338,6 @@ export default function ReportsAccessCenter({ propertyId, data, colors, isMobile
     { mode:"high" as const, label:"High priority", count:activeWork.filter((row)=>row.priority==="High").length },
     { mode:"week" as const, label:"Due within 7 days", count:activeWork.filter((row)=>row.date && String(row.date)>=today && String(row.date)<=nextWeek).length },
   ];
-  const estimatedTotal = data.workOrders.reduce(
-    (total, row) => total + Number(row.estimatedCost || 0),
-    0,
-  );
-  const actualTotal = data.workOrders.reduce(
-    (total, row) => total + Number(row.actualCost || 0),
-    0,
-  );
-  const completedCount = data.workOrders.filter((row) =>
-    ["Completed", "Closed"].includes(String(row.status || "")),
-  ).length;
-  const missingCostCount = data.workOrders.filter(
-    (row) =>
-      ["Completed", "Closed"].includes(String(row.status || "")) &&
-      !Number(row.actualCost || 0),
-  ).length;
-
   const statuses = useMemo(() => Array.from(new Set(data[report].map((row)=>String(row.status || "")).filter(Boolean))).sort(), [data, report]);
   const priorities = useMemo(() => Array.from(new Set(data[report].map((row)=>String(row.priority || "")).filter(Boolean))).sort(), [data, report]);
   const assignments = useMemo(() => Array.from(new Set(data.workOrders.map((row)=>String(row.assignedTo || row.assigned_to || "")).filter(Boolean))).sort(), [data.workOrders]);
@@ -498,20 +481,6 @@ export default function ReportsAccessCenter({ propertyId, data, colors, isMobile
                 <button type="button" onClick={() => printReport(`Atlas ${reportLabel}`, filteredRows)} disabled={!filteredRows.length} style={{ ...quietButton, opacity: filteredRows.length ? 1 : .55 }}>Print / PDF</button>
                 <button type="button" onClick={() => downloadCsv(report, filteredRows)} disabled={!filteredRows.length} style={{ ...button, opacity: filteredRows.length ? 1 : .55 }}>Export CSV</button>
               </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8, marginBottom: 12 }}>
-              {[
-                ["Estimated", money(estimatedTotal)],
-                ["Actual", money(actualTotal)],
-                ["Completed", String(completedCount)],
-                ["Missing costs", String(missingCostCount)],
-              ].map(([label, value]) => (
-                <div key={label} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, background: colors.panel, padding: "9px 10px" }}>
-                  <span style={{ display: "block", fontSize: 9, fontWeight: 900, color: colors.muted, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</span>
-                  <strong style={{ display: "block", marginTop: 2, fontSize: isMobile ? 16 : 18, color: colors.navy, overflowWrap: "anywhere" }}>{value}</strong>
-                </div>
-              ))}
             </div>
 
             <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 3, marginBottom: 10 }}>
