@@ -1,3 +1,6 @@
+`app/components/AtlasOwnerReport.tsx`
+
+```tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -137,8 +140,12 @@ function completedWorkOrderItems(workOrders: Row[]) {
 
   for (const row of workOrders) {
     const id = String(row.id || "");
-    const completionHistory = Array.isArray(row.completionHistory) ? row.completionHistory : [];
-    const serviceHistory = Array.isArray(row.serviceHistory) ? (row.serviceHistory as Row[]) : [];
+    const completionHistory = Array.isArray(row.completionHistory)
+      ? row.completionHistory
+      : [];
+    const serviceHistory = Array.isArray(row.serviceHistory)
+      ? (row.serviceHistory as Row[])
+      : [];
 
     const dates = uniqueDates([
       ...completionHistory,
@@ -147,13 +154,56 @@ function completedWorkOrderItems(workOrders: Row[]) {
       row.status === "Completed" || row.status === "Closed"
         ? row.completedAt || row.completed_at || row.updatedAt || row.date
         : "",
-      ...serviceHistory.map((entry) => entry.completedAt || entry.completed_at),
+      ...serviceHistory.map(
+        (entry) => entry.completedAt || entry.completed_at,
+      ),
     ]);
 
     for (const date of dates) {
-      const historyEntry = serviceHistory.find(
-        (entry) => dateOnly(entry.completedAt || entry.completed_at) === date,
+      const matchingHistory = serviceHistory.filter(
+        (entry) =>
+          dateOnly(entry.completedAt || entry.completed_at) === date,
       );
+
+      if (matchingHistory.length > 1) {
+        matchingHistory.forEach((historyEntry, index) => {
+          items.push({
+            id: `wo-${id}-${date}-${index}`,
+            sourceKey: `work-order:${id}:${date}:${index}`,
+            sourceType: "Work Order",
+            sourceId: id,
+            date,
+            person: displayPerson({
+              ...row,
+              ...historyEntry,
+            }),
+            department: inferDepartment({
+              ...row,
+              ...historyEntry,
+            }),
+            title: String(
+              historyEntry.title ||
+                historyEntry.name ||
+                historyEntry.assetName ||
+                historyEntry.asset_name ||
+                row.title ||
+                row.name ||
+                "Work order completed",
+            ),
+            notes: String(
+              historyEntry.notes ||
+                historyEntry.note ||
+                row.completionNotes ||
+                row.completion_notes ||
+                "",
+            ),
+          });
+        });
+
+        continue;
+      }
+
+      const historyEntry = matchingHistory[0];
 
       items.push({
         id: `wo-${id}-${date}`,
@@ -161,11 +211,26 @@ function completedWorkOrderItems(workOrders: Row[]) {
         sourceType: "Work Order",
         sourceId: id,
         date,
-        person: displayPerson({ ...row, ...(historyEntry || {}) }),
-        department: inferDepartment(row),
-        title: String(row.title || row.name || "Work order completed"),
+        person: displayPerson({
+          ...row,
+          ...(historyEntry || {}),
+        }),
+        department: inferDepartment({
+          ...row,
+          ...(historyEntry || {}),
+        }),
+        title: String(
+          historyEntry?.title ||
+            historyEntry?.name ||
+            historyEntry?.assetName ||
+            historyEntry?.asset_name ||
+            row.title ||
+            row.name ||
+            "Work order completed",
+        ),
         notes: String(
           historyEntry?.notes ||
+            historyEntry?.note ||
             row.completionNotes ||
             row.completion_notes ||
             row.notes ||
@@ -199,7 +264,10 @@ function completedTaskItems(tasks: Row[]) {
       meta.lastCompletedDate,
       meta.last_completed_date,
       meta.status === "Completed"
-        ? meta.dueDate || meta.due_date || row.scheduledDate || row.scheduled_date
+        ? meta.dueDate ||
+          meta.due_date ||
+          row.scheduledDate ||
+          row.scheduled_date
         : "",
     ]);
 
@@ -213,7 +281,12 @@ function completedTaskItems(tasks: Row[]) {
         person: displayPerson({ ...row, ...meta }),
         department: inferDepartment({ ...row, ...meta }),
         title: String(row.title || meta.title || "Task completed"),
-        notes: String(meta.addisonNote || meta.notes || row.notes || ""),
+        notes: String(
+          meta.addisonNote ||
+            meta.notes ||
+            row.notes ||
+            "",
+        ),
       });
     }
   }
@@ -225,17 +298,30 @@ function completedTeamItems(rows: Row[], propertyId: string) {
   return rows
     .filter(
       (row) =>
-        String(row.propertyId || row.property_id || "2000") === propertyId,
+        String(row.propertyId || row.property_id || "2000") ===
+        propertyId,
     )
     .map((row): ReportItem => {
-      const id = String(row.id || row.eventKey || row.event_key || "");
+      const id = String(
+        row.id ||
+          row.eventKey ||
+          row.event_key ||
+          "",
+      );
 
       return {
         id: `team-${id}`,
         sourceKey: `team-work:${id}`,
         sourceType: "Team Work",
-        sourceId: String(row.taskId || row.task_id || id),
-        date: dateOnly(row.completedAt || row.completed_at),
+        sourceId: String(
+          row.taskId ||
+            row.task_id ||
+            id,
+        ),
+        date: dateOnly(
+          row.completedAt ||
+            row.completed_at,
+        ),
         person: displayPerson(row),
         department: inferDepartment(row),
         title: String(
@@ -244,39 +330,88 @@ function completedTeamItems(rows: Row[], propertyId: string) {
             row.title ||
             "Team work completed",
         ),
-        notes: String(row.note || row.notes || ""),
+        notes: String(
+          row.note ||
+            row.notes ||
+            "",
+        ),
       };
     })
     .filter((item) => Boolean(item.id && item.date));
 }
 
 function dedupeItems(items: ReportItem[]) {
-  const seenSource = new Set<string>();
-  const seenDisplay = new Set<string>();
+  const seen = new Set<string>();
 
   return items.filter((item) => {
-    const title = item.title
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, " ");
-
-    const displayKey = `${item.date}|${item.person.trim().toLowerCase()}|${title}`;
-
-    if (seenSource.has(item.sourceKey) || seenDisplay.has(displayKey)) {
+    if (seen.has(item.sourceKey)) {
       return false;
     }
 
-    seenSource.add(item.sourceKey);
-    seenDisplay.add(displayKey);
+    seen.add(item.sourceKey);
     return true;
   });
 }
 
+function mergeSourceWithDraft(
+  source: ReportItem[],
+  current: ReportItem[],
+) {
+  const currentSourceItems = new Map(
+    current
+      .filter(
+        (item) =>
+          item.sourceType !== "Manual" &&
+          item.sourceType !== "Vendor Visit",
+      )
+      .map((item) => [
+        item.sourceKey,
+        item,
+      ]),
+  );
+
+  const sourceWithEdits = source.map(
+    (item) => {
+      const edited =
+        currentSourceItems.get(
+          item.sourceKey,
+        );
+
+      if (!edited) {
+        return item;
+      }
+
+      return {
+        ...item,
+        person: edited.person,
+        department: edited.department,
+        title: edited.title,
+        notes: edited.notes,
+      };
+    },
+  );
+
+  const manualItems = current.filter(
+    (item) =>
+      item.sourceType === "Manual" ||
+      item.sourceType === "Vendor Visit",
+  );
+
+  return dedupeItems([
+    ...sourceWithEdits,
+    ...manualItems,
+  ]);
+}
+
 function reportTitle(start: string, end: string) {
-  if (!start || !end) return "Weekly Owner Report";
+  if (!start || !end) {
+    return "Weekly Owner Report";
+  }
 
   const format = (value: string) =>
-    new Date(`${value}T12:00:00`).toLocaleDateString(undefined, {
+    new Date(
+      `${value}T12:00:00`,
+    ).toLocaleDateString(undefined, {
       month: "short",
       day: "numeric",
     });
@@ -293,7 +428,9 @@ function escapeHtml(value: unknown) {
 }
 
 function dayLabel(date: string) {
-  return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
+  return new Date(
+    `${date}T12:00:00`,
+  ).toLocaleDateString(undefined, {
     weekday: "long",
     month: "short",
     day: "numeric",
@@ -310,47 +447,112 @@ export default function AtlasOwnerReport({
   colors,
   isMobile,
 }: Props) {
-  const [periodStart, setPeriodStart] = useState(mondayOfCurrentWeek());
-  const [periodEnd, setPeriodEnd] = useState(localDate());
-  const [tasks, setTasks] = useState<Row[]>([]);
-  const [teamHistory, setTeamHistory] = useState<Row[]>([]);
-  const [items, setItems] = useState<ReportItem[]>([]);
-  const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
-  const [activeReportId, setActiveReportId] = useState("");
-  const [status, setStatus] = useState<"Draft" | "Final">("Draft");
-  const [message, setMessage] = useState("");
-  const [showSavedReports, setShowSavedReports] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [periodStart, setPeriodStart] =
+    useState(mondayOfCurrentWeek());
+
+  const [periodEnd, setPeriodEnd] =
+    useState(localDate());
+
+  const [tasks, setTasks] =
+    useState<Row[]>([]);
+
+  const [teamHistory, setTeamHistory] =
+    useState<Row[]>([]);
+
+  const [items, setItems] =
+    useState<ReportItem[]>([]);
+
+  const [savedReports, setSavedReports] =
+    useState<SavedReport[]>([]);
+
+  const [activeReportId, setActiveReportId] =
+    useState("");
+
+  const [status, setStatus] = useState<
+    "Draft" | "Final"
+  >("Draft");
+
+  const [message, setMessage] =
+    useState("");
+
+  const [
+    showSavedReports,
+    setShowSavedReports,
+  ] = useState(false);
+
+  const [saving, setSaving] =
+    useState(false);
 
   const sourceItems = useMemo(
     () =>
       dedupeItems([
-        ...completedWorkOrderItems(workOrders),
+        ...completedWorkOrderItems(
+          workOrders,
+        ),
         ...completedTaskItems(tasks),
-        ...completedTeamItems(teamHistory, propertyId),
+        ...completedTeamItems(
+          teamHistory,
+          propertyId,
+        ),
       ]),
-    [workOrders, tasks, teamHistory, propertyId],
+    [
+      workOrders,
+      tasks,
+      teamHistory,
+      propertyId,
+    ],
   );
 
   const filteredSourceItems = useMemo(
     () =>
       sourceItems.filter(
         (item) =>
-          (!periodStart || item.date >= periodStart) &&
-          (!periodEnd || item.date <= periodEnd),
+          (!periodStart ||
+            item.date >= periodStart) &&
+          (!periodEnd ||
+            item.date <= periodEnd),
       ),
-    [sourceItems, periodStart, periodEnd],
+    [
+      sourceItems,
+      periodStart,
+      periodEnd,
+    ],
   );
 
   const regularItems = useMemo(
     () =>
       items
-        .filter((item) => item.sourceType !== "Vendor Visit")
+        .filter(
+          (item) =>
+            item.sourceType !==
+            "Vendor Visit",
+        )
         .sort((a, b) => {
-          if (a.date !== b.date) return a.date.localeCompare(b.date);
-          const people = personLabel(a.person).localeCompare(personLabel(b.person));
-          if (people !== 0) return people;
-          return departments.indexOf(a.department) - departments.indexOf(b.department);
+          if (a.date !== b.date) {
+            return a.date.localeCompare(
+              b.date,
+            );
+          }
+
+          const people =
+            personLabel(
+              a.person,
+            ).localeCompare(
+              personLabel(b.person),
+            );
+
+          if (people !== 0) {
+            return people;
+          }
+
+          return (
+            departments.indexOf(
+              a.department,
+            ) -
+            departments.indexOf(
+              b.department,
+            )
+          );
         }),
     [items],
   );
@@ -358,25 +560,48 @@ export default function AtlasOwnerReport({
   const vendorItems = useMemo(
     () =>
       items
-        .filter((item) => item.sourceType === "Vendor Visit")
-        .sort((a, b) => a.date.localeCompare(b.date)),
+        .filter(
+          (item) =>
+            item.sourceType ===
+            "Vendor Visit",
+        )
+        .sort((a, b) =>
+          a.date.localeCompare(b.date),
+        ),
     [items],
   );
 
   const reportDays = useMemo(
-    () => Array.from(new Set(regularItems.map((item) => item.date))).sort(),
+    () =>
+      Array.from(
+        new Set(
+          regularItems.map(
+            (item) => item.date,
+          ),
+        ),
+      ).sort(),
     [regularItems],
   );
 
   async function loadSavedReports() {
     const response = await fetch(
-      `/api/atlas-owner-reports?propertyId=${encodeURIComponent(propertyId)}`,
-      { cache: "no-store" },
+      `/api/atlas-owner-reports?propertyId=${encodeURIComponent(
+        propertyId,
+      )}`,
+      {
+        cache: "no-store",
+      },
     );
 
-    const payload = await response.json().catch(() => ({}));
+    const payload = await response
+      .json()
+      .catch(() => ({}));
 
-    if (response.ok && payload.ok && Array.isArray(payload.reports)) {
+    if (
+      response.ok &&
+      payload.ok &&
+      Array.isArray(payload.reports)
+    ) {
       setSavedReports(payload.reports);
     }
   }
@@ -386,24 +611,37 @@ export default function AtlasOwnerReport({
     setStatus("Draft");
     setItems([]);
 
-    void loadSavedReports().catch(() =>
-      setMessage("Saved owner reports could not be loaded."),
+    void loadSavedReports().catch(
+      () =>
+        setMessage(
+          "Saved owner reports could not be loaded.",
+        ),
     );
   }, [propertyId]);
 
   useEffect(() => {
     void fetch(
-      `/api/atlas?propertyId=${encodeURIComponent(propertyId)}`,
-      { cache: "no-store" },
+      `/api/atlas?propertyId=${encodeURIComponent(
+        propertyId,
+      )}`,
+      {
+        cache: "no-store",
+      },
     )
-      .then((response) => response.json())
+      .then((response) =>
+        response.json(),
+      )
       .then((payload) => {
         if (!payload.ok) return;
 
         setTasks(
-          Array.isArray(payload.taskRecords)
+          Array.isArray(
+            payload.taskRecords,
+          )
             ? payload.taskRecords
-            : Array.isArray(payload.tasks)
+            : Array.isArray(
+                  payload.tasks,
+                )
               ? payload.tasks
               : [],
         );
@@ -412,59 +650,93 @@ export default function AtlasOwnerReport({
   }, [propertyId]);
 
   useEffect(() => {
-    void fetch("/api/atlas-team-work", { cache: "no-store" })
-      .then((response) => response.json())
+    void fetch(
+      "/api/atlas-team-work",
+      {
+        cache: "no-store",
+      },
+    )
+      .then((response) =>
+        response.json(),
+      )
       .then((payload) =>
         setTeamHistory(
-          payload.ok && Array.isArray(payload.workHistory)
+          payload.ok &&
+            Array.isArray(
+              payload.workHistory,
+            )
             ? payload.workHistory
             : [],
         ),
       )
-      .catch(() => setTeamHistory([]));
+      .catch(() =>
+        setTeamHistory([]),
+      );
   }, []);
 
   useEffect(() => {
-    if (!activeReportId) {
-      setItems((current) => {
-        const manual = current.filter(
-          (item) =>
-            item.sourceType === "Manual" ||
-            item.sourceType === "Vendor Visit",
-        );
-
-        return dedupeItems([...filteredSourceItems, ...manual]);
-      });
+    if (activeReportId) {
+      return;
     }
-  }, [filteredSourceItems, activeReportId]);
+
+    setItems((current) =>
+      mergeSourceWithDraft(
+        filteredSourceItems,
+        current,
+      ),
+    );
+  }, [
+    filteredSourceItems,
+    activeReportId,
+  ]);
 
   function refreshFromAtlas() {
     setActiveReportId("");
     setStatus("Draft");
 
     setItems((current) => {
-      const manual = current.filter(
-        (item) =>
-          item.sourceType === "Manual" ||
-          item.sourceType === "Vendor Visit",
-      );
+      const manualItems =
+        current.filter(
+          (item) =>
+            item.sourceType ===
+              "Manual" ||
+            item.sourceType ===
+              "Vendor Visit",
+        );
 
-      return dedupeItems([...filteredSourceItems, ...manual]);
+      return dedupeItems([
+        ...filteredSourceItems,
+        ...manualItems,
+      ]);
     });
 
-    setMessage("Report refreshed from completed Atlas work.");
+    setMessage(
+      "Report refreshed from completed Atlas work.",
+    );
   }
 
-  function updateItem(id: string, patch: Partial<ReportItem>) {
+  function updateItem(
+    id: string,
+    patch: Partial<ReportItem>,
+  ) {
     setItems((current) =>
       current.map((item) =>
-        item.id === id ? { ...item, ...patch } : item,
+        item.id === id
+          ? {
+              ...item,
+              ...patch,
+            }
+          : item,
       ),
     );
   }
 
-  function addManualItem(date = periodEnd || localDate()) {
-    const id = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  function addManualItem(
+    date = periodEnd || localDate(),
+  ) {
+    const id = `manual-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
 
     setItems((current) => [
       ...current,
@@ -482,8 +754,12 @@ export default function AtlasOwnerReport({
     ]);
   }
 
-  function addVendorVisit(date = periodEnd || localDate()) {
-    const id = `vendor-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  function addVendorVisit(
+    date = periodEnd || localDate(),
+  ) {
+    const id = `vendor-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
 
     setItems((current) => [
       ...current,
@@ -501,44 +777,68 @@ export default function AtlasOwnerReport({
     ]);
   }
 
-  async function saveReport(nextStatus: "Draft" | "Final") {
+  async function saveReport(
+    nextStatus: "Draft" | "Final",
+  ) {
     if (!periodStart || !periodEnd) {
-      setMessage("Choose the report start and end dates.");
+      setMessage(
+        "Choose the report start and end dates.",
+      );
       return;
     }
 
     setSaving(true);
-    setMessage("Saving owner report...");
+    setMessage(
+      "Saving owner report...",
+    );
 
     try {
       const id =
         activeReportId ||
         `owner-report-${propertyId}-${periodStart}-${periodEnd}`;
 
-      const response = await fetch("/api/atlas-owner-reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id,
-          propertyId,
-          periodStart,
-          periodEnd,
-          title: reportTitle(periodStart, periodEnd),
-          status: nextStatus,
-          items,
-        }),
-      });
+      const response = await fetch(
+        "/api/atlas-owner-reports",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            id,
+            propertyId,
+            periodStart,
+            periodEnd,
+            title: reportTitle(
+              periodStart,
+              periodEnd,
+            ),
+            status: nextStatus,
+            items,
+          }),
+        },
+      );
 
-      const payload = await response.json().catch(() => ({}));
+      const payload = await response
+        .json()
+        .catch(() => ({}));
 
-      if (!response.ok || !payload.ok) {
+      if (
+        !response.ok ||
+        !payload.ok
+      ) {
         throw new Error(
-          String(payload.error || "Owner report could not be saved."),
+          String(
+            payload.error ||
+              "Owner report could not be saved.",
+          ),
         );
       }
 
       setActiveReportId(id);
       setStatus(nextStatus);
+
       setMessage(
         nextStatus === "Final"
           ? "Owner report finalized and saved."
@@ -557,17 +857,30 @@ export default function AtlasOwnerReport({
     }
   }
 
-  function openSavedReport(report: SavedReport) {
+  function openSavedReport(
+    report: SavedReport,
+  ) {
     setActiveReportId(report.id);
     setPeriodStart(report.periodStart);
     setPeriodEnd(report.periodEnd);
     setStatus(report.status);
-    setItems(Array.isArray(report.items) ? report.items : []);
+
+    setItems(
+      Array.isArray(report.items)
+        ? report.items
+        : [],
+    );
+
     setShowSavedReports(false);
-    setMessage(`Opened ${report.title}.`);
+
+    setMessage(
+      `Opened ${report.title}.`,
+    );
   }
 
-  async function deleteSavedReport(report: SavedReport) {
+  async function deleteSavedReport(
+    report: SavedReport,
+  ) {
     if (
       !window.confirm(
         "Delete this saved owner report? Source Atlas records will not be deleted.",
@@ -579,86 +892,164 @@ export default function AtlasOwnerReport({
     const response = await fetch(
       `/api/atlas-owner-reports?id=${encodeURIComponent(
         report.id,
-      )}&propertyId=${encodeURIComponent(propertyId)}`,
-      { method: "DELETE" },
+      )}&propertyId=${encodeURIComponent(
+        propertyId,
+      )}`,
+      {
+        method: "DELETE",
+      },
     );
 
-    const payload = await response.json().catch(() => ({}));
+    const payload = await response
+      .json()
+      .catch(() => ({}));
 
-    if (!response.ok || !payload.ok) {
+    if (
+      !response.ok ||
+      !payload.ok
+    ) {
       setMessage(
-        String(payload.error || "Saved report could not be deleted."),
+        String(
+          payload.error ||
+            "Saved report could not be deleted.",
+        ),
       );
+
       return;
     }
 
-    if (activeReportId === report.id) refreshFromAtlas();
+    if (
+      activeReportId === report.id
+    ) {
+      refreshFromAtlas();
+    }
 
     await loadSavedReports();
-    setMessage("Saved report deleted. Source records were not changed.");
+
+    setMessage(
+      "Saved report deleted. Source records were not changed.",
+    );
   }
 
   function printReport() {
     if (!items.length) return;
 
-    const popup = window.open("", "_blank");
+    const popup =
+      window.open("", "_blank");
+
     if (!popup) return;
 
     const days = Array.from(
-      new Set(regularItems.map((item) => item.date)),
+      new Set(
+        regularItems.map(
+          (item) => item.date,
+        ),
+      ),
     ).sort();
 
     const dayHtml = days
       .map((date) => {
-        const dayItems = regularItems.filter((item) => item.date === date);
+        const dayItems =
+          regularItems.filter(
+            (item) =>
+              item.date === date,
+          );
+
         const people = Array.from(
-          new Set(dayItems.map((item) => personLabel(item.person))),
+          new Set(
+            dayItems.map((item) =>
+              personLabel(
+                item.person,
+              ),
+            ),
+          ),
         ).sort();
 
         return `
           <section class="day">
             <div class="dayHead">
-              <strong>${escapeHtml(dayLabel(date))}</strong>
+              <strong>${escapeHtml(
+                dayLabel(date),
+              )}</strong>
             </div>
+
             ${people
               .map((person) => {
-                const personItems = dayItems.filter(
-                  (item) => personLabel(item.person) === person,
-                );
+                const personItems =
+                  dayItems.filter(
+                    (item) =>
+                      personLabel(
+                        item.person,
+                      ) ===
+                      person,
+                  );
 
-                const groups = departments
-                  .map((department) => ({
-                    department,
-                    rows: personItems.filter(
-                      (item) => item.department === department,
-                    ),
-                  }))
-                  .filter((group) => group.rows.length);
+                const groups =
+                  departments
+                    .map(
+                      (
+                        department,
+                      ) => ({
+                        department,
+                        rows: personItems.filter(
+                          (item) =>
+                            item.department ===
+                            department,
+                        ),
+                      }),
+                    )
+                    .filter(
+                      (group) =>
+                        group.rows
+                          .length,
+                    );
 
                 return `
                   <div class="person">
-                    <div class="personName">${escapeHtml(person)}</div>
+                    <div class="personName">
+                      ${escapeHtml(
+                        person,
+                      )}
+                    </div>
+
                     ${groups
                       .map(
                         (group) => `
-                          <div class="group">
-                            <div class="groupName">${escapeHtml(group.department)}</div>
-                            ${group.rows
-                              .map(
-                                (item) => `
-                                  <div class="item">
-                                    <div class="title">${escapeHtml(item.title || "Completed work")}</div>
-                                    ${
-                                      item.notes
-                                        ? `<div class="notes">${escapeHtml(item.notes)}</div>`
-                                        : ""
-                                    }
-                                  </div>
-                                `,
-                              )
-                              .join("")}
+                        <div class="group">
+                          <div class="groupName">
+                            ${escapeHtml(
+                              group.department,
+                            )}
                           </div>
-                        `,
+
+                          ${group.rows
+                            .map(
+                              (
+                                item,
+                              ) => `
+                              <div class="item">
+                                <div class="title">
+                                  ${escapeHtml(
+                                    item.title ||
+                                      "Completed work",
+                                  )}
+                                </div>
+
+                                ${
+                                  item.notes
+                                    ? `<div class="notes">${escapeHtml(
+                                        item.notes,
+                                      )}</div>`
+                                    : ""
+                                }
+                              </div>
+                            `,
+                            )
+                            .join(
+                              "",
+                            )}
+                        </div>
+                      `,
                       )
                       .join("")}
                   </div>
@@ -670,40 +1061,69 @@ export default function AtlasOwnerReport({
       })
       .join("");
 
-    const vendorHtml = vendorItems.length
-      ? `
+    const vendorHtml =
+      vendorItems.length
+        ? `
         <section class="vendors">
-          <div class="vendorTitle">Vendor Visits</div>
+          <div class="vendorTitle">
+            Vendor Visits
+          </div>
+
           ${vendorItems
             .map(
               (item) => `
-                <div class="vendor">
-                  <div class="vendorTop">
-                    <strong>${escapeHtml(item.person || "Vendor")}</strong>
-                    <span>${escapeHtml(dayLabel(item.date))}</span>
-                  </div>
-                  ${
-                    item.title
-                      ? `<div class="vendorService">${escapeHtml(item.title)}</div>`
-                      : ""
-                  }
-                  ${
-                    item.notes
-                      ? `<div class="notes">${escapeHtml(item.notes)}</div>`
-                      : ""
-                  }
-                </div>
-              `,
+            <div class="vendor">
+              <div class="vendorTop">
+                <strong>
+                  ${escapeHtml(
+                    item.person ||
+                      "Vendor",
+                  )}
+                </strong>
+
+                <span>
+                  ${escapeHtml(
+                    dayLabel(
+                      item.date,
+                    ),
+                  )}
+                </span>
+              </div>
+
+              ${
+                item.title
+                  ? `<div class="vendorService">${escapeHtml(
+                      item.title,
+                    )}</div>`
+                  : ""
+              }
+
+              ${
+                item.notes
+                  ? `<div class="notes">${escapeHtml(
+                      item.notes,
+                    )}</div>`
+                  : ""
+              }
+            </div>
+          `,
             )
             .join("")}
         </section>
       `
-      : "";
+        : "";
 
-    popup.document.write(`<!doctype html>
+    popup.document.write(
+      `<!doctype html>
 <html>
 <head>
-<title>${escapeHtml(reportTitle(periodStart, periodEnd))}</title>
+<title>${escapeHtml(
+        reportTitle(
+          periodStart,
+          periodEnd,
+        ),
+      )}</title>
+
 <style>
 @page{size:letter;margin:.45in}
 *{box-sizing:border-box}
@@ -743,6 +1163,7 @@ h1{margin:3px 0 0;color:#fff;font-size:22px}
 .footer{display:flex;justify-content:space-between;margin-top:16px;padding-top:6px;border-top:1px solid #DDE7F0;color:#64748B;font-size:7px}
 </style>
 </head>
+
 <body>
 
 <header class="header">
@@ -751,29 +1172,52 @@ h1{margin:3px 0 0;color:#fff;font-size:22px}
       <div class="logoBox">
         <img class="logo" src="/atlas-logo.png" alt="Atlas">
       </div>
+
       <div>
-        <div class="kicker">Atlas Estate Operations</div>
-        <h1>Weekly Owner Report</h1>
-        <div class="range">${escapeHtml(periodStart)} – ${escapeHtml(periodEnd)}</div>
+        <div class="kicker">
+          Atlas Estate Operations
+        </div>
+
+        <h1>
+          Weekly Owner Report
+        </h1>
+
+        <div class="range">
+          ${escapeHtml(
+            periodStart,
+          )} – ${escapeHtml(
+            periodEnd,
+          )}
+        </div>
       </div>
     </div>
 
     <div class="property">
       <small>Property</small>
-      <strong>${escapeHtml(propertyId)}</strong>
+      <strong>
+        ${escapeHtml(
+          propertyId,
+        )}
+      </strong>
     </div>
   </div>
+
   <div class="gold"></div>
 </header>
 
 <div class="summary">
   <div class="summaryBox">
     <small>Team Work</small>
-    <strong>${regularItems.length}</strong>
+    <strong>
+      ${regularItems.length}
+    </strong>
   </div>
+
   <div class="summaryBox">
     <small>Vendor Visits</small>
-    <strong>${vendorItems.length}</strong>
+    <strong>
+      ${vendorItems.length}
+    </strong>
   </div>
 </div>
 
@@ -781,16 +1225,28 @@ ${dayHtml}
 ${vendorHtml}
 
 <footer class="footer">
-  <span>Atlas Estate Operations</span>
-  <span>Generated ${escapeHtml(new Date().toLocaleString())}</span>
+  <span>
+    Atlas Estate Operations
+  </span>
+
+  <span>
+    Generated ${escapeHtml(
+      new Date().toLocaleString(),
+    )}
+  </span>
 </footer>
 
 </body>
-</html>`);
+</html>`,
+    );
 
     popup.document.close();
     popup.focus();
-    window.setTimeout(() => popup.print(), 250);
+
+    window.setTimeout(
+      () => popup.print(),
+      250,
+    );
   }
 
   const cardStyle = {
@@ -798,7 +1254,8 @@ ${vendorHtml}
     borderRadius: 16,
     background: colors.card,
     padding: isMobile ? 14 : 18,
-    boxShadow: "0 8px 24px rgba(7,27,47,.05)",
+    boxShadow:
+      "0 8px 24px rgba(7,27,47,.05)",
   };
 
   const controlStyle = {
@@ -831,7 +1288,12 @@ ${vendorHtml}
   };
 
   function deleteItem(id: string) {
-    setItems((current) => current.filter((item) => item.id !== id));
+    setItems((current) =>
+      current.filter(
+        (item) =>
+          item.id !== id,
+      ),
+    );
   }
 
   return (
@@ -839,9 +1301,11 @@ ${vendorHtml}
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent:
+            "space-between",
           gap: 12,
-          alignItems: "flex-start",
+          alignItems:
+            "flex-start",
           flexWrap: "wrap",
           marginBottom: 12,
         }}
@@ -852,8 +1316,10 @@ ${vendorHtml}
               color: colors.gold,
               fontSize: 10,
               fontWeight: 950,
-              letterSpacing: ".12em",
-              textTransform: "uppercase",
+              letterSpacing:
+                ".12em",
+              textTransform:
+                "uppercase",
             }}
           >
             Weekly reporting
@@ -861,52 +1327,105 @@ ${vendorHtml}
 
           <h2
             style={{
-              margin: "4px 0 2px",
-              color: colors.navy,
+              margin:
+                "4px 0 2px",
+              color:
+                colors.navy,
               fontSize: 20,
             }}
           >
             Weekly Owner Report
           </h2>
 
-          <div style={{ color: colors.muted, fontSize: 12 }}>
-            Property {propertyId} ·{" "}
-            {activeReportId ? `${status} saved report` : "live draft"}
+          <div
+            style={{
+              color:
+                colors.muted,
+              fontSize: 12,
+            }}
+          >
+            Property{" "}
+            {propertyId} ·{" "}
+            {activeReportId
+              ? `${status} saved report`
+              : "live draft"}
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 7,
+            flexWrap: "wrap",
+          }}
+        >
           <button
             type="button"
-            onClick={() => setShowSavedReports((value) => !value)}
-            style={quietButtonStyle}
+            onClick={() =>
+              setShowSavedReports(
+                (value) =>
+                  !value,
+              )
+            }
+            style={
+              quietButtonStyle
+            }
           >
             Saved Reports
           </button>
 
           <button
             type="button"
-            onClick={printReport}
-            disabled={!items.length}
-            style={{ ...quietButtonStyle, opacity: items.length ? 1 : 0.5 }}
+            onClick={
+              printReport
+            }
+            disabled={
+              !items.length
+            }
+            style={{
+              ...quietButtonStyle,
+              opacity:
+                items.length
+                  ? 1
+                  : 0.5,
+            }}
           >
             Print / PDF
           </button>
 
           <button
             type="button"
-            onClick={() => void saveReport("Draft")}
+            onClick={() =>
+              void saveReport(
+                "Draft",
+              )
+            }
             disabled={saving}
-            style={quietButtonStyle}
+            style={
+              quietButtonStyle
+            }
           >
             Save
           </button>
 
           <button
             type="button"
-            onClick={() => void saveReport("Final")}
-            disabled={saving || !items.length}
-            style={{ ...buttonStyle, opacity: items.length ? 1 : 0.5 }}
+            onClick={() =>
+              void saveReport(
+                "Final",
+              )
+            }
+            disabled={
+              saving ||
+              !items.length
+            }
+            style={{
+              ...buttonStyle,
+              opacity:
+                items.length
+                  ? 1
+                  : 0.5,
+            }}
           >
             Finalize
           </button>
@@ -922,51 +1441,90 @@ ${vendorHtml}
             padding: 10,
             border: `1px solid ${colors.line}`,
             borderRadius: 11,
-            background: colors.panel,
+            background:
+              colors.panel,
           }}
         >
           {savedReports.length ? (
-            savedReports.map((report) => (
-              <div
-                key={report.id}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  padding: "7px 8px",
-                  background: "#fff",
-                  borderRadius: 9,
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => openSavedReport(report)}
+            savedReports.map(
+              (report) => (
+                <div
+                  key={
+                    report.id
+                  }
                   style={{
-                    border: 0,
-                    background: "transparent",
-                    padding: 0,
-                    color: colors.navy,
-                    fontWeight: 850,
-                    cursor: "pointer",
-                    textAlign: "left",
+                    display:
+                      "flex",
+                    justifyContent:
+                      "space-between",
+                    gap: 8,
+                    alignItems:
+                      "center",
+                    flexWrap:
+                      "wrap",
+                    padding:
+                      "7px 8px",
+                    background:
+                      "#fff",
+                    borderRadius: 9,
                   }}
                 >
-                  {report.title} · {report.status} · {report.items.length}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openSavedReport(
+                        report,
+                      )
+                    }
+                    style={{
+                      border: 0,
+                      background:
+                        "transparent",
+                      padding: 0,
+                      color:
+                        colors.navy,
+                      fontWeight: 850,
+                      cursor:
+                        "pointer",
+                      textAlign:
+                        "left",
+                    }}
+                  >
+                    {report.title} ·{" "}
+                    {report.status} ·{" "}
+                    {
+                      report.items
+                        .length
+                    }
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => void deleteSavedReport(report)}
-                  style={{ ...quietButtonStyle, padding: "6px 8px", fontSize: 11 }}
-                >
-                  Delete
-                </button>
-              </div>
-            ))
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void deleteSavedReport(
+                        report,
+                      )
+                    }
+                    style={{
+                      ...quietButtonStyle,
+                      padding:
+                        "6px 8px",
+                      fontSize: 11,
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ),
+            )
           ) : (
-            <div style={{ color: colors.muted, fontSize: 12 }}>
+            <div
+              style={{
+                color:
+                  colors.muted,
+                fontSize: 12,
+              }}
+            >
               No saved owner reports yet.
             </div>
           )}
@@ -976,9 +1534,10 @@ ${vendorHtml}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: isMobile
-            ? "1fr 1fr"
-            : "150px 150px auto auto auto",
+          gridTemplateColumns:
+            isMobile
+              ? "1fr 1fr"
+              : "150px 150px auto auto auto",
           gap: 7,
           alignItems: "end",
           marginBottom: 11,
@@ -994,14 +1553,28 @@ ${vendorHtml}
           }}
         >
           FROM
+
           <input
             type="date"
-            value={periodStart}
-            onChange={(event) => {
-              setActiveReportId("");
-              setPeriodStart(event.currentTarget.value);
+            value={
+              periodStart
+            }
+            onChange={(
+              event,
+            ) => {
+              setActiveReportId(
+                "",
+              );
+
+              setPeriodStart(
+                event
+                  .currentTarget
+                  .value,
+              );
             }}
-            style={controlStyle}
+            style={
+              controlStyle
+            }
           />
         </label>
 
@@ -1015,262 +1588,512 @@ ${vendorHtml}
           }}
         >
           TO
+
           <input
             type="date"
             value={periodEnd}
-            onChange={(event) => {
-              setActiveReportId("");
-              setPeriodEnd(event.currentTarget.value);
+            onChange={(
+              event,
+            ) => {
+              setActiveReportId(
+                "",
+              );
+
+              setPeriodEnd(
+                event
+                  .currentTarget
+                  .value,
+              );
             }}
-            style={controlStyle}
+            style={
+              controlStyle
+            }
           />
         </label>
 
-        <button type="button" onClick={refreshFromAtlas} style={quietButtonStyle}>
+        <button
+          type="button"
+          onClick={
+            refreshFromAtlas
+          }
+          style={
+            quietButtonStyle
+          }
+        >
           Refresh from Atlas
         </button>
 
-        <button type="button" onClick={() => addManualItem()} style={quietButtonStyle}>
+        <button
+          type="button"
+          onClick={() =>
+            addManualItem()
+          }
+          style={
+            quietButtonStyle
+          }
+        >
           Add Work
         </button>
 
-        <button type="button" onClick={() => addVendorVisit()} style={quietButtonStyle}>
+        <button
+          type="button"
+          onClick={() =>
+            addVendorVisit()
+          }
+          style={
+            quietButtonStyle
+          }
+        >
           Add Vendor Visit
         </button>
       </div>
 
-      <div style={{ display: "grid", gap: 10 }}>
-        {reportDays.map((date) => {
-          const dayItems = regularItems.filter((item) => item.date === date);
+      <div
+        style={{
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        {reportDays.map(
+          (date) => {
+            const dayItems =
+              regularItems.filter(
+                (item) =>
+                  item.date ===
+                  date,
+              );
 
-          const people = Array.from(
-            new Set(dayItems.map((item) => personLabel(item.person))),
-          ).sort();
+            const people =
+              Array.from(
+                new Set(
+                  dayItems.map(
+                    (
+                      item,
+                    ) =>
+                      personLabel(
+                        item.person,
+                      ),
+                  ),
+                ),
+              ).sort();
 
-          return (
-            <section
-              key={date}
-              style={{
-                border: `1px solid ${colors.line}`,
-                borderRadius: 11,
-                overflow: "hidden",
-              }}
-            >
-              <div
+            return (
+              <section
+                key={date}
                 style={{
-                  background: colors.navy,
-                  color: "#fff",
-                  padding: "8px 10px",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 11,
+                  overflow:
+                    "hidden",
                 }}
               >
-                <strong>{dayLabel(date)}</strong>
-
-                <button
-                  type="button"
-                  onClick={() => addManualItem(date)}
+                <div
                   style={{
-                    ...quietButtonStyle,
-                    padding: "5px 8px",
-                    color: "#fff",
-                    background: "rgba(255,255,255,.08)",
-                    borderColor: "rgba(255,255,255,.25)",
-                    fontSize: 11,
+                    background:
+                      colors.navy,
+                    color:
+                      "#fff",
+                    padding:
+                      "8px 10px",
+                    display:
+                      "flex",
+                    justifyContent:
+                      "space-between",
+                    alignItems:
+                      "center",
                   }}
                 >
-                  + Add Work
-                </button>
-              </div>
+                  <strong>
+                    {dayLabel(
+                      date,
+                    )}
+                  </strong>
 
-              <div style={{ padding: 10, display: "grid", gap: 10 }}>
-                {people.map((person) => {
-                  const personItems = dayItems.filter(
-                    (item) => personLabel(item.person) === person,
-                  );
+                  <button
+                    type="button"
+                    onClick={() =>
+                      addManualItem(
+                        date,
+                      )
+                    }
+                    style={{
+                      ...quietButtonStyle,
+                      padding:
+                        "5px 8px",
+                      color:
+                        "#fff",
+                      background:
+                        "rgba(255,255,255,.08)",
+                      borderColor:
+                        "rgba(255,255,255,.25)",
+                      fontSize: 11,
+                    }}
+                  >
+                    + Add Work
+                  </button>
+                </div>
 
-                  return (
-                    <div key={`${date}-${person}`}>
-                      <div
-                        style={{
-                          color: colors.navy,
-                          fontWeight: 900,
-                          fontSize: 14,
-                          paddingBottom: 4,
-                          borderBottom: `2px solid ${colors.gold}`,
-                        }}
-                      >
-                        {person}
-                      </div>
+                <div
+                  style={{
+                    padding: 10,
+                    display:
+                      "grid",
+                    gap: 10,
+                  }}
+                >
+                  {people.map(
+                    (
+                      person,
+                    ) => {
+                      const personItems =
+                        dayItems.filter(
+                          (
+                            item,
+                          ) =>
+                            personLabel(
+                              item.person,
+                            ) ===
+                            person,
+                        );
 
-                      {personItems.map((item) => (
+                      return (
                         <div
-                          key={item.id}
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: isMobile
-                              ? "1fr"
-                              : "150px minmax(180px,1fr) minmax(220px,1.4fr) auto",
-                            gap: 7,
-                            padding: "7px 0",
-                            borderBottom: `1px solid ${colors.line}`,
-                          }}
+                          key={`${date}-${person}`}
                         >
-                          <select
-                            value={item.department}
-                            onChange={(event) =>
-                              updateItem(item.id, {
-                                department: event.currentTarget.value,
-                              })
-                            }
-                            style={controlStyle}
-                          >
-                            {departments.map((department) => (
-                              <option key={department}>{department}</option>
-                            ))}
-                          </select>
-
-                          <input
-                            value={item.title}
-                            onChange={(event) =>
-                              updateItem(item.id, {
-                                title: event.currentTarget.value,
-                              })
-                            }
-                            placeholder="Completed work"
-                            style={controlStyle}
-                          />
-
-                          <textarea
-                            value={item.notes}
-                            onChange={(event) =>
-                              updateItem(item.id, {
-                                notes: event.currentTarget.value,
-                              })
-                            }
-                            placeholder="What was done"
-                            rows={1}
+                          <div
                             style={{
-                              ...controlStyle,
-                              resize: "vertical",
-                              minHeight: 38,
+                              color:
+                                colors.navy,
+                              fontWeight: 900,
+                              fontSize: 14,
+                              paddingBottom: 4,
+                              borderBottom: `2px solid ${colors.gold}`,
                             }}
-                          />
-
-                          <button
-                            type="button"
-                            onClick={() => deleteItem(item.id)}
-                            style={{ ...quietButtonStyle, padding: "8px 9px" }}
                           >
-                            Delete
-                          </button>
+                            {
+                              person
+                            }
+                          </div>
+
+                          {personItems.map(
+                            (
+                              item,
+                            ) => (
+                              <div
+                                key={
+                                  item.id
+                                }
+                                style={{
+                                  display:
+                                    "grid",
+                                  gridTemplateColumns:
+                                    isMobile
+                                      ? "1fr"
+                                      : "150px minmax(180px,1fr) minmax(220px,1.4fr) auto",
+                                  gap: 7,
+                                  padding:
+                                    "7px 0",
+                                  borderBottom: `1px solid ${colors.line}`,
+                                }}
+                              >
+                                <select
+                                  value={
+                                    item.department
+                                  }
+                                  onChange={(
+                                    event,
+                                  ) =>
+                                    updateItem(
+                                      item.id,
+                                      {
+                                        department:
+                                          event
+                                            .currentTarget
+                                            .value,
+                                      },
+                                    )
+                                  }
+                                  style={
+                                    controlStyle
+                                  }
+                                >
+                                  {departments.map(
+                                    (
+                                      department,
+                                    ) => (
+                                      <option
+                                        key={
+                                          department
+                                        }
+                                      >
+                                        {
+                                          department
+                                        }
+                                      </option>
+                                    ),
+                                  )}
+                                </select>
+
+                                <input
+                                  value={
+                                    item.title
+                                  }
+                                  onChange={(
+                                    event,
+                                  ) =>
+                                    updateItem(
+                                      item.id,
+                                      {
+                                        title:
+                                          event
+                                            .currentTarget
+                                            .value,
+                                      },
+                                    )
+                                  }
+                                  placeholder="Completed work"
+                                  style={
+                                    controlStyle
+                                  }
+                                />
+
+                                <textarea
+                                  value={
+                                    item.notes
+                                  }
+                                  onChange={(
+                                    event,
+                                  ) =>
+                                    updateItem(
+                                      item.id,
+                                      {
+                                        notes:
+                                          event
+                                            .currentTarget
+                                            .value,
+                                      },
+                                    )
+                                  }
+                                  placeholder="What was done"
+                                  rows={1}
+                                  style={{
+                                    ...controlStyle,
+                                    resize:
+                                      "vertical",
+                                    minHeight: 38,
+                                  }}
+                                />
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    deleteItem(
+                                      item.id,
+                                    )
+                                  }
+                                  style={{
+                                    ...quietButtonStyle,
+                                    padding:
+                                      "8px 9px",
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            ),
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          );
-        })}
+                      );
+                    },
+                  )}
+                </div>
+              </section>
+            );
+          },
+        )}
 
         <section
           style={{
             border: `1px solid ${colors.line}`,
             borderRadius: 11,
             padding: 10,
-            background: colors.panel,
+            background:
+              colors.panel,
           }}
         >
           <div
             style={{
               display: "flex",
-              justifyContent: "space-between",
+              justifyContent:
+                "space-between",
               gap: 8,
-              alignItems: "center",
+              alignItems:
+                "center",
               marginBottom: 8,
             }}
           >
-            <strong style={{ color: colors.navy, fontSize: 15 }}>
+            <strong
+              style={{
+                color:
+                  colors.navy,
+                fontSize: 15,
+              }}
+            >
               Vendor Visits
             </strong>
 
             <button
               type="button"
-              onClick={() => addVendorVisit()}
-              style={quietButtonStyle}
+              onClick={() =>
+                addVendorVisit()
+              }
+              style={
+                quietButtonStyle
+              }
             >
               + Add Vendor Visit
             </button>
           </div>
 
           {vendorItems.length ? (
-            vendorItems.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "1fr"
-                    : "115px 160px 190px minmax(220px,1fr) auto",
-                  gap: 7,
-                  padding: "7px 0",
-                  borderBottom: `1px solid ${colors.line}`,
-                }}
-              >
-                <input
-                  type="date"
-                  value={item.date}
-                  onChange={(event) =>
-                    updateItem(item.id, { date: event.currentTarget.value })
-                  }
-                  style={controlStyle}
-                />
-
-                <input
-                  value={item.person}
-                  onChange={(event) =>
-                    updateItem(item.id, { person: event.currentTarget.value })
-                  }
-                  placeholder="Vendor"
-                  style={controlStyle}
-                />
-
-                <input
-                  value={item.title}
-                  onChange={(event) =>
-                    updateItem(item.id, { title: event.currentTarget.value })
-                  }
-                  placeholder="Service / visit"
-                  style={controlStyle}
-                />
-
-                <textarea
-                  value={item.notes}
-                  onChange={(event) =>
-                    updateItem(item.id, { notes: event.currentTarget.value })
-                  }
-                  placeholder="What was done"
-                  rows={1}
+            vendorItems.map(
+              (item) => (
+                <div
+                  key={item.id}
                   style={{
-                    ...controlStyle,
-                    resize: "vertical",
-                    minHeight: 38,
+                    display:
+                      "grid",
+                    gridTemplateColumns:
+                      isMobile
+                        ? "1fr"
+                        : "115px 160px 190px minmax(220px,1fr) auto",
+                    gap: 7,
+                    padding:
+                      "7px 0",
+                    borderBottom: `1px solid ${colors.line}`,
                   }}
-                />
-
-                <button
-                  type="button"
-                  onClick={() => deleteItem(item.id)}
-                  style={{ ...quietButtonStyle, padding: "8px 9px" }}
                 >
-                  Delete
-                </button>
-              </div>
-            ))
+                  <input
+                    type="date"
+                    value={
+                      item.date
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      updateItem(
+                        item.id,
+                        {
+                          date: event
+                            .currentTarget
+                            .value,
+                        },
+                      )
+                    }
+                    style={
+                      controlStyle
+                    }
+                  />
+
+                  <input
+                    value={
+                      item.person
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      updateItem(
+                        item.id,
+                        {
+                          person:
+                            event
+                              .currentTarget
+                              .value,
+                        },
+                      )
+                    }
+                    placeholder="Vendor"
+                    style={
+                      controlStyle
+                    }
+                  />
+
+                  <input
+                    value={
+                      item.title
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      updateItem(
+                        item.id,
+                        {
+                          title:
+                            event
+                              .currentTarget
+                              .value,
+                        },
+                      )
+                    }
+                    placeholder="Service / visit"
+                    style={
+                      controlStyle
+                    }
+                  />
+
+                  <textarea
+                    value={
+                      item.notes
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      updateItem(
+                        item.id,
+                        {
+                          notes:
+                            event
+                              .currentTarget
+                              .value,
+                        },
+                      )
+                    }
+                    placeholder="What was done"
+                    rows={1}
+                    style={{
+                      ...controlStyle,
+                      resize:
+                        "vertical",
+                      minHeight: 38,
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      deleteItem(
+                        item.id,
+                      )
+                    }
+                    style={{
+                      ...quietButtonStyle,
+                      padding:
+                        "8px 9px",
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ),
+            )
           ) : (
-            <div style={{ color: colors.muted, fontSize: 12 }}>
+            <div
+              style={{
+                color:
+                  colors.muted,
+                fontSize: 12,
+              }}
+            >
               No vendor visits added for this week.
             </div>
           )}
@@ -1292,3 +2115,4 @@ ${vendorHtml}
     </section>
   );
 }
+```
