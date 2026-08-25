@@ -2517,6 +2517,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     if (id === "hero") return null;
     if (id === "estate-health") return null;
     if (id === "today-upcoming") return null;
+    if (id === "property-status") return null;
     // Live Operating Areas intentionally uses plain cards only: no health score, percentage, progress bar, or status meter.
     if (id === "property-status") return (
       <section style={{ ...cardStyle, padding: isMobile ? 10 : "10px 12px" }}>
