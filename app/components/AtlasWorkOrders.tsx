@@ -132,6 +132,14 @@ function itemType(record: any): WorkItemType {
   return record.recurring ? "Preventive Maintenance" : "Work Order";
 }
 
+function isClosedWorkStatus(value: unknown) {
+  return value === "Completed" || value === "Cancelled";
+}
+
+function isActiveWorkRecord(record: any) {
+  return !isClosedWorkStatus(record?.status);
+}
+
 function categoryLabel(record: any) {
   return String(record.workCategory || record.category || "🔧 Maintenance");
 }
@@ -239,7 +247,7 @@ function isInCalendarMonth(dateValue: string, monthOffset: number) {
 }
 
 function myWorkGroup(record: any) {
-  if (record.status === "Completed") return "";
+  if (isClosedWorkStatus(record.status)) return "";
   const distance = dayDistance(String(record.date || ""));
   if (distance <= 0) return "today";
   const type = itemType(record);
@@ -513,7 +521,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [activeSectionId, setActiveSectionId] = useState("my-work");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
-  const [statusFilter, setStatusFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("Active");
   const [dueDateFilter, setDueDateFilter] = useState("All");
   const [locationFilter, setLocationFilter] = useState("All");
   const [subLocationFilter, setSubLocationFilter] = useState("All");
@@ -726,7 +734,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     setLocalSearch("");
     setCategoryFilter("All");
     setTypeFilter("All");
-    setStatusFilter("All");
+    setStatusFilter("Active");
     setDueDateFilter("All");
     setLocationFilter("All");
     setSubLocationFilter("All");
@@ -795,6 +803,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     const matchesType = typeFilter === "All" || itemType(record) === typeFilter;
     const matchesStatus =
       statusFilter === "All" ||
+      (statusFilter === "Active" && isActiveWorkRecord(record)) ||
       String(record.status || "Open") === statusFilter;
     const dueDistance = dayDistance(String(record.date || ""));
     const matchesDueDate =
@@ -902,10 +911,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       const type = itemType(record);
       const matchesSection =
         activeSection.kind === "my-work"
-          ? record.status !== "Completed"
+          ? true
           : activeSection.kind === "completed"
-            ? record.status === "Completed"
-            : record.status !== "Completed" && type === activeSection.kind;
+            ? isClosedWorkStatus(record.status)
+            : isActiveWorkRecord(record) && type === activeSection.kind;
       return matchesSection && matchesCommonFilters(record);
     });
     return activeSection.kind === "completed"
@@ -952,9 +961,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const completedHistoryRecords = useMemo(
     () =>
       sortCompletedRecords(
-        filteredServices.filter(
-          (record: any) => String(record.status || "") === "Completed",
-        ),
+        filteredServices.filter((record: any) => isClosedWorkStatus(record.status)),
       ),
     [filteredServices],
   );
@@ -967,7 +974,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const activeFilterCount = [
     categoryFilter,
     typeFilter,
-    statusFilter,
+    statusFilter === "Active" ? "All" : statusFilter,
     dueDateFilter,
     locationFilter,
     subLocationFilter,
@@ -978,7 +985,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
 
   const recordQuality = useMemo(() => {
-    const open = filteredServices.filter((record: any) => String(record.status || "") !== "Completed");
+    const open = filteredServices.filter(isActiveWorkRecord);
     const incomplete = open.filter((record: any) =>
       !String(record.title || "").trim() ||
       (!String(record.date || "").trim() && itemType(record) !== "Project") ||
@@ -1000,9 +1007,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const recentRecords = useMemo(() => recentIds.map((id) => filteredServices.find((record: any) => record.id === id)).filter(Boolean), [recentIds, filteredServices]);
 
   const workSummary = useMemo(() => {
-    const openRecords = filteredServices.filter(
-      (record: any) => String(record.status || "") !== "Completed",
-    );
+    const openRecords = filteredServices.filter(isActiveWorkRecord);
 
     return {
       open: openRecords.length,
@@ -1025,10 +1030,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     const result: Record<string, number> = {};
     sections.forEach((section) => {
       result[section.id] = filteredServices.filter((record: any) => {
-        if (section.kind === "my-work") return record.status !== "Completed";
-        if (section.kind === "completed") return record.status === "Completed";
+        if (section.kind === "my-work") return isActiveWorkRecord(record);
+        if (section.kind === "completed") return isClosedWorkStatus(record.status);
         return (
-          record.status !== "Completed" && itemType(record) === section.kind
+          isActiveWorkRecord(record) && itemType(record) === section.kind
         );
       }).length;
     });
@@ -1393,7 +1398,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       ].some((term) => value.includes(term));
     };
     const candidates = serviceRecords
-      .filter((record: any) => record.status !== "Completed")
+      .filter(isActiveWorkRecord)
       .map((record: any) => ({
         ...record,
         minutes: effortMinutes(String(record.effort || "30 minutes")),
@@ -1461,6 +1466,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   function workStatusColor(status: string) {
     if (status === "Completed") return colors.green;
+    if (status === "Cancelled") return colors.red;
     if (status === "In Progress") return "#175CD3";
     if (status === "Waiting" || status === "Monitor") return "#B54708";
     if (status === "Scheduled") return "#6941C6";
@@ -1477,7 +1483,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     const location = linkedLocationName(record);
     const asset = record.assetId ? assetName(record.assetId) : "";
     const overdue =
-      record.status !== "Completed" &&
+      isActiveWorkRecord(record) &&
       Boolean(record.date) &&
       dayDistance(String(record.date)) < 0;
     const selected = record.id === selectedService.id;
@@ -1495,7 +1501,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
     return (
       <div key={record.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "auto minmax(0,1fr)" : "auto minmax(220px,1fr) minmax(150px,.48fr) 142px auto", gap: 8, alignItems: "center", padding: isMobile ? "9px" : "8px 10px", border: `1px solid ${selected ? colors.gold : colors.line}`, borderLeft: overdue ? `3px solid ${colors.red}` : selected ? `3px solid ${colors.gold}` : `3px solid transparent`, borderRadius: 10, background: selected ? "#FFF9EB" : "#FFFFFF" }}>
-        <input type="checkbox" checked={status === "Completed"} disabled={status === "Completed"} aria-label={`Complete ${record.title || "work"}`} onChange={() => void completeWorkOrder(record)} />
+        <input type="checkbox" checked={status === "Completed"} disabled={isClosedWorkStatus(status)} aria-label={`Complete ${record.title || "work"}`} onChange={() => void completeWorkOrder(record)} />
         <button type="button" onClick={openRecord} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", minWidth: 0, cursor: "pointer" }}>
           <strong style={{ display: "block", minWidth: 0, color: colors.text, fontSize: 13.5, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis" }}>{record.title || "Untitled Work"}</strong>
           <span style={{ display: "block", marginTop: 2, color: colors.muted, fontSize: 10.5, lineHeight: 1.3 }}>{[category ? categoryDisplayLabel(category) : "", place, record.priority === "High" ? "High priority" : "", noteCount ? "Notes" : "", photoCount ? `${photoCount} photo${photoCount === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ")}</span>
@@ -1957,6 +1963,18 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </details>
 
                 <select
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.currentTarget.value)}
+                  style={{ ...controlStyle, width: "auto", minWidth: 105, minHeight: 34 }}
+                  aria-label="Work status"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Cancelled">Cancelled</option>
+                  <option value="All">All Statuses</option>
+                </select>
+
+                <select
                   value={dueDateFilter}
                   onChange={(event) => setDueDateFilter(event.currentTarget.value)}
                   style={{ ...controlStyle, width: "auto", minWidth: 110, minHeight: 34 }}
@@ -2187,7 +2205,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                           ) : null}
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                          {selectedService.status !== "Completed" ? (
+                          {!isClosedWorkStatus(selectedService.status) ? (
                             <button type="button" onClick={() => handleDetailAction("complete")} style={{ ...goldButtonStyle, width: "auto", minHeight: 36, padding: "8px 13px" }}>
                               Complete
                             </button>
@@ -2251,7 +2269,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))", gap: 9 }}>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due Date"}</span><input type="date" value={String(selectedService.date || "")} onChange={(event) => updateWorkOrder({ date: event.currentTarget.value })} style={inputStyle} /></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Estimated Time</span><select value={selectedService.effort || ""} onChange={(event) => updateWorkOrder({ effort: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No estimate</option>{["5 minutes","15 minutes","30 minutes","1 hour","Half Day","Full Day","Multi-Day"].map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label>
-                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Status</span><select value={selectedService.status || "Open"} onChange={(event) => safeSelectChange(event, { status: event.currentTarget.value })} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="In Progress">In Progress</option><option value="Waiting">Waiting</option><option value="Monitor">Monitor</option><option value="Completed">Completed</option></select></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Status</span><select value={selectedService.status || "Open"} onChange={(event) => safeSelectChange(event, { status: event.currentTarget.value })} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="In Progress">In Progress</option><option value="Waiting">Waiting</option><option value="Monitor">Monitor</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Priority</span><select value={selectedService.priority || "Medium"} onChange={(event) => safeSelectChange(event, { priority: event.currentTarget.value })} style={inputStyle}><option value="High">High</option><option value="Medium">Normal</option><option value="Low">Low</option></select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Type</span><select value={itemType(selectedService)} onChange={(event) => { const workType = event.currentTarget.value as WorkItemType; safeSelectChange(event, { workType, recurring: workType === "Preventive Maintenance" ? true : selectedService.recurring }); }} style={inputStyle}><option value="Quick Task">Task</option><option value="Work Order">Work Order</option><option value="Preventive Maintenance">Recurring</option><option value="Project">Project</option></select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Asset</span><select value={selectedService.assetId || ""} onChange={(event) => updateWorkOrder(assetPhotoPatch(event.currentTarget.value))} style={inputStyle}><option value="">No asset</option>{byName(assetRecords).map((asset: any) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
@@ -2358,7 +2376,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               <section style={{ ...detailSectionStyle, padding: 10, background: "#F8FAFC" }}>
                 <select value="" onChange={(event) => { handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, minHeight: 38, color: colors.muted, fontSize: 13, fontWeight: 500, background: "#FFFFFF" }} aria-label="Work order actions">
                   <option value="">Actions...</option>
-                  {selectedService.status === "Completed" ? <option value="reopen">Reopen</option> : <><option value="start">Start</option><option value="complete">{selectedService.recurring ? "Complete & Advance" : "Mark Done"}</option><option value="reschedule">Reschedule</option><option value="tomorrow">Tomorrow</option><option value="next-week">Next Week</option>{selectedService.recurring ? <option value="skip-occurrence">Skip This Occurrence</option> : null}<option value="convert">Convert Type</option></>}
+                  {isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="start">Start</option><option value="complete">{selectedService.recurring ? "Complete & Advance" : "Mark Done"}</option><option value="reschedule">Reschedule</option><option value="tomorrow">Tomorrow</option><option value="next-week">Next Week</option>{selectedService.recurring ? <option value="skip-occurrence">Skip This Occurrence</option> : null}<option value="convert">Convert Type</option></>}
                   <option value="photo">Add Photo</option>
                   <option value="duplicate">Duplicate</option>
                   <option value="delete">Delete</option>
