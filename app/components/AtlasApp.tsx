@@ -102,7 +102,7 @@ type OwnerRequestRecord = BaseOwnerRequestRecord & {
   assignedTo?: string;
 };
 import {
-  closeSymbol, atlasOperationsTemplates, atlasProperties, makeDailyForemanWidgets,
+  closeSymbol, atlasProperties, makeDailyForemanWidgets,
   normalizeDashboardWidgets, loadDashboardRoutineItems, todayLogStorageKeys, dashboardRoutineStorageKeys, atlasMoreToolsScreens, atlasPrimaryNavigationSections, localISODate,
   todayISO, addDays, uid, normalizeMapDetailBoxes, slugify, blankCalendarItem, clampPercent, formatDate,
   monthName, isServiceStatus, isPriority, isWorkOrderRecurrenceUnit, seasonForDate, recurrenceLabel, nextRecurrenceDate, readStoredArray,
@@ -230,7 +230,7 @@ import AtlasContacts from "./AtlasContacts";
 import AtlasWeather from "./AtlasWeather";
 import type {
   AtlasCurrentUser, AtlasCalendarItem, AssistantTurn, PhotoTimelineTag, PhotoTimelineProjectCategory, PhotoTimelineMeta, ProjectTimelineEntry, PhotoTimelineProject,
-  WorkEffort, AtlasTaskMeta, TaskListFilter, AtlasBacklogItem, AtlasVehicleCare, AtlasSeasonalItem, AtlasDaySession, AtlasOperationsTemplate,
+  WorkEffort, AtlasTaskMeta, TaskListFilter, AtlasBacklogItem, AtlasVehicleCare, AtlasSeasonalItem, AtlasDaySession,
   AtlasAssetRecord, LocationCustomDetail, AtlasLocationRecord, WorkChecklistItem, TodayLogEntry, DashboardRoutineItem, DashboardWidgetId, DashboardWidgetSetting,
   DashboardSavedLayout, DashboardWidgetDropTarget, WorkCompletionEntry, AtlasServiceRecord,
 } from "./AtlasAppFoundation";
@@ -682,8 +682,6 @@ export default function AtlasApp() {
   const [operationsSyncState, setOperationsSyncState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const [operationsSyncMessage, setOperationsSyncMessage] = useState("No pending changes");
   const [operationsHydrated, setOperationsHydrated] = useState(false);
-  const [fleetSetupState, setFleetSetupState] = useState<"idle" | "working" | "ready" | "failed">("idle");
-  const [waterCareSetupState, setWaterCareSetupState] = useState<"idle" | "working" | "ready" | "failed">("idle");
   const [showPropertyLoading, setShowPropertyLoading] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [screen, setScreenState] = useState<AtlasScreen>("dashboard");
@@ -1448,20 +1446,7 @@ export default function AtlasApp() {
   const operationsRemoteRefreshRef = useRef(false);
   const operationsRemoteRefreshTimerRef = useRef<number | null>(null);
   const calendarSourceSyncRunningRef = useRef(false);
-  const fleetSetupRunningRef = useRef(false);
-  const waterCareSetupRunningRef = useRef(false);
-  const weeklyOperationsSetupRunningRef = useRef(false);
-  const preventiveMaintenanceSetupRunningRef = useRef(false);
-  const confirmedAssetCatalogSetupRunningRef = useRef(false);
-  const applianceColdSeasonSetupRunningRef = useRef(false);
-  const seasonalPressureWashingSetupRunningRef = useRef(false);
-  const exteriorGlassCareSetupRunningRef = useRef(false);
-  const roofDrainageCareSetupRunningRef = useRef(false);
-  const holidayTreeSetupRunningRef = useRef(false);
-  const marineRegistrationTabsSetupRunningRef = useRef(false);
-  const winterTruckBallastSetupRunningRef = useRef(false);
   const winterTruckBallastTimerRef = useRef<number | null>(null);
-  const workOrderDateReconciliationRunningRef = useRef(false);
   const workOrderDateReconciliationTimerRef = useRef<number | null>(null);
   const voiceRecognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
   const voiceAssistantCancelledRef = useRef(false);
@@ -2559,9 +2544,6 @@ export default function AtlasApp() {
   const [walkVoiceListening, setWalkVoiceListening] = useState(false);
   const [backlogItems, setBacklogItems] = useState<AtlasBacklogItem[]>(() => readStoredArray<AtlasBacklogItem>(["atlas-backlog-v1"], []));
   const [newBacklogTitle, setNewBacklogTitle] = useState("");
-  const [templateDates, setTemplateDates] = useState<Record<string, string>>(() =>
-    Object.fromEntries(atlasOperationsTemplates.map((template) => [template.id, addDays(todayISO(), 7)])),
-  );
   const [vehicleCare, setVehicleCare] = useState<AtlasVehicleCare[]>(() => readStoredArray<AtlasVehicleCare>(["atlas-vehicle-care-v1"], [
     "Mercedes", "Rivian", "Porsche", "Lucid", "Ford", "Kia", "Honda", "Subaru", "Cobalt", "Sea-Doo"
   ].map((name) => ({
@@ -3381,73 +3363,116 @@ export default function AtlasApp() {
   ]);
 
   useEffect(() => {
-    if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000") return;
+    if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000" || typeof window === "undefined") return;
+    const purgeKey = "atlas-ai-generated-record-purge-v1-2000";
+    if (window.localStorage.getItem(purgeKey) === "done") return;
 
-    const generatedSeaDooServiceRecords = serviceRecords.filter((record) =>
-      isGeneratedSeaDooRecurringService(record as AtlasServiceRecord),
-    );
-    const generatedIds = new Set(generatedSeaDooServiceRecords.map((record) => String(record.id)));
-    const seaDooVehicleIds = new Set(
-      vehicleCare
-        .filter((vehicle) => /^sea[\s-]?doo$/i.test(String(vehicle.name || "").trim()))
-        .map((vehicle) => String(vehicle.id)),
-    );
-    const generatedSeaDooCalendarRecords = calendarItems.filter((item) => {
-      if (generatedIds.has(String(item.linkedId || ""))) return true;
-      if (seaDooVehicleIds.has(String(item.id || "").replace(/^fleet-service-/, "")) && String(item.id || "").startsWith("fleet-service-")) return true;
-      return (
-        String(item.id || "").startsWith("fleet-service-") &&
-        normalizedWorkOrderText(item.title) === "sea doo service"
-      );
+    const generatedTaskTitles = new Set([
+      "monday property reset garage", "tuesday dock waterfront recreation", "wednesday landscaping irrigation",
+      "thursday pool spa outdoor cleaning", "friday maintenance weekend readiness", "friday seasonal spider control",
+      "monday computer work admin", "tuesday computer work admin", "wednesday computer work admin",
+      "thursday computer work admin", "friday computer work weekly closeout",
+      "clean windows waterside great room", "clean windows east side bedrooms",
+      "clean windows courtyard main entry", "clean windows garages adu remaining areas",
+      "treat pool 2 bags oxysheen 8 oz pool juice", "brush pool", "hand vacuum pool", "suction vacuum pool",
+      "robot vacuum pool", "check pool filter pressure backwash if needed", "test and treat spa",
+      "irrigation startup and inspection", "irrigation winterization", "boat and sea doo spring opening",
+      "boat and sea doo winterizing", "spring property cleanup", "owner arrival readiness",
+      "party or event readiness", "annual property inspections"
+    ]);
+    const generatedWorkOrderIds = (id: string) =>
+      id.startsWith("fleet-wo-") || id.startsWith("annual-appliance-") || id === "wo-annual-winter-truck-sandbags" ||
+      id === "wo-annual-cobalt-registration-tabs" || id === "wo-annual-2024-seadoo-registration-tabs" ||
+      id.startsWith("wo-holiday-tree-") || id === "wo-weekly-courtyard-gutters-flat-roof" ||
+      id.startsWith("wo-daily-leaf-season-roof-") || id === "wo-weekly-ipe-deck-skylights" ||
+      id === "wo-monthly-addition-exterior-windows" || id === "wo-monthly-original-home-exterior-windows" ||
+      id === "seasonal-pressure-wash-spring" || id === "seasonal-pressure-wash-fall" ||
+      id === "wo-quarterly-house-hvac-filters" || id === "wo-annual-sundance-880-filters" ||
+      id === "wo-monthly-sundance-880-filter-cleaning" || id === "wo-weekly-pool-chlorine-tabs" ||
+      id === "wo-monthly-vehicle-tires-fluids" || id === "wo-monthly-aqua-quip-water-test" ||
+      id === "wo-monthly-pest-control-service";
+    const generatedCalendarId = (id: string) =>
+      id.startsWith("fleet-clean-") || id.startsWith("fleet-service-") || id.startsWith("care-") ||
+      id.startsWith("routine-") || id.startsWith("calendar-annual-appliance-") || id.startsWith("calendar-holiday-tree-") ||
+      id.startsWith("calendar-weekly-courtyard-gutters-flat-roof") || id.startsWith("calendar-daily-leaf-season-roof-") ||
+      id === "calendar-weekly-ipe-deck-skylights" || id === "calendar-monthly-addition-exterior-windows" ||
+      id === "calendar-monthly-original-home-exterior-windows" || id.startsWith("calendar-seasonal-pressure-wash-") ||
+      id.startsWith("maintenance-") || id === "calendar-annual-winter-truck-sandbags" ||
+      id === "calendar-annual-cobalt-registration-tabs" || id === "calendar-annual-2024-seadoo-registration-tabs" ||
+      id === "weekly-property-meeting" || id === "lanken-tuesday-crew" || id === "nick-steve-friday-meeting" ||
+      id === "weekly-owner-update";
+
+    const generatedTasks = workPlanTasks.filter((task) => {
+      const id = String(task.id || "");
+      const title = normalizedWorkOrderText(task.title);
+      const notes = String(task.notes || taskDetails(task.id).notes || "");
+      return id.startsWith("fleet-task-") || id.startsWith("routine-task-") || id.startsWith("care-task-") ||
+        notes.startsWith("Created from ") || generatedTaskTitles.has(title);
+    });
+    const generatedTaskIds = new Set(generatedTasks.map((task) => String(task.id)));
+
+    const generatedWorkOrders = serviceRecords.filter((record) => {
+      const id = String(record.id || "");
+      const title = normalizedWorkOrderText(record.title);
+      return generatedWorkOrderIds(id) || / recurring service$/.test(title) || title.startsWith("annual service ");
+    });
+    const generatedWorkOrderIdSet = new Set(generatedWorkOrders.map((record) => String(record.id)));
+
+    const generatedCalendar = calendarItems.filter((item) => {
+      const id = String(item.id || "");
+      return generatedCalendarId(id) || generatedTaskIds.has(String(item.linkedId || "")) || generatedWorkOrderIdSet.has(String(item.linkedId || ""));
     });
 
-    if (!generatedSeaDooServiceRecords.length && !generatedSeaDooCalendarRecords.length) return;
-
-    generatedSeaDooServiceRecords.forEach((record) => addWorkOrderTombstone(String(record.id)));
-    generatedSeaDooCalendarRecords.forEach((record) => rememberCalendarDeletion(record));
-
-    if (generatedSeaDooServiceRecords.length) {
-      setServiceRecords((current) =>
-        current.filter((record) => !isGeneratedSeaDooRecurringService(record as AtlasServiceRecord)),
-      );
+    if (!generatedTasks.length && !generatedWorkOrders.length && !generatedCalendar.length) {
+      window.localStorage.setItem(purgeKey, "done");
+      return;
     }
 
-    if (generatedSeaDooCalendarRecords.length) {
-      const calendarIds = new Set(generatedSeaDooCalendarRecords.map((record) => String(record.id)));
+    generatedTasks.forEach((task) => addTaskTombstone(String(task.id)));
+    generatedWorkOrders.forEach((record) => addWorkOrderTombstone(String(record.id)));
+    generatedCalendar.forEach((record) => rememberCalendarDeletion(record));
+
+    if (generatedTasks.length) {
+      setWorkPlanTasks((current) => {
+        const next = current.filter((task) => !generatedTaskIds.has(String(task.id)));
+        saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, next);
+        saveStoredArray("atlas-tasks-v1", next);
+        return next;
+      });
+      setTaskMeta((current) => {
+        const next = { ...current };
+        generatedTaskIds.forEach((id) => delete next[id]);
+        try {
+          window.localStorage.setItem(`atlas-task-meta-v1-${activePropertyId}`, JSON.stringify(next));
+          window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+    }
+    if (generatedWorkOrders.length) setServiceRecords((current) => current.filter((record) => !generatedWorkOrderIdSet.has(String(record.id))));
+    if (generatedCalendar.length) {
+      const ids = new Set(generatedCalendar.map((record) => String(record.id)));
       setCalendarItems((current) => {
-        const next = current.filter((record) => !calendarIds.has(String(record.id)));
-        saveStoredArray(storageKeys.calendar[0], byTitle(next));
-        return byTitle(next);
+        const next = byTitle(current.filter((record) => !ids.has(String(record.id))));
+        saveStoredArray(storageKeys.calendar[0], next);
+        return next;
       });
     }
 
     void (async () => {
-      for (let index = 0; index < generatedSeaDooServiceRecords.length; index += 20) {
-        const batch = generatedSeaDooServiceRecords.slice(index, index + 20);
-        await Promise.all(
-          batch.map((record) =>
-            deleteAtlasRecord("work_orders", String(record.id), { suppressFailureToast: true }),
-          ),
-        );
-      }
-      for (let index = 0; index < generatedSeaDooCalendarRecords.length; index += 20) {
-        const batch = generatedSeaDooCalendarRecords.slice(index, index + 20);
-        await Promise.all(
-          batch.map((record) =>
-            deleteAtlasRecord("calendar", String(record.id), { suppressFailureToast: true }),
-          ),
-        );
-      }
-      if (generatedSeaDooServiceRecords.length || generatedSeaDooCalendarRecords.length) {
-        showSaveToast(
-          `Removed ${generatedSeaDooServiceRecords.length} generated Sea-Doo recurring service record${generatedSeaDooServiceRecords.length === 1 ? "" : "s"}.`,
-        );
+      const taskResults = await Promise.all(generatedTasks.map((task) => deleteOperationalRecord("tasks" as AtlasTable, String(task.id))));
+      const workResults = await Promise.all(generatedWorkOrders.map((record) => deleteAtlasRecord("work_orders", String(record.id), { suppressFailureToast: true })));
+      const calendarResults = await Promise.all(generatedCalendar.map((record) => deleteAtlasRecord("calendar", String(record.id), { suppressFailureToast: true })));
+      if ([...taskResults, ...workResults, ...calendarResults].every(Boolean)) {
+        window.localStorage.setItem(purgeKey, "done");
+        showSaveToast(`AI-generated cleanup complete: ${generatedTasks.length} Tasks, ${generatedWorkOrders.length} Work Orders, ${generatedCalendar.length} Calendar items removed.`);
+      } else {
+        showSaveToast("AI-generated cleanup is still syncing and will retry.", "warning");
       }
     })();
-  }, [ready, operationsHydrated, syncState, activePropertyId, serviceRecords, calendarItems, vehicleCare]);
-  // Automatic record generators are intentionally retired. Existing Atlas records remain
-  // user-controlled and may be edited, rescheduled, completed, skipped, or deleted normally.
-  // Do not auto-seed routines, tasks, work orders, assets, or calendar records here.
+  }, [ready, operationsHydrated, syncState, activePropertyId, workPlanTasks, serviceRecords, calendarItems]);
+  // Automatic task/work-order/routine seeding is permanently disabled.
+  // Atlas creates operational records only from explicit user actions.
   useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
@@ -16468,1551 +16493,6 @@ ${notes.trim()}` : notes.trim(),
     showSaveToast(`${name} added to Garage.`);
   }
 
-  async function setupFleetAssetsAndSchedules() {
-    if (fleetSetupRunningRef.current || !vehicleCare.length) return;
-    fleetSetupRunningRef.current = true;
-    setFleetSetupState("working");
-    try {
-      const nextAssets = [...assetRecords];
-      const nextVehicles = [...vehicleCare];
-      const nextTasks = [...workPlanTasks];
-      const nextTaskMeta = { ...taskMeta };
-      const nextWorkOrders = [...serviceRecords];
-      const nextCalendar = [...calendarItems];
-      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
-      let createdAssets = 0;
-      let createdTasks = 0;
-      let createdWorkOrders = 0;
-      let createdCalendarItems = 0;
-
-      for (const vehicle of vehicleCare) {
-        let asset = nextAssets.find((item) => item.id === vehicle.assetId) || nextAssets.find((item) => normalizeLocationName(item.name) === normalizeLocationName(vehicle.name));
-        if (!asset) {
-          asset = normalizeAsset({
-            id: uid("asset"),
-            name: vehicle.name,
-            category: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Marine / Watercraft" : vehicle.kind === "Equipment" ? "Equipment" : "Vehicle",
-            status: vehicle.onsite ? "Online" : "Seasonal",
-            locationId: vehicle.locationId || "general",
-            locationIds: [vehicle.locationId || "general"],
-            notes: `Garage Asset created from Garage care.${vehicle.notes ? ` ${vehicle.notes}` : ""}`,
-            vendorIds: [],
-          });
-          nextAssets.push(asset);
-          recordsToSave.push({ table: "assets", record: { ...asset, propertyId: activePropertyId } });
-          createdAssets += 1;
-        }
-
-        const vehicleIndex = nextVehicles.findIndex((item) => item.id === vehicle.id);
-        if (vehicleIndex >= 0 && nextVehicles[vehicleIndex].assetId !== asset.id) {
-          nextVehicles[vehicleIndex] = { ...nextVehicles[vehicleIndex], assetId: asset.id, locationId: vehicle.locationId || asset.locationId, updatedAt: new Date().toISOString() };
-        }
-
-        const isGarageVehicle = vehicle.kind !== "Boat" && vehicle.kind !== "Watercraft" && vehicle.kind !== "Equipment";
-        const cleaningInterval = isGarageVehicle ? 7 : Math.max(1, Number(vehicle.cleaningIntervalDays || 7));
-        if (vehicleIndex >= 0 && isGarageVehicle) {
-          nextVehicles[vehicleIndex] = { ...nextVehicles[vehicleIndex], cleaningIntervalDays: 7 };
-        }
-        // Do not auto-create cleaning for Mercedes or Honda. Their deleted cleaning
-        // records stay deleted; all other vehicle care behavior remains unchanged.
-        const suppressAutomaticCleaning =
-          activePropertyId === "2000" && /^(mercedes|honda)$/i.test(vehicle.name.trim());
-        if (suppressAutomaticCleaning) continue;
-
-        const cleaningDueDate = vehicle.lastCleaned ? addDays(vehicle.lastCleaned, cleaningInterval) : todayISO();
-        let cleaningTask = nextTasks.find((task) => taskDetails(task.id).vehicleId === vehicle.id) || nextTasks.find((task) => normalizeLocationName(task.title) === normalizeLocationName(`Clean ${vehicle.name}`));
-        if (!cleaningTask) {
-          cleaningTask = {
-            id: uid("fleet-task"),
-            title: `Clean ${vehicle.name}`,
-            minutes: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? 75 : 45,
-            priority: vehicle.priority === "High" ? "High" : "Medium",
-            category: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Boat / Dock" : "Garage",
-            locationId: vehicle.locationId || asset.locationId || "general",
-            preferredDay: "Thursday",
-            locked: false,
-            recurring: true,
-            fixedTime: "",
-            notes: `Weekly Garage cleaning for ${vehicle.name}. Use Skip when the cleaning cannot be completed that week.`,
-          };
-          nextTasks.push(cleaningTask);
-          createdTasks += 1;
-        } else {
-          const taskIndex = nextTasks.findIndex((task) => task.id === cleaningTask!.id);
-          nextTasks[taskIndex] = { ...cleaningTask, recurring: true, locationId: vehicle.locationId || asset.locationId || "general" };
-          cleaningTask = nextTasks[taskIndex];
-        }
-        const existingCleaningMeta = nextTaskMeta[cleaningTask.id] || taskDetails(cleaningTask.id);
-        const cleaningAssignee =
-          vehicle.assignedTo === "Addison" ? "Addison" : "Nick";
-        nextTaskMeta[cleaningTask.id] = {
-          ...existingCleaningMeta,
-          status: existingCleaningMeta.status === "Completed" ? "Open" : existingCleaningMeta.status,
-          dueDate: existingCleaningMeta.dueDate || cleaningDueDate,
-          assignee: cleaningAssignee,
-          createdAt: existingCleaningMeta.createdAt || new Date().toISOString(),
-          assetId: asset.id,
-          vehicleId: vehicle.id,
-          recurrenceInterval: cleaningInterval,
-          recurrenceUnit: "Days",
-          season: "Year-Round",
-          skippable: true,
-          flexibleTime: true,
-          updatedAt: new Date().toISOString(),
-        };
-
-        const serviceInterval = Math.max(1, Number(vehicle.serviceIntervalDays || 180));
-        const serviceDueDate = vehicle.nextServiceDate || addDays(vehicle.lastServiced || todayISO(), serviceInterval);
-        const suppressAutomaticServiceWorkOrder =
-          activePropertyId === "2000" && /^sea[\s-]?doo$/i.test(vehicle.name.trim());
-        let serviceWorkOrder: AtlasServiceRecord | undefined;
-        if (!suppressAutomaticServiceWorkOrder) {
-          serviceWorkOrder = nextWorkOrders.find((record) => record.assetId === asset!.id && record.recurring && /service|maintenance/i.test(record.title));
-          if (!serviceWorkOrder) {
-            serviceWorkOrder = normalizeService({
-              id: uid("fleet-wo"),
-              title: `${vehicle.name} recurring service`,
-              assetId: asset.id,
-              locationId: vehicle.locationId || asset.locationId || "",
-              date: serviceDueDate,
-              status: "Open",
-              priority: vehicle.priority === "High" ? "High" : "Medium",
-              notes: `Recurring Garage service for ${vehicle.name}.${vehicle.notes ? ` ${vehicle.notes}` : ""}`,
-              recurring: true,
-              recurrenceInterval: serviceInterval,
-              recurrenceUnit: "Days",
-              season: "Year-Round",
-              workType: "Preventive Maintenance",
-              workCategory: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "🚤 Dock & Marine" : "🚗 Vehicles",
-              responsibilityArea: `Garage · ${vehicle.name}`,
-              assignedTo: vehicle.assignedTo || "Nick",
-            });
-            nextWorkOrders.push(serviceWorkOrder);
-            createdWorkOrders += 1;
-            recordsToSave.push({ table: "work_orders", record: { ...serviceWorkOrder, propertyId: activePropertyId } });
-          }
-        }
-
-        const calendarDefinitions: AtlasCalendarItem[] = [
-          normalizeCalendar({ id: `fleet-clean-${vehicle.id}`, propertyId: activePropertyId, date: nextTaskMeta[cleaningTask.id].dueDate, title: `Clean ${vehicle.name}`, area: "Garage", categoryLabel: "Garage", allDay: true, repeat: cleaningInterval === 7 ? "Weekly" : "Custom", reminder: "Morning of", notes: `Recurring every ${cleaningInterval} days. Use Skip when needed. Linked to the Garage Asset and Task.`, linkedType: "Task", linkedId: cleaningTask.id, linkedName: cleaningTask.title, source: "task", status: "Scheduled" }),
-        ];
-        if (serviceWorkOrder) {
-          calendarDefinitions.push(
-            normalizeCalendar({ id: `fleet-service-${vehicle.id}`, propertyId: activePropertyId, date: serviceWorkOrder.date || serviceDueDate, title: `${vehicle.name} service`, area: "Garage", categoryLabel: "Garage", allDay: true, repeat: "Custom", reminder: "Week before", notes: `Recurring every ${serviceInterval} days. Open the linked Work Order for service history, documents, and cost.`, linkedType: "Work Order", linkedId: serviceWorkOrder.id, linkedName: serviceWorkOrder.title, source: "work-order", status: "Scheduled" }),
-          );
-        }
-        for (const calendarRecord of calendarDefinitions) {
-          const existingIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id);
-          if (existingIndex >= 0) {
-            const existing = nextCalendar[existingIndex];
-            if (JSON.stringify(existing) !== JSON.stringify(calendarRecord)) {
-              nextCalendar[existingIndex] = calendarRecord;
-              recordsToSave.push({ table: "calendar", record: calendarRecord });
-            }
-          } else {
-            nextCalendar.push(calendarRecord);
-            recordsToSave.push({ table: "calendar", record: calendarRecord });
-            createdCalendarItems += 1;
-          }
-        }
-      }
-
-      if (createdAssets) setAssetRecords(byName(nextAssets));
-      if (createdTasks || nextTasks.some((task, index) => task !== workPlanTasks[index])) {
-        setWorkPlanTasks(nextTasks);
-        setTaskMeta(nextTaskMeta);
-      }
-      if (createdWorkOrders) setServiceRecords(byTitle(nextWorkOrders));
-      if (createdCalendarItems || nextCalendar.some((item, index) => item !== calendarItems[index])) {
-        setCalendarItems(byTitle(nextCalendar));
-        saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
-      }
-      if (nextVehicles.some((vehicle, index) => vehicle.assetId !== vehicleCare[index]?.assetId)) setVehicleCare(nextVehicles);
-
-      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
-      if (results.some((saved) => !saved)) throw new Error("Some Fleet records are waiting to sync.");
-      setFleetSetupState("ready");
-      if (createdAssets || createdTasks || createdWorkOrders || createdCalendarItems) showSaveToast(`Fleet setup complete: ${createdAssets} Assets, ${createdTasks} recurring Tasks, ${createdWorkOrders} service Work Orders, and ${createdCalendarItems} Calendar items added.`);
-    } catch (error) {
-      console.error("Atlas Fleet setup failed", error);
-      setFleetSetupState("failed");
-      showSaveToast("Fleet setup needs another sync attempt.", "warning");
-    } finally {
-      fleetSetupRunningRef.current = false;
-    }
-  }
-
-  async function setupPoolSpaCare() {
-    if (waterCareSetupRunningRef.current) return;
-    waterCareSetupRunningRef.current = true;
-    setWaterCareSetupState("working");
-    try {
-      const nextAssets = [...assetRecords];
-      const nextTasks = [...workPlanTasks];
-      const nextTaskMeta = { ...taskMeta };
-      const nextCalendar = [...calendarItems];
-      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
-      const findLocationId = (terms: string[]) => locations.find((location) => terms.some((term) => location.name.toLowerCase().includes(term)))?.id || "general";
-      const ensureCareAsset = (name: string, terms: string[], locationId: string) => {
-        let asset = nextAssets.find((item) => terms.some((term) => `${item.name} ${item.category}`.toLowerCase().includes(term)));
-        if (!asset) {
-          asset = normalizeAsset({ id: uid("asset"), name, category: "Pool & Spa", status: "Online", locationId, locationIds: [locationId], notes: `${name} care, treatment, cleaning, and service history.`, vendorIds: [] });
-          nextAssets.push(asset);
-          recordsToSave.push({ table: "assets", record: { ...asset, propertyId: activePropertyId } });
-        }
-        return asset;
-      };
-
-      const poolAsset = ensureCareAsset("Pool", ["pool"], findLocationId(["pool"]));
-      const spaAsset = ensureCareAsset("Spa", ["spa", "hot tub", "sundance"], findLocationId(["spa", "hot tub", "sundance"]));
-      const definitions = [
-        { key: "pool-treatment", title: "Treat pool — 2 bags OxySheen + 8 oz Pool Juice", minutes: 25, asset: poolAsset, everyWeeks: 1, offsetDays: 0, notes: "Weekly pool treatment. Add 2 bags of OxySheen and 8 oz of Pool Juice for phosphate control. Record readings or exceptions in the task notes." },
-        { key: "pool-brush", title: "Brush pool", minutes: 35, asset: poolAsset, everyWeeks: 4, offsetDays: 0, notes: "Pool cleaning rotation: brush. Complete additional vacuum methods the same week when conditions require them." },
-        { key: "pool-hand-vac", title: "Hand vacuum pool", minutes: 45, asset: poolAsset, everyWeeks: 4, offsetDays: 7, notes: "Pool cleaning rotation: hand vacuum. Complete additional methods when debris or conditions require them." },
-        { key: "pool-suction-vac", title: "Suction vacuum pool", minutes: 45, asset: poolAsset, everyWeeks: 4, offsetDays: 14, notes: "Pool cleaning rotation: suction vacuum. Complete additional methods when needed." },
-        { key: "pool-robot-vac", title: "Robot vacuum pool", minutes: 20, asset: poolAsset, everyWeeks: 4, offsetDays: 21, notes: "Pool cleaning rotation: deploy and clean the robot vacuum. Additional cleaning methods may be completed as needed." },
-        { key: "pool-backwash", title: "Check pool filter pressure / backwash if needed", minutes: 25, asset: poolAsset, everyWeeks: 1, offsetDays: 0, notes: "Check the filter pressure and water flow. Backwash only when the pressure rise or filter condition indicates it is needed; record the pressure and whether backwashing was completed." },
-        { key: "spa-treatment", title: "Test and treat spa", minutes: 25, asset: spaAsset, everyWeeks: 1, offsetDays: 1, notes: "Weekly spa water test and treatment. Record readings, chemicals added, and any water-quality issue." },
-      ];
-
-      for (const definition of definitions) {
-        let task = nextTasks.find((item) => normalizeLocationName(item.title) === normalizeLocationName(definition.title));
-        if (!task) {
-          task = { id: uid("care-task"), title: definition.title, minutes: definition.minutes, priority: "Medium", category: "Pool & Spa", locationId: definition.asset.locationId || "general", preferredDay: "Wednesday", locked: false, recurring: true, fixedTime: "", notes: definition.notes };
-          nextTasks.push(task);
-        } else {
-          const taskIndex = nextTasks.findIndex((item) => item.id === task!.id);
-          nextTasks[taskIndex] = { ...task, recurring: true, minutes: definition.minutes, category: "Pool & Spa", locationId: definition.asset.locationId || "general", notes: definition.notes };
-          task = nextTasks[taskIndex];
-        }
-        const existingMeta = taskDetails(task.id);
-        nextTaskMeta[task.id] = { ...existingMeta, status: existingMeta.status, dueDate: existingMeta.dueDate || addDays(todayISO(), definition.offsetDays), assignee: existingMeta.assignee === "Unassigned" ? "Nick" : existingMeta.assignee, createdAt: existingMeta.createdAt || new Date().toISOString(), assetId: definition.asset.id, recurrenceInterval: definition.everyWeeks, recurrenceUnit: "Weeks", season: "Year-Round", skippable: true, flexibleTime: true, notes: definition.notes, updatedAt: existingMeta.updatedAt || new Date().toISOString() };
-        const calendarRecord = normalizeCalendar({ id: `care-${definition.key}`, propertyId: activePropertyId, date: nextTaskMeta[task.id].dueDate, title: definition.title, area: "Pool & Spa", categoryLabel: "Pool & Spa", allDay: true, repeat: definition.everyWeeks === 1 ? "Weekly" : "Custom", reminder: "Morning of", notes: definition.notes, linkedType: "Task", linkedId: task.id, linkedName: task.title, source: "task", status: "Scheduled" });
-        const calendarIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id);
-        if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
-        else nextCalendar.push(calendarRecord);
-        recordsToSave.push({ table: "calendar", record: calendarRecord });
-      }
-
-      setAssetRecords(byName(nextAssets));
-      setWorkPlanTasks(nextTasks);
-      setTaskMeta(nextTaskMeta);
-      setCalendarItems(byTitle(nextCalendar));
-      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
-      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
-      if (results.some((saved) => !saved)) throw new Error("Some Pool & Spa records are waiting to sync.");
-      setWaterCareSetupState("ready");
-      showSaveToast("Garage and Pool & Spa weekly care are ready.");
-    } catch (error) {
-      console.error("Atlas Pool & Spa setup failed", error);
-      setWaterCareSetupState("failed");
-      showSaveToast("Pool & Spa setup needs another sync attempt.", "warning");
-    } finally {
-      waterCareSetupRunningRef.current = false;
-    }
-  }
-
-  async function setupGarageAndWaterCare() {
-    await setupFleetAssetsAndSchedules();
-    await setupPoolSpaCare();
-  }
-
-  async function setupConfirmedAssetCatalog() {
-    if (confirmedAssetCatalogSetupRunningRef.current || typeof window === "undefined" || !["2000", "hangar"].includes(activePropertyId)) return;
-    const setupKey = `atlas-confirmed-asset-catalog-v2-${activePropertyId}`;
-    if (window.localStorage.getItem(setupKey) === "ready") return;
-    confirmedAssetCatalogSetupRunningRef.current = true;
-    try {
-      const nextLocations = [...locations];
-      const nextAssets = [...assetRecords];
-      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
-      const catalog = confirmedAssetCatalog.filter((item) => item.propertyId === activePropertyId);
-      const locationAliases: Record<string, string> = {
-        "": "general",
-        "2000": "general",
-        general: "general",
-        "mechanical room": "mechanical-room",
-        "garage (new)": "new-garage",
-        "garage (old)": "old-garage",
-        dock: "dock",
-        pool: "pool-equipment",
-        "pool changing room": "pool-changing-room",
-        "house managers office": "house-managers-office",
-        pantry: "pantry",
-        "upstairs laundry closet": "upstairs-laundry",
-        "vegetable garden": "veggie-boxes",
-        "wine room": "wine-room",
-        hangar: "location-hangar",
-      };
-      const resolveLocationId = (rawLocation: string) => {
-        const normalized = normalizeLocationName(rawLocation);
-        const aliasId = locationAliases[normalized];
-        if (aliasId) {
-          if (aliasId === "location-hangar" && !nextLocations.some((location) => location.id === aliasId)) {
-            const location: AtlasLocationRecord = { id: aliasId, name: "Hangar", type: "Aircraft Hangar", zone: "Hangar", notes: "Primary location for aircraft assets and connected service history.", parentId: "", customDetails: [], vendorIds: [] };
-            nextLocations.push(location);
-            recordsToSave.push({ table: "locations", record: { ...location, propertyId: activePropertyId } });
-          }
-          return aliasId;
-        }
-        const existing = nextLocations.find((location) => normalizeLocationName(location.name) === normalized);
-        if (existing) return existing.id;
-        const location: AtlasLocationRecord = { id: `catalog-location-${slugify(rawLocation)}`, name: rawLocation, type: "Room / Area", zone: activePropertyId === "hangar" ? "Hangar" : "2000", notes: "Confirmed asset location imported from the property asset catalog.", parentId: "", customDetails: [], vendorIds: [] };
-        nextLocations.push(location);
-        recordsToSave.push({ table: "locations", record: { ...location, propertyId: activePropertyId } });
-        return location.id;
-      };
-      const normalizedIdentifier = (value: string) => String(value || "").toLowerCase().replace(/^hin\s*/i, "").replace(/[^a-z0-9]/g, "");
-      const assetDeleteTombstones = readAssetDeleteTombstones(activePropertyId);
-      for (const definition of catalog) {
-        const catalogAssetId = `catalog-asset-${definition.sourceId}`;
-        if (assetDeleteTombstones.has(catalogAssetId)) continue;
-
-        const serialKey = normalizedIdentifier(definition.serial);
-        let existingIndex = nextAssets.findIndex((asset) => Boolean(serialKey) && normalizedIdentifier(asset.serial) === serialKey);
-        if (existingIndex < 0) existingIndex = nextAssets.findIndex((asset) => normalizeLocationName(asset.name) === normalizeLocationName(definition.name));
-        if (existingIndex < 0 && ["Vehicle", "Pool & Spa", "Aircraft"].includes(definition.category) && definition.manufacturer && definition.model) {
-          existingIndex = nextAssets.findIndex((asset) => normalizeLocationName(asset.make || asset.manufacturer || "") === normalizeLocationName(definition.manufacturer) && normalizeLocationName(asset.model || "") === normalizeLocationName(definition.model));
-        }
-        const locationId = resolveLocationId(definition.location);
-        const importedNotes = [definition.description, definition.vendors ? `Vendors: ${definition.vendors}.` : "", definition.criticality ? `Criticality: ${definition.criticality}.` : "", "Confirmed from the property asset catalog."].filter(Boolean).join(" ");
-        if (existingIndex >= 0) {
-          const existing = nextAssets[existingIndex];
-          const next = normalizeAsset({
-            ...existing,
-            locationId: !existing.locationId || existing.locationId === "general" ? locationId : existing.locationId,
-            locationIds: Array.from(new Set([...(existing.locationIds || []), locationId].filter(Boolean))),
-            category: existing.category && existing.category !== "General" ? existing.category : definition.category,
-            make: existing.make || definition.manufacturer,
-            manufacturer: existing.manufacturer || definition.manufacturer,
-            model: existing.model || definition.model,
-            year: existing.year || definition.year,
-            serial: existing.serial || definition.serial,
-            notes: existing.notes.includes("Confirmed from the property asset catalog") ? existing.notes : [existing.notes, importedNotes].filter(Boolean).join(" ").trim(),
-          });
-          if (JSON.stringify(existing) !== JSON.stringify(next)) {
-            nextAssets[existingIndex] = next;
-            recordsToSave.push({ table: "assets", record: { ...next, propertyId: activePropertyId } });
-          }
-          continue;
-        }
-        const asset = normalizeAsset({ id: catalogAssetId, name: definition.name, category: definition.category, status: definition.status as AtlasAssetRecord["status"], locationId, locationIds: [locationId], make: definition.manufacturer, manufacturer: definition.manufacturer, model: definition.model, year: definition.year, serial: definition.serial, notes: importedNotes, vendorIds: [] });
-        nextAssets.push(asset);
-        recordsToSave.push({ table: "assets", record: { ...asset, propertyId: activePropertyId } });
-      }
-      setLocations(byName(nextLocations));
-      setAssetRecords(byName(nextAssets));
-      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
-      if (results.some((saved) => !saved)) throw new Error("Some confirmed asset records did not sync.");
-      window.localStorage.setItem(setupKey, "ready");
-      if (recordsToSave.length) showSaveToast(activePropertyId === "hangar" ? "Four confirmed Hangar aircraft are ready." : "The complete confirmed 2000 asset catalog is ready.");
-    } catch (error) {
-      console.error("Atlas confirmed asset catalog setup failed", error);
-      showSaveToast("Confirmed asset setup will retry.", "warning");
-    } finally {
-      confirmedAssetCatalogSetupRunningRef.current = false;
-    }
-  }
-
-  async function setupApplianceColdSeasonWorkOrders() {
-    if (applianceColdSeasonSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
-    const setupKey = "atlas-appliance-cold-season-work-v1-2000";
-    if (window.localStorage.getItem(setupKey) === "ready") return;
-    const appliancePattern = /freezer|refrigerator|fridge|frige|wine room cooler|wine chiller|dryer|washer|dishwasher|range|oven|microwave/i;
-    const appliances = byName(assetRecords.filter((asset) => /appliance/i.test(asset.category || "") || appliancePattern.test(asset.name || "")));
-    const confirmedApplianceCount = confirmedAssetCatalog.filter((item) => item.propertyId === "2000" && item.category === "Appliance").length;
-    if (appliances.length < confirmedApplianceCount) return;
-    applianceColdSeasonSetupRunningRef.current = true;
-    try {
-      const nextWorkOrders = [...serviceRecords];
-      const nextCalendar = [...calendarItems];
-      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
-      const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
-      const seasonYear = todayISO() <= `${currentYear}-12-20` ? currentYear : currentYear + 1;
-      const firstDueDate = `${seasonYear}-11-05`;
-      const spreadDays = 44;
-      const checklistFor = (asset: AtlasAssetRecord): WorkChecklistItem[] => {
-        const text = `${asset.name} ${asset.category}`.toLowerCase();
-        const items = /freezer|refrigerator|fridge|frige|wine/.test(text)
-          ? ["Verify and record operating temperature", "Inspect door seals and hinges", "Clean accessible condenser area and ventilation", "Check for unusual noise, frost, moisture or alarms"]
-          : /dryer/.test(text)
-            ? ["Clean lint screen and accessible lint areas", "Inspect exhaust connection and airflow", "Check drum, door seal and controls", "Record unusual heat, noise or drying time"]
-            : /washer/.test(text)
-              ? ["Inspect supply hoses, valves and drain", "Check for leaks, vibration and unusual noise", "Clean dispenser, seal and accessible filter", "Run and verify a test cycle"]
-              : /dishwasher/.test(text)
-                ? ["Clean filter and spray-arm openings", "Inspect racks, seals, supply and drain connections", "Check for leaks, odor and drainage problems", "Run and verify a test cycle"]
-                : /range|oven|microwave/.test(text)
-                  ? ["Test burners, elements, ignition and controls", "Inspect seals, knobs and ventilation", "Clean accessible service areas", "Record uneven heat, ignition delay or error codes"]
-                  : ["Inspect and clean the appliance", "Test normal operation and controls", "Check connections, ventilation, leaks and unusual noise", "Record any repair or vendor follow-up needed"];
-        return items.map((item, index) => ({ id: `annual-${asset.id}-${index + 1}`, text: item, completed: false }));
-      };
-      for (const [index, asset] of appliances.entries()) {
-        const offset = appliances.length <= 1 ? 0 : Math.round((index * spreadDays) / (appliances.length - 1));
-        const dueDate = addDays(firstDueDate, offset);
-        const windowStart = addDays(dueDate, -14);
-        const stableId = `annual-appliance-${asset.id}`;
-        const existingIndex = nextWorkOrders.findIndex((record) => record.id === stableId || (record.assetId === asset.id && record.recurring && (record.workType === "Preventive Maintenance" || /annual.*service|appliance.*service/i.test(record.title))));
-        const seasonalNote = `Cold-season appliance maintenance. Service window opens ${formatDate(windowStart)}; due ${formatDate(dueDate)}. Scheduled in November/December when estate operations are slower.`;
-        if (existingIndex >= 0) {
-          const existing = nextWorkOrders[existingIndex];
-          const next = normalizeService({ ...existing, id: existing.id || stableId, date: dueDate, status: existing.status === "Completed" ? "Open" : existing.status, recurring: true, recurrenceInterval: 1, recurrenceUnit: "Years", season: "Winter", workType: "Preventive Maintenance", workCategory: "Appliances", responsibilityArea: "House & Maintenance", checklist: existing.checklist?.length ? existing.checklist : checklistFor(asset), notes: existing.notes.includes("Cold-season appliance maintenance") ? existing.notes.replace(/Cold-season appliance maintenance\.[\s\S]*?slower\./, seasonalNote) : [existing.notes, seasonalNote].filter(Boolean).join("\n\n") });
-          nextWorkOrders[existingIndex] = next;
-          recordsToSave.push({ table: "work_orders", record: { ...next, propertyId: activePropertyId } });
-        } else {
-          const workOrder = normalizeService({ id: stableId, title: `Annual service — ${asset.name}`, assetId: asset.id, locationId: asset.locationId || "", date: dueDate, status: "Open", priority: "Medium", assignedTo: "Nick", notes: seasonalNote, recurring: true, recurrenceInterval: 1, recurrenceUnit: "Years", season: "Winter", workType: "Preventive Maintenance", workCategory: "Appliances", responsibilityArea: "House & Maintenance", checklist: checklistFor(asset) });
-          nextWorkOrders.push(workOrder);
-          recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
-        }
-        const linkedWorkOrder = nextWorkOrders.find((record) => record.id === stableId) || nextWorkOrders.find((record) => record.assetId === asset.id && record.recurring && record.workCategory === "Appliances")!;
-        const calendarRecord = normalizeCalendar({ id: `calendar-${stableId}`, propertyId: activePropertyId, date: dueDate, title: `Annual service — ${asset.name}`, area: "House & Maintenance", categoryLabel: "Appliance Service", allDay: true, repeat: "Yearly", reminder: "Week before", notes: `${seasonalNote} Linked to ${asset.name}.`, linkedType: "Work Order", linkedId: linkedWorkOrder.id, linkedName: linkedWorkOrder.title, source: "work-order", status: "Scheduled" });
-        const calendarIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id);
-        if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
-        else nextCalendar.push(calendarRecord);
-        recordsToSave.push({ table: "calendar", record: calendarRecord });
-      }
-      setServiceRecords(byTitle(nextWorkOrders));
-      setCalendarItems(byTitle(nextCalendar));
-      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
-      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
-      if (results.some((saved) => !saved)) throw new Error("Some cold-season appliance records did not sync.");
-      window.localStorage.setItem(setupKey, "ready");
-      showSaveToast(`${appliances.length} appliance Work Orders were spread across November and December.`);
-    } catch (error) {
-      console.error("Atlas cold-season appliance setup failed", error);
-      showSaveToast("Cold-season appliance scheduling will retry.", "warning");
-    } finally {
-      applianceColdSeasonSetupRunningRef.current = false;
-    }
-  }
-
-  async function reconcileApplianceAndPressureWashingDates() {
-    if (workOrderDateReconciliationRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
-    const setupKey = "atlas-work-order-date-reconciliation-v2-2000";
-    if (window.localStorage.getItem(setupKey) === "ready") return;
-    workOrderDateReconciliationRunningRef.current = true;
-    try {
-      const nextWorkOrders = [...serviceRecords];
-      const nextCalendar = [...calendarItems];
-      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
-      const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
-      const applianceSeasonYear = todayISO() <= `${currentYear}-12-20` ? currentYear : currentYear + 1;
-      const pressureFallYear = todayISO() <= `${currentYear}-12-15` ? currentYear : currentYear + 1;
-      const appliancePattern = /appliance|refrigerator|fridge|frige|freezer|dishwasher|washing machine|washer|dryer|range|oven|microwave|ice maker|wine cooler|wine chiller/i;
-      const pressurePattern = /pressure wash|power wash/i;
-      const applianceAssetIds = new Set(assetRecords.filter((asset) => appliancePattern.test(`${asset.name} ${asset.category} ${asset.make || ""} ${asset.model || ""}`)).map((asset) => asset.id));
-      const activeRecords = nextWorkOrders.filter((record) => record.status !== "Completed" || record.recurring);
-      const applianceRecords = activeRecords.filter((record) => applianceAssetIds.has(record.assetId) || appliancePattern.test(`${record.title} ${record.workCategory || ""} ${record.notes || ""}`)).sort((a, b) => a.title.localeCompare(b.title));
-      const pressureRecords = activeRecords.filter((record) => pressurePattern.test(`${record.title} ${record.workCategory || ""} ${record.notes || ""}`)).sort((a, b) => a.title.localeCompare(b.title));
-      const workOrderIdsUpdated = new Set<string>();
-      const upsertCalendar = (workOrder: AtlasServiceRecord, categoryLabel: string, repeat: CalendarRepeat, notes: string) => {
-        const existingIndex = nextCalendar.findIndex((item) => item.linkedType === "Work Order" && item.linkedId === workOrder.id);
-        const existing = existingIndex >= 0 ? nextCalendar[existingIndex] : undefined;
-        const calendarRecord = normalizeCalendar({
-          ...existing,
-          id: existing?.id || `calendar-scheduled-${workOrder.id}`,
-          propertyId: activePropertyId,
-          date: workOrder.date,
-          title: workOrder.title,
-          area: workOrder.responsibilityArea || "House & Maintenance",
-          categoryLabel,
-          allDay: true,
-          repeat,
-          reminder: "Week before",
-          notes,
-          linkedType: "Work Order",
-          linkedId: workOrder.id,
-          linkedName: workOrder.title,
-          source: "work-order",
-          status: "Scheduled",
-        });
-        if (existingIndex >= 0) nextCalendar[existingIndex] = calendarRecord;
-        else nextCalendar.push(calendarRecord);
-        recordsToSave.push({ table: "calendar", record: calendarRecord });
-      };
-      const applianceStart = `${applianceSeasonYear}-11-05`;
-      const applianceSpreadDays = 44;
-      applianceRecords.forEach((record, index) => {
-        const offset = applianceRecords.length <= 1 ? 0 : Math.round((index * applianceSpreadDays) / (applianceRecords.length - 1));
-        const dueDate = addDays(applianceStart, offset);
-        const recordIndex = nextWorkOrders.findIndex((item) => item.id === record.id);
-        const schedulingNote = `Cold-season appliance work scheduled for ${formatDate(dueDate)}. Atlas distributes appliance work from November 5 through December 19 when estate operations are slower.`;
-        const updated = normalizeService({
-          ...record,
-          date: dueDate,
-          status: record.status === "Completed" ? "Open" : record.status,
-          recurring: true,
-          recurrenceInterval: 1,
-          recurrenceUnit: "Years",
-          recurrenceEndDate: "",
-          season: "Winter",
-          workType: record.workType || "Preventive Maintenance",
-          workCategory: record.workCategory || "Appliances",
-          responsibilityArea: record.responsibilityArea || "House & Maintenance",
-          notes: record.notes?.includes("Cold-season appliance work scheduled") ? record.notes.replace(/Cold-season appliance work scheduled[^\n]*/, schedulingNote) : [record.notes, schedulingNote].filter(Boolean).join("\n\n"),
-        });
-        nextWorkOrders[recordIndex] = updated;
-        workOrderIdsUpdated.add(updated.id);
-        recordsToSave.push({ table: "work_orders", record: { ...updated, propertyId: activePropertyId } });
-        upsertCalendar(updated, "Appliance Service", "Yearly", schedulingNote);
-      });
-      const genericPressureRecords = pressureRecords.filter((record) => !/post-pollen|post-leaf/i.test(record.title));
-      pressureRecords.forEach((record) => {
-        if (workOrderIdsUpdated.has(record.id)) return;
-        const genericIndex = genericPressureRecords.findIndex((item) => item.id === record.id);
-        const isPollenRecord = /post-pollen|spring|pollen/i.test(`${record.title} ${record.notes}`);
-        const isLeafRecord = /post-leaf|fall|leaf/i.test(`${record.title} ${record.notes}`);
-        const dueDate = isPollenRecord
-          ? (todayISO() <= `${currentYear}-06-05` ? `${currentYear}-06-05` : `${currentYear + 1}-06-05`)
-          : isLeafRecord
-            ? `${pressureFallYear}-12-05`
-            : addDays(`${pressureFallYear}-12-05`, Math.max(0, genericIndex));
-        const everySixMonths = !isPollenRecord && !isLeafRecord;
-        const recordIndex = nextWorkOrders.findIndex((item) => item.id === record.id);
-        const schedulingNote = everySixMonths
-          ? `Pressure washing is due ${formatDate(dueDate)} after the main leaf drop, then every six months for the post-pollen and post-leaf cleaning cycles.`
-          : `Seasonal pressure washing is due ${formatDate(dueDate)} during its recommended weather-flexible cleaning window.`;
-        const updated = normalizeService({
-          ...record,
-          date: dueDate,
-          status: record.status === "Completed" ? "Open" : record.status,
-          recurring: true,
-          recurrenceInterval: everySixMonths ? 6 : 1,
-          recurrenceUnit: everySixMonths ? "Months" : "Years",
-          recurrenceEndDate: "",
-          season: isPollenRecord ? "Spring" : "Fall",
-          workType: record.workType || "Preventive Maintenance",
-          workCategory: record.workCategory === "Maintenance" || !record.workCategory ? "Exterior Cleaning" : record.workCategory,
-          responsibilityArea: record.responsibilityArea || "House & Maintenance",
-          notes: record.notes?.includes("Pressure washing is due") || record.notes?.includes("Seasonal pressure washing is due") ? record.notes.replace(/(?:Pressure washing|Seasonal pressure washing) is due[^\n]*/, schedulingNote) : [record.notes, schedulingNote].filter(Boolean).join("\n\n"),
-        });
-        nextWorkOrders[recordIndex] = updated;
-        recordsToSave.push({ table: "work_orders", record: { ...updated, propertyId: activePropertyId } });
-        upsertCalendar(updated, "Seasonal Exterior Cleaning", everySixMonths ? "Custom" : "Yearly", schedulingNote);
-      });
-      if (!applianceRecords.length && !pressureRecords.length) throw new Error("No appliance or pressure-washing Work Orders were available to reconcile.");
-      setServiceRecords(byTitle(nextWorkOrders));
-      setCalendarItems(byTitle(nextCalendar));
-      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
-      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
-      if (results.some((saved) => !saved)) throw new Error("Some Work Order due dates did not sync.");
-      window.localStorage.setItem(setupKey, "ready");
-      showSaveToast(`${applianceRecords.length} appliance and ${pressureRecords.length} pressure-washing Work Orders now have due dates.`);
-    } catch (error) {
-      console.error("Atlas Work Order date reconciliation failed", error);
-      showSaveToast("Work Order date scheduling will retry.", "warning");
-    } finally {
-      workOrderDateReconciliationRunningRef.current = false;
-    }
-  }
-
-  async function setupWinterTruckBallast() {
-    if (winterTruckBallastSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
-    const setupKey = "atlas-winter-truck-ballast-v1-2000";
-    if (window.localStorage.getItem(setupKey) === "ready") return;
-    const truckAsset = assetRecords.find((asset) => /ford|truck|pickup|f-?150/i.test(`${asset.name} ${asset.make || ""} ${asset.model || ""} ${asset.category || ""}`));
-    if (!truckAsset) return;
-    winterTruckBallastSetupRunningRef.current = true;
-    try {
-      const nextWorkOrders = [...serviceRecords];
-      const nextCalendar = [...calendarItems];
-      const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
-      const dueYear = todayISO() <= `${currentYear}-11-01` ? currentYear : currentYear + 1;
-      const dueDate = `${dueYear}-11-01`;
-      const workOrderId = "wo-annual-winter-truck-sandbags";
-      const title = `Add winter traction sandbags — ${truckAsset.name}`;
-      const notes = `Add and secure sandbags in the truck bed each November for improved cold-weather traction. Place the weight low and centered over or just ahead of the rear axle, keep the total load within the vehicle's payload rating, and secure every bag so it cannot slide, leak, obstruct equipment, or damage the bed. Due ${formatDate(dueDate)}.`;
-      const checklist: WorkChecklistItem[] = [
-        "Check the truck payload rating and determine an appropriate ballast weight",
-        "Inspect the bed, liner, tie-downs, and sandbags",
-        "Position the sandbags low and centered over or just ahead of the rear axle",
-        "Secure the load against forward, rearward, and side-to-side movement",
-        "Confirm visibility, bed access, handling, tire pressure, and safe payload",
-        "Photograph the secured setup and record the total ballast weight",
-      ].map((text, index) => ({ id: `${workOrderId}-${index + 1}`, text, completed: false }));
-      const existingIndex = nextWorkOrders.findIndex((record) => record.id === workOrderId || (record.assetId === truckAsset.id && /sandbag|winter traction|ballast/i.test(record.title)));
-      let workOrder: AtlasServiceRecord;
-      if (existingIndex >= 0) {
-        const existing = nextWorkOrders[existingIndex];
-        workOrder = normalizeService({ ...existing, date: dueDate, status: existing.status === "Completed" ? "Open" : existing.status, priority: "Medium", assignedTo: existing.assignedTo || "Nick", assetId: truckAsset.id, locationId: existing.locationId || truckAsset.locationId || "general", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Years", recurrenceEndDate: "", season: "Fall", workType: "Preventive Maintenance", workCategory: "Vehicles", responsibilityArea: "Garage", notes: existing.notes?.includes("Add and secure sandbags in the truck bed each November") ? existing.notes.replace(/Add and secure sandbags in the truck bed each November[^\n]*/, notes) : [existing.notes, notes].filter(Boolean).join("\n\n"), checklist: existing.checklist?.length ? existing.checklist : checklist });
-        nextWorkOrders[existingIndex] = workOrder;
-      } else {
-        workOrder = normalizeService({ id: workOrderId, title, date: dueDate, status: "Open", priority: "Medium", assignedTo: "Nick", assetId: truckAsset.id, locationId: truckAsset.locationId || "general", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Years", season: "Fall", workType: "Preventive Maintenance", workCategory: "Vehicles", responsibilityArea: "Garage", notes, checklist });
-        nextWorkOrders.push(workOrder);
-      }
-      const calendarRecord = normalizeCalendar({ id: "calendar-annual-winter-truck-sandbags", propertyId: activePropertyId, date: dueDate, title, area: "Garage", categoryLabel: "Winter Vehicle Preparation", allDay: true, repeat: "Yearly", reminder: "Week before", notes, linkedType: "Work Order", linkedId: workOrder.id, linkedName: workOrder.title, source: "work-order", status: "Scheduled" });
-      const calendarIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id || (item.linkedType === "Work Order" && item.linkedId === workOrder.id));
-      if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
-      else nextCalendar.push(calendarRecord);
-      setServiceRecords(byTitle(nextWorkOrders));
-      setCalendarItems(byTitle(nextCalendar));
-      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
-      const results = await Promise.all([
-        postAtlasRecord("work_orders", { ...workOrder, propertyId: activePropertyId }),
-        postAtlasRecord("calendar", calendarRecord),
-      ]);
-      if (results.some((saved) => !saved)) throw new Error("The winter truck-ballast records did not sync.");
-      window.localStorage.setItem(setupKey, "ready");
-      showSaveToast(`Winter truck sandbags are due ${formatDate(dueDate)}.`);
-    } catch (error) {
-      console.error("Atlas winter truck-ballast setup failed", error);
-      showSaveToast("Winter truck-ballast scheduling will retry.", "warning");
-    } finally {
-      winterTruckBallastSetupRunningRef.current = false;
-    }
-  }
-
-  async function setupMarineRegistrationTabs() {
-    if (marineRegistrationTabsSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
-    const setupKey = "atlas-marine-registration-tabs-v1-2000";
-    if (window.localStorage.getItem(setupKey) === "ready") return;
-    const cobaltAsset = assetRecords.find((asset) => /cobalt/i.test(`${asset.name} ${asset.make || ""} ${asset.model || ""}`));
-    const seaDooAsset = assetRecords.find((asset) => /sea[ -]?doo|gti\s*(se\s*)?170/i.test(`${asset.name} ${asset.make || ""} ${asset.model || ""}`));
-    if (!cobaltAsset || !seaDooAsset) return;
-    marineRegistrationTabsSetupRunningRef.current = true;
-    try {
-      const nextWorkOrders = [...serviceRecords];
-      const nextCalendar = [...calendarItems];
-      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
-      const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
-      const dueYear = todayISO() <= `${currentYear}-05-15` ? currentYear : currentYear + 1;
-      const dueDate = `${dueYear}-05-15`;
-      const definitions = [
-        { id: "wo-annual-cobalt-registration-tabs", calendarId: "calendar-annual-cobalt-registration-tabs", title: "Replace annual registration tabs — Cobalt", asset: cobaltAsset },
-        { id: "wo-annual-2024-seadoo-registration-tabs", calendarId: "calendar-annual-2024-seadoo-registration-tabs", title: "Replace annual registration tabs — 2024 Sea-Doo", asset: seaDooAsset },
-      ];
-      for (const definition of definitions) {
-        const notes = `Replace the annual registration tabs each May. Due ${formatDate(dueDate)}. Confirm the renewal and registration information match ${definition.asset.name}; apply the current tabs in the correct locations and retain a photo or copy of the updated registration record.`;
-        const checklist: WorkChecklistItem[] = [
-          "Confirm current registration renewal and vessel information",
-          "Verify the new tabs match the vessel and registration year",
-          "Remove expired tabs and clean and dry the application areas",
-          "Apply the new tabs in the required locations",
-          "Photograph the installed tabs and save the updated registration record",
-        ].map((text, index) => ({ id: `${definition.id}-${index + 1}`, text, completed: false }));
-        const existingIndex = nextWorkOrders.findIndex((record) => record.id === definition.id || (record.assetId === definition.asset.id && /registration tabs|replace tabs/i.test(record.title)));
-        let workOrder: AtlasServiceRecord;
-        if (existingIndex >= 0) {
-          const existing = nextWorkOrders[existingIndex];
-          workOrder = normalizeService({ ...existing, date: dueDate, status: existing.status === "Completed" ? "Open" : existing.status, priority: "Medium", assignedTo: existing.assignedTo || "Nick", assetId: definition.asset.id, locationId: existing.locationId || definition.asset.locationId || "general", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Years", recurrenceEndDate: "", season: "Spring", workType: "Preventive Maintenance", workCategory: "Registration", responsibilityArea: "Dock & Waterfront", notes: existing.notes?.includes("Replace the annual registration tabs each May") ? existing.notes.replace(/Replace the annual registration tabs each May[^\n]*/, notes) : [existing.notes, notes].filter(Boolean).join("\n\n"), checklist: existing.checklist?.length ? existing.checklist : checklist });
-          nextWorkOrders[existingIndex] = workOrder;
-        } else {
-          workOrder = normalizeService({ id: definition.id, title: definition.title, date: dueDate, status: "Open", priority: "Medium", assignedTo: "Nick", assetId: definition.asset.id, locationId: definition.asset.locationId || "general", recurring: true, recurrenceInterval: 1, recurrenceUnit: "Years", season: "Spring", workType: "Preventive Maintenance", workCategory: "Registration", responsibilityArea: "Dock & Waterfront", notes, checklist });
-          nextWorkOrders.push(workOrder);
-        }
-        recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
-        const calendarRecord = normalizeCalendar({ id: definition.calendarId, propertyId: activePropertyId, date: dueDate, title: definition.title, area: "Dock & Waterfront", categoryLabel: "Marine Registration", allDay: true, repeat: "Yearly", reminder: "Week before", notes, linkedType: "Work Order", linkedId: workOrder.id, linkedName: workOrder.title, source: "work-order", status: "Scheduled" });
-        const calendarIndex = nextCalendar.findIndex((item) => item.id === definition.calendarId || (item.linkedType === "Work Order" && item.linkedId === workOrder.id));
-        if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
-        else nextCalendar.push(calendarRecord);
-        recordsToSave.push({ table: "calendar", record: calendarRecord });
-      }
-      setServiceRecords(byTitle(nextWorkOrders));
-      setCalendarItems(byTitle(nextCalendar));
-      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
-      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
-      if (results.some((saved) => !saved)) throw new Error("Some marine registration-tab records did not sync.");
-      window.localStorage.setItem(setupKey, "ready");
-      showSaveToast(`Cobalt and Sea-Doo registration tabs are due ${formatDate(dueDate)}.`);
-    } catch (error) {
-      console.error("Atlas marine registration-tab setup failed", error);
-      showSaveToast("Marine registration-tab scheduling will retry.", "warning");
-    } finally {
-      marineRegistrationTabsSetupRunningRef.current = false;
-    }
-  }
-
-  async function setupHolidayTreeSchedule() {
-    if (holidayTreeSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
-    const hebrewDateFormatter = new Intl.DateTimeFormat("en-u-ca-hebrew", { month: "long", day: "numeric" });
-    const hanukkahStartForYear = (year: number) => {
-      for (let offset = 0; offset < 80; offset += 1) {
-        const date = new Date(year, 9, 15 + offset, 12, 0, 0);
-        const parts = hebrewDateFormatter.formatToParts(date);
-        const month = parts.find((part) => part.type === "month")?.value || "";
-        const day = Number(parts.find((part) => part.type === "day")?.value || 0);
-        if (/kislev/i.test(month) && day === 25) return addDays(localISODate(date), -1);
-      }
-      return `${year}-12-01`;
-    };
-    const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
-    const currentHanukkahStart = hanukkahStartForYear(currentYear);
-    const holidayYear = todayISO() <= currentHanukkahStart ? currentYear : currentYear + 1;
-    const hanukkahStart = hanukkahStartForYear(holidayYear);
-    const targetDate = addDays(hanukkahStart, -7);
-    const dueDate = todayISO() > targetDate && todayISO() <= hanukkahStart ? todayISO() : targetDate;
-    const setupKey = `atlas-holiday-tree-v1-2000-${holidayYear}`;
-    if (window.localStorage.getItem(setupKey) === "ready") return;
-    holidayTreeSetupRunningRef.current = true;
-    try {
-      const nextWorkOrders = [...serviceRecords];
-      const nextCalendar = [...calendarItems];
-      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
-      const workOrderId = `wo-holiday-tree-${holidayYear}`;
-      const title = `Set up Holiday Tree for Hanukkah — ${holidayYear}`;
-      const notes = `Bring out and set up the Holiday Tree seven days before Hanukkah begins. Hanukkah begins at sunset on ${formatDate(hanukkahStart)}; target setup date is ${formatDate(targetDate)}. Atlas calculates this from 25 Kislev each year because the Gregorian date changes. Use “Holiday Tree,” not “Christmas Tree.”`;
-      const checklist: WorkChecklistItem[] = [
-        "Retrieve the Holiday Tree, decorations, lights, extension cords, and storage bins",
-        "Inspect the tree, stand, lights, cords, plugs, and decorations for damage",
-        "Move and protect nearby furniture and finishes",
-        "Set up, stabilize, and decorate the Holiday Tree",
-        "Test lighting, confirm safe cord routing, and photograph the completed setup",
-        "Return empty containers and unused materials to organized storage",
-      ].map((text, index) => ({ id: `${workOrderId}-${index + 1}`, text, completed: false }));
-      const existingIndex = nextWorkOrders.findIndex((record) => record.id === workOrderId || normalizeLocationName(record.title) === normalizeLocationName(title));
-      let workOrder: AtlasServiceRecord;
-      if (existingIndex >= 0) {
-        const existing = nextWorkOrders[existingIndex];
-        workOrder = normalizeService({ ...existing, date: dueDate, status: existing.status === "Completed" ? "Open" : existing.status, priority: "Medium", assignedTo: existing.assignedTo || "Nick", recurring: false, recurrenceEndDate: "", season: "Winter", workType: "Work Order", workCategory: "Seasonal Setup", responsibilityArea: "House & Maintenance", notes: existing.notes?.includes(notes) ? existing.notes : [existing.notes, notes].filter(Boolean).join("\n\n"), checklist: existing.checklist?.length ? existing.checklist : checklist });
-        nextWorkOrders[existingIndex] = workOrder;
-      } else {
-        workOrder = normalizeService({ id: workOrderId, title, date: dueDate, status: "Open", priority: "Medium", assignedTo: "Nick", recurring: false, season: "Winter", workType: "Work Order", workCategory: "Seasonal Setup", responsibilityArea: "House & Maintenance", notes, checklist });
-        nextWorkOrders.push(workOrder);
-      }
-      recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
-      const calendarRecord = normalizeCalendar({ id: `calendar-holiday-tree-${holidayYear}`, propertyId: activePropertyId, date: dueDate, title, area: "House & Maintenance", categoryLabel: "Seasonal Setup", allDay: true, repeat: "None", reminder: "Week before", notes, linkedType: "Work Order", linkedId: workOrder.id, linkedName: workOrder.title, source: "work-order", status: "Scheduled" });
-      const calendarIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id);
-      if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
-      else nextCalendar.push(calendarRecord);
-      recordsToSave.push({ table: "calendar", record: calendarRecord });
-      setServiceRecords(byTitle(nextWorkOrders));
-      setCalendarItems(byTitle(nextCalendar));
-      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
-      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
-      if (results.some((saved) => !saved)) throw new Error("The Holiday Tree schedule did not fully sync.");
-      window.localStorage.setItem(setupKey, "ready");
-      showSaveToast(`Holiday Tree setup is scheduled for ${formatDate(dueDate)}.`);
-    } catch (error) {
-      console.error("Atlas Holiday Tree setup failed", error);
-      showSaveToast("Holiday Tree scheduling will retry.", "warning");
-    } finally {
-      holidayTreeSetupRunningRef.current = false;
-    }
-  }
-
-  async function setupRoofDrainageCare() {
-    if (roofDrainageCareSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
-    const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
-    const leafSeasonYear = todayISO() <= `${currentYear}-12-15` ? currentYear : currentYear + 1;
-    const setupKey = `atlas-roof-drainage-care-v1-2000-${leafSeasonYear}`;
-    if (window.localStorage.getItem(setupKey) === "ready") return;
-    roofDrainageCareSetupRunningRef.current = true;
-    try {
-      const nextWorkOrders = [...serviceRecords];
-      const nextCalendar = [...calendarItems];
-      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
-      const courtyardLocationId = locations.find((location) => /courtyard/i.test(location.name))?.id || "general";
-      const weeklyDate = addDays(todayISO(), (1 - new Date(`${todayISO()}T12:00:00`).getDay() + 7) % 7);
-      const definitions = [
-        {
-          id: "wo-weekly-courtyard-gutters-flat-roof",
-          calendarId: "calendar-weekly-courtyard-gutters-flat-roof",
-          title: "Clean courtyard gutters and flat roof",
-          date: weeklyDate,
-          endDate: "",
-          interval: 1,
-          unit: "Weeks" as WorkOrderRecurrenceUnit,
-          season: "Year-Round" as WorkSeason,
-          repeat: "Weekly" as CalendarRepeat,
-          priority: "High" as WorkOrderPriority,
-          notes: "Weekly year-round roof-drainage route. Prioritize the courtyard gutters, then remove leaves, needles, branches, moss clumps, and loose debris from the flat roof, gutters, drains, scuppers, and visible downspout openings. Add an extra inspection after major wind or heavy rain. Work only from approved safe access points; do not work on wet, icy, or unstable roof surfaces.",
-        },
-        {
-          id: `wo-daily-leaf-season-roof-${leafSeasonYear}`,
-          calendarId: `calendar-daily-leaf-season-roof-${leafSeasonYear}`,
-          title: `Daily leaf-season courtyard gutter and flat-roof check — ${leafSeasonYear}`,
-          date: todayISO() > `${leafSeasonYear}-10-01` ? todayISO() : `${leafSeasonYear}-10-01`,
-          endDate: `${leafSeasonYear}-12-15`,
-          interval: 1,
-          unit: "Days" as WorkOrderRecurrenceUnit,
-          season: "Fall" as WorkSeason,
-          repeat: "Custom" as CalendarRepeat,
-          priority: "High" as WorkOrderPriority,
-          notes: `Daily active-leaf-season route from October 1 through December 15, ${leafSeasonYear}. Check the courtyard gutters first, then the flat roof, drains, scuppers, and downspout openings. Remove fresh leaf buildup before it blocks drainage. Skip only when roof access is unsafe; inspect from a safe position and reschedule promptly. This daily schedule ends automatically on December 15 and the weekly route continues year-round.`,
-        },
-      ];
-      const checklistText = [
-        "Confirm safe, dry roof-access conditions",
-        "Clean courtyard gutters and visible downspout openings first",
-        "Remove loose debris from the flat roof without damaging the membrane",
-        "Clear and inspect roof drains, strainers, scuppers, and drainage paths",
-        "Confirm water can flow and note ponding, leaks, membrane damage, loose flashing, or needed repair",
-        "Bag and remove debris; photograph and flag any problem",
-      ];
-      for (const definition of definitions) {
-        const existingIndex = nextWorkOrders.findIndex((record) => record.id === definition.id || normalizeLocationName(record.title) === normalizeLocationName(definition.title));
-        const defaultChecklist: WorkChecklistItem[] = checklistText.map((text, index) => ({ id: `${definition.id}-${index + 1}`, text, completed: false }));
-        let workOrder: AtlasServiceRecord;
-        if (existingIndex >= 0) {
-          const existing = nextWorkOrders[existingIndex];
-          workOrder = normalizeService({
-            ...existing,
-            date: definition.date,
-            status: existing.status === "Completed" ? "Open" : existing.status,
-            priority: definition.priority,
-            recurring: true,
-            recurrenceInterval: definition.interval,
-            recurrenceUnit: definition.unit,
-            recurrenceEndDate: definition.endDate,
-            season: definition.season,
-            workType: "Preventive Maintenance",
-            workCategory: "Roof & Drainage",
-            responsibilityArea: "House & Maintenance",
-            locationId: existing.locationId || courtyardLocationId,
-            assignedTo: existing.assignedTo || "Nick",
-            notes: existing.notes?.includes(definition.notes) ? existing.notes : [existing.notes, definition.notes].filter(Boolean).join("\n\n"),
-            checklist: existing.checklist?.length ? existing.checklist : defaultChecklist,
-          });
-          nextWorkOrders[existingIndex] = workOrder;
-        } else {
-          workOrder = normalizeService({
-            id: definition.id,
-            title: definition.title,
-            date: definition.date,
-            status: "Open",
-            priority: definition.priority,
-            assignedTo: "Nick",
-            recurring: true,
-            recurrenceInterval: definition.interval,
-            recurrenceUnit: definition.unit,
-            recurrenceEndDate: definition.endDate,
-            season: definition.season,
-            workType: "Preventive Maintenance",
-            workCategory: "Roof & Drainage",
-            responsibilityArea: "House & Maintenance",
-            locationId: courtyardLocationId,
-            notes: definition.notes,
-            checklist: defaultChecklist,
-          });
-          nextWorkOrders.push(workOrder);
-        }
-        recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
-        const calendarRecord = normalizeCalendar({
-          id: definition.calendarId,
-          propertyId: activePropertyId,
-          date: definition.date,
-          title: definition.title,
-          area: "House & Maintenance",
-          categoryLabel: "Roof & Drainage",
-          allDay: true,
-          repeat: definition.repeat,
-          reminder: "Morning of",
-          notes: definition.notes,
-          linkedType: "Work Order",
-          linkedId: workOrder.id,
-          linkedName: workOrder.title,
-          source: "work-order",
-          status: "Scheduled",
-        });
-        const calendarIndex = nextCalendar.findIndex((item) => item.id === definition.calendarId);
-        if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
-        else nextCalendar.push(calendarRecord);
-        recordsToSave.push({ table: "calendar", record: calendarRecord });
-      }
-      setServiceRecords(byTitle(nextWorkOrders));
-      setCalendarItems(byTitle(nextCalendar));
-      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
-      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
-      if (results.some((saved) => !saved)) throw new Error("Some roof-drainage records did not sync.");
-      window.localStorage.setItem(setupKey, "ready");
-      showSaveToast("Courtyard gutter and flat-roof care are scheduled.");
-    } catch (error) {
-      console.error("Atlas roof-drainage setup failed", error);
-      showSaveToast("Roof-drainage scheduling will retry.", "warning");
-    } finally {
-      roofDrainageCareSetupRunningRef.current = false;
-    }
-  }
-
-  async function setupExteriorGlassCare() {
-    if (exteriorGlassCareSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
-    const setupKey = "atlas-exterior-glass-care-v1-2000";
-    if (window.localStorage.getItem(setupKey) === "ready") return;
-    exteriorGlassCareSetupRunningRef.current = true;
-    try {
-      const nextWorkOrders = [...serviceRecords];
-      const nextCalendar = [...calendarItems];
-      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
-      const nextWeekday = (weekdayIndex: number, weeksAhead = 0) => {
-        const current = new Date(`${todayISO()}T12:00:00`).getDay();
-        return addDays(todayISO(), ((weekdayIndex - current + 7) % 7) + weeksAhead * 7);
-      };
-      const findLocationId = (terms: string[]) => locations.find((location) => terms.some((term) => location.name.toLowerCase().includes(term)))?.id || "general";
-      const definitions = [
-        {
-          id: "wo-weekly-ipe-deck-skylights",
-          calendarId: "calendar-weekly-ipe-deck-skylights",
-          title: "Clean skylights above the Ipe deck",
-          date: nextWeekday(4),
-          interval: 1,
-          unit: "Weeks" as WorkOrderRecurrenceUnit,
-          repeat: "Weekly" as CalendarRepeat,
-          locationId: findLocationId(["ipe deck", "deck", "waterside"]),
-          area: "House & Maintenance",
-          notes: "Clean the exterior skylight glass above the Ipe deck weekly; twice monthly is the minimum acceptable frequency. Move or skip the occurrence when surfaces are wet, icy, windy, or access cannot be completed safely. Use an approved extension system from a stable surface—do not step onto skylight glazing.",
-          checklist: ["Confirm safe, dry access conditions", "Remove loose debris without scratching the glass", "Wash skylight glass and frames", "Rinse and inspect seals, flashing, cracks, leaks, and drainage", "Photograph and flag any damage or unsafe access"],
-        },
-        {
-          id: "wo-monthly-addition-exterior-windows",
-          calendarId: "calendar-monthly-addition-exterior-windows",
-          title: "Clean Addition exterior windows",
-          date: nextWeekday(3, 1),
-          interval: 1,
-          unit: "Months" as WorkOrderRecurrenceUnit,
-          repeat: "Custom" as CalendarRepeat,
-          locationId: findLocationId(["addition"]),
-          area: "House & Maintenance",
-          notes: "Monthly exterior window cleaning for the Addition. Allow approximately 2–3 hours. Clean only windows reachable safely from the ground or an approved stable working position. Record damaged screens, seals, hardware, failed glazing, stains, or access issues.",
-          checklist: ["Walk the Addition and confirm safe access", "Remove loose debris from glass, frames, tracks, and sills", "Wash and detail accessible exterior glass", "Clean accessible frames and sills", "Inspect and record damage, leaks, failed seals, and needed follow-up"],
-        },
-        {
-          id: "wo-monthly-original-home-exterior-windows",
-          calendarId: "calendar-monthly-original-home-exterior-windows",
-          title: "Clean Original Home accessible exterior windows",
-          date: nextWeekday(3, 3),
-          interval: 1,
-          unit: "Months" as WorkOrderRecurrenceUnit,
-          repeat: "Custom" as CalendarRepeat,
-          locationId: findLocationId(["original house", "original home"]),
-          area: "House & Maintenance",
-          notes: "Monthly exterior window cleaning for safely accessible Original Home windows. Allow approximately 2–3 hours. EXCLUDE the second- and third-story Great Room windows on both the waterside and courtyard sides. Those elevated windows require a separate access/equipment plan or qualified window-cleaning vendor before work is assigned.",
-          checklist: ["Walk the Original Home and confirm the accessible scope", "Verify the elevated Great Room exclusions", "Remove loose debris from accessible glass, frames, tracks, and sills", "Wash and detail accessible exterior glass", "Inspect and record damage, leaks, failed seals, and needed follow-up"],
-        },
-      ];
-      for (const definition of definitions) {
-        const normalizedTitle = normalizeLocationName(definition.title);
-        const existingIndex = nextWorkOrders.findIndex((record) => record.id === definition.id || normalizeLocationName(record.title) === normalizedTitle);
-        const defaultChecklist: WorkChecklistItem[] = definition.checklist.map((text, index) => ({ id: `${definition.id}-${index + 1}`, text, completed: false }));
-        let workOrder: AtlasServiceRecord;
-        if (existingIndex >= 0) {
-          const existing = nextWorkOrders[existingIndex];
-          workOrder = normalizeService({
-            ...existing,
-            date: definition.date,
-            status: existing.status === "Completed" ? "Open" : existing.status,
-            recurring: true,
-            recurrenceInterval: definition.interval,
-            recurrenceUnit: definition.unit,
-            season: "Year-Round",
-            workType: "Preventive Maintenance",
-            workCategory: "Exterior Cleaning",
-            responsibilityArea: definition.area,
-            locationId: existing.locationId || definition.locationId,
-            assignedTo: existing.assignedTo || "Nick",
-            notes: existing.notes?.includes(definition.notes) ? existing.notes : [existing.notes, definition.notes].filter(Boolean).join("\n\n"),
-            checklist: existing.checklist?.length ? existing.checklist : defaultChecklist,
-          });
-          nextWorkOrders[existingIndex] = workOrder;
-        } else {
-          workOrder = normalizeService({
-            id: definition.id,
-            title: definition.title,
-            date: definition.date,
-            status: "Open",
-            priority: "Medium",
-            assignedTo: "Nick",
-            recurring: true,
-            recurrenceInterval: definition.interval,
-            recurrenceUnit: definition.unit,
-            season: "Year-Round",
-            workType: "Preventive Maintenance",
-            workCategory: "Exterior Cleaning",
-            responsibilityArea: definition.area,
-            locationId: definition.locationId,
-            notes: definition.notes,
-            checklist: defaultChecklist,
-          });
-          nextWorkOrders.push(workOrder);
-        }
-        recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
-        const calendarRecord = normalizeCalendar({
-          id: definition.calendarId,
-          propertyId: activePropertyId,
-          date: workOrder.date || definition.date,
-          title: workOrder.title,
-          area: definition.area,
-          categoryLabel: "Exterior Glass Care",
-          allDay: true,
-          repeat: definition.repeat,
-          reminder: "Day before",
-          notes: `${definition.notes} Repeats every ${definition.interval} ${definition.unit.toLowerCase()}.`,
-          linkedType: "Work Order",
-          linkedId: workOrder.id,
-          linkedName: workOrder.title,
-          source: "work-order",
-          status: "Scheduled",
-        });
-        const calendarIndex = nextCalendar.findIndex((item) => item.id === definition.calendarId);
-        if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
-        else nextCalendar.push(calendarRecord);
-        recordsToSave.push({ table: "calendar", record: calendarRecord });
-      }
-      setServiceRecords(byTitle(nextWorkOrders));
-      setCalendarItems(byTitle(nextCalendar));
-      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
-      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
-      if (results.some((saved) => !saved)) throw new Error("Some exterior glass-care records did not sync.");
-      window.localStorage.setItem(setupKey, "ready");
-      showSaveToast("Skylight and exterior window cleaning are scheduled.");
-    } catch (error) {
-      console.error("Atlas exterior glass-care setup failed", error);
-      showSaveToast("Exterior glass-care scheduling will retry.", "warning");
-    } finally {
-      exteriorGlassCareSetupRunningRef.current = false;
-    }
-  }
-
-  async function setupSeasonalPressureWashing() {
-    if (seasonalPressureWashingSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
-    const setupKey = "atlas-seasonal-pressure-washing-v1-2000";
-    if (window.localStorage.getItem(setupKey) === "ready") return;
-    seasonalPressureWashingSetupRunningRef.current = true;
-    try {
-      const nextWorkOrders = [...serviceRecords];
-      const nextCalendar = [...calendarItems];
-      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
-      const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
-      const nextAnnualDate = (monthDay: string) => {
-        const thisYear = `${currentYear}-${monthDay}`;
-        return thisYear >= todayISO() ? thisYear : `${currentYear + 1}-${monthDay}`;
-      };
-      const searchableText = (record: AtlasServiceRecord) =>
-        `${record.title || ""} ${record.notes || ""} ${record.workCategory || ""} ${record.responsibilityArea || ""}`.toLowerCase();
-      const pressureWashRecords = nextWorkOrders.filter((record) => /pressure wash|power wash/.test(searchableText(record)));
-      const usedRecordIds = new Set<string>();
-      const seasonalDefinitions = [
-        {
-          id: "seasonal-pressure-wash-spring",
-          calendarId: "calendar-seasonal-pressure-wash-spring",
-          title: "Post-pollen pressure washing",
-          date: nextAnnualDate("06-05"),
-          season: "Spring" as WorkSeason,
-          match: /spring|pollen/,
-          windowText: "Target June 5 after the main spring pollen drop. Move within the surrounding two-week window if pollen is still heavy or the weather is unsuitable.",
-        },
-        {
-          id: "seasonal-pressure-wash-fall",
-          calendarId: "calendar-seasonal-pressure-wash-fall",
-          title: "Post-leaf-fall pressure washing",
-          date: nextAnnualDate("12-01"),
-          season: "Fall" as WorkSeason,
-          match: /fall|leaf|leaves/,
-          windowText: "Target December 1 after the main leaf drop and leaf cleanup. Move within the surrounding two-week window if leaves are still falling or the weather is unsuitable.",
-        },
-      ];
-      for (const definition of seasonalDefinitions) {
-        let existing = nextWorkOrders.find((record) =>
-          !usedRecordIds.has(record.id) &&
-          (record.id === definition.id || (pressureWashRecords.includes(record) && definition.match.test(searchableText(record)))),
-        );
-        if (!existing) existing = pressureWashRecords.find((record) => !usedRecordIds.has(record.id));
-        const operatingNote = `${definition.windowText} Proceed only during a dry, mild forecast window above freezing; avoid heavy rain, frost, freezing temperatures, and high wind. Protect plantings, electrical fixtures, finishes, and delicate surfaces; use soft washing or reduced pressure where appropriate.`;
-        let workOrder: AtlasServiceRecord;
-        if (existing) {
-          usedRecordIds.add(existing.id);
-          const priorSeasonalNotePattern = /(?:Target June 5 after the main spring pollen drop|Target December 1 after the main leaf drop)[\s\S]*?(?=\n\n|$)/g;
-          const preservedNotes = String(existing.notes || "").replace(priorSeasonalNotePattern, "").trim();
-          workOrder = normalizeService({
-            ...existing,
-            date: definition.date,
-            status: existing.status === "Completed" ? "Open" : existing.status,
-            recurring: true,
-            recurrenceInterval: 1,
-            recurrenceUnit: "Years",
-            season: definition.season,
-            workType: "Preventive Maintenance",
-            workCategory: existing.workCategory || "Exterior Cleaning",
-            responsibilityArea: existing.responsibilityArea || "House & Maintenance",
-            assignedTo: existing.assignedTo || "Nick",
-            notes: [preservedNotes, operatingNote].filter(Boolean).join("\n\n"),
-          });
-          const index = nextWorkOrders.findIndex((record) => record.id === existing!.id);
-          nextWorkOrders[index] = workOrder;
-        } else {
-          workOrder = normalizeService({
-            id: definition.id,
-            title: definition.title,
-            date: definition.date,
-            status: "Open",
-            priority: "Medium",
-            assignedTo: "Nick",
-            recurring: true,
-            recurrenceInterval: 1,
-            recurrenceUnit: "Years",
-            season: definition.season,
-            workType: "Preventive Maintenance",
-            workCategory: "Exterior Cleaning",
-            responsibilityArea: "House & Maintenance",
-            notes: operatingNote,
-            checklist: [
-              { id: `${definition.id}-prepare`, text: "Confirm suitable weather and prepare/protect the work area", completed: false },
-              { id: `${definition.id}-clean`, text: "Pressure wash or soft wash the approved exterior surfaces", completed: false },
-              { id: `${definition.id}-inspect`, text: "Inspect for damage, staining, drainage issues, and needed repairs", completed: false },
-              { id: `${definition.id}-finish`, text: "Rinse, restore the area, photograph results, and record follow-up", completed: false },
-            ],
-          });
-          nextWorkOrders.push(workOrder);
-          usedRecordIds.add(workOrder.id);
-        }
-        recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
-        const calendarRecord = normalizeCalendar({
-          id: definition.calendarId,
-          propertyId: activePropertyId,
-          date: definition.date,
-          title: workOrder.title || definition.title,
-          area: workOrder.responsibilityArea || "House & Maintenance",
-          categoryLabel: "Seasonal Exterior Cleaning",
-          allDay: true,
-          repeat: "Yearly",
-          reminder: "Week before",
-          notes: operatingNote,
-          linkedType: "Work Order",
-          linkedId: workOrder.id,
-          linkedName: workOrder.title || definition.title,
-          source: "work-order",
-          status: "Scheduled",
-        });
-        const calendarIndex = nextCalendar.findIndex((item) => item.id === definition.calendarId || (item.linkedType === "Work Order" && item.linkedId === workOrder.id && /pressure wash|power wash/i.test(item.title)));
-        if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
-        else nextCalendar.push(calendarRecord);
-        recordsToSave.push({ table: "calendar", record: calendarRecord });
-      }
-      setServiceRecords(byTitle(nextWorkOrders));
-      setCalendarItems(byTitle(nextCalendar));
-      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
-      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
-      if (results.some((saved) => !saved)) throw new Error("Some seasonal pressure-washing records did not sync.");
-      window.localStorage.setItem(setupKey, "ready");
-      showSaveToast("Post-pollen and post-leaf pressure washing are scheduled yearly.");
-    } catch (error) {
-      console.error("Atlas seasonal pressure-washing setup failed", error);
-      showSaveToast("Seasonal pressure-washing scheduling will retry.", "warning");
-    } finally {
-      seasonalPressureWashingSetupRunningRef.current = false;
-    }
-  }
-
-  async function setupHousePreventiveMaintenance() {
-    if (preventiveMaintenanceSetupRunningRef.current || typeof window === "undefined" || activePropertyId !== "2000") return;
-    const setupKey = `atlas-house-preventive-maintenance-v3-${activePropertyId}`;
-    if (window.localStorage.getItem(setupKey) === "ready") return;
-    preventiveMaintenanceSetupRunningRef.current = true;
-    try {
-      const nextAssets = [...assetRecords];
-      const nextWorkOrders = [...serviceRecords];
-      const nextCalendar = [...calendarItems];
-      const recordsToSave: Array<{ table: AtlasTable; record: unknown }> = [];
-      const findLocationId = (terms: string[]) => locations.find((location) => terms.some((term) => location.name.toLowerCase().includes(term)))?.id || "general";
-      const ensureAsset = (id: string, name: string, category: string, locationId: string, terms: string[]) => {
-        let asset = nextAssets.find((item) => terms.some((term) => term === "pool" ? normalizeLocationName(item.name) === "pool" : `${item.name} ${item.category} ${item.make || ""} ${item.model || ""}`.toLowerCase().includes(term)));
-        if (!asset) {
-          asset = normalizeAsset({ id, name, category, status: "Online", locationId, locationIds: [locationId], notes: `${name} preventive-maintenance history.`, vendorIds: [] });
-          nextAssets.push(asset);
-          recordsToSave.push({ table: "assets", record: { ...asset, propertyId: activePropertyId } });
-        }
-        return asset;
-      };
-      const hvacAsset = ensureAsset("asset-house-hvac-system", "House HVAC System", "HVAC", findLocationId(["mechanical", "house"]), ["house hvac", "hvac system"]);
-      const spaAsset = ensureAsset("asset-sundance-880-spa", "Sundance 880 Spa", "Pool & Spa", findLocationId(["spa", "hot tub", "sundance"]), ["sundance 880", "sundance", "hot tub"]);
-      const poolAsset = ensureAsset("asset-main-pool", "Pool", "Pool & Spa", findLocationId(["pool"]), ["main pool", "pool"]);
-      const definitions = [
-        {
-          id: "wo-quarterly-house-hvac-filters",
-          calendarId: "maintenance-quarterly-house-hvac-filters",
-          title: "Replace all 14 house HVAC filters",
-          asset: hvacAsset,
-          locationId: hvacAsset.locationId || "general",
-          interval: 3,
-          unit: "Months" as WorkOrderRecurrenceUnit,
-          area: "House & Maintenance",
-          category: "HVAC",
-          reminder: "Week before" as CalendarReminder,
-          notes: "Quarterly replacement of all 14 HVAC filters throughout the house. Checklist: Mechanical Room 1 — 2 × Filterbuy 1\" × 16\" × 16\"; Mechanical Room 1 — 4 × Filterbuy 4\" × 16\" × 20\"; Mechanical Room 1 — 1 × Aprilaire #210, 4\" × 20\" × 25\"; Mechanical Room 2 — 4 × Filterbuy 4\" × 20\" × 25\"; Laundry Room, 2nd Floor — 1 × Filterbuy 1\" × 16\" × 20\"; Attic Space — 2 × Filterbuy 1\" × 16\" × 20\". Confirm all 14 were replaced and record damaged grilles, airflow concerns, or any filter that could not be changed.",
-        },
-        {
-          id: "wo-annual-sundance-880-filters",
-          calendarId: "maintenance-annual-sundance-880-filters",
-          title: "Replace both Sundance 880 spa filters",
-          asset: spaAsset,
-          locationId: spaAsset.locationId || "general",
-          date: "2027-03-15",
-          interval: 12,
-          unit: "Months" as WorkOrderRecurrenceUnit,
-          area: "Pool & Spa",
-          category: "Pool & Spa",
-          reminder: "Week before" as CalendarReminder,
-          notes: "Last replaced March 2026. Replace both interlocking filter cartridges in the Sundance 880 every March. Inspect seating and seals, confirm proper installation and flow, photograph the installed filters, and record the filter part numbers.",
-        },
-        {
-          id: "wo-monthly-sundance-880-filter-cleaning",
-          calendarId: "maintenance-monthly-sundance-880-filter-cleaning",
-          title: "Clean both Sundance 880 spa filters",
-          asset: spaAsset,
-          locationId: spaAsset.locationId || "general",
-          date: "2026-08-07",
-          interval: 1,
-          unit: "Months" as WorkOrderRecurrenceUnit,
-          area: "Pool & Spa",
-          category: "Pool & Spa",
-          reminder: "Day before" as CalendarReminder,
-          notes: "Monthly deep cleaning for both Sundance 880 interlocking filter cartridges. Shut off spa power before removal. Rinse carefully between pleats with a garden hose, soak with an approved spa-filter cleaner as directed, rinse thoroughly, inspect for tears, collapse, scale, or damaged end caps, reinstall correctly, restore power, and confirm normal circulation. Do not use a pressure washer, bleach, or household detergent.",
-        },
-        {
-          id: "wo-weekly-pool-chlorine-tabs",
-          calendarId: "maintenance-weekly-pool-chlorine-tabs",
-          title: "Test pool chlorine and refill chlorine tabs",
-          asset: poolAsset,
-          locationId: poolAsset.locationId || "general",
-          interval: 1,
-          unit: "Weeks" as WorkOrderRecurrenceUnit,
-          area: "Pool & Spa",
-          category: "Pool & Spa",
-          reminder: "Morning of" as CalendarReminder,
-          notes: "Test and record the pool chlorine reading. Inspect the chlorine tablet feeder and refill with the amount needed for the established pool target. Record the number of tabs added, feeder setting, unusual consumption, low inventory, and any water-quality concern.",
-        },
-        {
-          id: "wo-monthly-vehicle-tires-fluids",
-          calendarId: "maintenance-monthly-vehicle-tires-fluids",
-          title: "Check tire pressure and fluids on all onsite cars",
-          asset: undefined,
-          locationId: findLocationId(["new garage", "garage"]),
-          interval: 1,
-          unit: "Months" as WorkOrderRecurrenceUnit,
-          area: "Garage",
-          category: "Vehicles",
-          reminder: "Day before" as CalendarReminder,
-          notes: "Inspect every onsite car. Check and record all tire pressures, including any accessible spare; adjust to each vehicle's specified cold pressure. Check applicable engine oil, coolant, brake fluid, washer fluid and other owner-serviceable fluids. Record low levels, leaks, warning lights, tire damage, uneven wear, and required service. Electric vehicles: check only applicable fluids and tire items.",
-        },
-        {
-          id: "wo-monthly-aqua-quip-water-test",
-          calendarId: "maintenance-monthly-aqua-quip-water-test",
-          title: "Aqua Quip pool and spa water testing",
-          asset: poolAsset,
-          locationId: poolAsset.locationId || "general",
-          interval: 1,
-          unit: "Months" as WorkOrderRecurrenceUnit,
-          area: "Pool & Spa",
-          category: "Pool & Spa",
-          reminder: "Day before" as CalendarReminder,
-          notes: "Take separate fresh water samples from the pool and spa to Aqua Quip for monthly testing. Save or photograph the results, record recommended adjustments, add any required follow-up work, and update the chemical shopping list.",
-        },
-        {
-          id: "wo-monthly-pest-control-service",
-          calendarId: "maintenance-monthly-pest-control-service",
-          title: "Monthly pest-control service",
-          asset: undefined,
-          locationId: "general",
-          interval: 1,
-          unit: "Months" as WorkOrderRecurrenceUnit,
-          area: "House & Maintenance",
-          category: "Pest Control",
-          reminder: "Week before" as CalendarReminder,
-          notes: "Monthly pest-control visit. The vendor date may move by a few days each month; confirm the actual appointment, provide access, note current pest activity and problem areas, and record treatment performed and any follow-up recommendation.",
-        },
-      ];
-      for (const definition of definitions) {
-        const isSpaFilterWork = definition.id === "wo-annual-sundance-880-filters" || definition.id === "wo-monthly-sundance-880-filter-cleaning";
-        let workOrder = nextWorkOrders.find((record) => record.id === definition.id || normalizeLocationName(record.title) === normalizeLocationName(definition.title) || (definition.id === "wo-annual-sundance-880-filters" && /replace.*sundance.*filter|replace.*spa.*filter/i.test(record.title)) || (definition.id === "wo-monthly-sundance-880-filter-cleaning" && /clean.*sundance.*filter|clean.*spa.*filter/i.test(record.title)));
-        if (!workOrder) {
-          workOrder = normalizeService({
-            id: definition.id,
-            title: definition.title,
-            assetId: definition.asset?.id || "",
-            locationId: definition.locationId,
-            date: definition.date || todayISO(),
-            status: "Open",
-            priority: "Medium",
-            assignedTo: definition.id === "wo-monthly-pest-control-service" ? "Vendor" : "Nick",
-            notes: definition.notes,
-            recurring: true,
-            recurrenceInterval: definition.interval,
-            recurrenceUnit: definition.unit,
-            season: definition.id === "wo-annual-sundance-880-filters" ? "Spring" : "Year-Round",
-            workType: "Preventive Maintenance",
-            workCategory: definition.category,
-            responsibilityArea: definition.area,
-            checklist: definition.id === "wo-annual-sundance-880-filters" ? [
-              { id: `${definition.id}-power`, text: "Shut off spa power and remove both filter cartridges", completed: false },
-              { id: `${definition.id}-inspect`, text: "Inspect filter housing, seals, and seating surfaces", completed: false },
-              { id: `${definition.id}-replace`, text: "Install both new Sundance 880 filter cartridges correctly", completed: false },
-              { id: `${definition.id}-verify`, text: "Restore power and confirm normal circulation and flow", completed: false },
-              { id: `${definition.id}-record`, text: "Photograph installation and record filter part numbers", completed: false },
-            ] : definition.id === "wo-monthly-sundance-880-filter-cleaning" ? [
-              { id: `${definition.id}-power`, text: "Shut off spa power and remove both filter cartridges", completed: false },
-              { id: `${definition.id}-rinse`, text: "Rinse carefully between every pleat with a garden hose", completed: false },
-              { id: `${definition.id}-soak`, text: "Soak with approved spa-filter cleaner according to its directions", completed: false },
-              { id: `${definition.id}-inspect`, text: "Rinse thoroughly and inspect for damage, scale, or wear", completed: false },
-              { id: `${definition.id}-verify`, text: "Reinstall, restore power, and confirm normal circulation", completed: false },
-            ] : undefined,
-          });
-          nextWorkOrders.push(workOrder);
-          recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
-        } else if (isSpaFilterWork) {
-          workOrder = normalizeService({
-            ...workOrder,
-            title: definition.title,
-            assetId: definition.asset?.id || workOrder.assetId || "",
-            locationId: definition.locationId,
-            date: definition.date,
-            status: workOrder.status === "Completed" ? "Open" : workOrder.status,
-            priority: workOrder.priority || "Medium",
-            assignedTo: workOrder.assignedTo || "Nick",
-            notes: definition.notes,
-            recurring: true,
-            recurrenceInterval: definition.interval,
-            recurrenceUnit: definition.unit,
-            season: definition.id === "wo-annual-sundance-880-filters" ? "Spring" : "Year-Round",
-            workType: "Preventive Maintenance",
-            workCategory: definition.category,
-            responsibilityArea: definition.area,
-            checklist: definition.id === "wo-annual-sundance-880-filters" ? [
-              { id: `${definition.id}-power`, text: "Shut off spa power and remove both filter cartridges", completed: false },
-              { id: `${definition.id}-inspect`, text: "Inspect filter housing, seals, and seating surfaces", completed: false },
-              { id: `${definition.id}-replace`, text: "Install both new Sundance 880 filter cartridges correctly", completed: false },
-              { id: `${definition.id}-verify`, text: "Restore power and confirm normal circulation and flow", completed: false },
-              { id: `${definition.id}-record`, text: "Photograph installation and record filter part numbers", completed: false },
-            ] : [
-              { id: `${definition.id}-power`, text: "Shut off spa power and remove both filter cartridges", completed: false },
-              { id: `${definition.id}-rinse`, text: "Rinse carefully between every pleat with a garden hose", completed: false },
-              { id: `${definition.id}-soak`, text: "Soak with approved spa-filter cleaner according to its directions", completed: false },
-              { id: `${definition.id}-inspect`, text: "Rinse thoroughly and inspect for damage, scale, or wear", completed: false },
-              { id: `${definition.id}-verify`, text: "Reinstall, restore power, and confirm normal circulation", completed: false },
-            ],
-          });
-          const workOrderIndex = nextWorkOrders.findIndex((record) => record.id === workOrder!.id);
-          if (workOrderIndex >= 0) nextWorkOrders[workOrderIndex] = workOrder;
-          recordsToSave.push({ table: "work_orders", record: { ...workOrder, propertyId: activePropertyId } });
-        }
-        const calendarRecord = normalizeCalendar({
-          id: definition.calendarId,
-          propertyId: activePropertyId,
-          date: definition.date || workOrder.date || todayISO(),
-          title: definition.title,
-          area: definition.area,
-          categoryLabel: "Preventive Maintenance",
-          allDay: true,
-          repeat: definition.interval === 1 && definition.unit === "Weeks" ? "Weekly" : "Custom",
-          reminder: definition.reminder,
-          notes: `${definition.notes} Repeats every ${definition.interval} ${definition.unit.toLowerCase()}.`,
-          linkedType: "Work Order",
-          linkedId: workOrder.id,
-          linkedName: workOrder.title,
-          source: "work-order",
-          status: "Scheduled",
-        });
-        const calendarIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id);
-        if (calendarIndex >= 0) nextCalendar[calendarIndex] = calendarRecord;
-        else nextCalendar.push(calendarRecord);
-        recordsToSave.push({ table: "calendar", record: calendarRecord });
-      }
-      setAssetRecords(byName(nextAssets));
-      setServiceRecords(byTitle(nextWorkOrders));
-      setCalendarItems(byTitle(nextCalendar));
-      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
-      const results = await Promise.all(recordsToSave.map((item) => postAtlasRecord(item.table, item.record)));
-      if (results.some((saved) => !saved)) throw new Error("Some preventive-maintenance records did not sync.");
-      window.localStorage.setItem(setupKey, "ready");
-      showSaveToast("Spa filter cleaning and replacement dates are scheduled.");
-    } catch (error) {
-      console.error("Atlas preventive maintenance setup failed", error);
-      showSaveToast("Preventive maintenance setup will retry.", "warning");
-    } finally {
-      preventiveMaintenanceSetupRunningRef.current = false;
-    }
-  }
-
-  async function setupWeeklyOperations() {
-    if (activePropertyId !== "2000" || weeklyOperationsSetupRunningRef.current || typeof window === "undefined") return;
-    const setupKey = `atlas-weekly-operations-v3-${activePropertyId}`;
-    if (window.localStorage.getItem(setupKey) === "ready") return;
-    weeklyOperationsSetupRunningRef.current = true;
-    try {
-      const nextTasks = [...workPlanTasks];
-      const nextTaskMeta = { ...taskMeta };
-      const nextCalendar = [...calendarItems];
-      const calendarRecords: AtlasCalendarItem[] = [];
-      const weekdayDate = (weekday: string, weeksAhead = 0) => {
-        const weekdays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-        const target = weekdays.indexOf(weekday);
-        const current = new Date(`${todayISO()}T12:00:00`).getDay();
-        return addDays(todayISO(), ((target - current + 7) % 7) + weeksAhead * 7);
-      };
-      const routines = [
-        { key: "monday-reset", day: "Monday", title: "Monday — Property Reset & Garage", minutes: 240, category: "House & Maintenance", notes: "Trash cans to street; weekend cleanup; interior/exterior walkthrough; owner requests; urgent and overdue work; geese and dog-area cleanup; scheduled vehicles; fuel/charging/tires/fluids/warning lights; clean the Golf Simulator Room and restock its refrigerator; deliveries; supplies; plan week; delegate appropriate work. Water pots and address dry spots." },
-        { key: "tuesday-dock", day: "Tuesday", title: "Tuesday — Dock, Waterfront & Recreation", minutes: 210, category: "Dock & Waterfront", notes: "Clean dock and shoreline geese debris; clean and organize the dock storage box; inspect boards, cleats, bumpers, dock boxes and lighting; inspect Cobalt, Sea-Doo, lifts, covers and rollers; inspect sport court, trampoline and recreation equipment; clean BBQ. Water pots and address dry spots." },
-        { key: "wednesday-landscape", day: "Wednesday", title: "Wednesday — Landscaping & Irrigation", minutes: 300, category: "Landscaping & Irrigation", notes: "Inspect lawns, beds, gardens, trees, pots and specialty plantings; review crew work; check irrigation zones, heads, pressure and dry spots; weed, prune and hand-water; inspect veggie boxes; photograph progress; record issues and create repair work orders when needed." },
-        { key: "thursday-outdoor", day: "Thursday", title: "Thursday — Pool, Spa & Outdoor Cleaning", minutes: 180, category: "Pool & Spa", notes: "Complete linked Pool & Spa treatment and cleaning tasks; inspect equipment and fountain; clean patio furniture, covers, outdoor heaters, BBQ exterior and skylights; complete the scheduled window zone; finish vehicle cleaning when needed; water pots and address dry spots." },
-        { key: "friday-ready", day: "Friday", title: "Friday — Maintenance & Weekend Readiness", minutes: 300, category: "House & Maintenance", notes: "Mow and edge; inspect boilers, pumps, HVAC, mechanical rooms, leaks, alarms, temperatures and unusual noises; test important lights, doors, gates and appliances; follow up vendors; update tasks, work orders, projects, photos and service history; review bottled water, toilet paper, paper towels, cleaning supplies, tools and maintenance materials, then complete a Home Depot supply run when needed; final walkthrough; prepare weekend and next week; review owner update." },
-        { key: "friday-spiders", day: "Friday", title: "Friday — Seasonal Spider Control", minutes: 75, category: "House & Maintenance", notes: "April through October: remove webs; inspect exterior walls, eaves, doors, windows, garages, dock structures and outdoor furniture; treat recurring problem areas when appropriate." },
-        { key: "monday-admin", day: "Monday", title: "Monday — Computer Work & Admin", minutes: 45, category: "Administration", notes: "Review email and messages; process pending Ramp expenses and receipts; review Meter Viewer invoices awaiting approval; update Atlas tasks, work orders, calendar and vendor follow-ups; identify administrative items that need action this week." },
-        { key: "tuesday-admin", day: "Tuesday", title: "Tuesday — Computer Work & Admin", minutes: 45, category: "Administration", notes: "Review email and messages; process pending Ramp expenses and receipts; review Meter Viewer invoices awaiting approval; update Atlas with meeting decisions, vendor updates, photos, documents and new follow-up work." },
-        { key: "wednesday-admin", day: "Wednesday", title: "Wednesday — Computer Work & Admin", minutes: 45, category: "Administration", notes: "Review email and messages; process pending Ramp expenses and receipts; review Meter Viewer invoices awaiting approval; update project, landscaping, irrigation, invoice and vendor records in Atlas." },
-        { key: "thursday-admin", day: "Thursday", title: "Thursday — Computer Work & Admin", minutes: 45, category: "Administration", notes: "Review email and messages; process pending Ramp expenses and receipts; review Meter Viewer invoices awaiting approval; update completed work, service history, photos, documents and Friday follow-ups in Atlas." },
-        { key: "friday-admin", day: "Friday", title: "Friday — Computer Work & Weekly Closeout", minutes: 60, category: "Administration", notes: "Clear priority email; finish pending Ramp expenses and receipts; complete Meter Viewer invoice review and approvals; update Atlas records; reconcile open follow-ups; prepare the weekly owner update and next week's administrative priorities." },
-      ];
-      const windowZones = [
-        { key: "windows-waterside", title: "Clean windows — Waterside & Great Room", notes: "Waterside elevation, Great Room glass and adjacent exterior doors. Add notes and photos for access or condition issues." },
-        { key: "windows-east", title: "Clean windows — East Side & Bedrooms", notes: "East elevation and bedroom windows. Record screens, damage or access issues." },
-        { key: "windows-courtyard", title: "Clean windows — Courtyard & Main Entry", notes: "Courtyard, covered walkway, entrance and nearby glass." },
-        { key: "windows-garage", title: "Clean windows — Garages, ADU & Remaining Areas", notes: "Garage, ADU and remaining scheduled windows. Record completion notes and photos." },
-      ];
-      for (const [index, definition] of [...routines, ...windowZones.map((zone, zoneIndex) => ({ ...zone, day: "Thursday", minutes: 90, category: "House & Maintenance", weeksAhead: zoneIndex }))].entries()) {
-        const isWindow = index >= routines.length;
-        let task = nextTasks.find((item) => normalizeLocationName(item.title) === normalizeLocationName(definition.title));
-        if (!task) {
-          task = { id: uid("routine-task"), title: definition.title, minutes: definition.minutes, priority: "Medium", category: definition.category, locationId: "general", preferredDay: definition.day as WorkPlanDay, locked: false, recurring: true, fixedTime: "", notes: definition.notes };
-          nextTasks.push(task);
-        } else {
-          const taskIndex = nextTasks.findIndex((item) => item.id === task!.id);
-          nextTasks[taskIndex] = { ...task, minutes: definition.minutes, category: definition.category, preferredDay: definition.day as WorkPlanDay, recurring: true, notes: definition.notes };
-          task = nextTasks[taskIndex];
-        }
-        const meta = taskDetails(task.id);
-        const dueDate = meta.dueDate || weekdayDate(definition.day, "weeksAhead" in definition ? Number(definition.weeksAhead) : 0);
-        nextTaskMeta[task.id] = { ...meta, status: meta.status === "Completed" ? "Open" : meta.status, dueDate, assignee: meta.assignee || "Nick", createdAt: meta.createdAt || new Date().toISOString(), recurrenceInterval: isWindow ? 4 : 1, recurrenceUnit: "Weeks", recurrenceEndDate: definition.key === "friday-spiders" ? `${new Date().getFullYear()}-10-31` : "", season: definition.key === "friday-spiders" ? "Summer" : "Year-Round", skippable: true, flexibleTime: true, notes: definition.notes, updatedAt: new Date().toISOString() };
-        calendarRecords.push(normalizeCalendar({ id: `routine-${definition.key}`, propertyId: activePropertyId, date: dueDate, title: definition.title, area: definition.category, categoryLabel: "Routine", allDay: true, repeat: isWindow ? "Custom" : "Weekly", reminder: "Morning of", notes: definition.notes, linkedType: "Task", linkedId: task.id, linkedName: task.title, source: "task", status: "Scheduled" }));
-      }
-      calendarRecords.push(
-        normalizeCalendar({ id: "weekly-property-meeting", propertyId: activePropertyId, date: weekdayDate("Tuesday"), time: "10:00", title: "Weekly Property Meeting", area: "House & Maintenance", categoryLabel: "Meeting", allDay: false, repeat: "Weekly", reminder: "Morning of", notes: "Nick, Steve, Summer and Pat.", linkedType: "None", linkedId: "", linkedName: "", source: "manual", status: "Scheduled" }),
-        normalizeCalendar({ id: "lanken-tuesday-crew", propertyId: activePropertyId, date: weekdayDate("Tuesday"), title: "Lanken Landscaping Crew", area: "Landscaping & Irrigation", categoryLabel: "Crew Visit", allDay: true, repeat: "Weekly", reminder: "Day before", notes: "Half-day Tuesday visit coordinated by Pat. Record planned work, areas, before/after photos, completed and unfinished work, and follow-up. Current progress: waterside bed grass removed and cleaned; mulching underway; work quality excellent.", linkedType: "None", linkedId: "", linkedName: "", source: "manual", status: "Scheduled" }),
-        normalizeCalendar({ id: "nick-steve-friday-meeting", propertyId: activePropertyId, date: weekdayDate("Friday"), time: "09:00", title: "Nick and Steve Meeting", area: "House & Maintenance", categoryLabel: "Meeting", allDay: false, repeat: "Weekly", reminder: "Morning of", notes: "Weekly Friday operations meeting.", linkedType: "None", linkedId: "", linkedName: "", source: "manual", status: "Scheduled" }),
-        normalizeCalendar({ id: "weekly-owner-update", propertyId: activePropertyId, date: weekdayDate("Friday"), time: "15:30", title: "Review Weekly Owner Update", area: "House & Maintenance", categoryLabel: "Owner Update", allDay: false, repeat: "Weekly", reminder: "Morning of", notes: "Atlas prepares the draft after the final walkthrough. Review, edit and approve before sending.", linkedType: "None", linkedId: "", linkedName: "", source: "manual", status: "Scheduled" }),
-      );
-      for (const record of calendarRecords) {
-        const recordIndex = nextCalendar.findIndex((item) => item.id === record.id);
-        if (recordIndex >= 0) nextCalendar[recordIndex] = record;
-        else nextCalendar.push(record);
-      }
-      setWorkPlanTasks(nextTasks);
-      setTaskMeta(nextTaskMeta);
-      setCalendarItems(byTitle(nextCalendar));
-      saveStoredArray(storageKeys.calendar[0], byTitle(nextCalendar));
-      const results = await Promise.all(calendarRecords.map((record) => postAtlasRecord("calendar", record)));
-      if (results.some((saved) => !saved)) throw new Error("Some routine calendar records did not sync.");
-      window.localStorage.setItem(setupKey, "ready");
-      showSaveToast("Weekly operations routines are ready.");
-    } catch (error) {
-      console.error("Atlas weekly operations setup failed", error);
-      showSaveToast("Weekly operations setup will retry.", "warning");
-    } finally {
-      weeklyOperationsSetupRunningRef.current = false;
-    }
-  }
-
-  function createSeasonalTask(item: AtlasSeasonalItem) {
-    const task: WorkPlanTask = { id: uid("plan-task"), title: item.title, minutes: 60, priority: "Medium", category: "Maintenance", locationId: "general", preferredDay: "Auto", locked: false, recurring: item.frequency !== "One-time", fixedTime: "", notes: item.notes };
-    setWorkPlanTasks((current) => [task, ...current]);
-    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: item.targetDate || item.deadline, assignee: item.assignedTo === "Addison" ? "Addison" : item.assignedTo === "Nick" ? "Nick" : "Unassigned", createdAt: new Date().toISOString(), notes: item.notes } }));
-    setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "Scheduled" } : entry));
-    setSelectedTaskId(task.id);
-    setTasksView("tasks");
-    showSaveToast("Seasonal work added to Tasks.");
-  }
-
-  function applyOperationsTemplate(template: AtlasOperationsTemplate) {
-    const targetDate = templateDates[template.id] || addDays(todayISO(), 7);
-    const projectId = template.createsProject ? uid("project") : "";
-    const createdAt = new Date().toISOString();
-    const tasks = template.items.map((item) => ({
-      id: uid("plan-task"),
-      title: item.title,
-      minutes: item.minutes,
-      priority: item.priority,
-      category: item.category,
-      locationId: "general",
-      preferredDay: "Auto",
-      locked: false,
-      recurring: false,
-      fixedTime: "",
-      notes: `Created from ${template.title}.`,
-    } satisfies WorkPlanTask));
-
-    setWorkPlanTasks((current) => [...tasks, ...current]);
-    setTaskMeta((current) => {
-      const next = { ...current };
-      tasks.forEach((task, index) => {
-        const item = template.items[index];
-        next[task.id] = {
-          status: "Open",
-          dueDate: addDays(targetDate, -item.daysBefore),
-          assignee: item.assignedTo || (item.addisonReady ? "Addison" : "Nick"),
-          createdAt,
-          projectId: projectId || undefined,
-          notes: `Created from ${template.title}.`,
-        };
-      });
-      return next;
-    });
-
-    if (template.createsProject) {
-      const project: PhotoTimelineProject = {
-        id: projectId,
-        title: template.title,
-        category: template.category,
-        scale: template.items.length >= 7 ? "Major" : "Standard",
-        status: "Planning",
-        assetId: "",
-        locationId: "",
-        vendorId: "",
-        workOrderId: "",
-        workOrderIds: [],
-        vendorIds: [],
-        documentIds: [],
-        assigneeIds: [],
-        notes: `${template.detail} Target date: ${formatDate(targetDate)}.`,
-        coverPhotoId: "",
-        createdAt,
-        progress: 0,
-        phase: "Planning",
-        startDate: todayISO(),
-      };
-      setPhotoTimelineProjects((current) => [project, ...current]);
-    }
-
-    setSelectedTaskId(tasks[0]?.id || "");
-    setTasksView("tasks");
-    showSaveToast(`${template.title} created with ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`);
-  }
-
-  function makeSuggestedTaskRepeating(task: WorkPlanTask) {
-    const nextDue = addDays(todayISO(), 7);
-    const weekdayLabel = new Date().toLocaleDateString(undefined, {
-      weekday: "long",
-    });
-    const preferredDay: WorkPlanDay | "Auto" = workPlanDays.includes(
-      weekdayLabel as WorkPlanDay,
-    )
-      ? (weekdayLabel as WorkPlanDay)
-      : "Auto";
-
-    setWorkPlanTasks((current) =>
-      current.map((item) =>
-        item.id === task.id
-          ? { ...item, recurring: true, preferredDay }
-          : item,
-      ),
-    );
-    updateTaskDetails(task.id, {
-      status: "Open",
-      dueDate: nextDue,
-      completedAt: undefined,
-    });
-    showSaveToast("Task marked as repeating and returned next week.");
-  }
-
-  function renderOperationsTemplates() {
-    return <div style={{ display: "grid", gap: 12 }}>
-      <div style={noticeStyle}>Templates create a temporary, organized plan only when you approve it. They do not add permanent routines or clutter Atlas automatically.</div>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>
-        {atlasOperationsTemplates.filter((template) => template.id !== "graduation-party").map((template) => <div key={template.id} style={cardStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}><div><strong style={{ color: colors.navy3 }}>{template.title}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 5 }}>{template.detail}</small></div><span style={badgeStyle(template.createsProject ? "Scheduled" : "Monitor")}>{template.createsProject ? "Project + tasks" : "Tasks"}</span></div>
-          <div style={{ marginTop: 10 }}><Field label="Event or target date" type="date" value={templateDates[template.id] || addDays(todayISO(), 7)} onChange={(value) => setTemplateDates((current) => ({ ...current, [template.id]: value }))}/></div>
-          <div style={{ marginTop: 9, padding: "8px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: "#F8FAFC" }}><small style={mutedSmallStyle}>{template.items.length} suggested actions · {template.items.filter((item) => item.addisonReady).length} automatically assigned to Addison</small></div>
-          <button type="button" onClick={() => applyOperationsTemplate(template)} style={{ ...goldButtonStyle, marginTop: 10 }}>Create Plan</button>
-        </div>)}
-      </div>
-    </div>;
-  }
-
   function ensureGraduationPartyChecklist() {
     // Graduation Party is now fully user-controlled.
     // Atlas must never recreate this list or its items during load, refresh,
@@ -18023,79 +16503,6 @@ ${notes.trim()}` : notes.trim(),
         "ready",
       );
     }
-  }
-
-  function restoreGraduationPartyStandardItems() {
-    const template = atlasOperationsTemplates.find((item) => item.id === "graduation-party");
-    if (!template) return;
-    const existingTitles = new Set(
-      checklistItems("graduation-party").map((task) =>
-        task.title.trim().toLowerCase(),
-      ),
-    );
-    const missing = template.items.filter(
-      (item) => !existingTitles.has(item.title.trim().toLowerCase()),
-    );
-    if (!missing.length) {
-      showSaveToast("All standard Graduation Party items are already present.");
-      return;
-    }
-
-    const createdAt = new Date().toISOString();
-    const tasks = missing.map((item) => ({
-      id: `grad-party-${slugify(item.title)}`,
-      title: item.title,
-      minutes: item.minutes,
-      priority: item.priority,
-      category: "Graduation Party Checklist",
-      locationId: "general",
-      preferredDay: "Auto" as const,
-      locked: false,
-      recurring: false,
-      fixedTime: "",
-      notes: "Graduation Party Checklist",
-    } satisfies WorkPlanTask));
-
-    setWorkPlanTasks((current) => {
-      const existingIds = new Set(current.map((task) => String(task.id)));
-      const existingPartyTitles = new Set(
-        current
-          .filter(
-            (task) =>
-              task.category === "Graduation Party Checklist" ||
-              taskDetails(task.id).listId === "graduation-party",
-          )
-          .map((task) => task.title.trim().toLowerCase().replace(/\s+/g, " ")),
-      );
-      const safeToAdd = tasks.filter(
-        (task) =>
-          !existingIds.has(String(task.id)) &&
-          !existingPartyTitles.has(
-            task.title.trim().toLowerCase().replace(/\s+/g, " "),
-          ),
-      );
-      return safeToAdd.length ? [...current, ...safeToAdd] : current;
-    });
-    setTaskMeta((current) => {
-      const next = { ...current };
-      tasks.forEach((task, index) => {
-        const item = missing[index];
-        next[task.id] = {
-          status: "Open",
-          dueDate: "",
-          assignee: item.assignedTo || (item.addisonReady ? "Addison" : "Nick"),
-          createdAt,
-          completionHistory: [],
-          flexibleTime: true,
-          skippable: true,
-          listId: "graduation-party",
-          listName: "Graduation Party",
-          dashboardListPinned: false,
-        };
-      });
-      return next;
-    });
-    showSaveToast(`Restored ${missing.length} standard Graduation Party item${missing.length === 1 ? "" : "s"}.`);
   }
 
   function openGraduationPartyChecklist() {
@@ -18934,28 +17341,18 @@ ${notes.trim()}` : notes.trim(),
       </section>
     </div>;
   }
-
   function renderOperationsIntelligence() {
-    const today = todayISO();
     const blocked = workPlanTasks.filter((task) => taskDetails(task.id).status === "Blocked");
     const waiting = workPlanTasks.filter((task) => taskDetails(task.id).status === "Waiting");
-    const routineCandidates = workPlanTasks.filter((task) => {
-      const meta = taskDetails(task.id);
-      const text = `${task.title} ${task.category}`.toLowerCase();
-      const repeatable = ["clean", "check", "inspect", "mow", "edge", "water", "pool", "spa", "vehicle", "boat", "seadoo", "tool area", "walkway"].some((word) => text.includes(word));
-      return meta.status === "Completed" && !task.recurring && repeatable;
-    }).slice(0, 6);
-    const seasonalAttention = seasonalItems.filter((item) => item.status !== "Completed" && item.windowStart <= addDays(today, 45) && item.deadline >= today);
     const vehiclesDue = vehicleCare.filter((vehicle) => vehicleDueScore(vehicle) >= 14).sort((a,b) => vehicleDueScore(b) - vehicleDueScore(a));
     return <div style={{ display: "grid", gap: 12 }}>
-      <div style={noticeStyle}>Atlas surfaces patterns and risks, but nothing is added or rescheduled until you approve it.</div>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4,minmax(0,1fr))", gap: 8 }}>
-        {[{ label: "Blocked", value: blocked.length, detail: "Needs your decision" }, { label: "Waiting", value: waiting.length, detail: "Follow-up may be due" }, { label: "Seasonal", value: seasonalAttention.length, detail: "Within 45 days" }, { label: "Vehicles", value: vehiclesDue.length, detail: "Onsite and becoming due" }].map((item) => <div key={item.label} style={cardStyle}><small style={fieldLabelStyle}>{item.label.toUpperCase()}</small><strong style={{ display: "block", marginTop: 4, fontSize: 24, color: colors.navy }}>{item.value}</strong><small style={mutedSmallStyle}>{item.detail}</small></div>)}
+      <div style={noticeStyle}>Intelligence is read-only. Atlas will not create routines, tasks, work orders, projects, or schedules from suggestions.</div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
+        {[{ label: "Blocked", value: blocked.length, detail: "Needs your decision" }, { label: "Waiting", value: waiting.length, detail: "Follow-up may be due" }, { label: "Vehicles", value: vehiclesDue.length, detail: "Onsite and becoming due" }].map((item) => <div key={item.label} style={cardStyle}><small style={fieldLabelStyle}>{item.label.toUpperCase()}</small><strong style={{ display: "block", marginTop: 4, fontSize: 24, color: colors.navy }}>{item.value}</strong><small style={mutedSmallStyle}>{item.detail}</small></div>)}
       </div>
-      {routineCandidates.length ? <section style={cardStyle}><div style={eyebrowStyle}>Routine suggestions</div><h3 style={{ margin: "4px 0 10px", color: colors.navy }}>Completed work that may deserve a repeat</h3><div style={{ display: "grid", gap: 7 }}>{routineCandidates.map((task) => <div key={task.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", borderTop: `1px solid ${colors.line}`, paddingTop: 8 }}><span><strong style={{ display: "block" }}>{task.title}</strong><small style={mutedSmallStyle}>Completed {taskDetails(task.id).completedAt ? new Date(taskDetails(task.id).completedAt!).toLocaleDateString() : "recently"}</small></span><button type="button" onClick={() => makeSuggestedTaskRepeating(task)} style={secondaryButtonStyle}>Repeat weekly</button></div>)}</div></section> : <div style={noticeStyle}>No repeating-work suggestions yet. Atlas will surface completed cleaning, inspection, mowing, watering, pool, vehicle, and similar tasks here.</div>}
-      {seasonalAttention.length ? <section style={cardStyle}><div style={eyebrowStyle}>Predictive reminders</div><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{seasonalAttention.map((item) => <div key={item.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}><span><strong style={{ display: "block" }}>{item.title}</strong><small style={mutedSmallStyle}>Target {formatDate(item.targetDate)} · deadline {formatDate(item.deadline)}</small></span><button type="button" onClick={() => createSeasonalTask(item)} style={secondaryButtonStyle}>Schedule</button></div>)}</div></section> : null}
     </div>;
   }
+
 
   function renderBacklog() {
     return <div style={{ display: "grid", gap: 12 }}>
@@ -19081,45 +17478,12 @@ ${notes.trim()}` : notes.trim(),
       </div>
     </div>;
   }
-
   function renderSeasonalWork() {
-    const today = todayISO();
-    const year = new Date().getFullYear();
-    const seasonalCatalog: AtlasSeasonalItem[] = [
-      { id: "winter-tires", title: "Winter tires", category: "Vehicles", season: "Fall", windowStart: `${year}-10-01`, targetDate: `${year}-11-01`, deadline: `${year}-11-30`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Confirm which onsite vehicles need winter tires before scheduling." },
-      { id: "annual-appliance-service", title: "Annual appliance service", category: "Appliances", season: "Fall", windowStart: `${year}-09-15`, targetDate: `${year}-10-15`, deadline: `${year}-12-15`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Coordinate service before year end and retain service records." },
-      { id: "irrigation-startup", title: "Irrigation startup and inspection", category: "Irrigation", season: "Spring", windowStart: `${year}-03-15`, targetDate: `${year}-04-15`, deadline: `${year}-05-01`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Start controller, inspect all zones, and confirm backflow testing." },
-      { id: "irrigation-winterization", title: "Irrigation winterization", category: "Irrigation", season: "Fall", windowStart: `${year}-09-15`, targetDate: `${year}-10-15`, deadline: `${year}-11-15`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Schedule blowout, shutoff, backflow protection, and controller winter mode." },
-      { id: "marine-opening", title: "Boat and Sea-Doo spring opening", category: "Marine", season: "Spring", windowStart: `${year}-03-15`, targetDate: `${year}-04-15`, deadline: `${year}-05-15`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Inspect batteries, fluids, safety equipment, lifts, covers, and registrations." },
-      { id: "marine-winterizing", title: "Boat and Sea-Doo winterizing", category: "Marine", season: "Fall", windowStart: `${year}-09-15`, targetDate: `${year}-10-15`, deadline: `${year}-11-15`, frequency: "Yearly", assignedTo: "Vendor", status: "Planned", notes: "Winterize watercraft, batteries, fuel, covers, and waterfront equipment." },
-      { id: "spring-cleanup", title: "Spring property cleanup", category: "Grounds", season: "Spring", windowStart: `${year}-02-15`, targetDate: `${year}-03-15`, deadline: `${year}-04-15`, frequency: "Yearly", assignedTo: "Addison", status: "Planned", notes: "Grounds, drains, beds, furniture, walkways, dock approach, and outdoor reset." },
-      { id: "owner-arrival-readiness", title: "Owner arrival readiness", category: "Arrivals", season: "Year-Round", windowStart: today, targetDate: addDays(today, 7), deadline: addDays(today, 10), frequency: "One-time", assignedTo: "Nick", status: "Planned", notes: "Set the real arrival date, then create the preparation plan." },
-      { id: "party-event-readiness", title: "Party or event readiness", category: "Events", season: "Year-Round", windowStart: today, targetDate: addDays(today, 14), deadline: addDays(today, 14), frequency: "One-time", assignedTo: "Nick", status: "Planned", notes: "Set the event date and prepare guest areas, grounds, recreation, lighting, and final walkthrough." },
-      { id: "annual-property-inspections", title: "Annual property inspections", category: "Inspections", season: "Fall", windowStart: `${year}-08-15`, targetDate: `${year}-09-15`, deadline: `${year}-11-01`, frequency: "Yearly", assignedTo: "Nick", status: "Planned", notes: "Review roof, drainage, exterior, mechanical, safety, dock, and major assets." },
-    ];
-    const missingPrograms = seasonalCatalog.filter((program) => !seasonalItems.some((item) => item.id === program.id));
-    const daysUntil = (date: string) => Math.ceil((new Date(`${date}T12:00:00`).getTime() - new Date(`${today}T12:00:00`).getTime()) / 86400000);
-    const completeSeasonal = (item: AtlasSeasonalItem) => {
-      const completedAt = new Date().toISOString();
-      setSeasonalItems((current) => current.map((entry) => {
-        if (entry.id !== item.id) return entry;
-        if (entry.frequency !== "Yearly") return { ...entry, status: "Completed", lastCompletedAt: completedAt, completionHistory: [...(entry.completionHistory || []), completedAt] };
-        const shiftYear = (date: string) => date ? `${Number(date.slice(0, 4)) + 1}${date.slice(4)}` : date;
-        return { ...entry, status: "Planned", windowStart: shiftYear(entry.windowStart), targetDate: shiftYear(entry.targetDate), deadline: shiftYear(entry.deadline), lastCompletedAt: completedAt, completionHistory: [...(entry.completionHistory || []), completedAt] };
-      }));
-      showSaveToast(item.frequency === "Yearly" ? `${item.title} completed and rolled forward one year.` : `${item.title} completed.`);
-    };
-    const active = seasonalItems.filter((item) => item.status !== "Completed");
-    const overdue = active.filter((item) => item.deadline < today);
-    const inWindow = active.filter((item) => item.windowStart <= today && item.deadline >= today);
-    const upcoming = active.filter((item) => item.windowStart > today && daysUntil(item.windowStart) <= 60);
-    const card = (item: AtlasSeasonalItem) => {
-      const isOverdue = item.status !== "Completed" && item.deadline < today;
-      const open = item.status !== "Completed" && item.windowStart <= today && item.deadline >= today;
-      return <article key={item.id} style={{ ...cardStyle, borderColor: isOverdue ? "#E79A9A" : open ? colors.gold : colors.line }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}><div><small style={fieldLabelStyle}>{item.category || "SEASONAL"}</small><strong style={{ display: "block", marginTop: 3, color: colors.navy }}>{item.title}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 4 }}>{item.frequency} · {item.season} · Target {formatDate(item.targetDate)}</small></div><span style={badgeStyle(isOverdue ? "High" : open ? "Open" : item.status === "Completed" ? "Completed" : "Scheduled")}>{isOverdue ? "Overdue" : open && item.status === "Planned" ? "Ready to schedule" : item.status}</span></div><p style={{ ...mutedSmallStyle, margin: "9px 0" }}>{item.notes}</p><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}><Field label="Window opens" type="date" value={item.windowStart} onChange={(value) => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, windowStart: value } : entry))}/><Field label="Target" type="date" value={item.targetDate} onChange={(value) => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, targetDate: value } : entry))}/><Field label="Deadline" type="date" value={item.deadline} onChange={(value) => setSeasonalItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, deadline: value } : entry))}/></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}><button type="button" onClick={() => createSeasonalTask(item)} style={goldButtonStyle}>Schedule Work</button><button type="button" onClick={() => completeSeasonal(item)} style={secondaryButtonStyle}>Complete</button></div>{item.lastCompletedAt ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 8 }}>Last completed {new Date(item.lastCompletedAt).toLocaleDateString()}</small> : null}</article>;
-    };
-    return <div style={{ display: "grid", gap: 12 }}><section style={{ ...cardStyle, background: colors.navy, color: "#FFFFFF" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Seasonal Intelligence</div><h2 style={{ margin: "4px 0", color: "#FFFFFF" }}>Plan the work before it becomes urgent</h2><p style={{ margin: 0, opacity: .84 }}>Atlas watches scheduling windows, targets, deadlines, and yearly completion history.</p></div><div style={{ textAlign: "right" }}><strong style={{ display: "block", fontSize: 25 }}>{inWindow.length}</strong><small style={{ opacity: .82 }}>ready to schedule</small></div></div></section><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>{[["Overdue",overdue.length],["In window",inWindow.length],["Next 60 days",upcoming.length],["Programs",seasonalItems.length]].map(([label,value]) => <div key={String(label)} style={{ ...cardStyle, padding: 10 }}><small style={fieldLabelStyle}>{String(label).toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 22, color: label === "Overdue" && Number(value) ? colors.red : colors.navy }}>{value}</strong></div>)}</div>{missingPrograms.length ? <section style={cardStyle}><div style={eyebrowStyle}>Recommended programs</div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 9 }}>{missingPrograms.map((program) => <button key={program.id} type="button" onClick={() => { setSeasonalItems((current) => [...current, program]); showSaveToast(`${program.title} added.`); }} style={{ ...secondaryButtonStyle, minHeight: 55, textAlign: "left", justifyContent: "space-between" }}><span><strong style={{ display: "block" }}>{program.title}</strong><small style={mutedSmallStyle}>{program.category} · {program.season}</small></span><span>＋</span></button>)}</div></section> : null}<section><div style={{ ...eyebrowStyle, marginBottom: 8 }}>Seasonal plan</div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>{seasonalItems.sort((a, b) => a.windowStart.localeCompare(b.windowStart)).map(card)}</div></section></div>;
+    return <div style={{ display: "grid", gap: 12 }}>
+      <div style={noticeStyle}>Seasonal auto-programs are retired. Add seasonal work manually from Work or Tasks when you approve it.</div>
+    </div>;
   }
+
 
   async function submitAddisonFieldReport(report: {
     description: string;
