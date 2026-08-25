@@ -2352,7 +2352,7 @@ export default function AtlasDashboardWorkspace(props: any) {
         ) : null}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12, alignItems: "stretch" }}>
-        <section style={{ ...cardStyle, minWidth: 0 }}>
+        <section style={{ ...cardStyle, minWidth: 0, order: 2 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
             <div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div>
             <span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span>
@@ -2363,7 +2363,7 @@ export default function AtlasDashboardWorkspace(props: any) {
           </div>
         </section>
 
-        <section style={{ ...cardStyle, minWidth: 0 }}>
+        <section style={{ ...cardStyle, minWidth: 0, order: 1 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
             <div><div style={eyebrowStyle}>Unified Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Today’s Work</h2></div>
             <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={badgeStyle(dashboardUnifiedWork.length ? "Scheduled" : "Completed")}>{dashboardUnifiedWork.length}</span><button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Open All Work</button></div>
