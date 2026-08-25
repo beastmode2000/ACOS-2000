@@ -158,6 +158,160 @@ function nextRecurringDate(
   return date.toISOString().slice(0, 10);
 }
 
+const UNIFIED_WORK_PREFIX = "work-order:";
+
+function unifiedWorkTaskId(id: unknown) {
+  return `${UNIFIED_WORK_PREFIX}${String(id || "")}`;
+}
+
+function sourceWorkOrderId(taskId: unknown) {
+  const value = String(taskId || "");
+  return value.startsWith(UNIFIED_WORK_PREFIX) ? value.slice(UNIFIED_WORK_PREFIX.length) : "";
+}
+
+function unifiedWorkRowToTask(row: Record<string, any>, today = pacificDateKey()) {
+  const dueDate = sqlDateKey(row.due_date_value || row.date || today);
+  const lastCompletedDate = row.last_completed_date ? sqlDateKey(row.last_completed_date) : "";
+  const completionHistory = Array.isArray(row.completion_history) ? row.completion_history.map((value: unknown) => sqlDateKey(value)) : [];
+  const serviceHistory = Array.isArray(row.service_history) ? row.service_history : [];
+  const completedToday = lastCompletedDate === today || completionHistory.includes(today) || serviceHistory.some((entry: any) => String(entry?.completedAt || "").slice(0, 10) === today);
+  const status = completedToday ? "Completed" : String(row.status || "Open");
+  const assignedTo = String(row.assigned_to || "");
+  const notes = String(row.notes || "");
+  return {
+    id: unifiedWorkTaskId(row.id),
+    source: "unified-work",
+    sourceWorkOrderId: String(row.id || ""),
+    propertyId: String(row.property_id || "2000"),
+    title: String(row.title || "Work"),
+    category: String(row.work_category || "Work"),
+    locationId: String(row.location_id || ""),
+    recurring: Boolean(row.recurring),
+    priority: String(row.priority || "Medium"),
+    notes,
+    taskMeta: {
+      status,
+      assignee: assignedTo,
+      assignedTo,
+      dueDate,
+      notes,
+      instructions: notes,
+      recurring: Boolean(row.recurring),
+      recurrenceInterval: Math.max(1, Number(row.recurrence_interval || 1)),
+      recurrenceUnit: String(row.recurrence_unit || "Weeks"),
+      lastCompletedDate,
+      completionHistory,
+      serviceHistory,
+      photos: Array.isArray(row.photos) ? row.photos : [],
+      checklist: Array.isArray(row.checklist) ? row.checklist : [],
+      workType: String(row.work_type || "Work Order"),
+      responsibilityArea: String(row.responsibility_area || ""),
+      updatedAt: row.updated_at,
+    },
+  };
+}
+
+async function loadUnifiedWorkForEmployee(employee: {id:string;name:string;propertyIds:string[]}) {
+  const sql = getSql();
+  const properties = employee.propertyIds.length ? employee.propertyIds : ["2000"];
+  const rows = await sql`
+    SELECT id, property_id, title, status, priority, notes, recurring,
+      recurrence_interval, recurrence_unit, last_completed_date,
+      completion_history, service_history, due_date_value, date, work_type,
+      work_category, responsibility_area, assigned_to, location_id, photos,
+      checklist, updated_at
+    FROM atlas_work_orders
+    WHERE property_id = ANY(${properties}::text[])
+    ORDER BY COALESCE(due_date_value, date) ASC, updated_at DESC
+  `;
+  return (rows as any[])
+    .filter((row) => isAssignedToName({ id: String(row.id || ""), assignedTo: row.assigned_to }, employee.name))
+    .map((row) => unifiedWorkRowToTask(row));
+}
+
+async function patchUnifiedWorkForEmployee(
+  employee: {id:string;name:string;propertyIds:string[]},
+  taskId: string,
+  action: string,
+  body: Record<string, any>,
+) {
+  const id = sourceWorkOrderId(taskId);
+  if (!id) return false;
+  const sql = getSql();
+  const properties = employee.propertyIds.length ? employee.propertyIds : ["2000"];
+  const rows = await sql`
+    SELECT id, property_id, title, status, priority, notes, recurring,
+      recurrence_interval, recurrence_unit, last_completed_date,
+      completion_history, service_history, due_date_value, date, work_type,
+      work_category, responsibility_area, assigned_to, location_id, photos,
+      checklist, updated_at
+    FROM atlas_work_orders
+    WHERE id=${id} AND property_id = ANY(${properties}::text[])
+    LIMIT 1
+  `;
+  const row = rows[0] as any;
+  if (!row || !isAssignedToName({ id: String(row.id || ""), assignedTo: row.assigned_to }, employee.name)) return false;
+
+  const today = pacificDateKey();
+  let status = String(row.status || "Open");
+  let dueDate = sqlDateKey(row.due_date_value || row.date || today);
+  let lastCompletedDate = row.last_completed_date ? sqlDateKey(row.last_completed_date) : "";
+  let history = Array.isArray(row.completion_history) ? row.completion_history.map((value: unknown) => sqlDateKey(value)) : [];
+  let serviceHistory = Array.isArray(row.service_history) ? [...row.service_history] : [];
+  let notes = String(row.notes || "");
+  let photos = Array.isArray(row.photos) ? [...row.photos] : [];
+
+  if (action === "task-status") {
+    const completed = String(body.status || "Open") === "Completed";
+    if (completed) {
+      history = Array.from(new Set([...history, today])).sort();
+      lastCompletedDate = today;
+      if (!serviceHistory.some((entry: any) => String(entry?.completedAt || "").slice(0, 10) === today)) {
+        serviceHistory.push({
+          id: `field-${id}-${today}`,
+          completedAt: new Date().toISOString(),
+          completedBy: employee.name,
+          notes,
+          dueDate,
+        });
+      }
+      if (Boolean(row.recurring)) {
+        dueDate = nextRecurringDate(dueDate > today ? dueDate : today, row.recurrence_interval, row.recurrence_unit);
+        status = "Scheduled";
+      } else {
+        status = "Completed";
+      }
+    } else {
+      status = String(body.status || "Open");
+      history = history.filter((value: string) => value !== today);
+      serviceHistory = serviceHistory.filter((entry: any) => String(entry?.completedAt || "").slice(0, 10) !== today);
+      if (lastCompletedDate === today) lastCompletedDate = "";
+    }
+  } else if (action === "task-note") {
+    notes = String(body.note || "");
+  } else if (action === "task-photo") {
+    if (body.photo) photos.push(body.photo);
+  } else if (action === "task-flag" && Boolean(body.needsNick)) {
+    notes = `${notes}${notes ? "\n\n" : ""}NEEDS NICK: Flagged by ${employee.name} on ${today}.`;
+  } else if (action === "task-problem" && Boolean(body.problemFound)) {
+    notes = `${notes}${notes ? "\n\n" : ""}PROBLEM FOUND: Reported by ${employee.name} on ${today}.`;
+    status = "Waiting";
+  } else if (action !== "task-nothing-needed") {
+    return false;
+  }
+
+  await sql`
+    UPDATE atlas_work_orders SET
+      status=${status}, notes=${notes}, due_date_value=${dueDate}::date,
+      due_date_initialized=true, last_completed_date=${lastCompletedDate || null}::date,
+      completion_history=${JSON.stringify(history)}::jsonb,
+      service_history=${JSON.stringify(serviceHistory)}::jsonb,
+      photos=${JSON.stringify(photos)}::jsonb, updated_at=NOW()
+    WHERE id=${id} AND property_id=${String(row.property_id)}
+  `;
+  return true;
+}
+
 function addDateKeyDays(dateKey: string, days: number) {
   const date = new Date(`${dateKey}T12:00:00-07:00`);
   date.setDate(date.getDate() + days);
@@ -207,11 +361,22 @@ async function loadAddisonWork() {
     ORDER BY updated_at DESC
   `;
 
-  const allTasks = rows.map((row: any) => ({
+  let allTasks = rows.map((row: any) => ({
     ...(row.record || {}),
     id: String(row.id || row.record?.id || ''),
     serverUpdatedAt: row.updated_at,
   })) as AddisonTaskRecord[];
+
+  const unifiedWork = await loadUnifiedWorkForEmployee({ id: "addison", name: "Addison", propertyIds: ["2000"] });
+  const migratedLegacyTaskIds = new Set(
+    unifiedWork
+      .map((task: any) => String(task.taskMeta?.responsibilityArea || "").match(/legacy task\s+(.+)$/i)?.[1] || "")
+      .filter(Boolean),
+  );
+  allTasks = [
+    ...allTasks.filter((task) => !migratedLegacyTaskIds.has(String(task.id || ""))),
+    ...unifiedWork,
+  ];
 
   // Recurring Addison work stays visibly completed after he checks it off.
   // Only reopen that same task when its next occurrence is actually due.
@@ -804,6 +969,7 @@ function isAssignedToName(record: AddisonTaskRecord, name: string) {
   const assigned = String(meta?.assignee || meta?.assignedTo || meta?.assigned_to || record?.assignee || record?.assignedTo || "").trim().toLowerCase();
   const target = name.trim().toLowerCase();
   const first = target.split(/\s+/)[0] || target;
+  if (/^pat(?:rick)?(?:[^a-z]|$)/.test(target) && /^pat(?:rick)?(?:[^a-z]|$)/.test(assigned)) return true;
   return Boolean(assigned && (assigned === target || assigned === first || assigned.startsWith(`${first} `)));
 }
 
@@ -1244,7 +1410,13 @@ async function loadFieldEmployeeWork(employee: {id:string;name:string;propertyId
       }));
   });
 
-  const merged = [...tasks, ...listTasks].filter((task:any,index:number,all:any[]) =>
+  const unifiedWork = await loadUnifiedWorkForEmployee(employee);
+  const migratedLegacyTaskIds = new Set(
+    unifiedWork
+      .map((task:any) => String(task.taskMeta?.responsibilityArea || "").match(/legacy task\s+(.+)$/i)?.[1] || "")
+      .filter(Boolean),
+  );
+  const merged = [...tasks.filter((task:any) => !migratedLegacyTaskIds.has(String(task.id || ""))), ...listTasks, ...unifiedWork].filter((task:any,index:number,all:any[]) =>
     task.id && all.findIndex((candidate:any) => String(candidate.id) === String(task.id)) === index
   );
 
@@ -1510,7 +1682,10 @@ export async function PATCH(request: NextRequest) {
       else return NextResponse.json({ok:false,error:"Unsupported employee action."},{status:400});
       const beforeUpdate = await loadFieldEmployeeWork(fieldEmployee);
       const alertTask = beforeUpdate.tasks.find((task:any)=>String(task.id)===taskId);
-      const ok=await patchFieldEmployeeTask(fieldEmployee,taskId,patch); if(!ok) return NextResponse.json({ok:false,error:"Assigned task not found."},{status:404});
+      const ok=sourceWorkOrderId(taskId)
+        ? await patchUnifiedWorkForEmployee(fieldEmployee, taskId, action, body as Record<string, any>)
+        : await patchFieldEmployeeTask(fieldEmployee,taskId,patch);
+      if(!ok) return NextResponse.json({ok:false,error:"Assigned work not found."},{status:404});
       if (alertTask && action === "task-flag" && Boolean(body.needsNick)) {
         await upsertEmployeeAlertInboxItem(fieldEmployee, alertTask, "Needs Nick");
       }
@@ -1523,6 +1698,17 @@ export async function PATCH(request: NextRequest) {
     if (token === ADDISON_WORK_TOKEN) {
       const action = String(body.action || "");
       const today = pacificDateKey();
+
+      if (sourceWorkOrderId(body.taskId) && ["task-status", "task-note", "task-photo", "task-flag", "task-problem", "task-nothing-needed"].includes(action)) {
+        const ok = await patchUnifiedWorkForEmployee(
+          { id: "addison", name: "Addison", propertyIds: ["2000"] },
+          String(body.taskId),
+          action,
+          body as Record<string, any>,
+        );
+        if (!ok) return NextResponse.json({ ok: false, error: "Assigned work not found." }, { status: 404 });
+        return NextResponse.json({ ok: true, mode: "addison", addison: await loadAddisonWork() });
+      }
 
       if (action === "field-report") {
         const description = String(body.description || "").trim();
