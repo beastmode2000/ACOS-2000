@@ -2702,7 +2702,7 @@ export default function AtlasApp() {
     const hondaTasks = workPlanTasks.filter((task) => /\bhonda\b/i.test(recordSearchText(task)));
     const hondaWorkOrders = serviceRecords.filter((record) => /\bhonda\b/i.test(recordSearchText(record)));
     const generatedVehicleCleaningTasks = workPlanTasks.filter((task) =>
-      /^clean\s+(kia|porsche|rivian|subaru)$/i.test(String(task.title || "").trim()),
+      /^clean\s+(kia|porsche|rivian|subaru|ford)$/i.test(String(task.title || "").trim()),
     );
     const removedTasks = [...hondaTasks, ...generatedVehicleCleaningTasks];
     const removedIds = new Set([...removedTasks.map((task) => task.id), ...hondaWorkOrders.map((record) => record.id)]);
@@ -16427,7 +16427,7 @@ ${notes.trim()}` : notes.trim(),
         // Do not auto-create cleaning for these vehicles. Their deleted cleaning
         // records stay deleted; all other Fleet behavior remains unchanged.
         const suppressAutomaticCleaning =
-          activePropertyId === "2000" && /^(mercedes|honda|rivian|subaru)$/i.test(vehicle.name.trim());
+          activePropertyId === "2000" && /^(mercedes|honda|rivian|subaru|ford)$/i.test(vehicle.name.trim());
         if (suppressAutomaticCleaning) continue;
 
         const cleaningDueDate = vehicle.lastCleaned ? addDays(vehicle.lastCleaned, cleaningInterval) : todayISO();
