@@ -30,6 +30,7 @@ export type ServiceStatus =
   | "Open"
   | "Scheduled"
   | "Completed"
+  | "Cancelled"
   | "Monitor"
   | "In Progress"
   | "Waiting";
