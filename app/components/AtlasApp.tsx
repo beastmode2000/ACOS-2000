@@ -1548,6 +1548,7 @@ export default function AtlasApp() {
   const [serviceRecords, setServiceRecords] =
     useState<AtlasServiceRecord[]>(fallbackWorkOrders);
   const workOrderDatabaseCleanupRunningRef = useRef(false);
+  const aiGeneratedPurgeRunningRef = useRef(false);
   const [workOrderSeasonFilter, setWorkOrderSeasonFilter] = useState<
     WorkSeason | "All"
   >("All");
@@ -3364,8 +3365,8 @@ export default function AtlasApp() {
 
   useEffect(() => {
     if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000" || typeof window === "undefined") return;
-    const purgeKey = "atlas-ai-generated-record-purge-v1-2000";
-    if (window.localStorage.getItem(purgeKey) === "done") return;
+    const purgeKey = "atlas-ai-generated-record-purge-v2-2000";
+    if (window.localStorage.getItem(purgeKey) === "done" || aiGeneratedPurgeRunningRef.current) return;
 
     const generatedTaskTitles = new Set([
       "monday property reset garage", "tuesday dock waterfront recreation", "wednesday landscaping irrigation",
@@ -3428,46 +3429,78 @@ export default function AtlasApp() {
       return;
     }
 
+    aiGeneratedPurgeRunningRef.current = true;
     generatedTasks.forEach((task) => addTaskTombstone(String(task.id)));
     generatedWorkOrders.forEach((record) => addWorkOrderTombstone(String(record.id)));
     generatedCalendar.forEach((record) => rememberCalendarDeletion(record));
 
-    if (generatedTasks.length) {
-      setWorkPlanTasks((current) => {
-        const next = current.filter((task) => !generatedTaskIds.has(String(task.id)));
-        saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, next);
-        saveStoredArray("atlas-tasks-v1", next);
-        return next;
-      });
-      setTaskMeta((current) => {
-        const next = { ...current };
-        generatedTaskIds.forEach((id) => delete next[id]);
-        try {
-          window.localStorage.setItem(`atlas-task-meta-v1-${activePropertyId}`, JSON.stringify(next));
-          window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
-        } catch {}
-        return next;
-      });
-    }
-    if (generatedWorkOrders.length) setServiceRecords((current) => current.filter((record) => !generatedWorkOrderIdSet.has(String(record.id))));
-    if (generatedCalendar.length) {
-      const ids = new Set(generatedCalendar.map((record) => String(record.id)));
-      setCalendarItems((current) => {
-        const next = byTitle(current.filter((record) => !ids.has(String(record.id))));
-        saveStoredArray(storageKeys.calendar[0], next);
-        return next;
-      });
-    }
+    const deleteBatches = async <T,>(items: T[], deleteItem: (item: T) => Promise<boolean>, batchSize = 20) => {
+      const results: boolean[] = [];
+      for (let index = 0; index < items.length; index += batchSize) {
+        const batch = items.slice(index, index + batchSize);
+        const batchResults = await Promise.all(batch.map(deleteItem));
+        results.push(...batchResults);
+        if (index + batchSize < items.length) await new Promise((resolve) => window.setTimeout(resolve, 150));
+      }
+      return results;
+    };
 
     void (async () => {
-      const taskResults = await Promise.all(generatedTasks.map((task) => deleteOperationalRecord("tasks" as AtlasTable, String(task.id))));
-      const workResults = await Promise.all(generatedWorkOrders.map((record) => deleteAtlasRecord("work_orders", String(record.id), { suppressFailureToast: true })));
-      const calendarResults = await Promise.all(generatedCalendar.map((record) => deleteAtlasRecord("calendar", String(record.id), { suppressFailureToast: true })));
-      if ([...taskResults, ...workResults, ...calendarResults].every(Boolean)) {
+      try {
+        setDatabaseStatus(`Removing ${generatedTasks.length + generatedWorkOrders.length + generatedCalendar.length} generated Atlas records...`);
+        const taskResults = await deleteBatches(
+          generatedTasks,
+          (task) => deleteOperationalRecord("tasks" as AtlasTable, String(task.id)),
+        );
+        const workResults = await deleteBatches(
+          generatedWorkOrders,
+          (record) => deleteAtlasRecord("work_orders", String(record.id), { suppressFailureToast: true }),
+        );
+        const calendarResults = await deleteBatches(
+          generatedCalendar,
+          (record) => deleteAtlasRecord("calendar", String(record.id), { suppressFailureToast: true }),
+        );
+        const allResults = [...taskResults, ...workResults, ...calendarResults];
+        if (!allResults.every(Boolean)) {
+          setDatabaseStatus("Generated-record cleanup did not fully finish. Refresh Atlas to retry the remaining database deletes.");
+          showSaveToast("Generated-record cleanup did not fully finish. Refresh Atlas to retry.", "warning");
+          return;
+        }
+
+        if (generatedTasks.length) {
+          setWorkPlanTasks((current) => {
+            const next = current.filter((task) => !generatedTaskIds.has(String(task.id)));
+            saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, next);
+            saveStoredArray("atlas-tasks-v1", next);
+            return next;
+          });
+          setTaskMeta((current) => {
+            const next = { ...current };
+            generatedTaskIds.forEach((id) => delete next[id]);
+            try {
+              window.localStorage.setItem(`atlas-task-meta-v1-${activePropertyId}`, JSON.stringify(next));
+              window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
+            } catch {}
+            return next;
+          });
+        }
+        if (generatedWorkOrders.length) {
+          setServiceRecords((current) => current.filter((record) => !generatedWorkOrderIdSet.has(String(record.id))));
+        }
+        if (generatedCalendar.length) {
+          const ids = new Set(generatedCalendar.map((record) => String(record.id)));
+          setCalendarItems((current) => {
+            const next = byTitle(current.filter((record) => !ids.has(String(record.id))));
+            saveStoredArray(storageKeys.calendar[0], next);
+            return next;
+          });
+        }
+
         window.localStorage.setItem(purgeKey, "done");
-        showSaveToast(`AI-generated cleanup complete: ${generatedTasks.length} Tasks, ${generatedWorkOrders.length} Work Orders, ${generatedCalendar.length} Calendar items removed.`);
-      } else {
-        showSaveToast("AI-generated cleanup is still syncing and will retry.", "warning");
+        setDatabaseStatus("AI-generated Atlas records removed from the database.");
+        showSaveToast(`Cleanup complete: ${generatedTasks.length} Tasks, ${generatedWorkOrders.length} Work Orders, ${generatedCalendar.length} Calendar items removed.`);
+      } finally {
+        aiGeneratedPurgeRunningRef.current = false;
       }
     })();
   }, [ready, operationsHydrated, syncState, activePropertyId, workPlanTasks, serviceRecords, calendarItems]);
