@@ -2399,6 +2399,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     let deletedRows: JsonRecord[] = [];
+    let workOrderAlreadyDeleted = false;
 
     if (table === "locations") {
       const locationRows = (await sql`
@@ -2694,6 +2695,12 @@ export async function DELETE(request: NextRequest) {
               RETURNING id, property_id
             `) as unknown as JsonRecord[];
           }
+        } else if (!legacyRows.length) {
+          // DELETE is intentionally idempotent for work orders. A cleanup pass,
+          // another browser tab, or a retry may have already removed the row.
+          // Treat that as success so the client can keep its tombstone and never
+          // resurrect the deleted record.
+          workOrderAlreadyDeleted = true;
         }
       }
     } else if (table === "calendar") {
@@ -2742,13 +2749,20 @@ export async function DELETE(request: NextRequest) {
     }
 
     if (!deletedRows.length) {
+      if (table === "work_orders" && workOrderAlreadyDeleted) {
+        return NextResponse.json({
+          ok: true,
+          id,
+          alreadyDeleted: true,
+        });
+      }
       return NextResponse.json(
         {
           ok: false,
           error:
             "Record was not found in property " +
             propertyId +
-            " or has already been deleted.",
+            ".",
         },
         { status: 404 },
       );
