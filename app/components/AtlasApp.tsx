@@ -4022,11 +4022,24 @@ export default function AtlasApp() {
         const nextVendors = byName(apiVendors.map((vendor) => normalizeDepartmentVendor(vendor as AtlasDepartmentVendor)));
         const nextContacts = byName(apiContacts.map(normalizeContact));
         const normalizedApiServices = apiServices.map(normalizeService);
+        const workOrderTombstones = readWorkOrderTombstones(activePropertyId);
+        const tombstonedApiServices = normalizedApiServices.filter((record) =>
+          workOrderTombstones.has(String(record.id)),
+        );
+        const visibleApiServices = normalizedApiServices.filter(
+          (record) => !workOrderTombstones.has(String(record.id)),
+        );
         const workOrderCleanup = planWorkOrderDatabaseCleanup(
-          normalizedApiServices,
+          visibleApiServices,
           activePropertyId,
         );
         const nextServices = workOrderCleanup.keepers;
+
+        tombstonedApiServices.forEach((record) => {
+          void deleteAtlasRecord("work_orders", record.id, {
+            suppressFailureToast: true,
+          });
+        });
 
         if (
           (workOrderCleanup.changedKeepers.length ||
@@ -9621,20 +9634,52 @@ export default function AtlasApp() {
     }
     atlasActionLocksRef.current.add(actionKey);
     addWorkOrderTombstone(record.id);
-    const deleted = await deleteAtlasRecord("work_orders", record.id);
-    atlasActionLocksRef.current.delete(actionKey);
-    if (!deleted) {
-      clearWorkOrderTombstone(record.id);
-      showSaveToast("Atlas could not delete that work order.", "warning");
-      return;
+    const legacyTaskId = (() => {
+      const unifiedTaskMatch = String(record.id || "").match(/^unified-task-(.+)$/);
+      if (unifiedTaskMatch?.[1]) return unifiedTaskMatch[1];
+      const responsibilityMatch = String(
+        (record as AtlasServiceRecord).responsibilityArea || "",
+      ).match(/legacy task\s+(.+)$/i);
+      return responsibilityMatch?.[1]?.trim() || "";
+    })();
+
+    if (legacyTaskId) {
+      addTaskTombstone(legacyTaskId);
+      setWorkPlanTasks((current) => {
+        const next = current.filter((task) => task.id !== legacyTaskId);
+        saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, next);
+        if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", next);
+        return next;
+      });
+      setTaskMeta((current) => {
+        const next = Object.fromEntries(
+          Object.entries(current).filter(([taskId]) => taskId !== legacyTaskId),
+        ) as Record<string, AtlasTaskMeta>;
+        try {
+          window.localStorage.setItem(
+            `atlas-task-meta-v1-${activePropertyId}`,
+            JSON.stringify(next),
+          );
+          if (activePropertyId === "2000") {
+            window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
+          }
+        } catch {}
+        return next;
+      });
+      void deleteOperationalRecord("tasks" as AtlasTable, legacyTaskId);
     }
+
+    const deleted = await deleteAtlasRecord("work_orders", record.id, {
+      suppressFailureToast: true,
+    });
+    atlasActionLocksRef.current.delete(actionKey);
     setServiceRecords((current) =>
       current.filter((item) => item.id !== record.id),
     );
     const linkedCalendarRecords = calendarItems.filter(
       (item) =>
-        String(item.linkedType || "").toLowerCase() === "work order" &&
-        String(item.linkedId || "") === String(record.id),
+        String(item.linkedId || "") === String(record.id) ||
+        Boolean(legacyTaskId && String(item.linkedId || "") === legacyTaskId),
     );
     linkedCalendarRecords.forEach((item) => {
       rememberCalendarDeletion(item);
@@ -9645,7 +9690,12 @@ export default function AtlasApp() {
       setCalendarItems((current) => current.filter((item) => !linkedIds.has(item.id)));
     }
     setSelectedServiceId("");
-    showSaveToast(`${record.title || "Work order"} deleted.`);
+    showSaveToast(
+      deleted
+        ? `${record.title || "Work order"} deleted.`
+        : `${record.title || "Work order"} removed. Atlas will keep retrying the database cleanup.`,
+      deleted ? "success" : "warning",
+    );
   }
 
   async function deleteProcedureRecord(record: ProcedureRecord) {
@@ -10738,7 +10788,11 @@ export default function AtlasApp() {
     }
   }
 
-  async function deleteAtlasRecord(table: AtlasTable, id: string) {
+  async function deleteAtlasRecord(
+    table: AtlasTable,
+    id: string,
+    options: { suppressFailureToast?: boolean } = {},
+  ) {
     if (!id) return false;
 
     try {
@@ -10762,7 +10816,7 @@ export default function AtlasApp() {
       const message =
         error instanceof Error ? error.message : "Delete failed.";
       setDatabaseStatus(`Delete failed — record kept: ${message}`);
-      showSaveToast(`Delete failed: ${message}`);
+      if (!options.suppressFailureToast) showSaveToast(`Delete failed: ${message}`);
       return false;
     }
   }
