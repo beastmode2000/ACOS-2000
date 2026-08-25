@@ -2401,17 +2401,6 @@ export default function AtlasDashboardWorkspace(props: any) {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12, alignItems: "stretch" }}>
         <section style={{ ...cardStyle, minWidth: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-            <div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div>
-            <span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span>
-          </div>
-          <div style={{ display: "grid", gap: 7, marginTop: 10, maxHeight: 430, overflowY: "auto", paddingRight: 2 }}>
-            {foremanSchedule.slice(0, 8).map((event) => <button key={event.instanceId || event.id} type="button" onClick={() => openDashboardCalendarItem(event)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>)}
-            {!foremanSchedule.length ? <div style={noticeStyle}>Nothing scheduled today.</div> : null}
-          </div>
-        </section>
-
-        <section style={{ ...cardStyle, minWidth: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <div><div style={eyebrowStyle}>Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Today + quick entry</h2></div>
             <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={badgeStyle(dashboardUnifiedWork.length ? "Scheduled" : "Completed")}>{dashboardUnifiedWork.length}</span><button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Open All Work</button></div>
@@ -2448,6 +2437,17 @@ export default function AtlasDashboardWorkspace(props: any) {
           {dashboardUnifiedWork.length > 8 ? <button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, width: "100%", marginTop: 8 }}>{dashboardUnifiedWork.length - 8} more in All Work</button> : null}
           {dashboardCompletedToday.length ? <details style={{ marginTop: 8 }}><summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 850 }}>Completed today · {dashboardCompletedToday.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 6 }}>{dashboardCompletedToday.slice(0, 8).map((record) => <button key={`done-${record.id}`} type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#F3F7F4", textAlign: "left", color: colors.navy, textDecoration: "line-through", opacity: .7 }}>{record.title}</button>)}</div></details> : null}
         </section>
+        <section style={{ ...cardStyle, minWidth: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            <div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div>
+            <span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span>
+          </div>
+          <div style={{ display: "grid", gap: 7, marginTop: 10, maxHeight: 430, overflowY: "auto", paddingRight: 2 }}>
+            {foremanSchedule.slice(0, 8).map((event) => <button key={event.instanceId || event.id} type="button" onClick={() => openDashboardCalendarItem(event)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>)}
+            {!foremanSchedule.length ? <div style={noticeStyle}>Nothing scheduled today.</div> : null}
+          </div>
+        </section>
+
       </div>
 
       <section style={{ ...cardStyle, padding: isMobile ? 10 : 12 }}>
@@ -2590,44 +2590,8 @@ export default function AtlasDashboardWorkspace(props: any) {
     if (id === "hero") return null;
     if (id === "estate-health") return null;
     if (id === "today-upcoming") return null;
-    // Live Operating Areas intentionally uses plain cards only: no health score, percentage, progress bar, or status meter.
-    if (id === "property-status") return (
-      <section style={{ ...cardStyle, padding: isMobile ? 10 : "10px 12px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <div><div style={eyebrowStyle}>Departments</div><h2 style={{ margin: "2px 0", color: colors.navy, fontSize: isMobile ? 18 : 20 }}>Live Operating Areas</h2></div>
-          <small style={{ ...mutedSmallStyle, whiteSpace: "nowrap" }}>{openWork.length} open work order{openWork.length === 1 ? "" : "s"}</small>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : `repeat(${Math.min(5, Math.max(1, liveStatuses.length))},minmax(0,1fr))`, gap: 7, marginTop: 8 }}>
-          {liveStatuses.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              onClick={() => {
-                const normalized = item.label.toLowerCase();
-                if (normalized.includes("house")) openDashboardDepartment?.("house");
-                else if (normalized.includes("garage")) openDashboardDepartment?.("garage");
-                else if (normalized.includes("pool") || normalized.includes("spa")) openDashboardDepartment?.("pool");
-                else if (normalized.includes("landscap") || normalized.includes("irrig")) openDashboardDepartment?.("landscaping");
-                else if (normalized.includes("dock") || normalized.includes("waterfront") || normalized.includes("marine")) openDashboardDepartment?.("marine");
-                else {
-                  setDashboardWorkFilter(item.query);
-                  setSelectedServiceId("");
-                  setWorkOrdersOpenKey((current) => current + 1);
-                  setScreen("history");
-                }
-              }}
-              style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: "8px 9px", textAlign: "left", cursor: "pointer", minHeight: 58 }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                <span style={{ fontSize: 18, lineHeight: 1 }}>{item.icon}</span>
-                <strong style={{ color: colors.navy, fontSize: 12.5, lineHeight: 1.2 }}>{item.label}</strong>
-              </div>
-              <small style={{ ...mutedSmallStyle, display: "block", marginTop: 5 }}>{item.count} open</small>
-            </button>
-          ))}
-        </div>
-      </section>
-    );
+    // Live Operating Areas removed from the primary dashboard. Department access remains in the sidebar.
+    if (id === "property-status") return null;
     if (id === "routine") return null;
     if (id === "atlas-brief") return <section className="atlas-brief-strip" style={{ ...cardStyle, padding: isMobile ? "10px 12px" : "10px 16px", background: "#F8FAFC" }}><div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 4 : 12, minWidth: 0 }}><strong style={{ color: colors.navy, whiteSpace: "nowrap" }}>Atlas Brief</strong><div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? "3px 12px" : "3px 18px", minWidth: 0, fontSize: 13, lineHeight: 1.35, color: colors.text }}>{(briefLines.length ? briefLines : ["All clear"]).slice(0, isMobile ? 3 : 5).map((line, index) => <span key={index} style={{ whiteSpace: "normal" }}><span style={{ color: String(line).includes("overdue") ? colors.red : colors.gold, fontWeight: 950 }}>•</span> {line}</span>)}</div></div></section>;
     if (id === "recent-activity") return <details style={{ ...cardStyle, overflow: "hidden" }}>
@@ -2950,7 +2914,7 @@ export default function AtlasDashboardWorkspace(props: any) {
   return <div className="atlas-command-dashboard" style={{ display: "grid", gap: 12 }}>
     {dailyForemanPanel}
     <div className="atlas-dashboard-layout-grid" style={{ display: "grid", gridTemplateColumns: "repeat(12,minmax(0,1fr))", gridAutoRows: "max-content", gridAutoFlow: "row", gap: 14, alignItems: "start" }}>
-      {dashboardWidgets.filter((widget) => widget.visible).map((widget) => {
+      {dashboardWidgets.filter((widget) => widget.visible && widget.id !== "property-status").map((widget) => {
       const activeDropTarget = dashboardWidgetDropTarget?.id === widget.id ? dashboardWidgetDropTarget : null;
       return <div
         key={widget.id}
