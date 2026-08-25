@@ -2518,44 +2518,6 @@ export default function AtlasDashboardWorkspace(props: any) {
     if (id === "estate-health") return null;
     if (id === "today-upcoming") return null;
     if (id === "property-status") return null;
-    // Live Operating Areas intentionally uses plain cards only: no health score, percentage, progress bar, or status meter.
-    if (id === "property-status") return (
-      <section style={{ ...cardStyle, padding: isMobile ? 10 : "10px 12px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <div><div style={eyebrowStyle}>Departments</div><h2 style={{ margin: "2px 0", color: colors.navy, fontSize: isMobile ? 18 : 20 }}>Live Operating Areas</h2></div>
-          <small style={{ ...mutedSmallStyle, whiteSpace: "nowrap" }}>{openWork.length} open work order{openWork.length === 1 ? "" : "s"}</small>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : `repeat(${Math.min(5, Math.max(1, liveStatuses.length))},minmax(0,1fr))`, gap: 7, marginTop: 8 }}>
-          {liveStatuses.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              onClick={() => {
-                const normalized = item.label.toLowerCase();
-                if (normalized.includes("house")) openDashboardDepartment?.("house");
-                else if (normalized.includes("garage")) openDashboardDepartment?.("garage");
-                else if (normalized.includes("pool") || normalized.includes("spa")) openDashboardDepartment?.("pool");
-                else if (normalized.includes("landscap") || normalized.includes("irrig")) openDashboardDepartment?.("landscaping");
-                else if (normalized.includes("dock") || normalized.includes("waterfront") || normalized.includes("marine")) openDashboardDepartment?.("marine");
-                else {
-                  setDashboardWorkFilter(item.query);
-                  setSelectedServiceId("");
-                  setWorkOrdersOpenKey((current) => current + 1);
-                  setScreen("history");
-                }
-              }}
-              style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: "8px 9px", textAlign: "left", cursor: "pointer", minHeight: 58 }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                <span style={{ fontSize: 18, lineHeight: 1 }}>{item.icon}</span>
-                <strong style={{ color: colors.navy, fontSize: 12.5, lineHeight: 1.2 }}>{item.label}</strong>
-              </div>
-              <small style={{ ...mutedSmallStyle, display: "block", marginTop: 5 }}>{item.count} open</small>
-            </button>
-          ))}
-        </div>
-      </section>
-    );
     if (id === "routine") return null;
     if (id === "atlas-brief") return <section className="atlas-brief-strip" style={{ ...cardStyle, padding: isMobile ? "10px 12px" : "10px 16px", background: "#F8FAFC" }}><div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 4 : 12, minWidth: 0 }}><strong style={{ color: colors.navy, whiteSpace: "nowrap" }}>Atlas Brief</strong><div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? "3px 12px" : "3px 18px", minWidth: 0, fontSize: 13, lineHeight: 1.35, color: colors.text }}>{(briefLines.length ? briefLines : ["All clear"]).slice(0, isMobile ? 3 : 5).map((line, index) => <span key={index} style={{ whiteSpace: "normal" }}><span style={{ color: String(line).includes("overdue") ? colors.red : colors.gold, fontWeight: 950 }}>•</span> {line}</span>)}</div></div></section>;
     if (id === "recent-activity") return <details style={{ ...cardStyle, overflow: "hidden" }}>
