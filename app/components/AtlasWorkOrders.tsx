@@ -422,6 +422,7 @@ type AtlasWorkOrdersProps = {
   detailSectionStyle: React.CSSProperties;
   formGridStyle: React.CSSProperties;
   updateWorkOrder: (patch: Record<string, unknown>) => void;
+  updateWorkOrderRecord: (record: any, patch: Record<string, unknown>) => Promise<void> | void;
   fieldLabelStyle: React.CSSProperties;
   inputStyle: React.CSSProperties;
   byName: (records: any[]) => any[];
@@ -479,6 +480,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     detailSectionStyle,
     formGridStyle,
     updateWorkOrder,
+    updateWorkOrderRecord,
     fieldLabelStyle,
     inputStyle,
     byName,
@@ -517,7 +519,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [subLocationFilter, setSubLocationFilter] = useState("All");
   const [assetFilter, setAssetFilter] = useState("All");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [assignedFilter, setAssignedFilter] = useState("All");
+  const [assignedFilters, setAssignedFilters] = useState<string[]>([]);
   const [priorityFilter, setPriorityFilter] = useState("All");
   const [localSearch, setLocalSearch] = useState("");
   const [manageSectionsOpen, setManageSectionsOpen] = useState(false);
@@ -641,15 +643,23 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     return ["All", ...Array.from(values)];
   }, [categoryChoices, serviceRecords]);
 
+  const canonicalAssigneeName = (value: unknown) => {
+    const name = String(value || "").trim();
+    const normalized = name.toLowerCase();
+    if (/^pat(?:rick)?(?:[^a-z]|$)/.test(normalized)) return "Patrick Tanner";
+    if (/^sean(?:[^a-z]|$)/.test(normalized)) return "Sean Powell";
+    return name;
+  };
+
   const assignmentChoices = useMemo(
     () =>
       Array.from(
         new Set([
           "Nick",
           "Addison",
-          "Pat",
-          "Sean",
-          ...contactRecords.map((contact: any) => String(contact.name || "").trim()),
+          "Patrick Tanner",
+          "Sean Powell",
+          ...contactRecords.map((contact: any) => canonicalAssigneeName(contact.name)),
         ].filter(Boolean)),
       ).sort((left, right) => left.localeCompare(right)),
     [contactRecords],
@@ -721,7 +731,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     setLocationFilter("All");
     setSubLocationFilter("All");
     setAssetFilter("All");
-    setAssignedFilter("All");
+    setAssignedFilters([]);
     setPriorityFilter("All");
   }
 
@@ -816,10 +826,11 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       recordLocationId === subLocationFilter;
     const matchesAsset =
       assetFilter === "All" || String(record.assetId || "") === assetFilter;
+    const assignedName = canonicalAssigneeName(record.assignedTo);
     const matchesAssigned =
-      assignedFilter === "All" ||
-      (assignedFilter === "None" && !String(record.assignedTo || "")) ||
-      String(record.assignedTo || "") === assignedFilter;
+      !assignedFilters.length ||
+      (assignedFilters.includes("__none__") && !assignedName) ||
+      assignedFilters.includes(assignedName);
     const matchesPriority =
       priorityFilter === "All" ||
       String(record.priority || "Medium") === priorityFilter;
@@ -909,7 +920,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     locationFilter,
     subLocationFilter,
     assetFilter,
-    assignedFilter,
+    assignedFilters,
     filteredServices,
     localSearch,
     assetName,
@@ -961,7 +972,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     locationFilter,
     subLocationFilter,
     assetFilter,
-    assignedFilter,
+    assignedFilters.length ? "Filtered" : "All",
     priorityFilter,
   ].filter((value) => value !== "All").length + (localSearch.trim() ? 1 : 0);
 
@@ -1473,115 +1484,29 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     const status = String(record.status || "Open");
     const place = location || asset;
 
+    const openRecord = () => {
+      setNewWorkOpen(false);
+      setDetailOpen(true);
+      setSelectedServiceId(record.id);
+    };
+    const assignee = canonicalAssigneeName(record.assignedTo);
+    const noteCount = String(record.notes || "").trim() ? 1 : 0;
+    const photoCount = Array.isArray(record.photos) ? record.photos.length : 0;
+
     return (
-      <div
-        key={record.id}
-        role="button"
-        tabIndex={0}
-        onClick={() => {
-          setNewWorkOpen(false);
-          setDetailOpen(true);
-          setSelectedServiceId(record.id);
-        }}
-        onKeyDown={(event) => {
-          if (
-            event.target instanceof HTMLElement &&
-            event.target.closest("input, textarea, select, button, a")
-          ) {
-            return;
-          }
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            setNewWorkOpen(false);
-            setDetailOpen(true);
-            setSelectedServiceId(record.id);
-          }
-        }}
-        style={{
-          display: "grid",
-          gap: 5,
-          padding: isMobile ? "9px 10px" : "9px 11px",
-          border: `1px solid ${selected ? colors.gold : colors.line}`,
-          borderLeft: overdue
-            ? `3px solid ${colors.red}`
-            : selected
-              ? `3px solid ${colors.gold}`
-              : `3px solid transparent`,
-          borderRadius: 11,
-          background: selected ? "#FFF9EB" : "#FFFFFF",
-          boxShadow: selected
-            ? "0 6px 16px rgba(15,42,67,.08)"
-            : "none",
-          cursor: "pointer",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: 8,
-          }}
-        >
-          <strong
-            style={{
-              minWidth: 0,
-              color: colors.text,
-              fontSize: 13.5,
-              lineHeight: 1.3,
-              fontWeight: 780,
-            }}
-          >
-            {record.title || "Untitled Work"}
-          </strong>
-          <span
-            style={{
-              ...badgeStyle(status),
-              flex: "0 0 auto",
-              fontSize: 10,
-              padding: "3px 6px",
-            }}
-          >
-            {status}
-          </span>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "2px 7px",
-            color: colors.muted,
-            fontSize: 11,
-            lineHeight: 1.3,
-          }}
-        >
-          {category ? <span>{categoryDisplayLabel(category)}</span> : null}
-          {place ? <span>· {place}</span> : null}
-        </div>
-
-        {(record.date || record.assignedTo || record.priority === "High") ? (
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: 6,
-              color: colors.muted,
-              fontSize: 10.5,
-            }}
-          >
-            {record.date ? (
-              <span style={{ color: overdue ? colors.red : colors.muted }}>
-                {overdue ? "Overdue · " : ""}{formatDate(record.date)}
-              </span>
-            ) : null}
-            {record.assignedTo ? <span>{record.assignedTo}</span> : null}
-            {record.priority === "High" ? (
-              <span style={{ color: colors.red, fontWeight: 800 }}>High</span>
-            ) : null}
-          </div>
-        ) : null}
+      <div key={record.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "auto minmax(0,1fr)" : "auto minmax(220px,1fr) minmax(150px,.48fr) 142px auto", gap: 8, alignItems: "center", padding: isMobile ? "9px" : "8px 10px", border: `1px solid ${selected ? colors.gold : colors.line}`, borderLeft: overdue ? `3px solid ${colors.red}` : selected ? `3px solid ${colors.gold}` : `3px solid transparent`, borderRadius: 10, background: selected ? "#FFF9EB" : "#FFFFFF" }}>
+        <input type="checkbox" checked={status === "Completed"} disabled={status === "Completed"} aria-label={`Complete ${record.title || "work"}`} onChange={() => void completeWorkOrder(record)} />
+        <button type="button" onClick={openRecord} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", minWidth: 0, cursor: "pointer" }}>
+          <strong style={{ display: "block", minWidth: 0, color: colors.text, fontSize: 13.5, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis" }}>{record.title || "Untitled Work"}</strong>
+          <span style={{ display: "block", marginTop: 2, color: colors.muted, fontSize: 10.5, lineHeight: 1.3 }}>{[category ? categoryDisplayLabel(category) : "", place, record.priority === "High" ? "High priority" : "", noteCount ? "Notes" : "", photoCount ? `${photoCount} photo${photoCount === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ")}</span>
+        </button>
+        {!isMobile ? <><select value={assignee} onChange={(event) => void updateWorkOrderRecord(record, { assignedTo: event.currentTarget.value })} aria-label={`Assign ${record.title || "work"}`} style={{ ...controlStyle, minHeight: 34, padding: "5px 7px", fontSize: 11 }}>
+          <option value="">Unassigned</option>
+          {assignmentChoices.map((name) => <option key={name} value={name}>{name}</option>)}
+        </select>
+        <input type="date" value={String(record.date || "").slice(0, 10)} onChange={(event) => void updateWorkOrderRecord(record, { date: event.currentTarget.value })} aria-label={`Due date for ${record.title || "work"}`} style={{ ...controlStyle, minHeight: 34, padding: "5px 7px", fontSize: 11, color: overdue ? colors.red : colors.text }} />
+        <button type="button" onClick={openRecord} style={{ ...miniButtonStyle, minHeight: 34, padding: "5px 8px", fontSize: 11 }}>Details</button></> : null}
+        {isMobile ? <div style={{ gridColumn: "2", display: "grid", gridTemplateColumns: "minmax(0,1fr) 142px", gap: 7 }}><select value={assignee} onChange={(event) => void updateWorkOrderRecord(record, { assignedTo: event.currentTarget.value })} aria-label={`Assign ${record.title || "work"}`} style={{ ...controlStyle, minHeight: 34, padding: "5px 7px", fontSize: 11 }}><option value="">Unassigned</option>{assignmentChoices.map((name) => <option key={name} value={name}>{name}</option>)}</select><input type="date" value={String(record.date || "").slice(0, 10)} onChange={(event) => void updateWorkOrderRecord(record, { date: event.currentTarget.value })} aria-label={`Due date for ${record.title || "work"}`} style={{ ...controlStyle, minHeight: 34, padding: "5px 7px", fontSize: 11, color: overdue ? colors.red : colors.text }} /></div> : null}
       </div>
     );
   }
@@ -2021,20 +1946,15 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   flexWrap: "wrap",
                 }}
               >
-                <select
-                  value={assignedFilter}
-                  onChange={(event) => setAssignedFilter(event.currentTarget.value)}
-                  style={{ ...controlStyle, width: "auto", minWidth: 130, minHeight: 34 }}
-                  aria-label="Assigned to"
-                >
-                  <option value="All">Assigned To</option>
-                  <option value="None">Unassigned</option>
-                  {assignmentChoices.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
+                <details style={{ position: "relative" }}>
+                  <summary style={{ ...controlStyle, width: "auto", minWidth: 145, minHeight: 34, padding: "6px 10px", cursor: "pointer", listStyle: "none", fontSize: 12, fontWeight: 800 }}>
+                    {assignedFilters.length ? `Assigned · ${assignedFilters.length}` : "Everyone"}
+                  </summary>
+                  <div style={{ position: "absolute", zIndex: 30, top: "calc(100% + 5px)", left: 0, width: 220, maxHeight: 300, overflowY: "auto", display: "grid", gap: 6, padding: 10, border: `1px solid ${colors.line}`, borderRadius: 11, background: "#FFFFFF", boxShadow: "0 14px 34px rgba(15,42,67,.18)" }}>
+                    <button type="button" onClick={() => setAssignedFilters([])} style={{ ...miniButtonStyle, width: "100%" }}>Everyone</button>
+                    {[{ value: "__none__", label: "Unassigned" }, ...assignmentChoices.map((name) => ({ value: name, label: name }))].map((option) => <label key={option.value} style={{ display: "flex", alignItems: "center", gap: 8, color: colors.text, fontSize: 12, fontWeight: 750 }}><input type="checkbox" checked={assignedFilters.includes(option.value)} onChange={(event) => setAssignedFilters((current) => event.currentTarget.checked ? [...current, option.value] : current.filter((value) => value !== option.value))}/>{option.label}</label>)}
+                  </div>
+                </details>
 
                 <select
                   value={dueDateFilter}
@@ -2164,18 +2084,12 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               </section>
             ) : null}
 
-            {activeSection?.kind === "my-work" ? (
-              renderMyWorkList()
-            ) : (
-              <div style={listStyle}>
-                {visibleRecords.map(renderWorkRow)}
-                {!visibleRecords.length ? (
-                  <div style={noticeStyle}>
-                    No work matches this section, category, or search.
-                  </div>
-                ) : null}
-              </div>
-            )}
+            <div style={{ ...listStyle, display: "grid", gap: 6 }}>
+              {sortWorkRecords(visibleRecords).map(renderWorkRow)}
+              {!visibleRecords.length ? (
+                <div style={noticeStyle}>No work matches these filters.</div>
+              ) : null}
+            </div>
             {recentRecords.length ? <details style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 8 }}>
               <summary style={{ cursor: "pointer", color: colors.muted, fontSize: 11, fontWeight: 800 }}>Recently Viewed · {recentRecords.length}</summary>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 7 }}>{recentRecords.slice(0, 6).map((record: any) => <button key={`recent-bottom-${record.id}`} type="button" onClick={() => { setNewWorkOpen(false); setDetailOpen(true); setSelectedServiceId(record.id); }} style={{ ...miniButtonStyle, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>{record.title || "Untitled Work"}</button>)}</div>
@@ -2307,7 +2221,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                           {selectedService.assignedTo ? (
                             <div style={{ padding: 11, borderRadius: 12, background: "#FFFFFF", border: `1px solid ${colors.line}` }}>
                               <span style={fieldLabelStyle}>Assigned</span>
-                              <div style={{ marginTop: 4, fontWeight: 800 }}>{selectedService.assignedTo}</div>
+                              <div style={{ marginTop: 4, fontWeight: 800 }}>{canonicalAssigneeName(selectedService.assignedTo)}</div>
                             </div>
                           ) : null}
                         </div>
@@ -2344,7 +2258,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Location</span><select value={selectedService.locationId || ""} onChange={(event) => safeSelectChange(event, { locationId: event.currentTarget.value })} style={inputStyle}><option value="">No location</option>{byName(locationRecords).map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Sub-Location</span><input value={selectedService.subLocation || ""} onChange={(event) => updateWorkOrder({ subLocation: event.currentTarget.value })} style={inputStyle} /></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Category</span><select value={categoryLabel(selectedService)} onChange={(event) => { const value = event.currentTarget.value; safeSelectChange(event, { workCategory: value, category: value, emoji: categoryEmoji(value) }); }} style={inputStyle}>{categories.filter((category) => category !== "All").map((category) => <option key={category} value={category}>{categoryDisplayLabel(category)}</option>)}</select></label>
-                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned To</span><select value={selectedService.assignedTo || ""} onChange={(event) => safeSelectChange(event, { assignedTo: event.currentTarget.value })} style={inputStyle}><option value="">Unassigned</option>{assignmentChoices.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned To</span><select value={canonicalAssigneeName(selectedService.assignedTo)} onChange={(event) => safeSelectChange(event, { assignedTo: event.currentTarget.value })} style={inputStyle}><option value="">Unassigned</option>{assignmentChoices.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Vendor</span><select value={selectedService.vendorId || ""} onChange={(event) => safeSelectChange(event, { vendorId: event.currentTarget.value })} style={inputStyle}><option value="">No vendor</option>{byName(vendorRecords).map((vendor: any) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Linked Project</span><select value={selectedService.projectId || ""} onChange={(event) => safeSelectChange(event, { projectId: event.currentTarget.value })} style={inputStyle}><option value="">No project</option>{projectRecords.filter((project: any) => !project.archived || project.id === selectedService.projectId).map((project: any) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label>
                     </div>
