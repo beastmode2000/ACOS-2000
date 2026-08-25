@@ -15414,10 +15414,82 @@ export default function AtlasApp() {
     showSaveToast("Task deleted — Atlas will keep it deleted even if sync has to retry.");
   }
 
+  function moveAtlasTaskToDate(task: WorkPlanTask, value: string) {
+    const dueDate = String(value || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+      showSaveToast("Choose a valid task date.", "warning");
+      return;
+    }
+
+    const parsedDate = new Date(`${dueDate}T12:00:00`);
+    if (Number.isNaN(parsedDate.getTime())) {
+      showSaveToast("Choose a valid task date.", "warning");
+      return;
+    }
+
+    const weekdayIndex = parsedDate.getDay();
+    const preferredDay: WorkPlanTask["preferredDay"] =
+      weekdayIndex >= 1 && weekdayIndex <= 5
+        ? workPlanDays[weekdayIndex - 1]
+        : "Auto";
+    const updatedAt = new Date().toISOString();
+    const updatedTask: WorkPlanTask = {
+      ...task,
+      preferredDay,
+      scheduledDay: preferredDay === "Auto" ? undefined : preferredDay,
+      scheduledDate: dueDate,
+    };
+    const updatedMeta: AtlasTaskMeta = {
+      ...taskDetails(task.id),
+      dueDate,
+      status: "Open",
+      completedAt: undefined,
+      updatedAt,
+    };
+
+    setWorkPlanTasks((current) => {
+      const next = current.map((item) =>
+        item.id === task.id ? updatedTask : item,
+      );
+      saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, next);
+      if (activePropertyId === "2000") {
+        saveStoredArray("atlas-tasks-v1", next);
+      }
+      return next;
+    });
+
+    setTaskMeta((current) => {
+      const next = { ...current, [task.id]: updatedMeta };
+      try {
+        window.localStorage.setItem(
+          `atlas-task-meta-v1-${activePropertyId}`,
+          JSON.stringify(next),
+        );
+        if (activePropertyId === "2000") {
+          window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
+        }
+      } catch {}
+      return next;
+    });
+
+    void postAtlasRecord("tasks" as AtlasTable, {
+      ...updatedTask,
+      ...updatedMeta,
+      taskMeta: updatedMeta,
+      propertyId: activePropertyId,
+      updatedAt,
+    });
+
+    recordAtlasAudit("Task moved", `${task.title} → ${dueDate}`);
+    showSaveToast(`${task.title} moved to ${formatDate(dueDate)}.`);
+  }
+
+  function moveAtlasTaskToToday(task: WorkPlanTask) {
+    moveAtlasTaskToDate(task, todayISO());
+  }
+
   function moveAtlasTaskToTomorrow(task: WorkPlanTask) {
-    updateTaskDetails(task.id, { dueDate: addDays(todayISO(), 1), status: "Open" });
-    recordAtlasAudit("Task moved", `${task.title} → tomorrow`);
-    showSaveToast(`${task.title} moved to tomorrow.`);
+    moveAtlasTaskToDate(task, addDays(todayISO(), 1));
   }
 
   function addQuickTaskNote(task: WorkPlanTask) {
@@ -18667,7 +18739,9 @@ ${notes.trim()}` : notes.trim(),
           noticeStyle,
           completeAtlasTask,
           skipRecurringTask,
+          moveAtlasTaskToToday,
           moveAtlasTaskToTomorrow,
+          moveAtlasTaskToDate,
           walkVoiceListening,
           setPreviewFile,
           setTaskListFilter,
@@ -18720,6 +18794,7 @@ ${notes.trim()}` : notes.trim(),
           quickCreateVendor,
           quickCreateContact,
           deleteAtlasTask,
+          removeExactDuplicateTasks,
           taskFocusMode,
           setTaskFocusMode,
           mapIconButtonStyle,
@@ -18730,6 +18805,7 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function renderWeeklyPlanner() {
+    const plannerDates = nextWorkWeekDates();
     const scheduledMinutes = workPlanDays.reduce<Record<WorkPlanDay, number>>(
       (acc, day) => {
         acc[day] = workPlanTasks
@@ -18749,7 +18825,7 @@ ${notes.trim()}` : notes.trim(),
       updateWorkPlanTask(taskId, {
         preferredDay: nextDay,
         scheduledDay: nextDay,
-        scheduledDate: nextWorkWeekDates()[nextDay],
+        scheduledDate: plannerDates[nextDay],
       });
     };
 
@@ -18825,7 +18901,7 @@ ${notes.trim()}` : notes.trim(),
                   return (
                     <div key={day} style={{ ...cardStyle, minHeight: 180, padding: 10 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
-                        <strong style={{ color: colors.navy }}>{day}</strong>
+                        <strong style={{ color: colors.navy }}>{day} · {formatDate(plannerDates[day])}</strong>
                         <small style={{ ...mutedSmallStyle, color: overloaded ? colors.red : undefined }}>{minutesLabel(total)} / {workPlanTargetHours}h</small>
                       </div>
                       <div style={{ height: 5, borderRadius: 999, background: colors.line, overflow: "hidden", margin: "7px 0 9px" }}>
