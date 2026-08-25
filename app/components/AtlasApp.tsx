@@ -288,6 +288,167 @@ function normalizedWorkOrderText(value: unknown) {
     .trim();
 }
 
+function recurringWorkOrderSchedule(record: AtlasServiceRecord) {
+  if (record.recurring) {
+    return {
+      interval: Math.max(1, Number(record.recurrenceInterval || 1)),
+      unit: isWorkOrderRecurrenceUnit(record.recurrenceUnit)
+        ? record.recurrenceUnit
+        : ("Weeks" as WorkOrderRecurrenceUnit),
+    };
+  }
+
+  const text = normalizedWorkOrderText(
+    `${record.title} ${record.workCategory} ${record.notes}`,
+  );
+  if (/fertiliz|generator|boiler|hvac|irrigation|vehicle|boat|lift/.test(text)) {
+    return { interval: 1, unit: "Months" as WorkOrderRecurrenceUnit };
+  }
+  if (/roof|gutter|winter|spring|seasonal|dock inspection/.test(text)) {
+    return { interval: 3, unit: "Months" as WorkOrderRecurrenceUnit };
+  }
+  return { interval: 1, unit: "Weeks" as WorkOrderRecurrenceUnit };
+}
+
+function workOrderDateKey(value: unknown) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] || "";
+}
+
+function completionTimestampForDate(date: string) {
+  return `${date}T12:00:00.000Z`;
+}
+
+function recurringWorkOrderPersistenceValue(record: AtlasServiceRecord) {
+  return JSON.stringify({
+    ...record,
+    completionHistory: record.completionHistory || [],
+    serviceHistory: record.serviceHistory || [],
+  });
+}
+
+function repairRecurringWorkOrderRecord(
+  record: AtlasServiceRecord,
+  repairKnownFertilizeCompletion = false,
+) {
+  const preventiveMaintenance =
+    record.workType === "Preventive Maintenance" || Boolean(record.recurring);
+  if (!preventiveMaintenance) return record;
+
+  const schedule = recurringWorkOrderSchedule(record);
+  let completionHistory = Array.from(
+    new Set((record.completionHistory || []).map(workOrderDateKey).filter(Boolean)),
+  ).sort();
+  let serviceHistory = Array.isArray(record.serviceHistory)
+    ? [...record.serviceHistory]
+    : [];
+  let lastCompletedDate = workOrderDateKey(record.lastCompletedDate);
+
+  serviceHistory.forEach((entry) => {
+    const date = workOrderDateKey(entry?.completedAt);
+    if (date) completionHistory.push(date);
+  });
+  completionHistory = Array.from(new Set(completionHistory)).sort();
+  if (!lastCompletedDate) lastCompletedDate = completionHistory.at(-1) || "";
+
+  // One-time correction for the completion Patrick recorded for Fertilize Lawn
+  // on Friday, August 21. The old completion path stamped the next sync date
+  // instead of the actual work date and never advanced the monthly schedule.
+  const fertilizeLawnRepair =
+    repairKnownFertilizeCompletion &&
+    normalizedWorkOrderText(record.title) === "fertilize lawn" &&
+    !completionHistory.some((date) => date > "2026-08-24") &&
+    (lastCompletedDate === "2026-08-24" ||
+      serviceHistory.some(
+        (entry) => workOrderDateKey(entry?.completedAt) === "2026-08-24",
+      ));
+
+  if (fertilizeLawnRepair) {
+    completionHistory = Array.from(
+      new Set(
+        completionHistory.map((date) =>
+          date === "2026-08-24" ? "2026-08-21" : date,
+        ),
+      ),
+    ).sort();
+    serviceHistory = serviceHistory.map((entry) =>
+      workOrderDateKey(entry?.completedAt) === "2026-08-24"
+        ? {
+            ...entry,
+            completedAt: completionTimestampForDate("2026-08-21"),
+          }
+        : entry,
+    );
+    lastCompletedDate = "2026-08-21";
+  }
+
+  if (
+    lastCompletedDate &&
+    !serviceHistory.some(
+      (entry) => workOrderDateKey(entry?.completedAt) === lastCompletedDate,
+    )
+  ) {
+    serviceHistory = [
+      {
+        id: `completion-${record.id}-${lastCompletedDate}`,
+        completedAt: completionTimestampForDate(lastCompletedDate),
+        statusBefore: "Open",
+        dueDate: String(record.date || ""),
+        notes: String(record.notes || ""),
+        notesHistory: Array.isArray(record.notesHistory)
+          ? record.notesHistory
+          : [],
+        checklist: Array.isArray(record.checklist) ? record.checklist : [],
+        photos: Array.isArray(record.photos) ? record.photos : [],
+        documents: Array.isArray(record.documents) ? record.documents : [],
+        assetId: String(record.assetId || ""),
+        vendorId: String(record.vendorId || ""),
+        procedureId: String(record.procedureId || ""),
+        locationId: String(record.locationId || ""),
+      },
+      ...serviceHistory,
+    ];
+  }
+
+  serviceHistory.sort((left, right) =>
+    String(right?.completedAt || "").localeCompare(
+      String(left?.completedAt || ""),
+    ),
+  );
+
+  let date = workOrderDateKey(record.date);
+  let status = record.status;
+  if (
+    lastCompletedDate &&
+    (fertilizeLawnRepair || status === "Completed" || !date || date <= lastCompletedDate)
+  ) {
+    const nextDate = nextRecurrenceDate(
+      lastCompletedDate,
+      schedule.interval,
+      schedule.unit,
+    );
+    const scheduleEnded = Boolean(
+      record.recurrenceEndDate && nextDate > record.recurrenceEndDate,
+    );
+    date = scheduleEnded ? date || lastCompletedDate : nextDate;
+    status = scheduleEnded ? "Completed" : "Scheduled";
+  }
+
+  return normalizeService({
+    ...record,
+    recurring: true,
+    recurrenceInterval: schedule.interval,
+    recurrenceUnit: schedule.unit,
+    date,
+    status,
+    lastCompletedDate,
+    completionHistory,
+    serviceHistory,
+    workType: "Preventive Maintenance",
+  });
+}
+
 function workOrderDatabaseDuplicateKey(record: AtlasServiceRecord) {
   const title = normalizedWorkOrderText(record.title);
   if (!title || title === "untitled work" || title === "untitled work order") {
@@ -431,12 +592,20 @@ function mergeDuplicateWorkOrderGroup(records: AtlasServiceRecord[]) {
   });
 }
 
-function planWorkOrderDatabaseCleanup(records: AtlasServiceRecord[]) {
+function planWorkOrderDatabaseCleanup(
+  records: AtlasServiceRecord[],
+  propertyId = "",
+) {
   const groups = new Map<string, AtlasServiceRecord[]>();
-  records.forEach((record) => {
-    const key = workOrderDatabaseDuplicateKey(record);
-    groups.set(key, [...(groups.get(key) || []), record]);
-  });
+  const originalsById = new Map(records.map((record) => [record.id, record]));
+  records
+    .map((record) =>
+      repairRecurringWorkOrderRecord(record, propertyId === "2000"),
+    )
+    .forEach((record) => {
+      const key = workOrderDatabaseDuplicateKey(record);
+      groups.set(key, [...(groups.get(key) || []), record]);
+    });
 
   const keepers: AtlasServiceRecord[] = [];
   const changedKeepers: AtlasServiceRecord[] = [];
@@ -456,10 +625,22 @@ function planWorkOrderDatabaseCleanup(records: AtlasServiceRecord[]) {
           recurrenceUnit: baseMerged.recurrenceUnit || "Days",
         })
       : baseMerged;
-    keepers.push(merged);
-    if (group.length > 1) changedKeepers.push(merged);
+    const repairedMerged = repairRecurringWorkOrderRecord(
+      merged,
+      propertyId === "2000",
+    );
+    keepers.push(repairedMerged);
+    const original = originalsById.get(repairedMerged.id);
+    if (
+      group.length > 1 ||
+      !original ||
+      recurringWorkOrderPersistenceValue(original) !==
+        recurringWorkOrderPersistenceValue(repairedMerged)
+    ) {
+      changedKeepers.push(repairedMerged);
+    }
     group.forEach((record) => {
-      if (record.id !== merged.id) duplicateIds.push(record.id);
+      if (record.id !== repairedMerged.id) duplicateIds.push(record.id);
     });
   });
 
@@ -3583,11 +3764,13 @@ export default function AtlasApp() {
         const normalizedApiServices = apiServices.map(normalizeService);
         const workOrderCleanup = planWorkOrderDatabaseCleanup(
           normalizedApiServices,
+          activePropertyId,
         );
         const nextServices = workOrderCleanup.keepers;
 
         if (
-          workOrderCleanup.duplicateIds.length &&
+          (workOrderCleanup.changedKeepers.length ||
+            workOrderCleanup.duplicateIds.length) &&
           !workOrderDatabaseCleanupRunningRef.current
         ) {
           workOrderDatabaseCleanupRunningRef.current = true;
@@ -3618,9 +3801,13 @@ export default function AtlasApp() {
                 );
                 deletedCount += results.filter(Boolean).length;
               }
-              showSaveToast(
-                `Removed ${deletedCount} duplicate work order${deletedCount === 1 ? "" : "s"}.`,
-              );
+              if (deletedCount) {
+                showSaveToast(
+                  `Repaired recurring schedules and removed ${deletedCount} duplicate work order${deletedCount === 1 ? "" : "s"}.`,
+                );
+              } else if (workOrderCleanup.changedKeepers.length) {
+                showSaveToast("Recurring work order history and next dates repaired.");
+              }
             } else {
               showSaveToast(
                 "Duplicate cleanup paused because Atlas could not preserve every keeper record.",
@@ -11285,6 +11472,14 @@ export default function AtlasApp() {
     const recordId = selectedServiceId || selectedService.id;
     if (!recordId) return;
 
+    if (patch.status === "Completed") {
+      const record = serviceRecords.find((item) => item.id === recordId);
+      if (record && record.status !== "Completed") {
+        void completeWorkOrder(record);
+      }
+      return;
+    }
+
     const safePatch: Partial<AtlasServiceRecord> & { category?: string } = {
       ...patch,
     };
@@ -11438,46 +11633,102 @@ export default function AtlasApp() {
     });
   }
 
-  async function completeWorkOrder(record: AtlasServiceRecord) {
-    if (record.date && String(record.date).slice(0, 10) > todayISO()) {
-      showSaveToast(`This work order is due ${formatDate(record.date)} and cannot be completed early.`, "warning");
+  async function completeWorkOrder(
+    record: AtlasServiceRecord,
+    options: {
+      completedDate?: string;
+      completionNote?: string;
+      allowEarly?: boolean;
+    } = {},
+  ) {
+    const completedDate =
+      workOrderDateKey(options.completedDate) || todayISO();
+    const dueDate = workOrderDateKey(record.date);
+    if (
+      dueDate &&
+      dueDate > completedDate &&
+      !options.allowEarly &&
+      !window.confirm(
+        `This work order is due ${formatDate(dueDate)}. Complete it early on ${formatDate(completedDate)}?`,
+      )
+    ) {
       return;
     }
+
+    const schedule = recurringWorkOrderSchedule(record);
+    const recurring =
+      Boolean(record.recurring) || record.workType === "Preventive Maintenance";
+    const preparedRecord = normalizeService({
+      ...record,
+      recurring,
+      recurrenceInterval: recurring
+        ? schedule.interval
+        : record.recurrenceInterval,
+      recurrenceUnit: recurring ? schedule.unit : record.recurrenceUnit,
+      workType: recurring ? "Preventive Maintenance" : record.workType,
+    });
+    const alreadyCompletedOnDate =
+      workOrderDateKey(preparedRecord.lastCompletedDate) === completedDate &&
+      (preparedRecord.serviceHistory || []).some(
+        (entry) => workOrderDateKey(entry?.completedAt) === completedDate,
+      );
+    if (alreadyCompletedOnDate) {
+      showSaveToast(
+        `${preparedRecord.title || "Work order"} is already recorded as completed on ${formatDate(completedDate)}.`,
+        "warning",
+      );
+      return;
+    }
+
     const actionKey = `complete-work-order:${record.id}`;
     if (atlasActionLocksRef.current.has(actionKey)) {
       showSaveToast("This work order is already being completed.", "warning");
       return;
     }
     atlasActionLocksRef.current.add(actionKey);
-    const completedDate = todayISO();
     const history = Array.from(
-      new Set([...(record.completionHistory || []), completedDate]),
+      new Set([...(preparedRecord.completionHistory || []), completedDate]),
     ).sort();
+    const completionNotes = [
+      String(preparedRecord.notes || "").trim(),
+      String(options.completionNote || "").trim(),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
     const completionEntry: WorkCompletionEntry = {
       id: uid("completion"),
-      completedAt: new Date().toISOString(),
-      statusBefore: String(record.status || "Open"),
-      dueDate: String(record.date || ""),
-      notes: String(record.notes || ""),
-      notesHistory: Array.isArray(record.notesHistory)
-        ? record.notesHistory
+      completedAt:
+        completedDate === todayISO()
+          ? new Date().toISOString()
+          : completionTimestampForDate(completedDate),
+      statusBefore: String(preparedRecord.status || "Open"),
+      dueDate: String(preparedRecord.date || ""),
+      notes: completionNotes,
+      notesHistory: Array.isArray(preparedRecord.notesHistory)
+        ? preparedRecord.notesHistory
         : [],
-      checklist: Array.isArray(record.checklist) ? record.checklist : [],
-      photos: Array.isArray(record.photos) ? record.photos : [],
-      documents: Array.isArray(record.documents) ? record.documents : [],
-      assetId: String(record.assetId || ""),
-      vendorId: String(record.vendorId || ""),
-      procedureId: String(record.procedureId || ""),
-      locationId: String(record.locationId || ""),
+      checklist: Array.isArray(preparedRecord.checklist)
+        ? preparedRecord.checklist
+        : [],
+      photos: Array.isArray(preparedRecord.photos) ? preparedRecord.photos : [],
+      documents: Array.isArray(preparedRecord.documents)
+        ? preparedRecord.documents
+        : [],
+      assetId: String(preparedRecord.assetId || ""),
+      vendorId: String(preparedRecord.vendorId || ""),
+      procedureId: String(preparedRecord.procedureId || ""),
+      locationId: String(preparedRecord.locationId || ""),
     };
     const serviceHistory = [
       completionEntry,
-      ...(Array.isArray(record.serviceHistory) ? record.serviceHistory : []),
+      ...(Array.isArray(preparedRecord.serviceHistory)
+        ? preparedRecord.serviceHistory
+        : []),
     ];
 
-    if (!record.recurring) {
+    if (!recurring) {
       const completed = normalizeService({
-        ...record,
+        ...preparedRecord,
         status: "Completed",
         lastCompletedDate: completedDate,
         completionHistory: history,
@@ -11509,26 +11760,24 @@ export default function AtlasApp() {
       return;
     }
 
-    const unit = isWorkOrderRecurrenceUnit(record.recurrenceUnit)
-      ? record.recurrenceUnit
-      : "Weeks";
     const nextDate = nextRecurrenceDate(
-      record.date || completedDate,
-      record.recurrenceInterval || 1,
-      unit,
+      completedDate,
+      schedule.interval,
+      schedule.unit,
     );
     const scheduleEnded = Boolean(
-      record.recurrenceEndDate && nextDate > record.recurrenceEndDate,
+      preparedRecord.recurrenceEndDate &&
+        nextDate > preparedRecord.recurrenceEndDate,
     );
 
     const advanced = normalizeService({
-      ...record,
+      ...preparedRecord,
       status: scheduleEnded ? "Completed" : "Scheduled",
-      date: scheduleEnded ? record.date : nextDate,
+      date: scheduleEnded ? preparedRecord.date : nextDate,
       lastCompletedDate: completedDate,
       completionHistory: history,
       serviceHistory,
-      checklist: (record.checklist || []).map((item) => ({
+      checklist: (preparedRecord.checklist || []).map((item) => ({
         ...item,
         completed: false,
       })),
@@ -13198,6 +13447,24 @@ export default function AtlasApp() {
         if (!existing) throw new Error("Atlas could not find that work order.");
 
         const noteToAppend = pendingAssistantAction.noteToAppend?.trim();
+        if (
+          pendingAssistantAction.status === "Completed" &&
+          existing.status !== "Completed"
+        ) {
+          await completeWorkOrder(
+            normalizeService({
+              ...existing,
+              priority:
+                pendingAssistantAction.priority || existing.priority,
+              notes: noteToAppend
+                ? [existing.notes, noteToAppend].filter(Boolean).join("\n\n")
+                : existing.notes,
+            }),
+            { completionNote: noteToAppend || "", allowEarly: true },
+          );
+          setSelectedServiceId(existing.id);
+          finishAssistantAnswer(`Updated work order: ${existing.title}`);
+        } else {
         const updated = normalizeService({
           ...existing,
           status: pendingAssistantAction.status || existing.status,
@@ -13218,6 +13485,7 @@ export default function AtlasApp() {
         );
         setSelectedServiceId(updated.id);
         finishAssistantAnswer(`Updated work order: ${updated.title}`);
+        }
       }
 
       if (pendingAssistantAction.kind === "calendar-update") {
@@ -18998,14 +19266,23 @@ ${notes.trim()}` : notes.trim(),
       ? [existingNotes, `[${timestamp}] ${note}`].filter(Boolean).join("\n\n")
       : existingNotes;
 
+    if (nextStatus === "Completed") {
+      await completeWorkOrder(
+        normalizeService({ ...record, notes: updatedNotes }),
+        {
+          completedDate: todayISO(),
+          completionNote: note || "",
+          allowEarly: true,
+        },
+      );
+      return;
+    }
+
     const updated = normalizeService({
       ...record,
       status: nextStatus,
       notes: updatedNotes,
-      lastCompletedDate:
-        nextStatus === "Completed"
-          ? todayISO()
-          : record.lastCompletedDate,
+      lastCompletedDate: record.lastCompletedDate,
     });
 
     const saved = await postAtlasRecord("work_orders", updated);
@@ -28406,7 +28683,7 @@ ${notes.trim()}` : notes.trim(),
           );
         })()
       : isMarine
-        ? planWorkOrderDatabaseCleanup(rawDepartmentWork).keepers
+        ? planWorkOrderDatabaseCleanup(rawDepartmentWork, activePropertyId).keepers
         : rawDepartmentWork;
     const openWork = departmentWork.filter((item) => !["Completed"].includes(String(item.status || "")));
     const completedWork = departmentWork.filter((item) => String(item.status || "") === "Completed");
