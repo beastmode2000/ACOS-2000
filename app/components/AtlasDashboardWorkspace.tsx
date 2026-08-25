@@ -172,7 +172,6 @@ export default function AtlasDashboardWorkspace(props: any) {
     daySessions,
     daysSince,
     deleteAtlasTask,
-    deleteWorkOrderRecord,
     dismissedDashboardFeedIds,
     draggedDashboardWidgetId,
     eyebrowStyle,
@@ -379,7 +378,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     fontSize: 13,
   };
   if (isTeamScopedUser) {
-    const teamOpen = staffVisibleServiceRecords.filter((record) => !["Completed", "Cancelled"].includes(String(record.status || "")));
+    const teamOpen = staffVisibleServiceRecords.filter((record) => record.status !== "Completed");
     const teamCompleted = staffVisibleServiceRecords.filter((record) => record.status === "Completed");
     const teamToday = teamOpen.filter((record) => record.date === todayISO());
     const teamOverdue = teamOpen.filter(
@@ -1618,7 +1617,7 @@ export default function AtlasDashboardWorkspace(props: any) {
   }
   const today = todayISO();
   const activeProperty = atlasProperties.find((property) => property.id === activePropertyId) || atlasProperties[0];
-  const openWork = serviceRecords.filter((record) => !["Completed", "Cancelled"].includes(String(record.status || "Open")));
+  const openWork = serviceRecords.filter((record) => String(record.status || "Open") !== "Completed");
   const completedWork = serviceRecords.filter((record) => String(record.status || "") === "Completed");
   const dueToday = openWork.filter((record) => record.date === today);
   const overdueWork = openWork.filter((record) => Boolean(record.date) && String(record.date) < today);
@@ -1650,7 +1649,7 @@ export default function AtlasDashboardWorkspace(props: any) {
   const visibleRoutineItems: DashboardRoutineItem[] = dashboardRoutineItems.length ? dashboardRoutineItems : scheduledRoutineEvents.map((item) => ({ id: String(item.instanceId || item.id), title: item.title, detail: item.categoryLabel || item.area || "Recurring routine", time: item.time || "" }));
 
   const dashboardUnifiedWork = serviceRecords
-    .filter((record) => !["Completed", "Cancelled"].includes(String(record.status || "")))
+    .filter((record) => record.status !== "Completed")
     .filter((record) => {
       const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo);
       return dashboardWorkPeople.some((person) => assigned === person);
@@ -1685,6 +1684,37 @@ export default function AtlasDashboardWorkspace(props: any) {
     setDashboardWorkTitle("");
     const saved = await postAtlasRecord("work_orders", record);
     showSaveToast(saved ? `Added to ${dashboardWorkAssignee}’s Work list.` : "Work was added locally, but shared sync did not finish.", saved ? "success" : "warning");
+  };
+
+  const logCompletedDashboardWork = async () => {
+    const title = dashboardWorkTitle.trim();
+    if (!title) return;
+    const record = normalizeService({
+      id: uid("work"),
+      propertyId: activePropertyId,
+      title,
+      date: today,
+      status: "Open",
+      priority: "Medium",
+      workType: "Quick Task",
+      workCategory: "🔧 Maintenance",
+      effort: "30 minutes",
+      assignedTo: dashboardWorkAssignee,
+      responsibilityArea: "Dashboard · Logged Work",
+    });
+    setServiceRecords((current) => byTitle([record, ...current]));
+    setDashboardWorkTitle("");
+    await completeWorkOrder(record, { completedDate: today, allowEarly: true });
+  };
+
+  const openDashboardWorkOrderDraft = () => {
+    const title = dashboardWorkTitle.trim();
+    if (!title) return;
+    setQuickCreateKind("work-order");
+    setQuickCreateName(title);
+    setQuickCaptureMode("create");
+    setQuickCaptureOpen(true);
+    setDashboardWorkTitle("");
   };
 
   const addTodayLogEntry = () => {
@@ -1806,34 +1836,34 @@ export default function AtlasDashboardWorkspace(props: any) {
   const dayName = new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: "long" });
   const weeklyFocus: Record<string, DailyFocusPlan> = {
     Monday: {
-      title: "Reset, planning, and first mowing window",
-      detail: "Reset the property after the weekend, review new work, clean support spaces, and use the first suitable mowing and edging window.",
-      keywords: ["reset", "plan", "mow", "edge", "basement", "bathroom", "tool", "supply", "inventory", "package", "garbage"],
-      suggested: ["Daily opening property check", "Packages, garage garbage, and dog turf", "First mow and edge when conditions allow", "Basement bathroom and indoor tool-area reset"],
+      title: "Property reset",
+      detail: "Reset the property after the weekend, clear visible messes, review new work, and get the estate back to baseline.",
+      keywords: ["reset", "cleanup", "clean", "package", "garbage", "dog turf", "walkthrough", "weekend", "ready"],
+      suggested: ["Opening property walkthrough", "Weekend cleanup and property reset", "Packages, garage garbage, and dog turf", "Capture new work from the walkthrough"],
     },
     Tuesday: {
-      title: "Grounds, lawn, and irrigation",
-      detail: "Prioritize irrigation, lawns, dry spots, beds, vendor coordination, and one flexible vehicle-care slot.",
-      keywords: ["irrigation", "hydrawise", "lawn", "grounds", "water", "dry spot", "bed", "landscape", "vehicle", "wash"],
-      suggested: ["Irrigation and dry-spot inspection", "Grounds and lawn walkthrough", "Courtyard and walkway cleanup", "Vehicle-care rotation if time allows"],
+      title: "Cars + Addison work",
+      detail: "Use Addison’s onsite day for vehicle cleaning and flexible work that benefits from an extra set of hands.",
+      keywords: ["vehicle", "car", "clean", "wash", "mercedes", "rivian", "porsche", "lucid", "ford", "weed", "water", "sweep", "addison"],
+      suggested: ["Vehicle-care rotation", "Addison-assigned cleanup or weeding", "Water pots and dry spots", "Flexible maintenance support"],
     },
     Wednesday: {
-      title: "Landscape day",
-      detail: "Use the main work block for landscape appearance, beds, pruning, weeds, fountain, courtyard, and pool or spa checks. Mowing remains on its own twice-weekly rhythm.",
-      keywords: ["landscape", "weed", "prune", "bed", "fountain", "courtyard", "pool", "spa", "plant", "pot", "water"],
-      suggested: ["Detailed landscape walkthrough", "Beds, weeds, pruning, pots, and dry spots", "Pool, spa, fountain, and courtyard checks", "Landscape follow-ups and photo notes"],
+      title: "Landscaping day",
+      detail: "Keep Wednesday centered on landscape appearance, beds, pruning, weeds, irrigation follow-up, pots, fountain, and courtyard work.",
+      keywords: ["landscape", "weed", "prune", "bed", "fountain", "courtyard", "irrigation", "lawn", "plant", "pot", "water"],
+      suggested: ["Detailed landscape walkthrough", "Beds, weeds, pruning, pots, and dry spots", "Irrigation and lawn follow-up", "Landscape notes and photos"],
     },
     Thursday: {
-      title: "Vehicles, dock, and recreation",
-      detail: "Focus on the waterfront, boat, Sea-Doo, lifts, vehicle-care rotation, and the second mowing and edging window when needed.",
-      keywords: ["dock", "boat", "seadoo", "sea-doo", "lift", "waterfront", "vehicle", "mercedes", "rivian", "porsche", "lucid", "ford", "kia", "honda", "subaru", "mow", "edge"],
-      suggested: ["Boat and Sea-Doo cleaning", "Dock, lift, and waterfront inspection", "Clean the highest-priority vehicles currently onsite", "Second mow and edge when conditions allow"],
+      title: "Pool & Spa",
+      detail: "Keep Thursday centered on pool and spa treatment, cleaning, equipment checks, water condition, and related follow-up work.",
+      keywords: ["pool", "spa", "hot tub", "chemical", "filter", "vacuum", "brush", "water", "equipment", "backwash"],
+      suggested: ["Pool treatment and water check", "Brush, vacuum, or robot rotation", "Spa check and cleanup", "Pool equipment and filter follow-up"],
     },
     Friday: {
-      title: "Readiness, closeout, and final walkthrough",
-      detail: "Finish open small work, prepare the estate for the weekend, reset work areas, and document anything that carries into next week.",
-      keywords: ["walkthrough", "pool", "spa", "walkway", "stair", "reset", "tool", "clean", "ready", "close", "photo", "note"],
-      suggested: ["Final property walkthrough", "Pool and spa readiness check", "Walkways, staircases, and work-area reset", "Update notes, photos, and next week’s priorities"],
+      title: "Cleanup + owner update",
+      detail: "Close out the week, reset the property for the weekend, finish small open items, and prepare the weekly owner update.",
+      keywords: ["walkthrough", "reset", "cleanup", "clean", "ready", "close", "owner", "update", "photo", "note"],
+      suggested: ["Final property walkthrough", "Weekend readiness and cleanup", "Close small open work", "Prepare weekly owner update"],
     },
     Saturday: { title: "Essential checks only", detail: "Keep the plan light and surface only urgent, owner-requested, or safety-related work.", keywords: ["urgent", "safety", "owner", "pool", "spa"], suggested: ["Essential property check", "Urgent or owner-requested items only"] },
     Sunday: { title: "Essential checks only", detail: "Keep the plan light and surface only urgent, owner-requested, or safety-related work.", keywords: ["urgent", "safety", "owner", "pool", "spa"], suggested: ["Essential property check", "Urgent or owner-requested items only"] },
@@ -1870,6 +1900,24 @@ export default function AtlasDashboardWorkspace(props: any) {
     setTodayLogEntries((current) => [{ id: uid("today-log"), propertyId: activePropertyId, date: today, category: "Task", text, createdAt: new Date().toISOString() }, ...current]);
     showSaveToast("Added to today’s plan.");
   };
+
+  const weekStartDate = (() => {
+    const value = new Date(`${today}T12:00:00`);
+    const offset = (value.getDay() + 6) % 7;
+    value.setDate(value.getDate() - offset);
+    return value.toISOString().slice(0, 10);
+  })();
+  const dashboardWeekDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].map((name, index) => ({
+    name,
+    date: addDays(weekStartDate, index),
+    focus: weeklyFocus[name]?.title || name,
+  }));
+  const workForDashboardDay = (date: string) => serviceRecords
+    .filter((record) => String(record.status || "Open") !== "Completed" && String(record.date || "").slice(0, 10) === date)
+    .sort((a, b) => priorityRank(a) - priorityRank(b) || String(a.title || "").localeCompare(String(b.title || "")));
+  const tasksForDashboardDay = (date: string) => workPlanTasks
+    .filter((task) => task.category !== "Atlas List Definition" && !taskDetails(task.id).listId && taskDetails(task.id).status !== "Completed" && String(taskDetails(task.id).dueDate || "").slice(0, 10) === date)
+    .sort((a, b) => ({ High: 0, Medium: 1, Low: 2 }[a.priority] - { High: 0, Medium: 1, Low: 2 }[b.priority]));
 
   const currentDaySession = daySessions.find((session) => session.date === today && session.propertyId === activePropertyId);
   const taskWorkMinutes = dashboardTodayTasks.reduce((sum, task) => sum + Math.max(5, Number(task.minutes || 0)), 0);
@@ -2352,7 +2400,7 @@ export default function AtlasDashboardWorkspace(props: any) {
         ) : null}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12, alignItems: "stretch" }}>
-        <section style={{ ...cardStyle, minWidth: 0, order: 2 }}>
+        <section style={{ ...cardStyle, minWidth: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
             <div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div>
             <span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span>
@@ -2363,18 +2411,23 @@ export default function AtlasDashboardWorkspace(props: any) {
           </div>
         </section>
 
-        <section style={{ ...cardStyle, minWidth: 0, order: 1 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-            <div><div style={eyebrowStyle}>Unified Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Today’s Work</h2></div>
+        <section style={{ ...cardStyle, minWidth: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div><div style={eyebrowStyle}>Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Today + quick entry</h2></div>
             <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={badgeStyle(dashboardUnifiedWork.length ? "Scheduled" : "Completed")}>{dashboardUnifiedWork.length}</span><button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Open All Work</button></div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, marginTop: 10 }}>
-            <input value={dashboardWorkTitle} onChange={(event) => setDashboardWorkTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void createDashboardUnifiedWork(); }} placeholder="Add work to do…" aria-label="Work title" style={inputStyle}/>
-            <button type="button" onClick={() => void createDashboardUnifiedWork()} disabled={!dashboardWorkTitle.trim()} style={{ ...goldButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Add</button>
-            <input type="date" value={dashboardWorkDate} onChange={(event) => setDashboardWorkDate(event.currentTarget.value)} aria-label="Work date" style={inputStyle}/>
-            <select value={dashboardWorkAssignee} onChange={(event) => setDashboardWorkAssignee(event.currentTarget.value as typeof dashboardWorkAssignee)} aria-label="Assign new work" style={{ ...selectStyle, width: isMobile ? "100%" : 150 }}>
-              {dashboardWorkPeople.map((person) => <option key={person} value={person}>{person === initialDashboardAssignee ? `${person} (me)` : person}</option>)}
-            </select>
+          <div style={{ display: "grid", gap: 7, marginTop: 10 }}>
+            <input value={dashboardWorkTitle} onChange={(event) => setDashboardWorkTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void createDashboardUnifiedWork(); }} placeholder="What is being done or needs to be done?" aria-label="Work title" style={inputStyle}/>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "150px 170px repeat(3,max-content)", gap: 7, alignItems: "center" }}>
+              <select value={dashboardWorkAssignee} onChange={(event) => setDashboardWorkAssignee(event.currentTarget.value as typeof dashboardWorkAssignee)} aria-label="Assign work" style={{ ...selectStyle, width: "100%" }}>
+                {dashboardWorkPeople.map((person) => <option key={person} value={person}>{person === initialDashboardAssignee ? `${person} (me)` : person}</option>)}
+              </select>
+              <input type="date" value={dashboardWorkDate} onChange={(event) => setDashboardWorkDate(event.currentTarget.value)} aria-label="Work date" style={inputStyle}/>
+              <button type="button" onClick={() => void createDashboardUnifiedWork()} disabled={!dashboardWorkTitle.trim()} style={{ ...goldButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Schedule</button>
+              <button type="button" onClick={() => void logCompletedDashboardWork()} disabled={!dashboardWorkTitle.trim()} style={{ ...secondaryButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Done Today</button>
+              <button type="button" onClick={openDashboardWorkOrderDraft} disabled={!dashboardWorkTitle.trim()} style={{ ...secondaryButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Work Order</button>
+            </div>
+            <small style={mutedSmallStyle}>Use Done Today when you notice work already happening. Schedule keeps it in the plan.</small>
           </div>
           <div style={{ display: "grid", gap: 6, marginTop: 10, maxHeight: 326, overflowY: "auto", paddingRight: 2 }}>
             {dashboardUnifiedWork.slice(0, 8).map((record) => {
@@ -2383,18 +2436,9 @@ export default function AtlasDashboardWorkspace(props: any) {
                 <input type="checkbox" checked={false} aria-label={`Complete ${record.title}`} onChange={() => void completeWorkOrder(record as AtlasServiceRecord)} style={{ marginTop: 5 }}/>
                 <div style={{ minWidth: 0 }}>
                   <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, width: "100%", cursor: "pointer" }}><strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title}</strong></button>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(120px,138px) minmax(115px,1fr) 116px", gap: 6, marginTop: 5 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(125px,145px) minmax(125px,1fr)", gap: 6, marginTop: 5 }}>
                     <input type="date" value={String(record.date || "").slice(0, 10)} onChange={(event) => void syncWorkOrderPatch(record, { date: event.currentTarget.value })} aria-label={`Due date for ${record.title}`} style={{ ...inputStyle, minHeight: 30, padding: "3px 5px", fontSize: 11, color: record.date && record.date < today ? colors.red : colors.text }}/>
                     <select value={assigned} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })} aria-label={`Reassign ${record.title}`} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name}</option>)}</select>
-                    <select defaultValue="" onChange={(event) => { const action = event.currentTarget.value; event.currentTarget.value = ""; void handleDashboardWorkAction(record, action); }} aria-label={`Actions for ${record.title}`} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}>
-                      <option value="">Actions</option>
-                      <option value="edit">Edit details</option>
-                      <option value="reschedule">Reschedule</option>
-                      <option value="recurring">{record.recurring ? "Edit recurrence" : "Make recurring"}</option>
-                      {record.recurring ? <option value="skip">Skip occurrence</option> : null}
-                      <option value="cancel">Cancel work</option>
-                      <option value="delete">Delete</option>
-                    </select>
                   </div>
                 </div>
               </div>;
@@ -2406,7 +2450,36 @@ export default function AtlasDashboardWorkspace(props: any) {
         </section>
       </div>
 
-      <section style={{ ...cardStyle, padding: 11 }}>
+      <section style={{ ...cardStyle, padding: isMobile ? 10 : 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div><div style={eyebrowStyle}>This Week</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Default rhythm, flexible days</h2></div>
+          <button type="button" onClick={() => setScreen("calendar")} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Calendar</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(5,minmax(170px,1fr))", gap: 8, marginTop: 10, overflowX: isMobile ? "visible" : "auto", paddingBottom: 2 }}>
+          {dashboardWeekDays.map((day) => {
+            const dayWork = workForDashboardDay(day.date);
+            const dayTasks = tasksForDashboardDay(day.date);
+            const isTodayColumn = day.date === today;
+            return <section key={day.date} style={{ minWidth: 0, border: `1px solid ${isTodayColumn ? colors.gold : colors.line}`, borderRadius: 11, padding: 9, background: isTodayColumn ? "#FFFDF6" : "#FFFFFF" }}>
+              <div style={{ marginBottom: 7 }}><strong style={{ display: "block", color: colors.navy }}>{day.name}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 1 }}>{day.focus}</small></div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {dayWork.slice(0, 4).map((record) => <div key={`week-work-${record.id}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#FAFCFE" }}>
+                  <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ display: "block", width: "100%", border: 0, background: "transparent", padding: 0, textAlign: "left", color: colors.navy, fontWeight: 800, cursor: "pointer" }}>{record.title}</button>
+                  <input type="date" value={String(record.date || "").slice(0,10)} onChange={(event) => void syncWorkOrderPatch(record, { date: event.currentTarget.value, status: "Scheduled" })} aria-label={`Move ${record.title}`} style={{ ...inputStyle, minHeight: 28, padding: "2px 4px", fontSize: 10, marginTop: 5 }}/>
+                </div>)}
+                {dayTasks.slice(0, Math.max(0, 4 - dayWork.length)).map((task) => <div key={`week-task-${task.id}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#FAFCFE" }}>
+                  <button type="button" onClick={() => openTaskById(task.id)} style={{ display: "block", width: "100%", border: 0, background: "transparent", padding: 0, textAlign: "left", color: colors.navy, fontWeight: 800, cursor: "pointer" }}>{task.title}</button>
+                  <input type="date" value={String(taskDetails(task.id).dueDate || "").slice(0,10)} onChange={(event) => updateTaskDetails(task.id, { dueDate: event.currentTarget.value, status: "Open" })} aria-label={`Move ${task.title}`} style={{ ...inputStyle, minHeight: 28, padding: "2px 4px", fontSize: 10, marginTop: 5 }}/>
+                </div>)}
+                {!dayWork.length && !dayTasks.length ? <small style={{ ...mutedSmallStyle, padding: "5px 1px" }}>Open for flexible work.</small> : null}
+                {dayWork.length + dayTasks.length > 4 ? <small style={mutedSmallStyle}>+{dayWork.length + dayTasks.length - 4} more</small> : null}
+              </div>
+            </section>;
+          })}
+        </div>
+      </section>
+
+      <section id="atlas-dashboard-vendor-log" style={{ ...cardStyle, padding: 11 }}>
         <div><div style={eyebrowStyle}>Quick Log</div><h3 style={{ margin: "2px 0", color: colors.navy }}>Vendor Visit</h3></div>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px,.8fr) minmax(0,1.4fr) auto", gap: 7, marginTop: 8, alignItems: "end" }}>
           <CreatableRelationshipField label="Vendor" value={dashboardVendorVisitId} emptyLabel="Choose or type vendor" options={vendorRecords.slice().sort((a,b) => a.name.localeCompare(b.name)).map((vendor) => ({ id: vendor.id, label: vendor.name }))} onChange={setDashboardVendorVisitId} onCreate={quickCreateVendor} compact/>
@@ -2517,7 +2590,44 @@ export default function AtlasDashboardWorkspace(props: any) {
     if (id === "hero") return null;
     if (id === "estate-health") return null;
     if (id === "today-upcoming") return null;
-    if (id === "property-status") return null;
+    // Live Operating Areas intentionally uses plain cards only: no health score, percentage, progress bar, or status meter.
+    if (id === "property-status") return (
+      <section style={{ ...cardStyle, padding: isMobile ? 10 : "10px 12px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div><div style={eyebrowStyle}>Departments</div><h2 style={{ margin: "2px 0", color: colors.navy, fontSize: isMobile ? 18 : 20 }}>Live Operating Areas</h2></div>
+          <small style={{ ...mutedSmallStyle, whiteSpace: "nowrap" }}>{openWork.length} open work order{openWork.length === 1 ? "" : "s"}</small>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : `repeat(${Math.min(5, Math.max(1, liveStatuses.length))},minmax(0,1fr))`, gap: 7, marginTop: 8 }}>
+          {liveStatuses.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={() => {
+                const normalized = item.label.toLowerCase();
+                if (normalized.includes("house")) openDashboardDepartment?.("house");
+                else if (normalized.includes("garage")) openDashboardDepartment?.("garage");
+                else if (normalized.includes("pool") || normalized.includes("spa")) openDashboardDepartment?.("pool");
+                else if (normalized.includes("landscap") || normalized.includes("irrig")) openDashboardDepartment?.("landscaping");
+                else if (normalized.includes("dock") || normalized.includes("waterfront") || normalized.includes("marine")) openDashboardDepartment?.("marine");
+                else {
+                  setDashboardWorkFilter(item.query);
+                  setSelectedServiceId("");
+                  setWorkOrdersOpenKey((current) => current + 1);
+                  setScreen("history");
+                }
+              }}
+              style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: "8px 9px", textAlign: "left", cursor: "pointer", minHeight: 58 }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <span style={{ fontSize: 18, lineHeight: 1 }}>{item.icon}</span>
+                <strong style={{ color: colors.navy, fontSize: 12.5, lineHeight: 1.2 }}>{item.label}</strong>
+              </div>
+              <small style={{ ...mutedSmallStyle, display: "block", marginTop: 5 }}>{item.count} open</small>
+            </button>
+          ))}
+        </div>
+      </section>
+    );
     if (id === "routine") return null;
     if (id === "atlas-brief") return <section className="atlas-brief-strip" style={{ ...cardStyle, padding: isMobile ? "10px 12px" : "10px 16px", background: "#F8FAFC" }}><div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 4 : 12, minWidth: 0 }}><strong style={{ color: colors.navy, whiteSpace: "nowrap" }}>Atlas Brief</strong><div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? "3px 12px" : "3px 18px", minWidth: 0, fontSize: 13, lineHeight: 1.35, color: colors.text }}>{(briefLines.length ? briefLines : ["All clear"]).slice(0, isMobile ? 3 : 5).map((line, index) => <span key={index} style={{ whiteSpace: "normal" }}><span style={{ color: String(line).includes("overdue") ? colors.red : colors.gold, fontWeight: 950 }}>•</span> {line}</span>)}</div></div></section>;
     if (id === "recent-activity") return <details style={{ ...cardStyle, overflow: "hidden" }}>
@@ -2728,52 +2838,6 @@ export default function AtlasDashboardWorkspace(props: any) {
   };
   const moveWorkOccurrence = async (record: ServiceRecord, days: number) => {
     await syncWorkOrderPatch(record, { date: addDays(record.date || today, days), status: "Scheduled" });
-  };
-
-  const rescheduleDashboardWork = async (record: ServiceRecord) => {
-    const nextDate = window.prompt("New due date (YYYY-MM-DD)", String(record.date || today).slice(0, 10));
-    if (nextDate === null) return;
-    const value = nextDate.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(new Date(`${value}T12:00:00`).getTime())) {
-      showSaveToast("Enter the date as YYYY-MM-DD.", "warning");
-      return;
-    }
-    await syncWorkOrderPatch(record, { date: value, status: "Scheduled" });
-  };
-
-  const editDashboardRecurrence = async (record: ServiceRecord) => {
-    const unitAnswer = window.prompt("Repeat by Days, Weeks, Months, or Years", String(record.recurrenceUnit || "Weeks"));
-    if (unitAnswer === null) return;
-    const normalizedUnit = unitAnswer.trim().toLowerCase().replace(/s$/, "");
-    const unitMap: Record<string, WorkOrderRecurrenceUnit> = { day: "Days", week: "Weeks", month: "Months", year: "Years" };
-    const recurrenceUnit = unitMap[normalizedUnit];
-    if (!recurrenceUnit) {
-      showSaveToast("Choose Days, Weeks, Months, or Years.", "warning");
-      return;
-    }
-    const intervalAnswer = window.prompt(`Repeat every how many ${recurrenceUnit.toLowerCase()}?`, String(Math.max(1, Number(record.recurrenceInterval || 1))));
-    if (intervalAnswer === null) return;
-    const recurrenceInterval = Math.floor(Number(intervalAnswer));
-    if (!Number.isFinite(recurrenceInterval) || recurrenceInterval < 1) {
-      showSaveToast("The repeat number must be 1 or more.", "warning");
-      return;
-    }
-    await syncWorkOrderPatch(record, { recurring: true, recurrenceInterval, recurrenceUnit, workType: "Preventive Maintenance", status: "Scheduled" });
-  };
-
-  const cancelDashboardWork = async (record: ServiceRecord) => {
-    if (!window.confirm(`Cancel ${record.title || "this work"}? It will remain in Work history.`)) return;
-    await syncWorkOrderPatch(record, { status: "Cancelled" });
-  };
-
-  const handleDashboardWorkAction = async (record: ServiceRecord, action: string) => {
-    if (!action) return;
-    if (action === "edit") openWorkOrderById(record.id);
-    if (action === "reschedule") await rescheduleDashboardWork(record);
-    if (action === "recurring") await editDashboardRecurrence(record);
-    if (action === "skip" && record.recurring) await skipWorkOccurrence(record);
-    if (action === "cancel") await cancelDashboardWork(record);
-    if (action === "delete") await deleteWorkOrderRecord(record);
   };
 
   const compactWorkList = (title: string, records: ServiceRecord[], emptyText: string) => (
