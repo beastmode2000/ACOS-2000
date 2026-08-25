@@ -1014,6 +1014,7 @@ export default function AtlasApp() {
   const dashboardPersonFocusSkipSaveRef = useRef(false);
   const dashboardLayoutSkipSaveRef = useRef(false);
   const dashboardRoutineSkipSaveRef = useRef(false);
+  const unifiedWorkMigrationRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1035,6 +1036,264 @@ export default function AtlasApp() {
       setDashboardReminders([]);
     }
   }, [activePropertyId]);
+
+  useEffect(() => {
+    if (
+      !ready ||
+      syncState !== "synced" ||
+      !operationsHydrated ||
+      unifiedWorkMigrationRef.current.has(activePropertyId)
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function migrateLegacyWorkIntoUnifiedWork() {
+      const existing = [...serviceRecords];
+      const existingIds = new Set(existing.map((record) => String(record.id)));
+      const deletedIds = readWorkOrderTombstones(activePropertyId);
+      const normalizedTitle = (value: unknown) =>
+        String(value || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, " ")
+          .trim();
+      const migrationCandidates: AtlasServiceRecord[] = [];
+
+      const completionEntryFor = (
+        date: string,
+        title: string,
+        notes: string,
+        task: WorkPlanTask,
+        meta: AtlasTaskMeta,
+      ): WorkCompletionEntry => ({
+        id: `unified-task-completion-${task.id}-${date}`,
+        completedAt: `${date}T12:00:00.000Z`,
+        statusBefore: "Open",
+        dueDate: String(meta.dueDate || task.scheduledDate || ""),
+        notes,
+        notesHistory: [],
+        checklist: [],
+        photos: Array.isArray(meta.photos) ? meta.photos : [],
+        documents: [],
+        assetId: String(meta.assetId || meta.assetIds?.[0] || ""),
+        vendorId: String(meta.vendorId || meta.vendorIds?.[0] || ""),
+        procedureId: String(meta.procedureId || meta.procedureIds?.[0] || ""),
+        locationId: task.locationId === "general" ? "" : String(task.locationId || ""),
+      });
+
+      for (const task of workPlanTasks) {
+        const meta = taskDetails(task.id);
+        if (
+          task.category === "Atlas List Definition" ||
+          meta.listId ||
+          isAtlas2000WeeklySeedTask(task)
+        ) {
+          continue;
+        }
+
+        const id = `unified-task-${task.id}`;
+        if (existingIds.has(id) || deletedIds.has(id)) continue;
+
+        const assignee =
+          !meta.assignee || meta.assignee === "Unassigned"
+            ? ""
+            : String(meta.assignee);
+        const dueDate = String(meta.dueDate || task.scheduledDate || "").slice(0, 10);
+        const duplicate = existing.some(
+          (record) =>
+            normalizedTitle(record.title) === normalizedTitle(task.title) &&
+            String(record.date || "").slice(0, 10) === dueDate &&
+            String(record.assignedTo || "").trim().toLowerCase() ===
+              assignee.trim().toLowerCase() &&
+            (record.workType === "Quick Task" ||
+              String(record.responsibilityArea || "").includes(task.id)),
+        );
+        if (duplicate) continue;
+
+        const notes = String(meta.instructions || meta.notes || task.notes || "").trim();
+        const completionDates = Array.from(
+          new Set(
+            [
+              ...(Array.isArray(meta.completionHistory)
+                ? meta.completionHistory
+                : []),
+              meta.lastCompletedDate,
+              meta.completedAt,
+            ]
+              .map((value) => String(value || "").slice(0, 10))
+              .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value)),
+          ),
+        ).sort();
+        const taskStatus =
+          meta.status === "Blocked"
+            ? "Waiting"
+            : isServiceStatus(meta.status)
+              ? meta.status
+              : "Open";
+
+        migrationCandidates.push(
+          normalizeService({
+            id,
+            propertyId: activePropertyId,
+            title: task.title,
+            date: dueDate,
+            status: taskStatus,
+            priority: task.priority || "Medium",
+            notes,
+            assetId: String(meta.assetId || meta.assetIds?.[0] || ""),
+            vendorId: String(meta.vendorId || meta.vendorIds?.[0] || ""),
+            procedureId: String(meta.procedureId || meta.procedureIds?.[0] || ""),
+            locationId:
+              task.locationId === "general" ? "" : String(task.locationId || ""),
+            projectId: String(meta.projectId || meta.projectIds?.[0] || ""),
+            assignedTo: assignee,
+            workType: task.recurring ? "Preventive Maintenance" : "Quick Task",
+            workCategory: task.category || inferTaskCategory(task.title),
+            effort:
+              task.minutes <= 15
+                ? "15 minutes"
+                : task.minutes <= 30
+                  ? "30 minutes"
+                  : task.minutes <= 60
+                    ? "1 hour"
+                    : task.minutes <= 240
+                      ? "Half Day"
+                      : "Full Day",
+            responsibilityArea: `Unified Work · legacy task ${task.id}`,
+            recurring: Boolean(task.recurring),
+            recurrenceInterval: Math.max(1, Number(meta.recurrenceInterval || 1)),
+            recurrenceUnit: meta.recurrenceUnit || "Weeks",
+            recurrenceEndDate: String(meta.recurrenceEndDate || ""),
+            season: meta.season || "Year-Round",
+            lastCompletedDate:
+              String(meta.lastCompletedDate || meta.completedAt || "").slice(0, 10),
+            completionHistory: completionDates,
+            serviceHistory: completionDates
+              .slice()
+              .reverse()
+              .map((date) => completionEntryFor(date, task.title, notes, task, meta)),
+            photos: Array.isArray(meta.photos) ? meta.photos : [],
+            documents: [],
+            checklist: [],
+            notesHistory: [],
+          }),
+        );
+        existingIds.add(id);
+      }
+
+      try {
+        const response = await fetch(
+          `/api/atlas-routines?date=${todayISO()}&propertyId=${encodeURIComponent(activePropertyId)}`,
+          { cache: "no-store" },
+        );
+        const payload = await response.json().catch(() => ({}));
+        const templates = response.ok && Array.isArray(payload?.templates)
+          ? payload.templates as Array<{
+              day?: number;
+              name?: string;
+              tasks?: Array<{
+                id?: string;
+                title?: string;
+                enabled?: boolean;
+                assignedTo?: string;
+              }>;
+            }>
+          : [];
+        const today = todayISO();
+        const currentWeekday = new Date(`${today}T12:00:00`).getDay() || 7;
+
+        for (const template of templates) {
+          const day = Math.min(7, Math.max(1, Number(template.day || 1)));
+          const daysUntil = (day - currentWeekday + 7) % 7;
+          const nextDue = addDays(today, daysUntil);
+
+          for (const routineTask of Array.isArray(template.tasks) ? template.tasks : []) {
+            if (routineTask.enabled === false || !String(routineTask.title || "").trim()) continue;
+            const sourceId = String(routineTask.id || slugify(String(routineTask.title)));
+            const id = `unified-routine-${day}-${sourceId}`;
+            if (existingIds.has(id) || deletedIds.has(id)) continue;
+
+            const duplicate = [...existing, ...migrationCandidates].some(
+              (record) =>
+                Boolean(record.recurring) &&
+                normalizedTitle(record.title) === normalizedTitle(routineTask.title),
+            );
+            if (duplicate) continue;
+
+            migrationCandidates.push(
+              normalizeService({
+                id,
+                propertyId: activePropertyId,
+                title: String(routineTask.title || "Routine work"),
+                date: nextDue,
+                status: "Scheduled",
+                priority: "Medium",
+                notes: "",
+                assetId: "",
+                vendorId: "",
+                procedureId: "",
+                locationId: "",
+                assignedTo: String(routineTask.assignedTo || "Nick"),
+                workType: "Preventive Maintenance",
+                workCategory: inferTaskCategory(String(routineTask.title || "")),
+                effort: "30 minutes",
+                responsibilityArea: `Unified Work · ${String(template.name || "Weekly routine")}`,
+                recurring: true,
+                recurrenceInterval: 1,
+                recurrenceUnit: "Weeks",
+                recurrenceEndDate: "",
+                season: "Year-Round",
+                completionHistory: [],
+                serviceHistory: [],
+                photos: [],
+                documents: [],
+                checklist: [],
+                notesHistory: [],
+              }),
+            );
+            existingIds.add(id);
+          }
+        }
+      } catch (error) {
+        console.warn("Atlas will retry routine migration on the next load.", error);
+      }
+
+      const saved: AtlasServiceRecord[] = [];
+      for (let index = 0; index < migrationCandidates.length; index += 12) {
+        const batch = migrationCandidates.slice(index, index + 12);
+        const results = await Promise.all(
+          batch.map(async (record) => {
+            const ok = await postAtlasRecord("work_orders", record);
+            return ok ? record : null;
+          }),
+        );
+        saved.push(...results.filter((record): record is AtlasServiceRecord => Boolean(record)));
+      }
+
+      if (!cancelled && saved.length) {
+        setServiceRecords((current) =>
+          byTitle([
+            ...saved,
+            ...current.filter(
+              (record) => !saved.some((savedRecord) => savedRecord.id === record.id),
+            ),
+          ]),
+        );
+        showSaveToast(
+          `${saved.length} existing task${saved.length === 1 ? "" : "s"} and routine${saved.length === 1 ? "" : "s"} moved into Work.`,
+        );
+      }
+
+      if (!cancelled) unifiedWorkMigrationRef.current.add(activePropertyId);
+    }
+
+    void migrateLegacyWorkIntoUnifiedWork();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, syncState, operationsHydrated, activePropertyId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -5216,7 +5475,7 @@ export default function AtlasApp() {
 
   const restrictedTeamScreenIds = new Set<AtlasScreen>(
     isAddisonUser
-      ? ["planner"]
+      ? ["history"]
       : isRequestCoordinatorUser
         ? ["dashboard", "requests", "locations", "assets", "history"]
         : isSeanMarineUser
@@ -5237,7 +5496,7 @@ export default function AtlasApp() {
                 ? "Marine Operations"
                 : "My Atlas",
           items: isAddisonUser
-            ? (["planner"] as AtlasScreen[])
+            ? (["history"] as AtlasScreen[])
             : isRequestCoordinatorUser
               ? (["dashboard", "requests", "locations", "assets", "history"] as AtlasScreen[])
               : isSeanMarineUser
@@ -5248,7 +5507,7 @@ export default function AtlasApp() {
     : (() => {
         return [
           { label: "Overview", items: ["dashboard", "notes"] as AtlasScreen[] },
-          { label: "Work", items: ["planner", "routines", "history", "ownerReport", "reports"] as AtlasScreen[] },
+          { label: "Work", items: ["history", "ownerReport", "reports"] as AtlasScreen[] },
           { label: "Property", items: ["assets", "locations", "calendar"] as AtlasScreen[] },
           { label: "People", items: ["contacts", "vendors", "team"] as AtlasScreen[] },
           { label: "Intake", items: ["intake"] as AtlasScreen[] },
@@ -5260,19 +5519,21 @@ export default function AtlasApp() {
     ? ([] as AtlasScreen[])
     : (() => {
         const primaryIds = new Set<AtlasScreen>([
-          "dashboard", "notes", "planner", "routines", "history", "assets",
+          "dashboard", "notes", "history", "assets",
           "locations", "calendar", "contacts", "vendors", "team", "intake", "ownerReport", "reports",
         ]);
         const remaining = screens
           .map((item) => item.id)
           .filter((screenId) => !primaryIds.has(screenId) && screenId !== "insights");
-        return remaining.filter((screenId) => screenId !== "manuals") as AtlasScreen[];
+        return remaining.filter(
+          (screenId) => screenId !== "manuals" && screenId !== "planner" && screenId !== "routines",
+        ) as AtlasScreen[];
       })();
 
   useEffect(() => {
     if (isAddisonUser) {
       if (tasksView !== "tasks") setTasksView("tasks");
-      if (!restrictedTeamScreenIds.has(screen)) setScreen("planner");
+      if (!restrictedTeamScreenIds.has(screen)) setScreen("history");
       return;
     }
     if (isTeamScopedUser && !restrictedTeamScreenIds.has(screen)) {
@@ -32350,7 +32611,7 @@ ${notes.trim()}` : notes.trim(),
               bottom: "max(8px, env(safe-area-inset-bottom))",
               zIndex: 9000,
               display: "grid",
-              gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
               gap: 4,
               padding: 6,
               borderRadius: 18,
@@ -32371,17 +32632,8 @@ ${notes.trim()}` : notes.trim(),
                 },
               },
               {
-                id: "routines",
-                label: "Routine",
-                active: screen === "routines",
-                action: () => {
-                  setMobileFieldMoreOpen(false);
-                  setScreen("routines");
-                },
-              },
-              {
-                id: "work-orders",
-                label: "Work Order",
+                id: "work",
+                label: "Work",
                 active: screen === "history",
                 action: () => {
                   setMobileFieldMoreOpen(false);
