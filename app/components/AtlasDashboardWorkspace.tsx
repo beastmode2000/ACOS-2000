@@ -281,17 +281,24 @@ export default function AtlasDashboardWorkspace(props: any) {
     workPlanTasks
   } = props;
   const [dashboardRoutinePerson, setDashboardRoutinePerson] = useState<"Nick" | "Addison">("Nick");
-  const dashboardWorkPeople = ["Nick", "Addison", "Pat", "Sean"] as const;
+  const dashboardWorkPeople = ["Nick", "Addison", "Patrick Tanner", "Sean Powell"] as const;
   const initialDashboardAssignee = (() => {
     const name = String(currentAtlasUser?.name || "Nick").trim().toLowerCase();
     if (name.startsWith("addison")) return "Addison";
-    if (name.startsWith("pat")) return "Pat";
-    if (name.startsWith("sean")) return "Sean";
+    if (name.startsWith("pat")) return "Patrick Tanner";
+    if (name.startsWith("sean")) return "Sean Powell";
     return "Nick";
   })();
   const [dashboardWorkTitle, setDashboardWorkTitle] = useState("");
   const [dashboardWorkAssignee, setDashboardWorkAssignee] = useState(initialDashboardAssignee);
   const [dashboardWorkDate, setDashboardWorkDate] = useState(() => todayISO());
+  const dashboardAssigneeName = (value: unknown) => {
+    const name = String(value || "").trim();
+    const normalized = name.toLowerCase();
+    if (/^pat(?:rick)?(?:[^a-z]|$)/.test(normalized)) return "Patrick Tanner";
+    if (/^sean(?:[^a-z]|$)/.test(normalized)) return "Sean Powell";
+    return name;
+  };
   const dashboardNotesOpenStorageKey = `atlas-dashboard-notes-open-${activePropertyId}`;
   const [dashboardNotesOpen, setDashboardNotesOpen] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -1644,15 +1651,15 @@ export default function AtlasDashboardWorkspace(props: any) {
   const dashboardUnifiedWork = serviceRecords
     .filter((record) => record.status !== "Completed")
     .filter((record) => {
-      const assigned = String((record as AtlasServiceRecord).assignedTo || "").trim().toLowerCase();
-      return dashboardWorkPeople.some((person) => assigned === person.toLowerCase() || (person === "Pat" && assigned.startsWith("pat")));
+      const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo);
+      return dashboardWorkPeople.some((person) => assigned === person);
     })
     .filter((record) => !record.date || String(record.date) <= today)
     .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || priorityRank(a) - priorityRank(b) || a.title.localeCompare(b.title));
 
   const dashboardCompletedToday = serviceRecords.filter((record) => {
-    const assigned = String((record as AtlasServiceRecord).assignedTo || "").trim().toLowerCase();
-    const belongsToDashboard = dashboardWorkPeople.some((person) => assigned === person.toLowerCase() || (person === "Pat" && assigned.startsWith("pat")));
+    const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo);
+    const belongsToDashboard = dashboardWorkPeople.some((person) => assigned === person);
     if (!belongsToDashboard) return false;
     return record.lastCompletedDate === today || (record.completionHistory || []).includes(today) || (record.serviceHistory || []).some((entry) => String(entry.completedAt || "").slice(0, 10) === today);
   });
@@ -1671,7 +1678,6 @@ export default function AtlasDashboardWorkspace(props: any) {
       workCategory: "🔧 Maintenance",
       effort: "30 minutes",
       assignedTo: dashboardWorkAssignee,
-      assignedPersonIds: [dashboardWorkAssignee],
       responsibilityArea: "Dashboard · Quick Work",
     });
     setServiceRecords((current) => byTitle([record, ...current]));
@@ -2371,8 +2377,8 @@ export default function AtlasDashboardWorkspace(props: any) {
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10, marginTop: 11 }}>
           {dashboardWorkPeople.map((person) => {
             const personMatches = (record: ServiceRecord) => {
-              const assigned = String((record as AtlasServiceRecord).assignedTo || "").trim().toLowerCase();
-              return assigned === person.toLowerCase() || (person === "Pat" && assigned.startsWith("pat"));
+              const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo);
+              return assigned === person;
             };
             const assigned = dashboardUnifiedWork.filter(personMatches);
             const completed = dashboardCompletedToday.filter(personMatches);
@@ -2382,7 +2388,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                 {assigned.map((record) => <div key={record.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF" }}>
                   <input type="checkbox" checked={false} aria-label={`Complete ${record.title}`} onChange={() => void completeWorkOrder(record as AtlasServiceRecord)}/>
                   <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: "pointer" }}><strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{record.title}</strong><small style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "Flexible"}{record.date && record.date < today ? " · Overdue" : ""}</small></button>
-                  <select value={String((record as AtlasServiceRecord).assignedTo || person)} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value, assignedPersonIds: [event.currentTarget.value] })} aria-label={`Reassign ${record.title}`} style={{ ...selectStyle, minHeight: 30, width: 82, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name}</option>)}</select>
+                  <select value={dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) || person} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })} aria-label={`Reassign ${record.title}`} style={{ ...selectStyle, minHeight: 30, width: 130, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name}</option>)}</select>
                 </div>)}
                 {!assigned.length ? <div style={noticeStyle}>Nothing due.</div> : null}
               </div>
