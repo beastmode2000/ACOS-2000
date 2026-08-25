@@ -296,6 +296,10 @@ function canonicalWorkOrderDuplicateTitle(value: unknown) {
     .trim();
 }
 
+function isGeneratedSeaDooRecurringService(record: AtlasServiceRecord) {
+  return canonicalWorkOrderDuplicateTitle(record.title) === "sea doo recurring service";
+}
+
 function recurringWorkOrderSchedule(record: AtlasServiceRecord) {
   if (record.recurring) {
     return {
@@ -3380,6 +3384,71 @@ export default function AtlasApp() {
     if (!ready || !operationsHydrated || syncState !== "synced" || !vehicleCare.length) return;
     void setupFleetAssetsAndSchedules();
   }, [ready, operationsHydrated, syncState, activePropertyId, vehicleCare.length, assetRecords.length, workPlanTasks.length, serviceRecords.length, calendarItems.length]);
+  useEffect(() => {
+    if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000") return;
+
+    const generatedSeaDooServiceRecords = serviceRecords.filter((record) =>
+      isGeneratedSeaDooRecurringService(record as AtlasServiceRecord),
+    );
+    const generatedIds = new Set(generatedSeaDooServiceRecords.map((record) => String(record.id)));
+    const seaDooVehicleIds = new Set(
+      vehicleCare
+        .filter((vehicle) => /^sea[\s-]?doo$/i.test(String(vehicle.name || "").trim()))
+        .map((vehicle) => String(vehicle.id)),
+    );
+    const generatedSeaDooCalendarRecords = calendarItems.filter((item) => {
+      if (generatedIds.has(String(item.linkedId || ""))) return true;
+      if (seaDooVehicleIds.has(String(item.id || "").replace(/^fleet-service-/, "")) && String(item.id || "").startsWith("fleet-service-")) return true;
+      return (
+        String(item.id || "").startsWith("fleet-service-") &&
+        normalizedWorkOrderText(item.title) === "sea doo service"
+      );
+    });
+
+    if (!generatedSeaDooServiceRecords.length && !generatedSeaDooCalendarRecords.length) return;
+
+    generatedSeaDooServiceRecords.forEach((record) => addWorkOrderTombstone(String(record.id)));
+    generatedSeaDooCalendarRecords.forEach((record) => rememberCalendarDeletion(record));
+
+    if (generatedSeaDooServiceRecords.length) {
+      setServiceRecords((current) =>
+        current.filter((record) => !isGeneratedSeaDooRecurringService(record as AtlasServiceRecord)),
+      );
+    }
+
+    if (generatedSeaDooCalendarRecords.length) {
+      const calendarIds = new Set(generatedSeaDooCalendarRecords.map((record) => String(record.id)));
+      setCalendarItems((current) => {
+        const next = current.filter((record) => !calendarIds.has(String(record.id)));
+        saveStoredArray(storageKeys.calendar[0], byTitle(next));
+        return byTitle(next);
+      });
+    }
+
+    void (async () => {
+      for (let index = 0; index < generatedSeaDooServiceRecords.length; index += 20) {
+        const batch = generatedSeaDooServiceRecords.slice(index, index + 20);
+        await Promise.all(
+          batch.map((record) =>
+            deleteAtlasRecord("work_orders", String(record.id), { suppressFailureToast: true }),
+          ),
+        );
+      }
+      for (let index = 0; index < generatedSeaDooCalendarRecords.length; index += 20) {
+        const batch = generatedSeaDooCalendarRecords.slice(index, index + 20);
+        await Promise.all(
+          batch.map((record) =>
+            deleteAtlasRecord("calendar", String(record.id), { suppressFailureToast: true }),
+          ),
+        );
+      }
+      if (generatedSeaDooServiceRecords.length || generatedSeaDooCalendarRecords.length) {
+        showSaveToast(
+          `Removed ${generatedSeaDooServiceRecords.length} generated Sea-Doo recurring service record${generatedSeaDooServiceRecords.length === 1 ? "" : "s"}.`,
+        );
+      }
+    })();
+  }, [ready, operationsHydrated, syncState, activePropertyId, serviceRecords, calendarItems, vehicleCare]);
   useEffect(() => {
     if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000") return;
     void setupWeeklyOperations();
@@ -16545,35 +16614,44 @@ ${notes.trim()}` : notes.trim(),
 
         const serviceInterval = Math.max(1, Number(vehicle.serviceIntervalDays || 180));
         const serviceDueDate = vehicle.nextServiceDate || addDays(vehicle.lastServiced || todayISO(), serviceInterval);
-        let serviceWorkOrder = nextWorkOrders.find((record) => record.assetId === asset!.id && record.recurring && /service|maintenance/i.test(record.title));
-        if (!serviceWorkOrder) {
-          serviceWorkOrder = normalizeService({
-            id: uid("fleet-wo"),
-            title: `${vehicle.name} recurring service`,
-            assetId: asset.id,
-            locationId: vehicle.locationId || asset.locationId || "",
-            date: serviceDueDate,
-            status: "Open",
-            priority: vehicle.priority === "High" ? "High" : "Medium",
-            notes: `Recurring Garage service for ${vehicle.name}.${vehicle.notes ? ` ${vehicle.notes}` : ""}`,
-            recurring: true,
-            recurrenceInterval: serviceInterval,
-            recurrenceUnit: "Days",
-            season: "Year-Round",
-            workType: "Preventive Maintenance",
-            workCategory: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "🚤 Dock & Marine" : "🚗 Vehicles",
-            responsibilityArea: `Garage · ${vehicle.name}`,
-            assignedTo: vehicle.assignedTo || "Nick",
-          });
-          nextWorkOrders.push(serviceWorkOrder);
-          createdWorkOrders += 1;
-          recordsToSave.push({ table: "work_orders", record: { ...serviceWorkOrder, propertyId: activePropertyId } });
+        const suppressAutomaticServiceWorkOrder =
+          activePropertyId === "2000" && /^sea[\s-]?doo$/i.test(vehicle.name.trim());
+        let serviceWorkOrder: AtlasServiceRecord | undefined;
+        if (!suppressAutomaticServiceWorkOrder) {
+          serviceWorkOrder = nextWorkOrders.find((record) => record.assetId === asset!.id && record.recurring && /service|maintenance/i.test(record.title));
+          if (!serviceWorkOrder) {
+            serviceWorkOrder = normalizeService({
+              id: uid("fleet-wo"),
+              title: `${vehicle.name} recurring service`,
+              assetId: asset.id,
+              locationId: vehicle.locationId || asset.locationId || "",
+              date: serviceDueDate,
+              status: "Open",
+              priority: vehicle.priority === "High" ? "High" : "Medium",
+              notes: `Recurring Garage service for ${vehicle.name}.${vehicle.notes ? ` ${vehicle.notes}` : ""}`,
+              recurring: true,
+              recurrenceInterval: serviceInterval,
+              recurrenceUnit: "Days",
+              season: "Year-Round",
+              workType: "Preventive Maintenance",
+              workCategory: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "🚤 Dock & Marine" : "🚗 Vehicles",
+              responsibilityArea: `Garage · ${vehicle.name}`,
+              assignedTo: vehicle.assignedTo || "Nick",
+            });
+            nextWorkOrders.push(serviceWorkOrder);
+            createdWorkOrders += 1;
+            recordsToSave.push({ table: "work_orders", record: { ...serviceWorkOrder, propertyId: activePropertyId } });
+          }
         }
 
         const calendarDefinitions: AtlasCalendarItem[] = [
           normalizeCalendar({ id: `fleet-clean-${vehicle.id}`, propertyId: activePropertyId, date: nextTaskMeta[cleaningTask.id].dueDate, title: `Clean ${vehicle.name}`, area: "Garage", categoryLabel: "Garage", allDay: true, repeat: cleaningInterval === 7 ? "Weekly" : "Custom", reminder: "Morning of", notes: `Recurring every ${cleaningInterval} days. Use Skip when needed. Linked to the Garage Asset and Task.`, linkedType: "Task", linkedId: cleaningTask.id, linkedName: cleaningTask.title, source: "task", status: "Scheduled" }),
-          normalizeCalendar({ id: `fleet-service-${vehicle.id}`, propertyId: activePropertyId, date: serviceWorkOrder.date || serviceDueDate, title: `${vehicle.name} service`, area: "Garage", categoryLabel: "Garage", allDay: true, repeat: "Custom", reminder: "Week before", notes: `Recurring every ${serviceInterval} days. Open the linked Work Order for service history, documents, and cost.`, linkedType: "Work Order", linkedId: serviceWorkOrder.id, linkedName: serviceWorkOrder.title, source: "work-order", status: "Scheduled" }),
         ];
+        if (serviceWorkOrder) {
+          calendarDefinitions.push(
+            normalizeCalendar({ id: `fleet-service-${vehicle.id}`, propertyId: activePropertyId, date: serviceWorkOrder.date || serviceDueDate, title: `${vehicle.name} service`, area: "Garage", categoryLabel: "Garage", allDay: true, repeat: "Custom", reminder: "Week before", notes: `Recurring every ${serviceInterval} days. Open the linked Work Order for service history, documents, and cost.`, linkedType: "Work Order", linkedId: serviceWorkOrder.id, linkedName: serviceWorkOrder.title, source: "work-order", status: "Scheduled" }),
+          );
+        }
         for (const calendarRecord of calendarDefinitions) {
           const existingIndex = nextCalendar.findIndex((item) => item.id === calendarRecord.id);
           if (existingIndex >= 0) {
