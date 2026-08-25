@@ -15897,13 +15897,21 @@ export default function AtlasApp() {
     }
   }
 
-  function skipRecurringTask(task: WorkPlanTask) {
+  function skipRecurringTask(task: WorkPlanTask, force = false) {
     const meta = taskDetails(task.id);
-    if (!task.recurring || meta.skippable === false) return;
+    if (!task.recurring || (!force && meta.skippable === false)) return;
     const interval = Math.max(1, Number(meta.recurrenceInterval || 1));
     const unit = meta.recurrenceUnit || "Weeks";
     const nextDate = nextRecurrenceDate(meta.dueDate || todayISO(), interval, unit);
     updateTaskDetails(task.id, { dueDate: nextDate, status: "Open" });
+    setCalendarItems((current) =>
+      current.map((item) => {
+        if (item.linkedId !== task.id) return item;
+        const updated = { ...item, date: nextDate, status: "Scheduled" as const };
+        void postAtlasRecord("calendar", updated);
+        return updated;
+      }),
+    );
     showSaveToast(`${task.title} skipped. Next due ${formatDate(nextDate)}.`);
   }
 
@@ -15993,6 +16001,22 @@ export default function AtlasApp() {
     const task = workPlanTasks.find((item) => item.id === taskId);
     if (!task) return;
 
+    if (task.recurring) {
+      const deleteAll = window.confirm(
+        `Delete every recurring occurrence of “${task.title}”?\n\nChoose OK to delete the entire series.\nChoose Cancel to delete just this occurrence instead.`,
+      );
+      if (!deleteAll) {
+        const deleteOne = window.confirm(
+          `Delete just this occurrence of “${task.title}”?\n\nFuture recurring occurrences will remain.`,
+        );
+        if (!deleteOne) return;
+        skipRecurringTask(task, true);
+        setSelectedTaskId("");
+        recordAtlasAudit("Recurring task occurrence deleted", task.title);
+        return;
+      }
+    }
+
     addTaskTombstone(taskId);
     const meta = taskDetails(taskId);
     setTaskUndo({ task, meta });
@@ -16029,9 +16053,27 @@ export default function AtlasApp() {
     });
 
     setSelectedTaskId("");
+    const linkedCalendarItems = calendarItems.filter(
+      (item) =>
+        item.linkedId === taskId ||
+        (meta.vehicleId && item.id === `fleet-clean-${meta.vehicleId}`),
+    );
+    if (linkedCalendarItems.length) {
+      const linkedCalendarIds = new Set(linkedCalendarItems.map((item) => item.id));
+      setCalendarItems((current) =>
+        current.filter((item) => !linkedCalendarIds.has(item.id)),
+      );
+      linkedCalendarItems.forEach((item) =>
+        void deleteAtlasRecord("calendar", item.id),
+      );
+    }
     void deleteOperationalRecord("tasks" as AtlasTable, taskId);
-    recordAtlasAudit("Task deleted", task.title);
-    showSaveToast("Task deleted — Atlas will keep it deleted even if sync has to retry.");
+    recordAtlasAudit(task.recurring ? "Recurring task series deleted" : "Task deleted", task.title);
+    showSaveToast(
+      task.recurring
+        ? "Recurring task series deleted."
+        : "Task deleted — Atlas will keep it deleted even if sync has to retry.",
+    );
   }
 
   function moveAtlasTaskToDate(task: WorkPlanTask, value: string) {
