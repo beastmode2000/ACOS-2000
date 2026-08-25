@@ -119,6 +119,7 @@ function inferDepartment(row: Row) {
   if (/clean|laundry|housekeep|vacuum|mop|linen/.test(value)) return "Cleaning";
   if (/interior|house|room|kitchen|bath|bedroom|appliance|furniture|cabinet|blind|shade/.test(value)) return "Interior / House";
   if (/maintenance|service|repair|inspect|window|trash|reset/.test(value)) return "Maintenance";
+
   return "Other";
 }
 
@@ -140,9 +141,11 @@ function completedWorkOrderItems(workOrders: Row[]) {
 
   for (const row of workOrders) {
     const id = String(row.id || "");
+
     const completionHistory = Array.isArray(row.completionHistory)
       ? row.completionHistory
       : [];
+
     const serviceHistory = Array.isArray(row.serviceHistory)
       ? (row.serviceHistory as Row[])
       : [];
@@ -253,6 +256,7 @@ function completedTaskItems(tasks: Row[]) {
         : row;
 
     const id = String(row.id || meta.id || "");
+
     const completionHistory = Array.isArray(meta.completionHistory)
       ? meta.completionHistory
       : [];
@@ -278,9 +282,19 @@ function completedTaskItems(tasks: Row[]) {
         sourceType: "Task / Routine",
         sourceId: id,
         date,
-        person: displayPerson({ ...row, ...meta }),
-        department: inferDepartment({ ...row, ...meta }),
-        title: String(row.title || meta.title || "Task completed"),
+        person: displayPerson({
+          ...row,
+          ...meta,
+        }),
+        department: inferDepartment({
+          ...row,
+          ...meta,
+        }),
+        title: String(
+          row.title ||
+            meta.title ||
+            "Task completed",
+        ),
         notes: String(
           meta.addisonNote ||
             meta.notes ||
@@ -294,12 +308,18 @@ function completedTaskItems(tasks: Row[]) {
   return items;
 }
 
-function completedTeamItems(rows: Row[], propertyId: string) {
+function completedTeamItems(
+  rows: Row[],
+  propertyId: string,
+) {
   return rows
     .filter(
       (row) =>
-        String(row.propertyId || row.property_id || "2000") ===
-        propertyId,
+        String(
+          row.propertyId ||
+            row.property_id ||
+            "2000",
+        ) === propertyId,
     )
     .map((row): ReportItem => {
       const id = String(
@@ -370,26 +390,21 @@ function mergeSourceWithDraft(
       ]),
   );
 
-  const sourceWithEdits = source.map(
-    (item) => {
-      const edited =
-        currentSourceItems.get(
-          item.sourceKey,
-        );
+  const sourceWithEdits = source.map((item) => {
+    const edited = currentSourceItems.get(item.sourceKey);
 
-      if (!edited) {
-        return item;
-      }
+    if (!edited) {
+      return item;
+    }
 
-      return {
-        ...item,
-        person: edited.person,
-        department: edited.department,
-        title: edited.title,
-        notes: edited.notes,
-      };
-    },
-  );
+    return {
+      ...item,
+      person: edited.person,
+      department: edited.department,
+      title: edited.title,
+      notes: edited.notes,
+    };
+  });
 
   const manualItems = current.filter(
     (item) =>
@@ -409,12 +424,13 @@ function reportTitle(start: string, end: string) {
   }
 
   const format = (value: string) =>
-    new Date(
-      `${value}T12:00:00`,
-    ).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-    });
+    new Date(`${value}T12:00:00`).toLocaleDateString(
+      undefined,
+      {
+        month: "short",
+        day: "numeric",
+      },
+    );
 
   return `Weekly Owner Report · ${format(start)}–${format(end)}`;
 }
@@ -428,13 +444,14 @@ function escapeHtml(value: unknown) {
 }
 
 function dayLabel(date: string) {
-  return new Date(
-    `${date}T12:00:00`,
-  ).toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-  });
+  return new Date(`${date}T12:00:00`).toLocaleDateString(
+    undefined,
+    {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+    },
+  );
 }
 
 function personLabel(person: string) {
@@ -529,15 +546,11 @@ export default function AtlasOwnerReport({
         )
         .sort((a, b) => {
           if (a.date !== b.date) {
-            return a.date.localeCompare(
-              b.date,
-            );
+            return a.date.localeCompare(b.date);
           }
 
           const people =
-            personLabel(
-              a.person,
-            ).localeCompare(
+            personLabel(a.person).localeCompare(
               personLabel(b.person),
             );
 
@@ -546,12 +559,8 @@ export default function AtlasOwnerReport({
           }
 
           return (
-            departments.indexOf(
-              a.department,
-            ) -
-            departments.indexOf(
-              b.department,
-            )
+            departments.indexOf(a.department) -
+            departments.indexOf(b.department)
           );
         }),
     [items],
@@ -1770,9 +1779,7 @@ ${vendorHtml}
                               borderBottom: `2px solid ${colors.gold}`,
                             }}
                           >
-                            {
-                              person
-                            }
+                            {person}
                           </div>
 
                           {personItems.map(
