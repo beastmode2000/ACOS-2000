@@ -16252,6 +16252,9 @@ export default function AtlasApp() {
 
   function vehicleDueScore(vehicle: AtlasVehicleCare) {
     if (!vehicle.onsite || vehicle.priority === "Skip") return -1;
+    // No cleaning history is unknown, not overdue. A cadence begins after the
+    // first recorded cleaning (or when a cleaning task is explicitly scheduled).
+    if (!String(vehicle.lastCleaned || "").trim()) return -1;
     return daysSince(vehicle.lastCleaned) + (vehicle.priority === "High" ? 30 : 0);
   }
 
@@ -29375,7 +29378,8 @@ ${notes.trim()}` : notes.trim(),
         .filter((entry) => entry.type === "Serviced" || entry.type === "Issue")
         .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
       const cleaningDueCount = garageVehicles.filter((vehicle) =>
-        !vehicle.lastCleaned || addDays(vehicle.lastCleaned, Math.max(1, Number(vehicle.cleaningIntervalDays || 7))) <= todayISO(),
+        Boolean(vehicle.lastCleaned) &&
+        addDays(vehicle.lastCleaned, Math.max(1, Number(vehicle.cleaningIntervalDays || 7))) <= todayISO(),
       ).length;
       const serviceDueCount = garageVehicles.filter((vehicle) => vehicle.nextServiceDate && vehicle.nextServiceDate <= todayISO()).length;
       const openGarageWork = departmentWork.filter((record) => record.status !== "Completed");
@@ -29392,7 +29396,7 @@ ${notes.trim()}` : notes.trim(),
       };
       const nextCleaning = selectedGarageVehicle?.lastCleaned
         ? addDays(selectedGarageVehicle.lastCleaned, Math.max(1, Number(selectedGarageVehicle.cleaningIntervalDays || 7)))
-        : todayISO();
+        : "";
       const selectedCleaningTask = vehicleTasks.find((task) => /^clean\s+/i.test(task.title)) || vehicleTasks[0];
       const nearestThursday = (() => {
         const base = new Date(`${todayISO()}T12:00:00`);
@@ -29493,7 +29497,7 @@ ${notes.trim()}` : notes.trim(),
                 {garageVehicles.map((vehicle) => {
                   const selected = vehicle.id === selectedGarageVehicle?.id;
                   const interval = Math.max(1, Number(vehicle.cleaningIntervalDays || 7));
-                  const due = !vehicle.lastCleaned || addDays(vehicle.lastCleaned, interval) <= todayISO();
+                  const due = Boolean(vehicle.lastCleaned) && addDays(vehicle.lastCleaned, interval) <= todayISO();
                   const asset = departmentAssets.find((item) => item.id === vehicle.assetId || item.name.toLowerCase().includes(vehicle.name.toLowerCase()));
                   const assetPhoto = asset
                     ? photos.find((photo) => photo.assetId === asset.id && Boolean(photoSource(photo)))
@@ -29504,7 +29508,7 @@ ${notes.trim()}` : notes.trim(),
                       <span style={{ minWidth: 0 }}>
                         <strong style={{ color: colors.navy, display: "block" }}>{vehicle.name}</strong>
                         <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>{[asset?.year, asset?.make, asset?.model, locationName(vehicle.locationId)].filter(Boolean).join(" · ") || "Vehicle"}</small>
-                        <small style={{ display: "block", marginTop: 3, color: due ? colors.red : colors.green, fontWeight: 800 }}>{due ? "Cleaning due" : `Cleaned ${formatDate(vehicle.lastCleaned)}`}</small>
+                        <small style={{ display: "block", marginTop: 3, color: due ? colors.red : vehicle.lastCleaned ? colors.green : colors.muted, fontWeight: 800 }}>{due ? "Cleaning due" : vehicle.lastCleaned ? `Cleaned ${formatDate(vehicle.lastCleaned)}` : "No cleaning history"}</small>
                       </span>
                       <span style={{ color: colors.muted, fontSize: 20 }}>›</span>
                     </button>
@@ -29574,7 +29578,7 @@ ${notes.trim()}` : notes.trim(),
 
                   {garageVehicleTab === "Maintenance" ? <div style={{ display: "grid", gap: 8 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Maintenance history</strong><button type="button" onClick={() => createVehicleWorkOrder(selectedGarageVehicle)} style={goldButtonStyle}>+ Add record</button></div>{vehicleWork.map((record) => <button key={record.id} type="button" onClick={() => { setDepartmentCenter(""); openWorkOrderById(record.id); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "No date"}</small></span><span style={badgeStyle(record.status || "Open")}>{record.status || "Open"}</span></button>)}{serviceHistory.map((entry) => <div key={entry.id} style={recordInfoItemStyle}><strong>{entry.type}</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{formatDate(String(entry.date || "").slice(0, 10))}{entry.notes ? ` · ${entry.notes}` : ""}</small></div>)}{!vehicleWork.length && !serviceHistory.length ? <div style={noticeStyle}>No maintenance history recorded.</div> : null}</div> : null}
 
-                  {garageVehicleTab === "Cleaning" ? <div style={{ display: "grid", gap: 10 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Cleaning schedule & history</strong><span style={badgeStyle(nextCleaning <= todayISO() ? "Open" : "Scheduled")}>{nextCleaning <= todayISO() ? "Due" : "Scheduled"}</span></div><div style={{ ...recordInfoItemStyle, background: "#F0F6FC", display: "grid", gap: 9 }}><span style={fieldLabelStyle}>NEXT CLEANING</span><strong style={{ color: colors.navy, fontSize: 16 }}>{formatDate(nextCleaning)}</strong><small style={mutedSmallStyle}>Exterior wash · Interior tidy · Glass · Check supplies · Tire pressure</small><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 6 }}><button type="button" onClick={() => { ensureSelectedVehicleSaved(); markVehicleCleaned(selectedGarageVehicle); }} style={goldButtonStyle}>Complete</button><button type="button" onClick={skipSelectedCleaning} style={smallSubtleButtonStyle}>Skip</button><button type="button" onClick={moveSelectedCleaningToThursday} style={smallSubtleButtonStyle}>Move to Thursday</button><button type="button" onClick={assignSelectedCleaningToAddison} style={smallSubtleButtonStyle}>Assign to Addison</button><button type="button" onClick={addSelectedCleaningNote} style={smallSubtleButtonStyle}>Add Note</button><button type="button" onClick={() => selectedGarageAsset ? openAssetById(selectedGarageAsset.id) : showSaveToast("Link this vehicle to an Asset before adding photos.")} style={smallSubtleButtonStyle}>Add Photo</button><button type="button" onClick={() => createVehicleCleaningTask(selectedGarageVehicle)} style={smallSubtleButtonStyle}>{selectedCleaningTask ? "Open Task" : "Create Task"}</button><button type="button" onClick={() => createVehicleWorkOrder(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Create Work Order</button></div><small style={mutedSmallStyle}>Assigned to {selectedGarageVehicle.assignedTo || "Nick"}{selectedCleaningTask && taskDetails(selectedCleaningTask.id).dueDate ? ` · Task due ${formatDate(taskDetails(selectedCleaningTask.id).dueDate)}` : ""}</small></div>{cleaningHistory.map((entry) => { const skipped = entry.type === "Note" && /^Skipped\b/i.test(entry.notes || ""); return <div key={entry.id} style={{ ...recordInfoItemStyle, display: "grid", gridTemplateColumns: "90px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}><small style={mutedSmallStyle}>{formatDate(String(entry.date || "").slice(0, 10))}</small><span><strong style={{ display: "block" }}>{skipped ? "Cleaning skipped" : "Vehicle cleaning"}</strong>{entry.notes ? <small style={mutedSmallStyle}>{entry.notes}</small> : null}</span><span style={badgeStyle(skipped ? "Monitor" : "Completed")}>{skipped ? "Skipped" : "Completed"}</span></div>; })}{!cleaningHistory.length ? <div style={noticeStyle}>No cleaning history recorded yet.</div> : null}</div> : null}
+                  {garageVehicleTab === "Cleaning" ? <div style={{ display: "grid", gap: 10 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Cleaning schedule & history</strong><span style={badgeStyle(!nextCleaning ? "Monitor" : nextCleaning <= todayISO() ? "Open" : "Scheduled")}>{!nextCleaning ? "Not scheduled" : nextCleaning <= todayISO() ? "Due" : "Scheduled"}</span></div><div style={{ ...recordInfoItemStyle, background: "#F0F6FC", display: "grid", gap: 9 }}><span style={fieldLabelStyle}>NEXT CLEANING</span><strong style={{ color: colors.navy, fontSize: 16 }}>{nextCleaning ? formatDate(nextCleaning) : "No cleaning history yet"}</strong><small style={mutedSmallStyle}>Exterior wash · Interior tidy · Glass · Check supplies · Tire pressure</small><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 6 }}><button type="button" onClick={() => { ensureSelectedVehicleSaved(); markVehicleCleaned(selectedGarageVehicle); }} style={goldButtonStyle}>Complete</button><button type="button" onClick={skipSelectedCleaning} style={smallSubtleButtonStyle}>Skip</button><button type="button" onClick={moveSelectedCleaningToThursday} style={smallSubtleButtonStyle}>Move to Thursday</button><button type="button" onClick={assignSelectedCleaningToAddison} style={smallSubtleButtonStyle}>Assign to Addison</button><button type="button" onClick={addSelectedCleaningNote} style={smallSubtleButtonStyle}>Add Note</button><button type="button" onClick={() => selectedGarageAsset ? openAssetById(selectedGarageAsset.id) : showSaveToast("Link this vehicle to an Asset before adding photos.")} style={smallSubtleButtonStyle}>Add Photo</button><button type="button" onClick={() => createVehicleCleaningTask(selectedGarageVehicle)} style={smallSubtleButtonStyle}>{selectedCleaningTask ? "Open Task" : "Create Task"}</button><button type="button" onClick={() => createVehicleWorkOrder(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Create Work Order</button></div><small style={mutedSmallStyle}>Assigned to {selectedGarageVehicle.assignedTo || "Nick"}{selectedCleaningTask && taskDetails(selectedCleaningTask.id).dueDate ? ` · Task due ${formatDate(taskDetails(selectedCleaningTask.id).dueDate)}` : ""}</small></div>{cleaningHistory.map((entry) => { const skipped = entry.type === "Note" && /^Skipped\b/i.test(entry.notes || ""); return <div key={entry.id} style={{ ...recordInfoItemStyle, display: "grid", gridTemplateColumns: "90px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}><small style={mutedSmallStyle}>{formatDate(String(entry.date || "").slice(0, 10))}</small><span><strong style={{ display: "block" }}>{skipped ? "Cleaning skipped" : "Vehicle cleaning"}</strong>{entry.notes ? <small style={mutedSmallStyle}>{entry.notes}</small> : null}</span><span style={badgeStyle(skipped ? "Monitor" : "Completed")}>{skipped ? "Skipped" : "Completed"}</span></div>; })}{!cleaningHistory.length ? <div style={noticeStyle}>No cleaning history recorded yet.</div> : null}</div> : null}
 
                   {garageVehicleTab === "Documents" ? <div style={{ display: "grid", gap: 8 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Documents</strong>{selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={goldButtonStyle}>+ Add document</button> : null}</div>{vehicleDocuments.map((document) => <button key={document.id} type="button" onClick={() => { setSelectedDocumentId(document.id); openCenter("documents"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{document.title}</strong><small style={mutedSmallStyle}>{document.type || "Document"}</small></span><span>Open ›</span></button>)}{!vehicleDocuments.length ? <div style={noticeStyle}>No documents attached to this vehicle.</div> : null}</div> : null}
 
@@ -29678,7 +29682,7 @@ ${notes.trim()}` : notes.trim(),
                     );
                     const nextCleaning = vehicle.lastCleaned
                       ? addDays(vehicle.lastCleaned, interval)
-                      : todayISO();
+                      : "";
                     const cleaningStatus = !vehicle.lastCleaned
                       ? "No history"
                       : nextCleaning < todayISO()
@@ -29740,7 +29744,7 @@ ${notes.trim()}` : notes.trim(),
                           </div>
                           <div style={recordInfoItemStyle}>
                             <span style={fieldLabelStyle}>Next cleaning</span>
-                            <strong>{formatDate(nextCleaning)}</strong>
+                            <strong>{nextCleaning ? formatDate(nextCleaning) : "Not scheduled"}</strong>
                           </div>
                         </div>
                         <div
