@@ -1,6 +1,3 @@
-`app/components/AtlasOwnerReport.tsx`
-
-```tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -10,7 +7,12 @@ type Row = Record<string, unknown>;
 type ReportItem = {
   id: string;
   sourceKey: string;
-  sourceType: "Work Order" | "Task / Routine" | "Team Work" | "Manual" | "Vendor Visit";
+  sourceType:
+    | "Work Order"
+    | "Task / Routine"
+    | "Team Work"
+    | "Manual"
+    | "Vendor Visit";
   sourceId: string;
   date: string;
   person: string;
@@ -110,15 +112,67 @@ function inferDepartment(row: Row) {
     row.note,
   );
 
-  if (/dock|marine|boat|cobalt|sea.?doo|watercraft|sunstream|lift box|liftbox|waterfront/.test(value)) return "Dock & Marine";
-  if (/landscap|irrigat|fertiliz|lawn|garden|weed|plant|tree|shrub|yard|grounds/.test(value)) return "Landscape";
-  if (/garage|vehicle|ford|f-?150|mercedes|rivian|porsche|car clean|wash car|detail/.test(value)) return "Garage / Vehicles";
-  if (/pool|spa|hot tub|sundance|chlorine|filter|backwash/.test(value)) return "Pool & Spa";
-  if (/project|construction|paint|siding|renovat|install/.test(value)) return "Projects";
-  if (/admin|invoice|receipt|owner update|meeting|email|computer/.test(value)) return "Administration";
-  if (/clean|laundry|housekeep|vacuum|mop|linen/.test(value)) return "Cleaning";
-  if (/interior|house|room|kitchen|bath|bedroom|appliance|furniture|cabinet|blind|shade/.test(value)) return "Interior / House";
-  if (/maintenance|service|repair|inspect|window|trash|reset/.test(value)) return "Maintenance";
+  if (
+    /dock|marine|boat|cobalt|sea.?doo|watercraft|sunstream|lift box|liftbox|waterfront/.test(
+      value,
+    )
+  ) {
+    return "Dock & Marine";
+  }
+
+  if (
+    /landscap|irrigat|fertiliz|lawn|garden|weed|plant|tree|shrub|yard|grounds/.test(
+      value,
+    )
+  ) {
+    return "Landscape";
+  }
+
+  if (
+    /garage|vehicle|ford|f-?150|mercedes|rivian|porsche|car clean|wash car|detail/.test(
+      value,
+    )
+  ) {
+    return "Garage / Vehicles";
+  }
+
+  if (
+    /pool|spa|hot tub|sundance|chlorine|filter|backwash/.test(value)
+  ) {
+    return "Pool & Spa";
+  }
+
+  if (
+    /project|construction|paint|siding|renovat|install/.test(value)
+  ) {
+    return "Projects";
+  }
+
+  if (
+    /admin|invoice|receipt|owner update|meeting|email|computer/.test(value)
+  ) {
+    return "Administration";
+  }
+
+  if (
+    /clean|laundry|housekeep|vacuum|mop|linen/.test(value)
+  ) {
+    return "Cleaning";
+  }
+
+  if (
+    /interior|house|room|kitchen|bath|bedroom|appliance|furniture|cabinet|blind|shade/.test(
+      value,
+    )
+  ) {
+    return "Interior / House";
+  }
+
+  if (
+    /maintenance|service|repair|inspect|window|trash|reset/.test(value)
+  ) {
+    return "Maintenance";
+  }
 
   return "Other";
 }
@@ -155,7 +209,10 @@ function completedWorkOrderItems(workOrders: Row[]) {
       row.lastCompletedDate,
       row.last_completed_date,
       row.status === "Completed" || row.status === "Closed"
-        ? row.completedAt || row.completed_at || row.updatedAt || row.date
+        ? row.completedAt ||
+          row.completed_at ||
+          row.updatedAt ||
+          row.date
         : "",
       ...serviceHistory.map(
         (entry) => entry.completedAt || entry.completed_at,
@@ -546,7 +603,9 @@ export default function AtlasOwnerReport({
         )
         .sort((a, b) => {
           if (a.date !== b.date) {
-            return a.date.localeCompare(b.date);
+            return a.date.localeCompare(
+              b.date,
+            );
           }
 
           const people =
@@ -2122,4 +2181,3 @@ ${vendorHtml}
     </section>
   );
 }
-```
