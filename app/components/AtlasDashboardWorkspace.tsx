@@ -2349,52 +2349,59 @@ export default function AtlasDashboardWorkspace(props: any) {
           />
         </div>
         ) : null}
-        <div style={{ display: "grid", gap: 12 }}>
-          <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div><span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{foremanSchedule.slice(0, 8).map((event) => <button key={event.instanceId || event.id} type="button" onClick={() => openDashboardCalendarItem(event)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>)}{!foremanSchedule.length ? <div style={noticeStyle}>No meetings, vendors, crew visits, or deliveries are scheduled today.</div> : null}</div></section>
-          <section style={{ ...cardStyle, padding: 11 }}>
-            <div><div style={eyebrowStyle}>Quick Log</div><h3 style={{ margin: "2px 0", color: colors.navy }}>Vendor Visit</h3></div>
-            <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-              <CreatableRelationshipField label="Vendor" value={dashboardVendorVisitId} emptyLabel="Choose or type vendor" options={vendorRecords.slice().sort((a,b) => a.name.localeCompare(b.name)).map((vendor) => ({ id: vendor.id, label: vendor.name }))} onChange={setDashboardVendorVisitId} onCreate={quickCreateVendor} compact/>
-              <input value={dashboardVendorVisitNote} onChange={(event) => setDashboardVendorVisitNote(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") logDashboardVendorVisit(); }} placeholder="Work completed or visit note" style={{ ...inputStyle, minHeight: 34, padding: "5px 8px", fontSize: 11 }}/>
-              <button type="button" onClick={logDashboardVendorVisit} disabled={!dashboardVendorVisitId && !dashboardVendorVisitNote.trim()} style={{ ...goldButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11, opacity: !dashboardVendorVisitId && !dashboardVendorVisitNote.trim() ? .55 : 1 }}>Log Visit</button>
-            </div>
-          </section>
-        </div>
       </div>
-      <section style={{ ...cardStyle, padding: isMobile ? 11 : 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div><div style={eyebrowStyle}>Unified Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Today’s Work</h2><small style={mutedSmallStyle}>Add work here, assign it, and check it off without leaving the dashboard.</small></div>
-          <button type="button" onClick={() => setScreen("history")} style={secondaryButtonStyle}>Open All Work</button>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 145px 150px auto", gap: 7, marginTop: 10 }}>
-          <input value={dashboardWorkTitle} onChange={(event) => setDashboardWorkTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void createDashboardUnifiedWork(); }} placeholder="Add work to do…" aria-label="Work title" style={inputStyle}/>
-          <input type="date" value={dashboardWorkDate} onChange={(event) => setDashboardWorkDate(event.currentTarget.value)} aria-label="Work date" style={inputStyle}/>
-          <select value={dashboardWorkAssignee} onChange={(event) => setDashboardWorkAssignee(event.currentTarget.value as typeof dashboardWorkAssignee)} aria-label="Assign new work" style={selectStyle}>
-            {dashboardWorkPeople.map((person) => <option key={person} value={person}>{person === initialDashboardAssignee ? `${person} (me)` : person}</option>)}
-          </select>
-          <button type="button" onClick={() => void createDashboardUnifiedWork()} disabled={!dashboardWorkTitle.trim()} style={{ ...goldButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Add Work</button>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10, marginTop: 11 }}>
-          {dashboardWorkPeople.map((person) => {
-            const personMatches = (record: ServiceRecord) => {
-              const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo);
-              return assigned === person;
-            };
-            const assigned = dashboardUnifiedWork.filter(personMatches);
-            const completed = dashboardCompletedToday.filter(personMatches);
-            return <section key={`unified-dashboard-${person}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 10, background: "#FAFCFE", minWidth: 0 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><strong style={{ display: "block", color: colors.navy, fontSize: 17 }}>{person}</strong><small style={mutedSmallStyle}>{assigned.length} active · {completed.length} done today</small></div><span style={badgeStyle(assigned.length ? "Scheduled" : completed.length ? "Completed" : "Monitor")}>{assigned.length}</span></div>
-              <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-                {assigned.map((record) => <div key={record.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF" }}>
-                  <input type="checkbox" checked={false} aria-label={`Complete ${record.title}`} onChange={() => void completeWorkOrder(record as AtlasServiceRecord)}/>
-                  <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: "pointer" }}><strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{record.title}</strong><small style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "Flexible"}{record.date && record.date < today ? " · Overdue" : ""}</small></button>
-                  <select value={dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) || person} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })} aria-label={`Reassign ${record.title}`} style={{ ...selectStyle, minHeight: 30, width: 130, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name}</option>)}</select>
-                </div>)}
-                {!assigned.length ? <div style={noticeStyle}>Nothing due.</div> : null}
-              </div>
-              {completed.length ? <details style={{ marginTop: 8 }}><summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 850 }}>Completed today · {completed.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 6 }}>{completed.map((record) => <button key={`done-${record.id}`} type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#F3F7F4", textAlign: "left", color: colors.navy, textDecoration: "line-through", opacity: .7 }}>{record.title}</button>)}</div></details> : null}
-            </section>;
-          })}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12, alignItems: "stretch" }}>
+        <section style={{ ...cardStyle, minWidth: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            <div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div>
+            <span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span>
+          </div>
+          <div style={{ display: "grid", gap: 7, marginTop: 10, maxHeight: 430, overflowY: "auto", paddingRight: 2 }}>
+            {foremanSchedule.slice(0, 8).map((event) => <button key={event.instanceId || event.id} type="button" onClick={() => openDashboardCalendarItem(event)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>)}
+            {!foremanSchedule.length ? <div style={noticeStyle}>Nothing scheduled today.</div> : null}
+          </div>
+        </section>
+
+        <section style={{ ...cardStyle, minWidth: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            <div><div style={eyebrowStyle}>Unified Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Today’s Work</h2></div>
+            <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={badgeStyle(dashboardUnifiedWork.length ? "Scheduled" : "Completed")}>{dashboardUnifiedWork.length}</span><button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Open All Work</button></div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, marginTop: 10 }}>
+            <input value={dashboardWorkTitle} onChange={(event) => setDashboardWorkTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void createDashboardUnifiedWork(); }} placeholder="Add work to do…" aria-label="Work title" style={inputStyle}/>
+            <button type="button" onClick={() => void createDashboardUnifiedWork()} disabled={!dashboardWorkTitle.trim()} style={{ ...goldButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Add</button>
+            <input type="date" value={dashboardWorkDate} onChange={(event) => setDashboardWorkDate(event.currentTarget.value)} aria-label="Work date" style={inputStyle}/>
+            <select value={dashboardWorkAssignee} onChange={(event) => setDashboardWorkAssignee(event.currentTarget.value as typeof dashboardWorkAssignee)} aria-label="Assign new work" style={{ ...selectStyle, width: isMobile ? "100%" : 150 }}>
+              {dashboardWorkPeople.map((person) => <option key={person} value={person}>{person === initialDashboardAssignee ? `${person} (me)` : person}</option>)}
+            </select>
+          </div>
+          <div style={{ display: "grid", gap: 6, marginTop: 10, maxHeight: 326, overflowY: "auto", paddingRight: 2 }}>
+            {dashboardUnifiedWork.slice(0, 8).map((record) => {
+              const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) || "Nick";
+              return <div key={record.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 7, alignItems: "start", border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF" }}>
+                <input type="checkbox" checked={false} aria-label={`Complete ${record.title}`} onChange={() => void completeWorkOrder(record as AtlasServiceRecord)} style={{ marginTop: 5 }}/>
+                <div style={{ minWidth: 0 }}>
+                  <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, width: "100%", cursor: "pointer" }}><strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title}</strong></button>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(125px,145px) minmax(125px,1fr)", gap: 6, marginTop: 5 }}>
+                    <input type="date" value={String(record.date || "").slice(0, 10)} onChange={(event) => void syncWorkOrderPatch(record, { date: event.currentTarget.value })} aria-label={`Due date for ${record.title}`} style={{ ...inputStyle, minHeight: 30, padding: "3px 5px", fontSize: 11, color: record.date && record.date < today ? colors.red : colors.text }}/>
+                    <select value={assigned} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })} aria-label={`Reassign ${record.title}`} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name}</option>)}</select>
+                  </div>
+                </div>
+              </div>;
+            })}
+            {!dashboardUnifiedWork.length ? <div style={noticeStyle}>Nothing due today.</div> : null}
+          </div>
+          {dashboardUnifiedWork.length > 8 ? <button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, width: "100%", marginTop: 8 }}>{dashboardUnifiedWork.length - 8} more in All Work</button> : null}
+          {dashboardCompletedToday.length ? <details style={{ marginTop: 8 }}><summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 850 }}>Completed today · {dashboardCompletedToday.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 6 }}>{dashboardCompletedToday.slice(0, 8).map((record) => <button key={`done-${record.id}`} type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#F3F7F4", textAlign: "left", color: colors.navy, textDecoration: "line-through", opacity: .7 }}>{record.title}</button>)}</div></details> : null}
+        </section>
+      </div>
+
+      <section style={{ ...cardStyle, padding: 11 }}>
+        <div><div style={eyebrowStyle}>Quick Log</div><h3 style={{ margin: "2px 0", color: colors.navy }}>Vendor Visit</h3></div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px,.8fr) minmax(0,1.4fr) auto", gap: 7, marginTop: 8, alignItems: "end" }}>
+          <CreatableRelationshipField label="Vendor" value={dashboardVendorVisitId} emptyLabel="Choose or type vendor" options={vendorRecords.slice().sort((a,b) => a.name.localeCompare(b.name)).map((vendor) => ({ id: vendor.id, label: vendor.name }))} onChange={setDashboardVendorVisitId} onCreate={quickCreateVendor} compact/>
+          <input value={dashboardVendorVisitNote} onChange={(event) => setDashboardVendorVisitNote(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") logDashboardVendorVisit(); }} placeholder="Work completed or visit note" style={{ ...inputStyle, minHeight: 34, padding: "5px 8px", fontSize: 11 }}/>
+          <button type="button" onClick={logDashboardVendorVisit} disabled={!dashboardVendorVisitId && !dashboardVendorVisitNote.trim()} style={{ ...goldButtonStyle, minHeight: 34, padding: "5px 12px", fontSize: 11, opacity: !dashboardVendorVisitId && !dashboardVendorVisitNote.trim() ? .55 : 1 }}>Log Visit</button>
         </div>
       </section>
       {false ? (
