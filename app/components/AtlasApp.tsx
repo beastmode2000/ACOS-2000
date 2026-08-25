@@ -1096,10 +1096,11 @@ export default function AtlasApp() {
         const id = `unified-task-${task.id}`;
         if (existingIds.has(id) || deletedIds.has(id)) continue;
 
-        const assignee =
+        const assignee = canonicalWorkAssignee(
           !meta.assignee || meta.assignee === "Unassigned"
             ? ""
-            : String(meta.assignee);
+            : String(meta.assignee),
+        );
         const dueDate = String(meta.dueDate || task.scheduledDate || "").slice(0, 10);
         const duplicate = existing.some(
           (record) =>
@@ -1235,7 +1236,7 @@ export default function AtlasApp() {
                 vendorId: "",
                 procedureId: "",
                 locationId: "",
-                assignedTo: String(routineTask.assignedTo || "Nick"),
+                assignedTo: canonicalWorkAssignee(routineTask.assignedTo || "Nick"),
                 workType: "Preventive Maintenance",
                 workCategory: inferTaskCategory(String(routineTask.title || "")),
                 effort: "30 minutes",
@@ -11795,6 +11796,42 @@ export default function AtlasApp() {
     );
   }
 
+  function canonicalWorkAssignee(value: unknown) {
+    const name = String(value || "").trim();
+    const normalized = name.toLowerCase();
+    if (/^pat(?:rick)?(?:[^a-z]|$)/.test(normalized)) return "Patrick Tanner";
+    if (/^sean(?:[^a-z]|$)/.test(normalized)) return "Sean Powell";
+    return name;
+  }
+
+  async function updateWorkOrderRecord(
+    record: AtlasServiceRecord,
+    patch: Partial<AtlasServiceRecord>,
+  ) {
+    const safePatch: Partial<AtlasServiceRecord> = { ...patch };
+    if (Object.prototype.hasOwnProperty.call(patch, "assignedTo")) {
+      safePatch.assignedTo = canonicalWorkAssignee(patch.assignedTo);
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "date")) {
+      safePatch.date = String(patch.date || "").trim().slice(0, 10);
+    }
+    const updated = normalizeService({
+      ...record,
+      ...safePatch,
+      propertyId: activePropertyId,
+    });
+    setServiceRecords((current) =>
+      byTitle(current.map((item) => (item.id === updated.id ? updated : item))),
+    );
+    const saved = await postAtlasRecord("work_orders", updated);
+    showSaveToast(
+      saved
+        ? `${updated.title || "Work"} saved.`
+        : `${updated.title || "Work"} changed locally, but shared sync did not finish.`,
+      saved ? "success" : "warning",
+    );
+  }
+
   async function saveWorkOrderRecord() {
     if (!selectedService?.id) {
       setDatabaseStatus("Save failed: no work order is selected.");
@@ -11822,7 +11859,7 @@ export default function AtlasApp() {
       vendorId: String(selectedService.vendorId || ""),
       procedureId: String(selectedService.procedureId || ""),
       locationId: String(selectedService.locationId || ""),
-      assignedTo: String(selectedService.assignedTo || ""),
+      assignedTo: canonicalWorkAssignee(selectedService.assignedTo),
       assignedPersonIds: Array.isArray(selectedService.assignedPersonIds) ? selectedService.assignedPersonIds : [],
       assignedVendorIds: Array.isArray(selectedService.assignedVendorIds) ? selectedService.assignedVendorIds : [],
       projectId: String(selectedService.projectId || ""),
@@ -21884,6 +21921,7 @@ ${notes.trim()}` : notes.trim(),
         detailSectionStyle={detailSectionStyle}
         formGridStyle={formGridStyle}
         updateWorkOrder={updateWorkOrder}
+        updateWorkOrderRecord={updateWorkOrderRecord}
         fieldLabelStyle={fieldLabelStyle}
         inputStyle={inputStyle}
         byName={byName}
