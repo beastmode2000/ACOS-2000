@@ -73,18 +73,10 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const DEFAULT_SECTIONS: WorkSection[] = [
-  { id: "my-work", label: "My Work", kind: "my-work" },
-  { id: "tasks", label: "Tasks", kind: "Quick Task" },
-  { id: "work-orders", label: "Work Orders", kind: "Work Order" },
-  {
-    id: "maintenance",
-    label: "Recurring",
-    kind: "Preventive Maintenance",
-  },
-  { id: "projects", label: "Projects", kind: "Project" },
+  { id: "my-work", label: "All Work", kind: "my-work" },
 ];
 
-const SECTION_STORAGE_KEY = "atlas-work-section-settings-v1";
+const SECTION_STORAGE_KEY = "atlas-unified-work-section-settings-v2";
 const CATEGORY_STORAGE_KEY = "atlas-work-category-settings-v1";
 const FAVORITE_STORAGE_KEY = "atlas-work-favorites-v1";
 const RECENT_STORAGE_KEY = "atlas-work-recent-v1";
@@ -649,6 +641,20 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     return ["All", ...Array.from(values)];
   }, [categoryChoices, serviceRecords]);
 
+  const assignmentChoices = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          "Nick",
+          "Addison",
+          "Pat",
+          "Sean",
+          ...contactRecords.map((contact: any) => String(contact.name || "").trim()),
+        ].filter(Boolean)),
+      ).sort((left, right) => left.localeCompare(right)),
+    [contactRecords],
+  );
+
   const parentLocationId = (location: any) =>
     String(
       location?.parentId ||
@@ -724,7 +730,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     if (!value) return;
     const next = Array.from(new Set([...categoryChoices, value]));
     setCategoryChoices(next);
-    safeSaveCategories(next);
+    safeSaveCategories(next as string[]);
     setNewCategory("");
   }
 
@@ -737,7 +743,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       ),
     );
     setCategoryChoices(next);
-    safeSaveCategories(next);
+    safeSaveCategories(next as string[]);
     if (categoryFilter === category) setCategoryFilter(nextName);
     serviceRecords
       .filter((record: any) => categoryLabel(record) === category)
@@ -1682,7 +1688,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       ) : null}
       <ListDrawerLayout
         eyebrow="Work"
-        title="Work Orders"
+        title="Work"
         detail=""
         isMobile={isMobile}
         outerStyle={
@@ -1771,12 +1777,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 fontSize: 13,
                 fontWeight: 500,
               }}
-              aria-label="Work order options"
+              aria-label="Work options"
             >
               <option value="">More</option>
-              <option value="quick-task">New Task</option>
               <option value="plan">Plan My Day</option>
-              <option value="sections">Manage Sections</option>
               <option value="categories">Manage Categories</option>
               <optgroup label="New from Template">
                 {WORK_TEMPLATES.map((template) => (
@@ -1789,7 +1793,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               onClick={() => openNewWork("Work Order")}
               style={{ ...goldButtonStyle, minHeight: 38 }}
             >
-              + New Work Order
+              + Add Work
             </button>
           </>
         }
@@ -1996,8 +2000,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 type="search"
                 value={localSearch}
                 onChange={(event) => setLocalSearch(event.currentTarget.value)}
-                aria-label="Search work orders"
-                placeholder="Search work orders..."
+                aria-label="Search work"
+                placeholder="Search work..."
                 style={{
                   ...controlStyle,
                   width: "100%",
@@ -2025,9 +2029,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 >
                   <option value="All">Assigned To</option>
                   <option value="None">Unassigned</option>
-                  {byName(contactRecords).map((contact: any) => (
-                    <option key={contact.id || contact.name} value={contact.name}>
-                      {contact.name}
+                  {assignmentChoices.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
                     </option>
                   ))}
                 </select>
@@ -2208,9 +2212,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     padding: "7px 11px",
                     fontWeight: 500,
                   }}
-                  aria-label="Back to work orders"
+                  aria-label="Back to work"
                 >
-                  {SYMBOL.back} Work Orders
+                  {SYMBOL.back} Work
                 </button>
                 {isMobile ? (
                   <button
@@ -2228,7 +2232,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       padding: 6,
                       cursor: "pointer",
                     }}
-                    aria-label="Close work order details"
+                    aria-label="Close work details"
                     title="Close"
                   >
                     {SYMBOL.close}
@@ -2262,7 +2266,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                             {selectedService.recurring ? <span style={recurringBadgeStyle}>Recurring</span> : null}
                           </div>
                           <h2 style={{ margin: "10px 0 0", color: colors.text, fontSize: isMobile ? 23 : 29, lineHeight: 1.14, letterSpacing: "-.02em" }}>
-                            {selectedService.title || "Untitled Work Order"}
+                            {selectedService.title || "Untitled Work"}
                           </h2>
                           {selectedService.notes ? (
                             <p style={{ margin: "9px 0 0", color: colors.muted, fontSize: 14, lineHeight: 1.55, maxWidth: 760 }}>{selectedService.notes}</p>
@@ -2325,7 +2329,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 ) : (
                   <div style={{ display: "grid", gap: 11 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                      <div style={eyebrowStyle}>Edit Work Order</div>
+                      <div style={eyebrowStyle}>Edit Work</div>
                       <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => void deleteWorkOrderRecord(selectedService)} style={{ ...dangerButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Delete</button><button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button></div>
                     </div>
                     <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, fontSize: 20, fontWeight: 800 }} />
@@ -2340,7 +2344,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Location</span><select value={selectedService.locationId || ""} onChange={(event) => safeSelectChange(event, { locationId: event.currentTarget.value })} style={inputStyle}><option value="">No location</option>{byName(locationRecords).map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Sub-Location</span><input value={selectedService.subLocation || ""} onChange={(event) => updateWorkOrder({ subLocation: event.currentTarget.value })} style={inputStyle} /></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Category</span><select value={categoryLabel(selectedService)} onChange={(event) => { const value = event.currentTarget.value; safeSelectChange(event, { workCategory: value, category: value, emoji: categoryEmoji(value) }); }} style={inputStyle}>{categories.filter((category) => category !== "All").map((category) => <option key={category} value={category}>{categoryDisplayLabel(category)}</option>)}</select></label>
-                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned To</span><select value={selectedService.assignedTo || ""} onChange={(event) => safeSelectChange(event, { assignedTo: event.currentTarget.value })} style={inputStyle}><option value="">Unassigned</option>{byName(contactRecords).map((contact: any) => <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>)}</select></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned To</span><select value={selectedService.assignedTo || ""} onChange={(event) => safeSelectChange(event, { assignedTo: event.currentTarget.value })} style={inputStyle}><option value="">Unassigned</option>{assignmentChoices.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Vendor</span><select value={selectedService.vendorId || ""} onChange={(event) => safeSelectChange(event, { vendorId: event.currentTarget.value })} style={inputStyle}><option value="">No vendor</option>{byName(vendorRecords).map((vendor: any) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Linked Project</span><select value={selectedService.projectId || ""} onChange={(event) => safeSelectChange(event, { projectId: event.currentTarget.value })} style={inputStyle}><option value="">No project</option>{projectRecords.filter((project: any) => !project.archived || project.id === selectedService.projectId).map((project: any) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label>
                     </div>
@@ -2603,7 +2607,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               {isRecordDirty("work_orders", selectedService.id) ? (
                 <div style={{ position: "sticky", bottom: 0, zIndex: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: 10, border: `1px solid ${colors.gold}`, borderRadius: 12, background: "rgba(255,255,255,.97)", boxShadow: "0 -6px 20px rgba(15,42,67,.12)" }}>
                   <span style={{ ...mutedSmallStyle, fontWeight: 800 }}>Unsaved changes</span>
-                  <button type="button" onClick={() => void saveWorkOrderRecord()} style={{ ...goldButtonStyle, width: "auto", minHeight: 38 }}>Save Work Order</button>
+                  <button type="button" onClick={() => void saveWorkOrderRecord()} style={{ ...goldButtonStyle, width: "auto", minHeight: 38 }}>Save Work</button>
                 </div>
               ) : null}
 
