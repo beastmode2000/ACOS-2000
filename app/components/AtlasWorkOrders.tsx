@@ -161,6 +161,88 @@ function categoryDisplayLabel(category: string) {
   );
 }
 
+function normalizedWorkListText(value: unknown) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\bseadoo\b/g, "sea doo")
+    .replace(/\bf150\b/g, "f 150")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function workListDuplicateKey(record: any) {
+  const title = normalizedWorkListText(record?.title);
+  if (!title) return `id:${String(record?.id || "")}`;
+
+  const recurringLike =
+    Boolean(record?.recurring) ||
+    itemType(record) === "Preventive Maintenance" ||
+    /^(clean|wash|inspect|service) (cobalt|sea doo|boat|dock|lift box|dock box|sunstream|mercedes|rivian|porsche|lucid|ford|f 150|raptor|kia|honda|subaru)\b/.test(title);
+
+  if (recurringLike) {
+    const equipmentOrPlace =
+      normalizedWorkListText(record?.assetId) ||
+      normalizedWorkListText(record?.subLocationId || record?.subLocation) ||
+      normalizedWorkListText(record?.locationId) ||
+      "unlinked";
+    return `recurring|${title}|${equipmentOrPlace}`;
+  }
+
+  return [
+    "one-time",
+    title,
+    normalizedWorkListText(record?.assetId),
+    normalizedWorkListText(record?.locationId),
+    normalizedWorkListText(record?.subLocationId || record?.subLocation),
+    normalizedWorkListText(categoryLabel(record)),
+    normalizedWorkListText(record?.assignedTo),
+    String(record?.date || ""),
+  ].join("|");
+}
+
+function workListRecordScore(record: any) {
+  return (
+    [
+      record?.notes,
+      record?.assignedTo,
+      record?.vendorId,
+      record?.assetId,
+      record?.locationId,
+      record?.procedureId,
+    ].filter((value) => String(value || "").trim()).length * 3 +
+    (Array.isArray(record?.checklist) ? record.checklist.length : 0) +
+    (Array.isArray(record?.photos) ? record.photos.length : 0) +
+    (Array.isArray(record?.documents) ? record.documents.length : 0) +
+    (Array.isArray(record?.serviceHistory) ? record.serviceHistory.length : 0) +
+    (Array.isArray(record?.completionHistory) ? record.completionHistory.length : 0)
+  );
+}
+
+function dedupeWorkListRecords(records: any[]) {
+  const keepers = new Map<string, any>();
+  records.forEach((record) => {
+    const key = workListDuplicateKey(record);
+    const current = keepers.get(key);
+    if (!current) {
+      keepers.set(key, record);
+      return;
+    }
+    const currentScore = workListRecordScore(current);
+    const nextScore = workListRecordScore(record);
+    if (
+      nextScore > currentScore ||
+      (nextScore === currentScore &&
+        String(record?.updatedAt || record?.createdAt || "") >
+          String(current?.updatedAt || current?.createdAt || ""))
+    ) {
+      keepers.set(key, record);
+    }
+  });
+  return Array.from(keepers.values());
+}
+
 function dateKey(value: unknown) {
   const text = String(value || "").trim();
   if (!text) return "";
@@ -905,9 +987,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       : { assetId };
   }
 
+  const displayServices = useMemo(
+    () => dedupeWorkListRecords(filteredServices),
+    [filteredServices],
+  );
+
   const visibleRecords = useMemo(() => {
     if (!activeSection) return [];
-    const matchingRecords = filteredServices.filter((record: any) => {
+    const matchingRecords = displayServices.filter((record: any) => {
       const type = itemType(record);
       const matchesSection =
         activeSection.kind === "my-work"
@@ -930,7 +1017,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     subLocationFilter,
     assetFilter,
     assignedFilters,
-    filteredServices,
+    displayServices,
     localSearch,
     assetName,
     vendorName,
@@ -961,9 +1048,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const completedHistoryRecords = useMemo(
     () =>
       sortCompletedRecords(
-        filteredServices.filter((record: any) => isClosedWorkStatus(record.status)),
+        displayServices.filter((record: any) => isClosedWorkStatus(record.status)),
       ),
-    [filteredServices],
+    [displayServices],
   );
 
   const visibleCompletedHistory = completedHistoryRecords.slice(
@@ -985,7 +1072,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
 
   const recordQuality = useMemo(() => {
-    const open = filteredServices.filter(isActiveWorkRecord);
+    const open = displayServices.filter(isActiveWorkRecord);
     const incomplete = open.filter((record: any) =>
       !String(record.title || "").trim() ||
       (!String(record.date || "").trim() && itemType(record) !== "Project") ||
@@ -1001,13 +1088,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     });
     groups.forEach((records) => { if (records.length > 1) records.forEach((record) => duplicateIds.add(String(record.id))); });
     return { incomplete, duplicateIds };
-  }, [filteredServices]);
+  }, [displayServices]);
 
-  const favoriteRecords = useMemo(() => favoriteIds.map((id) => filteredServices.find((record: any) => record.id === id)).filter(Boolean), [favoriteIds, filteredServices]);
-  const recentRecords = useMemo(() => recentIds.map((id) => filteredServices.find((record: any) => record.id === id)).filter(Boolean), [recentIds, filteredServices]);
+  const favoriteRecords = useMemo(() => favoriteIds.map((id) => displayServices.find((record: any) => record.id === id)).filter(Boolean), [favoriteIds, displayServices]);
+  const recentRecords = useMemo(() => recentIds.map((id) => displayServices.find((record: any) => record.id === id)).filter(Boolean), [recentIds, displayServices]);
 
   const workSummary = useMemo(() => {
-    const openRecords = filteredServices.filter(isActiveWorkRecord);
+    const openRecords = displayServices.filter(isActiveWorkRecord);
 
     return {
       open: openRecords.length,
@@ -1018,9 +1105,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         (record: any) =>
           Boolean(record.date) && dayDistance(String(record.date)) < 0,
       ).length,
-      completedToday: filteredServices.filter(wasCompletedToday).length,
+      completedToday: displayServices.filter(wasCompletedToday).length,
     };
-  }, [filteredServices]);
+  }, [displayServices]);
 
   function setQuickDateFilter(value: string) {
     setDueDateFilter((current) => (current === value ? "All" : value));
@@ -1029,7 +1116,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const tabCounts = useMemo(() => {
     const result: Record<string, number> = {};
     sections.forEach((section) => {
-      result[section.id] = filteredServices.filter((record: any) => {
+      result[section.id] = displayServices.filter((record: any) => {
         if (section.kind === "my-work") return isActiveWorkRecord(record);
         if (section.kind === "completed") return isClosedWorkStatus(record.status);
         return (
@@ -1638,7 +1725,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             ? isMobile
               ? undefined
               : {
-                  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                  gridTemplateColumns: "minmax(330px, 36%) minmax(0, 64%)",
                   height: "100%",
                   minHeight: 0,
                   overflow: "hidden",
