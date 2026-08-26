@@ -617,32 +617,25 @@ export default function AtlasCalendar(
   }
 
   function openEvent(event: any) {
-    const eventId = String(event?.id || "");
+    const eventId = String(event?.instanceId || event?.id || "");
     if (eventId) {
       const nextRecent = [eventId, ...recentEventIds.filter((id) => id !== eventId)].slice(0, 8);
       setRecentEventIds(nextRecent);
       safeWriteStringList(CALENDAR_RECENT_STORAGE_KEY, nextRecent);
     }
-    const linkedType = String(event?.linkedType || "");
-    const linkedId = String(event?.linkedId || "");
 
-    if (
-      linkedId &&
-      linkedType &&
-      linkedType !== "None" &&
-      onOpenLinkedRecord
-    ) {
-      const handled = onOpenLinkedRecord(event);
+    const source = String(event?.source || "").toLowerCase();
+    const sourceBacked =
+      source === "work-order" ||
+      source === "task" ||
+      event?.linkedType === "Work Order" ||
+      event?.linkedType === "Task";
 
-      if (handled !== false) {
-        setDetailOpen(false);
-        setEditorOpen(false);
-        setSelectedCalendarId("");
-        setCalendarDraft(
-          blankCalendarItem(selectedCalendarDate),
-        );
-        return;
-      }
+    if (sourceBacked) {
+      openCalendarItem(event);
+      setEditorOpen(false);
+      setDetailOpen(true);
+      return;
     }
 
     editEvent(event);
@@ -1069,7 +1062,14 @@ export default function AtlasCalendar(
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                           <button
                             type="button"
-                            onClick={() => editEvent(event)}
+                            onClick={() => {
+                              const source = String(event.source || "").toLowerCase();
+                              if ((source === "work-order" || source === "task" || event.linkedType === "Work Order" || event.linkedType === "Task") && onOpenLinkedRecord) {
+                                onOpenLinkedRecord(event);
+                                return;
+                              }
+                              editEvent(event);
+                            }}
                             style={secondaryButtonStyle}
                           >
                             Edit
@@ -1080,7 +1080,7 @@ export default function AtlasCalendar(
                               {event.repeat && event.repeat !== "None" ? <span style={mutedSmallStyle}>Repeats {event.repeat}</span> : null}
                               {event.linkedType && event.linkedType !== "None" && event.linkedName ? <span style={mutedSmallStyle}>{event.linkedType}: {event.linkedName}</span> : null}
                               <button type="button" onClick={() => togglePinnedEvent(event)} style={secondaryButtonStyle}>{pinnedEventIds.includes(String(event.id || "")) ? "Unpin" : "Pin"}</button>
-                              {event.linkedId && event.linkedType && event.linkedType !== "None" ? <button type="button" onClick={() => openEvent(event)} style={secondaryButtonStyle}>Open {event.linkedType}</button> : null}
+                              {event.linkedId && event.linkedType && event.linkedType !== "None" ? <button type="button" onClick={() => { if (onOpenLinkedRecord) onOpenLinkedRecord(event); }} style={secondaryButtonStyle}>Open {event.linkedType}</button> : null}
                               {canConvertEvent(event) ? <button type="button" onClick={() => { void convertToWorkOrder(event); }} style={secondaryButtonStyle}>Convert to Work Order</button> : null}
                             </div>
                           </details>
