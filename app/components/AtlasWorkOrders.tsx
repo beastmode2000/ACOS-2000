@@ -533,7 +533,10 @@ type AtlasWorkOrdersProps = {
   buttonRowStyle: React.CSSProperties;
   isRecordDirty: (type: string, id: string) => boolean;
   saveWorkOrderRecord: () => Promise<void> | void;
-  completeWorkOrder: (record: any) => Promise<void> | void;
+  completeWorkOrder: (
+    record: any,
+    options?: { completedDate?: string; completionNote?: string; allowEarly?: boolean },
+  ) => Promise<void> | void;
   secondaryButtonStyle: React.CSSProperties;
   deleteWorkOrderRecord: (record: any) => Promise<void> | void;
   dangerButtonStyle: React.CSSProperties;
@@ -648,6 +651,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   });
   const [newChecklistText, setNewChecklistText] = useState("");
   const [newHistoryNote, setNewHistoryNote] = useState("");
+  const [completionNoteDraft, setCompletionNoteDraft] = useState("");
   const [recurrenceIntervalDraft, setRecurrenceIntervalDraft] = useState("1");
   const [completedHistoryOpen, setCompletedHistoryOpen] = useState(true);
   const [completedHistoryLimit, setCompletedHistoryLimit] = useState(5);
@@ -684,6 +688,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       String(Math.max(1, Number(selectedService?.recurrenceInterval || 1))),
     );
   }, [selectedService?.id, selectedService?.recurrenceInterval]);
+
+  useEffect(() => {
+    setCompletionNoteDraft("");
+  }, [selectedService?.id]);
 
   useEffect(() => {
     setNewWorkOpen(false);
@@ -1399,12 +1407,20 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     if (value.startsWith("template:")) openTemplate(value.replace("template:", ""));
   }
 
+  async function completeSelectedWork() {
+    if (!selectedService) return;
+    await completeWorkOrder(selectedService, {
+      completionNote: completionNoteDraft.trim(),
+    });
+    setCompletionNoteDraft("");
+  }
+
   function handleDetailAction(value: string) {
     if (!value) return;
     if (value === "reopen")
       updateWorkOrder({ status: "Open", completedAt: "" });
     if (value === "start") updateWorkOrder({ status: "In Progress" });
-    if (value === "complete") void completeWorkOrder(selectedService);
+    if (value === "complete") void completeSelectedWork();
     if (value === "reschedule") quickReschedule(selectedService);
     if (value === "convert") quickConvert(selectedService);
     if (value === "tomorrow")
@@ -2459,6 +2475,30 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 <textarea value={selectedService.internalNotes || ""} onChange={(event) => updateWorkOrder({ internalNotes: event.currentTarget.value })} rows={3} style={{ ...inputStyle, minHeight: 78, resize: "vertical", marginTop: 9 }} />
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><button type="button" onClick={() => void saveWorkOrderRecord()} style={{ ...goldButtonStyle, width: "auto" }}>Save</button></div>
               </details> : null}
+
+              {!isClosedWorkStatus(selectedService.status) ? (
+                <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14, background: "#FFFDF7", borderColor: "#E7D39E" }}>
+                  <div style={{ display: "grid", gap: 7 }}>
+                    <div>
+                      <div style={eyebrowStyle}>Work Done</div>
+                      <strong style={{ display: "block", marginTop: 2, color: colors.navy }}>Completion note</strong>
+                    </div>
+                    <textarea
+                      value={completionNoteDraft}
+                      onChange={(event) => setCompletionNoteDraft(event.currentTarget.value)}
+                      placeholder="What was actually done? Example: Rinsed off only — did not fully clean vehicle."
+                      rows={2}
+                      style={{ ...inputStyle, minHeight: 62, resize: "vertical" }}
+                    />
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                      <button type="button" onClick={() => void completeSelectedWork()} style={{ ...goldButtonStyle, width: "auto" }}>
+                        {selectedService.recurring ? "Complete & Advance" : "Complete"}
+                      </button>
+                    </div>
+                    <small style={mutedSmallStyle}>This note is saved with the completion history and shown in the owner report.</small>
+                  </div>
+                </section>
+              ) : null}
 
               <section style={{ ...detailSectionStyle, padding: 10, background: "#F8FAFC" }}>
                 <select value="" onChange={(event) => { handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, minHeight: 38, color: colors.muted, fontSize: 13, fontWeight: 500, background: "#FFFFFF" }} aria-label="Work order actions">
