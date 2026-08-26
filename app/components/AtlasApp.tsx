@@ -1549,6 +1549,7 @@ export default function AtlasApp() {
     useState<AtlasServiceRecord[]>([]);
   const workOrderDatabaseCleanupRunningRef = useRef(false);
   const aiGeneratedPurgeRunningRef = useRef(false);
+  const applianceAnnualServiceSetupRunningRef = useRef(false);
   const [workOrderSeasonFilter, setWorkOrderSeasonFilter] = useState<
     WorkSeason | "All"
   >("All");
@@ -2696,6 +2697,194 @@ export default function AtlasApp() {
       void deleteOperationalRecord("tasks" as AtlasTable, id);
     });
   }, [operationsHydrated, activePropertyId]);
+
+  useEffect(() => {
+    if (
+      !ready ||
+      !operationsHydrated ||
+      syncState !== "synced" ||
+      activePropertyId !== "2000" ||
+      typeof window === "undefined" ||
+      applianceAnnualServiceSetupRunningRef.current
+    ) return;
+
+    const setupKey = "atlas-user-approved-annual-appliance-service-v1-2000";
+    if (window.localStorage.getItem(setupKey) === "done") return;
+
+    const appliances = byName(
+      assetRecords.filter((asset) =>
+        String(asset.category || "").trim().toLowerCase() === "appliance",
+      ),
+    );
+    if (!appliances.length) return;
+
+    const locationDate = (asset: AtlasAssetRecord, index: number) => {
+      const location = normalizeLocationName(locationName(asset.locationId));
+      if (location.includes("wine room")) return "2026-12-01";
+      if (location.includes("kitchen")) return "2026-12-03";
+      if (location.includes("pool")) return "2026-12-08";
+      if (location.includes("upstairs laundry")) return "2026-12-10";
+      if (location.includes("house manager")) return "2026-12-15";
+      if (location.includes("fitness")) return "2026-12-17";
+      if (location.includes("formal dining")) return "2026-12-21";
+      if (location.includes("mechanical room")) return "2026-12-22";
+      if (location.includes("pantry")) return "2026-12-23";
+      const fallbackDates = [
+        "2026-12-02",
+        "2026-12-04",
+        "2026-12-07",
+        "2026-12-09",
+        "2026-12-11",
+        "2026-12-14",
+        "2026-12-16",
+        "2026-12-18",
+        "2026-12-28",
+        "2026-12-29",
+        "2026-12-30",
+      ];
+      return fallbackDates[index % fallbackDates.length];
+    };
+
+    const checklistFor = (asset: AtlasAssetRecord) => {
+      const text = `${asset.name} ${asset.manufacturer || ""} ${asset.model || ""}`.toLowerCase();
+      const items = /freezer|refrigerator|fridge|frige|wine|cooler|chiller/.test(text)
+        ? [
+            "Verify and record operating temperature",
+            "Inspect door seals, hinges and interior condition",
+            "Clean accessible condenser area and ventilation",
+            "Check for unusual noise, frost, moisture or alarms",
+          ]
+        : /dryer/.test(text)
+          ? [
+              "Clean lint screen and accessible lint areas",
+              "Inspect exhaust connection and verify airflow",
+              "Check drum, door seal and controls",
+              "Record unusual heat, noise or drying time",
+            ]
+          : /washer/.test(text)
+            ? [
+                "Inspect supply hoses, valves and drain",
+                "Check for leaks, vibration and unusual noise",
+                "Clean dispenser, seal and accessible filter",
+                "Run and verify a test cycle",
+              ]
+            : /dishwasher/.test(text)
+              ? [
+                  "Clean filter and spray-arm openings",
+                  "Inspect racks, seals, supply and drain connections",
+                  "Check for leaks, odor and drainage problems",
+                  "Run and verify a test cycle",
+                ]
+              : /range|oven|stove/.test(text)
+                ? [
+                    "Test burners, elements, ignition and controls",
+                    "Inspect seals, knobs and ventilation",
+                    "Clean accessible service areas",
+                    "Record uneven heat, ignition delay or error codes",
+                  ]
+                : [
+                    "Inspect and clean the appliance",
+                    "Test normal operation and controls",
+                    "Check connections, ventilation, leaks and unusual noise",
+                    "Record any repair or vendor follow-up needed",
+                  ];
+      return items.map((textValue, itemIndex) => ({
+        id: `annual-service-${asset.id}-${itemIndex + 1}`,
+        text: textValue,
+        completed: false,
+      }));
+    };
+
+    const existingIds = new Set(serviceRecords.map((record) => String(record.id || "")));
+    const tombstones = readWorkOrderTombstones(activePropertyId);
+    const recordsToCreate = appliances
+      .map((asset, index) => {
+        const stableAssetKey = String(asset.id || asset.name || index)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+        const id = `wo-approved-appliance-service-${stableAssetKey}`;
+        if (existingIds.has(id) || tombstones.has(id)) return null;
+        return normalizeService({
+          id,
+          propertyId: activePropertyId,
+          title: `Annual service - ${asset.name}`,
+          date: locationDate(asset, index),
+          status: "Open",
+          priority: "Medium",
+          notes: "Annual appliance preventive service. Scheduled for December. This work order can be edited, rescheduled, completed, skipped or deleted individually.",
+          assetId: asset.id,
+          vendorId: (asset.vendorIds || [])[0] || "",
+          procedureId: "",
+          followUpDate: "",
+          recurring: true,
+          recurrenceInterval: 1,
+          recurrenceUnit: "Years",
+          recurrenceEndDate: "",
+          season: "Winter",
+          lastCompletedDate: "",
+          completionHistory: [],
+          workType: "Preventive Maintenance",
+          workCategory: "🔧 Maintenance",
+          effort: "30 minutes",
+          responsibilityArea: "House & Maintenance",
+          photos: [],
+          documents: [],
+          checklist: checklistFor(asset),
+          notesHistory: [],
+          serviceHistory: [],
+        });
+      })
+      .filter((record): record is AtlasServiceRecord => Boolean(record));
+
+    if (!recordsToCreate.length) {
+      window.localStorage.setItem(setupKey, "done");
+      return;
+    }
+
+    applianceAnnualServiceSetupRunningRef.current = true;
+    setServiceRecords((current) => byTitle([...recordsToCreate, ...current]));
+
+    void (async () => {
+      try {
+        const results = await Promise.all(
+          recordsToCreate.map((record) =>
+            postAtlasRecord("work_orders", {
+              ...record,
+              propertyId: activePropertyId,
+            }),
+          ),
+        );
+        if (results.every(Boolean)) {
+          window.localStorage.setItem(setupKey, "done");
+          showSaveToast(
+            `${recordsToCreate.length} annual appliance service work orders scheduled for December.`,
+          );
+        } else {
+          setServiceRecords((current) =>
+            current.filter(
+              (record) =>
+                !recordsToCreate.some((created) => created.id === record.id) ||
+                results[recordsToCreate.findIndex((created) => created.id === record.id)],
+            ),
+          );
+          showSaveToast(
+            "Some annual appliance services did not save. Atlas will retry the missing records.",
+            "warning",
+          );
+        }
+      } finally {
+        applianceAnnualServiceSetupRunningRef.current = false;
+      }
+    })();
+  }, [
+    ready,
+    operationsHydrated,
+    syncState,
+    activePropertyId,
+    assetRecords,
+    serviceRecords,
+  ]);
 
   useEffect(() => { saveStoredArray("atlas-backlog-v1", backlogItems); }, [backlogItems]);
   useEffect(() => {
