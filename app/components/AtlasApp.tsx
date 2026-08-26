@@ -12139,6 +12139,15 @@ export default function AtlasApp() {
   ) {
     const completedDate =
       workOrderDateKey(options.completedDate) || todayISO();
+    let resolvedCompletionNote = String(options.completionNote ?? "").trim();
+    if (options.completionNote === undefined) {
+      const prompted = window.prompt(
+        `Work done / completion note for “${record.title || "this work"}” (optional):`,
+        "",
+      );
+      if (prompted === null) return;
+      resolvedCompletionNote = prompted.trim();
+    }
     const dueDate = workOrderDateKey(record.date);
     if (
       dueDate &&
@@ -12185,12 +12194,8 @@ export default function AtlasApp() {
     const history = Array.from(
       new Set([...(preparedRecord.completionHistory || []), completedDate]),
     ).sort();
-    const completionNotes = [
-      String(preparedRecord.notes || "").trim(),
-      String(options.completionNote || "").trim(),
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    const completionNotes =
+      resolvedCompletionNote || String(preparedRecord.notes || "").trim();
     const completionEntry: WorkCompletionEntry = {
       id: uid("completion"),
       completedAt:
@@ -15923,8 +15928,24 @@ export default function AtlasApp() {
     showSaveToast(`Assigned to ${person}.`);
   }
 
-  function advanceRecurringTask(task: WorkPlanTask, meta: AtlasTaskMeta) {
+  function advanceRecurringTask(
+    task: WorkPlanTask,
+    meta: AtlasTaskMeta,
+    completionNote = "",
+  ) {
     const completedDate = todayISO();
+    const cleanCompletionNote = completionNote.trim();
+    const completedAt = new Date().toISOString();
+    const completionNotes = cleanCompletionNote
+      ? [
+          {
+            id: uid("task-completion-note"),
+            completedAt,
+            note: cleanCompletionNote,
+          },
+          ...(meta.completionNotes || []),
+        ]
+      : meta.completionNotes || [];
     const interval = Math.max(1, Number(meta.recurrenceInterval || 1));
     const unit = meta.recurrenceUnit || "Weeks";
     // The next occurrence starts from the actual completion date. This keeps
@@ -15937,9 +15958,11 @@ export default function AtlasApp() {
     if (recurrenceEnded) {
       updateTaskDetails(task.id, {
         status: "Completed",
-        completedAt: new Date().toISOString(),
+        completedAt,
         lastCompletedDate: completedDate,
         completionHistory: history,
+        lastCompletionNote: cleanCompletionNote || meta.lastCompletionNote || "",
+        completionNotes,
       });
       recordConnectedProjectCompletion({
         projectId: meta.projectId,
@@ -15949,6 +15972,7 @@ export default function AtlasApp() {
         detail: [
           meta.assignee ? `Assigned to ${meta.assignee}.` : "",
           "Recurring schedule ended.",
+          cleanCompletionNote ? `Work done: ${cleanCompletionNote}` : "",
         ].filter(Boolean).join(" "),
       });
       if (meta.routineTaskId && meta.routineDate) void toggleLinkedRoutineCompletion(meta);
@@ -15966,6 +15990,8 @@ export default function AtlasApp() {
       completedAt: undefined,
       lastCompletedDate: completedDate,
       completionHistory: history,
+      lastCompletionNote: cleanCompletionNote || meta.lastCompletionNote || "",
+      completionNotes,
       assignee: meta.assignmentScope === "This occurrence" ? "Nick" : meta.assignee,
       assignmentScope: meta.assignmentScope === "This occurrence" ? undefined : meta.assignmentScope,
       needsReview: meta.assignee === "Addison" || meta.assignee === "Pat",
@@ -15979,6 +16005,7 @@ export default function AtlasApp() {
       detail: [
         meta.assignee ? `Assigned to ${meta.assignee}.` : "",
         `Next due ${formatDate(nextDate)}.`,
+        cleanCompletionNote ? `Work done: ${cleanCompletionNote}` : "",
       ].filter(Boolean).join(" "),
     });
     if (meta.routineTaskId && meta.routineDate) void toggleLinkedRoutineCompletion(meta);
@@ -15989,21 +16016,43 @@ export default function AtlasApp() {
     showSaveToast(`${task.title} completed. Next due ${formatDate(nextDate)}.`);
   }
 
-  function completeAtlasTask(task: WorkPlanTask) {
+  function completeAtlasTask(task: WorkPlanTask, completionNoteInput?: string) {
     const meta = taskDetails(task.id);
+    let completionNote = String(completionNoteInput ?? "").trim();
+    if (completionNoteInput === undefined) {
+      const prompted = window.prompt(
+        `Work done / completion note for “${task.title}” (optional):`,
+        "",
+      );
+      if (prompted === null) return;
+      completionNote = prompted.trim();
+    }
     if (meta.dueDate && String(meta.dueDate).slice(0, 10) > todayISO()) {
       showSaveToast(`This task is due ${formatDate(meta.dueDate)} and cannot be completed early.`, "warning");
       return;
     }
     if (task.recurring) {
-      advanceRecurringTask(task, meta);
+      advanceRecurringTask(task, meta, completionNote);
       return;
     }
+    const completedAt = new Date().toISOString();
+    const completionNotes = completionNote
+      ? [
+          {
+            id: uid("task-completion-note"),
+            completedAt,
+            note: completionNote,
+          },
+          ...(meta.completionNotes || []),
+        ]
+      : meta.completionNotes || [];
     updateTaskDetails(task.id, {
       status: "Completed",
-      completedAt: new Date().toISOString(),
+      completedAt,
       lastCompletedDate: todayISO(),
       completionHistory: Array.from(new Set([...(meta.completionHistory || []), todayISO()])).sort(),
+      lastCompletionNote: completionNote || meta.lastCompletionNote || "",
+      completionNotes,
       needsReview: meta.assignee === "Addison" || meta.assignee === "Pat",
     });
     if (meta.vehicleId || /^clean\s+/i.test(task.title)) {
@@ -16021,10 +16070,16 @@ export default function AtlasApp() {
       title: task.title,
       source: "Task",
       sourceId: task.id,
-      detail: meta.assignee ? `Assigned to ${meta.assignee}.` : "",
+      detail: [
+        meta.assignee ? `Assigned to ${meta.assignee}.` : "",
+        completionNote ? `Work done: ${completionNote}` : "",
+      ].filter(Boolean).join(" "),
     });
     if (meta.routineTaskId && meta.routineDate) void toggleLinkedRoutineCompletion(meta);
-    recordAtlasAudit("Task completed", `${task.title} · ${meta.assignee || "Unassigned"}`);
+    recordAtlasAudit(
+      "Task completed",
+      `${task.title} · ${meta.assignee || "Unassigned"}${completionNote ? ` · ${completionNote}` : ""}`,
+    );
     showSaveToast(`${task.title} completed.`);
   }
 
