@@ -10817,11 +10817,10 @@ export default function AtlasApp() {
   ) {
     const requestId = `atlas-${Date.now()}-${++atlasSaveAttemptRef.current}`;
     let lastError: Error | null = null;
-    const endpoints = ["/api/atlas", "/api/atlas-records"];
+    const endpoint = "/api/atlas";
 
     for (let attempt = 1; attempt <= 3; attempt += 1) {
-      for (let endpointIndex = 0; endpointIndex < endpoints.length; endpointIndex += 1) {
-        const endpoint = endpoints[endpointIndex];
+      {
         const controller = new AbortController();
         const timeout = window.setTimeout(() => controller.abort(), 20000);
 
@@ -10851,15 +10850,6 @@ export default function AtlasApp() {
           }
 
           const messageText = String(payload?.error || payload?.message || "");
-          const routeMissing =
-            (response.status === 404 || response.status === 405) &&
-            (!contentType.includes("application/json") ||
-              /not found|cannot (?:post|delete)|method not allowed|route/i.test(messageText));
-
-          if (routeMissing && endpointIndex < endpoints.length - 1) {
-            continue;
-          }
-
           const deleteAlreadyFinished =
             method === "DELETE" &&
             response.status === 404 &&
