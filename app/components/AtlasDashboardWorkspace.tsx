@@ -2061,6 +2061,21 @@ export default function AtlasDashboardWorkspace(props: any) {
   const cardStyle: React.CSSProperties = { border: `1px solid ${colors.line}`, borderRadius: 14, background: "#FFFFFF", padding: isMobile ? 13 : 15, boxShadow: "0 5px 18px rgba(15, 35, 55, 0.05)", minWidth: 0 };
 
   const foremanSchedule = nonRoutineTodayEvents.slice().sort((a, b) => String(a.time || "99:99").localeCompare(String(b.time || "99:99")));
+  const dashboardScheduleItems = (() => {
+    const seen = new Set<string>();
+    return foremanSchedule.filter((event) => {
+      const normalizedTitle = String(event.title || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const key = `${normalizedTitle}|${String(event.date || today).slice(0, 10)}|${String(event.time || "all-day").trim().toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  })();
   const addisonFlaggedTasks = workPlanTasks.filter((task) => {
     const meta = taskDetails(task.id);
     if (task.category === "Atlas List Definition" || meta.listId || meta.assignee !== "Addison" || meta.status === "Completed") return false;
@@ -2449,8 +2464,8 @@ export default function AtlasDashboardWorkspace(props: any) {
                 <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 8, alignItems: "center" }}>
                   <input type="checkbox" checked={false} aria-label={`Complete ${record.title}`} onChange={async () => { await completeWorkOrder(record as AtlasServiceRecord, { completionNote }); setDashboardCompletionNotes((current) => { const next = { ...current }; delete next[String(record.id)]; return next; }); }} />
                   <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: "pointer" }}>
-                    <strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title}</strong>
-                    <small style={mutedSmallStyle}>{record.date ? `${String(record.date).slice(0, 10) < today ? "Overdue · " : ""}${formatDate(String(record.date).slice(0, 10))}` : "No due date"} · {assigned}</small>
+                    <strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 15, lineHeight: 1.25, fontWeight: 850 }}>{record.title}</strong>
+                    <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2, fontSize: 11, lineHeight: 1.25, fontWeight: 650 }}>{record.date ? `${String(record.date).slice(0, 10) < today ? "Overdue · " : ""}${formatDate(String(record.date).slice(0, 10))}` : "No due date"} · {assigned}</small>
                   </button>
                 </div>
                 <details style={{ marginTop: 6, marginLeft: 24 }}>
@@ -2465,8 +2480,8 @@ export default function AtlasDashboardWorkspace(props: any) {
                 </details>
               </div>;
             })}
-            {dashboardWorkListFilter === "Today" && dashboardWorkPersonFilter === "Everyone" ? foremanSchedule.map((event) => <div key={`schedule-${event.instanceId || event.id}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: 8, display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 8, alignItems: "center" }}><input type="checkbox" disabled aria-label={`${event.title} is a scheduled meeting or onsite event`}/><div><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""} · Meeting / onsite</small></div></div>) : null}
-            {!dashboardWorkListRecords.length && !(dashboardWorkListFilter === "Today" && dashboardWorkPersonFilter === "Everyone" && foremanSchedule.length) ? <div style={noticeStyle}>No work in this view.</div> : null}
+            {dashboardWorkListFilter === "Today" && dashboardWorkPersonFilter === "Everyone" ? dashboardScheduleItems.map((event) => <div key={`schedule-${event.instanceId || event.id}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: 8, display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 8, alignItems: "center" }}><input type="checkbox" disabled aria-label={`${event.title} is a scheduled meeting or onsite event`}/><div><strong style={{ display: "block", color: colors.navy, fontSize: 15, lineHeight: 1.25, fontWeight: 850 }}>{event.title}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 2, fontSize: 11, lineHeight: 1.25, fontWeight: 650 }}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""} · Meeting / onsite</small></div></div>) : null}
+            {!dashboardWorkListRecords.length && !(dashboardWorkListFilter === "Today" && dashboardWorkPersonFilter === "Everyone" && dashboardScheduleItems.length) ? <div style={noticeStyle}>No work in this view.</div> : null}
           </div>
           {dashboardCompletedToday.length ? <details style={{ marginTop: 8 }}><summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 850 }}>Completed today · {dashboardCompletedToday.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 6 }}>{dashboardCompletedToday.slice(0, 8).map((record) => <button key={`done-${record.id}`} type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#F3F7F4", textAlign: "left", color: colors.navy, textDecoration: "line-through", opacity: .7 }}>{record.title}</button>)}</div></details> : null}
         </section>
