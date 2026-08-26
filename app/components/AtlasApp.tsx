@@ -10885,10 +10885,6 @@ export default function AtlasApp() {
               ? error
               : new Error(`${operationLabel} failed.`);
 
-          if (endpointIndex < endpoints.length - 1 && /404|not found|route/i.test(lastError.message)) {
-            continue;
-          }
-
           if (attempt < 3) {
             await new Promise((resolve) =>
               window.setTimeout(resolve, attempt * 350),
