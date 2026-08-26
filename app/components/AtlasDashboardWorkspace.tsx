@@ -272,6 +272,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     updateTaskDetails,
     updateTeamAssignment,
     updateWorkPlanTask,
+    updateWorkOrderRecord,
     vehicleCare,
     vehicleDueScore,
     vendorRecords,
@@ -2813,6 +2814,10 @@ export default function AtlasDashboardWorkspace(props: any) {
   ].filter(Boolean) as { priority: string; title: string; detail: string; action: () => void }[];
 
   const syncWorkOrderPatch = async (record: ServiceRecord, patch: Partial<AtlasServiceRecord>) => {
+    if (typeof updateWorkOrderRecord === "function") {
+      await updateWorkOrderRecord(record as AtlasServiceRecord, patch);
+      return;
+    }
     const updated = normalizeService({ ...(record as AtlasServiceRecord), ...patch });
     setServiceRecords((current) => byTitle(current.map((item) => item.id === updated.id ? updated : item)));
     const saved = await postAtlasRecord("work_orders", updated);
