@@ -3385,215 +3385,97 @@ export default function AtlasApp() {
       !ready ||
       !operationsHydrated ||
       syncState !== "synced" ||
+      typeof window === "undefined" ||
       calendarSourceSyncRunningRef.current
     ) return;
 
-    let cancelled = false;
+    const cleanupKey = `atlas-calendar-source-shadow-cleanup-v2-${activePropertyId}`;
+    if (window.localStorage.getItem(cleanupKey) === "done") return;
 
-    const syncScheduledWorkToCalendar = async () => {
-      calendarSourceSyncRunningRef.current = true;
+    const mirrorCalendarRows = calendarItems.filter((item) => {
+      const id = String(item.id || "");
+      const source = String(item.source || "").toLowerCase();
+      const linkedType = String(item.linkedType || "");
+      const linkedId = String(item.linkedId || "");
+
+      if (
+        id.startsWith(`atlas-auto-task-${activePropertyId}-`) ||
+        id.startsWith(`atlas-auto-work-order-${activePropertyId}-`)
+      ) return true;
+
+      if (
+        linkedId &&
+        ((source === "task" && linkedType === "Task") ||
+          (source === "work-order" && linkedType === "Work Order"))
+      ) return true;
+
+      if (source === "manual" && linkedType === "Work Order" && linkedId) {
+        const workOrder = serviceRecords.find((record) => record.id === linkedId);
+        if (!workOrder) return false;
+        const sameTitle =
+          normalizedWorkOrderText(item.title || "") ===
+          normalizedWorkOrderText(workOrder.title || "");
+        const sameDate =
+          String(item.date || "").slice(0, 10) ===
+          String(workOrder.date || "").slice(0, 10);
+        return sameTitle && sameDate;
+      }
+
+      return false;
+    });
+
+    if (!mirrorCalendarRows.length) {
       try {
-        type DesiredCalendarSource = {
-          preferredId: string;
-          linkedType: "Task" | "Work Order";
-          linkedId: string;
-          date: string;
-          time: string;
-          title: string;
-          area: string;
-          notes: string;
-          completed: boolean;
-          recurring: boolean;
-        };
+        window.localStorage.removeItem(calendarDeleteTombstoneKey());
+        window.localStorage.removeItem(calendarManualOverrideKey());
+      } catch {}
+      window.localStorage.setItem(cleanupKey, "done");
+      return;
+    }
 
-        const desired: DesiredCalendarSource[] = [];
-
-        workPlanTasks.forEach((task) => {
-          const meta = taskMeta[task.id] || taskDetails(task.id);
-          const dueDate = String(meta.dueDate || "").slice(0, 10);
-          if (!dueDate) return;
-          desired.push({
-            preferredId: `atlas-auto-task-${activePropertyId}-${task.id}`,
-            linkedType: "Task",
-            linkedId: task.id,
-            date: dueDate,
-            time: String(task.fixedTime || ""),
-            title: task.title,
-            area: task.category || "Tasks",
-            notes: String(meta.notes || task.notes || ""),
-            completed: meta.status === "Completed",
-            recurring: Boolean(task.recurring),
-          });
-        });
-
-        serviceRecords.forEach((workOrder) => {
-          const scheduledDate = String(workOrder.date || "").slice(0, 10);
-          if (!scheduledDate) return;
-          desired.push({
-            preferredId: `atlas-auto-work-order-${activePropertyId}-${workOrder.id}`,
-            linkedType: "Work Order",
-            linkedId: workOrder.id,
-            date: scheduledDate,
-            time: "",
-            title: workOrder.title,
-            area: String(workOrder.workCategory || "Work Orders"),
-            notes: String(workOrder.notes || ""),
-            completed: workOrder.status === "Completed",
-            recurring: Boolean(workOrder.recurring),
-          });
-        });
-
-        const nextCalendar = [...calendarItems];
-        const changedRecords: AtlasCalendarItem[] = [];
-        const retainedAutoIds = new Set<string>();
-
-        desired.forEach((source) => {
-          const sourceTombstones = readCalendarDeleteTombstones(activePropertyId);
-          const sourceLinkKey = calendarSourceKey(source.linkedType, source.linkedId);
-          if (
-            sourceTombstones.has(`id:${source.preferredId}`) ||
-            (sourceLinkKey && sourceTombstones.has(sourceLinkKey))
-          ) {
-            return;
-          }
-
-          let recordIndex = nextCalendar.findIndex(
-            (item) => item.id === source.preferredId,
-          );
-
-          if (recordIndex < 0) {
-            recordIndex = nextCalendar.findIndex(
-              (item) =>
-                item.linkedType === source.linkedType &&
-                item.linkedId === source.linkedId &&
-                String(item.propertyId || activePropertyId) === activePropertyId,
-            );
-          }
-
-          const existing = recordIndex >= 0 ? nextCalendar[recordIndex] : undefined;
-          const recordId = existing?.id || source.preferredId;
-          if (recordId.startsWith(`atlas-auto-`)) retainedAutoIds.add(recordId);
-
-          // Once a generated calendar row is manually edited, it becomes authoritative.
-          // Keep the source link for navigation, but do not let background sync overwrite it.
-          if (existing && isCalendarManualOverride(recordId)) {
-            return;
-          }
-
-          const nextRecord = normalizeCalendar({
-            ...(existing || {}),
-            id: recordId,
-            propertyId: activePropertyId,
-            date: source.date,
-            time: source.time,
-            title: source.title,
-            area: source.area,
-            categoryLabel: existing?.categoryLabel || source.area,
-            allDay: !source.time,
-            repeat: existing?.repeat || (source.recurring ? "Custom" : "None"),
-            reminder: existing?.reminder || "Morning of",
-            notes: source.notes,
-            linkedType: source.linkedType,
-            linkedId: source.linkedId,
-            linkedName: source.title,
-            source: source.linkedType === "Task" ? "task" : "work-order",
-            completed: source.completed,
-            status: source.completed ? "Completed" : "Scheduled",
-          });
-
-          const comparable = (item?: AtlasCalendarItem) => item ? JSON.stringify({
-            propertyId: item.propertyId,
-            date: item.date,
-            time: item.time,
-            title: item.title,
-            area: item.area,
-            categoryLabel: item.categoryLabel,
-            allDay: item.allDay,
-            repeat: item.repeat,
-            reminder: item.reminder,
-            notes: item.notes,
-            linkedType: item.linkedType,
-            linkedId: item.linkedId,
-            linkedName: item.linkedName,
-            source: item.source,
-            completed: item.completed,
-            status: item.status,
-          }) : "";
-
-          if (comparable(existing) === comparable(nextRecord)) return;
-          if (recordIndex >= 0) nextCalendar[recordIndex] = nextRecord;
-          else nextCalendar.push(nextRecord);
-          changedRecords.push(nextRecord);
-        });
-
-        const staleAutoRecords = nextCalendar.filter(
-          (item) =>
-            item.id.startsWith(`atlas-auto-task-${activePropertyId}-`) ||
-            item.id.startsWith(`atlas-auto-work-order-${activePropertyId}-`),
-        ).filter((item) => !retainedAutoIds.has(item.id));
-
-        const staleIds = new Set(staleAutoRecords.map((item) => item.id));
-        const finalCalendar = nextCalendar.filter(
-          (item) => !staleIds.has(item.id) && !isCalendarRecordDeleted(item),
+    calendarSourceSyncRunningRef.current = true;
+    void (async () => {
+      try {
+        const results = await Promise.all(
+          mirrorCalendarRows.map((record) =>
+            deleteAtlasRecord("calendar", record.id, { suppressFailureToast: true }),
+          ),
         );
-
-        if (cancelled) return;
-
-        if (changedRecords.length || staleIds.size) {
-          const sortedCalendar = byTitle(finalCalendar);
-          setCalendarItems(sortedCalendar);
-          saveStoredArray(storageKeys.calendar[0], sortedCalendar);
+        if (results.some((result) => !result)) {
+          setDatabaseStatus("Calendar cleanup did not fully finish. Refresh Atlas to retry.");
+          return;
         }
 
-        if (changedRecords.length) {
-          await Promise.all(
-            changedRecords.map((record) =>
-              postAtlasRecord("calendar", { ...record, propertyId: activePropertyId }),
-            ),
-          );
-        }
-
-        if (staleAutoRecords.length) {
-          await Promise.all(
-            staleAutoRecords.map((record) => deleteAtlasRecord("calendar", record.id)),
-          );
-        }
+        const mirrorIds = new Set(mirrorCalendarRows.map((record) => String(record.id)));
+        setCalendarItems((current) => {
+          const next = byTitle(current.filter((item) => !mirrorIds.has(String(item.id))));
+          saveStoredArray(storageKeys.calendar[0], next);
+          return next;
+        });
+        try {
+          window.localStorage.removeItem(calendarDeleteTombstoneKey());
+          window.localStorage.removeItem(calendarManualOverrideKey());
+        } catch {}
+        window.localStorage.setItem(cleanupKey, "done");
+        setDatabaseStatus(`Calendar cleaned: removed ${mirrorCalendarRows.length} duplicate source mirror${mirrorCalendarRows.length === 1 ? "" : "s"}.`);
       } finally {
         calendarSourceSyncRunningRef.current = false;
       }
-    };
-
-    void syncScheduledWorkToCalendar();
-    return () => { cancelled = true; };
+    })();
   }, [
     ready,
     operationsHydrated,
     syncState,
     activePropertyId,
-    workPlanTasks,
-    taskMeta,
-    serviceRecords,
     calendarItems,
+    serviceRecords,
   ]);
 
   useEffect(() => {
     if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000" || typeof window === "undefined") return;
-    const purgeKey = "atlas-ai-generated-record-purge-v4-2000";
+    const purgeKey = "atlas-ai-generated-record-purge-v5-2000";
     if (window.localStorage.getItem(purgeKey) === "done" || aiGeneratedPurgeRunningRef.current) return;
 
-    const generatedTaskTitles = new Set([
-      "monday property reset garage", "tuesday dock waterfront recreation", "wednesday landscaping irrigation",
-      "thursday pool spa outdoor cleaning", "friday maintenance weekend readiness", "friday seasonal spider control",
-      "monday computer work admin", "tuesday computer work admin", "wednesday computer work admin",
-      "thursday computer work admin", "friday computer work weekly closeout",
-      "clean windows waterside great room", "clean windows east side bedrooms",
-      "clean windows courtyard main entry", "clean windows garages adu remaining areas",
-      "treat pool 2 bags oxysheen 8 oz pool juice", "brush pool", "hand vacuum pool", "suction vacuum pool",
-      "robot vacuum pool", "check pool filter pressure backwash if needed", "test and treat spa",
-      "irrigation startup and inspection", "irrigation winterization", "boat and sea doo spring opening",
-      "boat and sea doo winterizing", "spring property cleanup", "owner arrival readiness",
-      "party or event readiness", "annual property inspections"
-    ]);
     const generatedWorkOrderIds = (id: string) =>
       id.startsWith("fleet-wo-") || id.startsWith("annual-appliance-") || id === "wo-annual-winter-truck-sandbags" ||
       id === "wo-annual-cobalt-registration-tabs" || id === "wo-annual-2024-seadoo-registration-tabs" ||
@@ -6030,6 +5912,61 @@ export default function AtlasApp() {
     [showJewishHolidays, holidayYears],
   );
 
+  const taskCalendarItems = useMemo(() => {
+    const horizon = addDays(todayISO(), 366);
+
+    return workPlanTasks
+      .filter((task) => task.category !== "Atlas List Definition")
+      .flatMap((task) => {
+        const meta = taskMeta[task.id] || taskDetails(task.id);
+        const baseDate = String(meta.dueDate || task.scheduledDate || "").slice(0, 10);
+        if (!baseDate) return [];
+
+        const occurrenceDates = [baseDate];
+        if (task.recurring) {
+          const interval = Math.max(1, Number(meta.recurrenceInterval || 1));
+          const unit = isWorkOrderRecurrenceUnit(meta.recurrenceUnit)
+            ? meta.recurrenceUnit
+            : ("Weeks" as WorkOrderRecurrenceUnit);
+          let nextDate = baseDate;
+          let occurrenceCount = 0;
+
+          while (occurrenceCount < 60) {
+            nextDate = nextRecurrenceDate(nextDate, interval, unit);
+            if (!nextDate || nextDate > horizon) break;
+            if (meta.recurrenceEndDate && nextDate > meta.recurrenceEndDate) break;
+            occurrenceDates.push(nextDate);
+            occurrenceCount += 1;
+          }
+        }
+
+        return occurrenceDates.map((date, index) =>
+          normalizeCalendar({
+            id: index === 0
+              ? `task-${task.id}`
+              : `task-${task.id}-occurrence-${date}`,
+            propertyId: activePropertyId,
+            date,
+            time: String(task.fixedTime || ""),
+            title: task.title,
+            area: task.category || "Tasks",
+            categoryLabel: "Task",
+            colorId: "task",
+            colorName: "green",
+            allDay: !task.fixedTime,
+            repeat: "None",
+            reminder: "None",
+            notes: String(meta.notes || task.notes || ""),
+            linkedType: "Task",
+            linkedId: task.id,
+            linkedName: task.title,
+            completed: index === 0 && meta.status === "Completed",
+            source: "task",
+          }),
+        );
+      });
+  }, [workPlanTasks, taskMeta, activePropertyId]);
+
   const workOrderCalendarItems = useMemo(() => {
     const records = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
     const horizon = addDays(todayISO(), 366);
@@ -6125,12 +6062,13 @@ export default function AtlasApp() {
 
     return [
       ...personalItems,
+      ...taskCalendarItems,
       ...workOrderCalendarItems,
       ...(isSeanMarineUser ? [] : contactBirthdayItems),
       ...usHolidayItems,
       ...jewishHolidayItems,
     ];
-  }, [calendarItems, workOrderCalendarItems, contactBirthdayItems, usHolidayItems, jewishHolidayItems, isSeanMarineUser]);
+  }, [calendarItems, taskCalendarItems, workOrderCalendarItems, contactBirthdayItems, usHolidayItems, jewishHolidayItems, isSeanMarineUser]);
 
   const visibleCalendarItems = useMemo(
     () =>
@@ -12680,9 +12618,20 @@ export default function AtlasApp() {
   }
 
   function openCalendarItem(event: CalendarItem) {
-    if (event.source === "work-order" && event.linkedId) {
-      setSelectedServiceId(event.linkedId);
-      setScreen("history");
+    if (
+      (event.source === "work-order" || event.source === "task") &&
+      event.linkedId
+    ) {
+      const sourceEvent = normalizeCalendar(event);
+      setSelectedCalendarDate(sourceEvent.date);
+      setSelectedCalendarId(String(sourceEvent.instanceId || sourceEvent.id));
+      setSelectedCalendarOccurrenceDate(
+        sourceEvent.instanceId && sourceEvent.instanceId !== sourceEvent.id
+          ? sourceEvent.date
+          : "",
+      );
+      setCalendarDraft(sourceEvent);
+      setCalendarDirty(false);
       return;
     }
 
@@ -12976,6 +12925,21 @@ export default function AtlasApp() {
       return true;
     }
 
+    const linkedTaskId =
+      event.linkedType === "Task" || event.source === "task"
+        ? String(event.linkedId || "")
+        : "";
+
+    if (linkedTaskId) {
+      const task = workPlanTasks.find((item) => item.id === linkedTaskId);
+      if (!task) {
+        setDatabaseStatus("The linked task could not be found.");
+        return false;
+      }
+      completeAtlasTask(task);
+      return true;
+    }
+
     if (
       event.source === "us-holiday" ||
       event.source === "jewish-holiday"
@@ -13105,41 +13069,28 @@ export default function AtlasApp() {
       return false;
     }
 
-    const updatedCalendarRecord = normalizeCalendar({
-      ...calendarRecord,
-      linkedType: "Work Order",
-      linkedId: workOrder.id,
-      linkedName: workOrder.title,
+    const calendarDeleted = await deleteAtlasRecord("calendar", calendarRecord.id, {
+      suppressFailureToast: true,
     });
 
-    const calendarSaved = await postAtlasRecord("calendar", {
-      ...updatedCalendarRecord,
-      propertyId: activePropertyId,
-      status: updatedCalendarRecord.completed ? "Completed" : "Scheduled",
-    });
-
-    if (!calendarSaved) {
-      await deleteAtlasRecord("work_orders", workOrder.id);
+    if (!calendarDeleted) {
+      await deleteAtlasRecord("work_orders", workOrder.id, {
+        suppressFailureToast: true,
+      });
       setDatabaseStatus(
-        "The calendar link did not save, so Atlas removed the unfinished work order.",
+        "The calendar event could not be replaced cleanly, so Atlas removed the unfinished work order.",
       );
       return false;
     }
 
     setServiceRecords((current) => byTitle([workOrder, ...current]));
     setCalendarItems((current) => {
-      const next = byTitle(
-        current.map((item) =>
-          item.id === updatedCalendarRecord.id
-            ? updatedCalendarRecord
-            : item,
-        ),
-      );
+      const next = byTitle(current.filter((item) => item.id !== calendarRecord.id));
       saveStoredArray(storageKeys.calendar[0], next);
       return next;
     });
-    setCalendarDraft(updatedCalendarRecord);
-    setSelectedCalendarId(updatedCalendarRecord.id);
+    setCalendarDraft(blankCalendarItem(workOrder.date || todayISO()));
+    setSelectedCalendarId("");
     setDatabaseStatus(`Created work order: ${workOrder.title}.`);
     return true;
   }
@@ -13150,14 +13101,53 @@ export default function AtlasApp() {
       setCalendarDraft(blankCalendarItem(selectedCalendarDate));
       return;
     }
-    const record = calendarItems.find((item) => item.id === id);
-    if (!window.confirm(`Delete ${record?.title || "this calendar item"}?`))
+
+    const record =
+      calendarItems.find((item) => item.id === id) ||
+      expandedCalendarItems.find(
+        (item) => String(item.instanceId || item.id) === id || item.id === id,
+      );
+
+    const linkedType = String(record?.linkedType || "");
+    const linkedId = String(record?.linkedId || "");
+
+    if (record && linkedType === "Work Order" && linkedId) {
+      const workOrder = serviceRecords.find((item) => item.id === linkedId);
+      if (!workOrder) {
+        setDatabaseStatus("The linked work order could not be found.");
+        return;
+      }
+      await deleteWorkOrderRecord(workOrder);
+      setSelectedCalendarId("");
+      setSelectedCalendarOccurrenceDate("");
+      setCalendarDraft(blankCalendarItem(selectedCalendarDate));
+      setCalendarDirty(false);
       return;
-    if (record) rememberCalendarDeletion(record);
+    }
+
+    if (record && linkedType === "Task" && linkedId) {
+      const task = workPlanTasks.find((item) => item.id === linkedId);
+      if (!task) {
+        setDatabaseStatus("The linked task could not be found.");
+        return;
+      }
+      if (!window.confirm(`Delete task ${task.title || "this task"}?`)) return;
+      deleteAtlasTask(task.id);
+      setSelectedCalendarId("");
+      setSelectedCalendarOccurrenceDate("");
+      setCalendarDraft(blankCalendarItem(selectedCalendarDate));
+      setCalendarDirty(false);
+      return;
+    }
+
+    const storedRecord = calendarItems.find((item) => item.id === id);
+    if (!window.confirm(`Delete ${storedRecord?.title || record?.title || "this calendar item"}?`))
+      return;
+    if (storedRecord) rememberCalendarDeletion(storedRecord);
     else rememberCalendarDeletion({ id });
     const deleted = await deleteAtlasRecord("calendar", id);
     if (!deleted) {
-      if (record) clearCalendarDeletion(record);
+      if (storedRecord) clearCalendarDeletion(storedRecord);
       else clearCalendarDeletion({ id });
       return;
     }
