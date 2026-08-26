@@ -6030,14 +6030,41 @@ export default function AtlasApp() {
     [showJewishHolidays, holidayYears],
   );
 
-  const workOrderCalendarItems = useMemo(
-    () =>
-      (isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords)
-        .filter((record) => record.date)
-        .map((record) =>
+  const workOrderCalendarItems = useMemo(() => {
+    const records = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
+    const horizon = addDays(todayISO(), 366);
+
+    return records
+      .filter((record) => record.date)
+      .flatMap((record) => {
+        const baseDate = workOrderDateKey(record.date);
+        if (!baseDate) return [];
+
+        const occurrenceDates = [baseDate];
+        if (record.recurring) {
+          const schedule = recurringWorkOrderSchedule(record);
+          let nextDate = baseDate;
+          let occurrenceCount = 0;
+
+          while (occurrenceCount < 60) {
+            nextDate = nextRecurrenceDate(
+              nextDate,
+              schedule.interval,
+              schedule.unit,
+            );
+            if (!nextDate || nextDate > horizon) break;
+            if (record.recurrenceEndDate && nextDate > record.recurrenceEndDate) break;
+            occurrenceDates.push(nextDate);
+            occurrenceCount += 1;
+          }
+        }
+
+        return occurrenceDates.map((date, index) =>
           normalizeCalendar({
-            id: `work-order-${record.id}`,
-            date: record.date,
+            id: index === 0
+              ? `work-order-${record.id}`
+              : `work-order-${record.id}-occurrence-${date}`,
+            date,
             time: "",
             title: `WO: ${record.title}`,
             area: "Work Order",
@@ -6057,12 +6084,12 @@ export default function AtlasApp() {
             linkedType: "Work Order",
             linkedId: record.id,
             linkedName: record.title,
-            completed: record.status === "Completed",
+            completed: index === 0 && record.status === "Completed",
             source: "work-order",
           }),
-        ),
-    [serviceRecords, staffVisibleServiceRecords, isSeanMarineUser],
-  );
+        );
+      });
+  }, [serviceRecords, staffVisibleServiceRecords, isSeanMarineUser]);
 
   const contactBirthdayItems = useMemo<CalendarItem[]>(() => {
     const year = calendarCursor.getFullYear();
