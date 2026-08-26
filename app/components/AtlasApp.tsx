@@ -2820,7 +2820,6 @@ export default function AtlasApp() {
         completionHistory: [],
         workType: "Preventive Maintenance",
         workCategory: "Maintenance",
-        effort: "",
         responsibilityArea: "House & Maintenance",
         photos: [],
         documents: [],
