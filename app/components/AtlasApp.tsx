@@ -10817,85 +10817,97 @@ export default function AtlasApp() {
   ) {
     const requestId = `atlas-${Date.now()}-${++atlasSaveAttemptRef.current}`;
     let lastError: Error | null = null;
+    const endpoints = ["/api/atlas", "/api/atlas-records"];
 
     for (let attempt = 1; attempt <= 3; attempt += 1) {
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 20000);
+      for (let endpointIndex = 0; endpointIndex < endpoints.length; endpointIndex += 1) {
+        const endpoint = endpoints[endpointIndex];
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 20000);
 
-      try {
-        const response = await fetch("/api/atlas", {
-          method,
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            "X-Atlas-Request-Id": requestId,
-          },
-          cache: "no-store",
-          redirect: "manual",
-          signal: controller.signal,
-          body: JSON.stringify(body),
-        });
+        try {
+          const response = await fetch(endpoint, {
+            method,
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              "X-Atlas-Request-Id": requestId,
+            },
+            cache: "no-store",
+            redirect: "manual",
+            signal: controller.signal,
+            body: JSON.stringify(body),
+          });
 
-        const contentType = response.headers.get("content-type") || "";
-        const payload = contentType.includes("application/json")
-          ? await response.json().catch(() => ({}))
-          : {};
+          const contentType = response.headers.get("content-type") || "";
+          const payload = contentType.includes("application/json")
+            ? await response.json().catch(() => ({}))
+            : {};
 
-        if (response.type === "opaqueredirect" || response.status === 0) {
-          throw new Error(
-            `${operationLabel} was redirected instead of saved. Refresh Atlas and try again.`,
-          );
-        }
-
-        const deleteAlreadyFinished = method === "DELETE" && response.status === 404 && /not found|already(?:\s+been)?\s+deleted|does not exist/i.test(String(payload?.error || payload?.message || ""));
-        if (deleteAlreadyFinished) {
-          return { ok: true, id: String(body.id || ""), alreadyDeleted: true };
-        }
-
-        if (!response.ok || payload?.ok !== true) {
-          const message =
-            payload?.error ||
-            `${operationLabel} returned HTTP ${response.status}.`;
-
-          const hydrationRace =
-            method === "POST" &&
-            response.status === 404 &&
-            /not found|does not exist|missing/i.test(
-              String(payload?.error || payload?.message || ""),
+          if (response.type === "opaqueredirect" || response.status === 0) {
+            throw new Error(
+              `${operationLabel} was redirected instead of saved. Refresh Atlas and try again.`,
             );
+          }
 
-          const retryable =
-            attempt < 3 &&
-            (hydrationRace ||
-              response.status === 408 ||
-              response.status === 429 ||
-              response.status >= 500);
+          const messageText = String(payload?.error || payload?.message || "");
+          const routeMissing =
+            (response.status === 404 || response.status === 405) &&
+            (!contentType.includes("application/json") ||
+              /not found|cannot (?:post|delete)|method not allowed|route/i.test(messageText));
 
-          if (retryable) {
-            await new Promise((resolve) =>
-              window.setTimeout(resolve, hydrationRace ? attempt * 450 : 350),
-            );
+          if (routeMissing && endpointIndex < endpoints.length - 1) {
             continue;
           }
 
-          throw new Error(message);
-        }
+          const deleteAlreadyFinished =
+            method === "DELETE" &&
+            response.status === 404 &&
+            /not found|already(?:\s+been)?\s+deleted|does not exist/i.test(messageText);
+          if (deleteAlreadyFinished) {
+            return { ok: true, id: String(body.id || ""), alreadyDeleted: true };
+          }
 
-        return payload as Record<string, unknown>;
-      } catch (error) {
-        lastError =
-          error instanceof Error
-            ? error
-            : new Error(`${operationLabel} failed.`);
+          if (!response.ok || payload?.ok !== true) {
+            const message =
+              payload?.error || `${operationLabel} returned HTTP ${response.status}.`;
 
-        if (attempt < 3) {
-          await new Promise((resolve) =>
-            window.setTimeout(resolve, attempt * 350),
-          );
-          continue;
+            const retryable =
+              attempt < 3 &&
+              (response.status === 408 ||
+                response.status === 429 ||
+                response.status >= 500);
+
+            if (retryable) {
+              await new Promise((resolve) =>
+                window.setTimeout(resolve, attempt * 350),
+              );
+              break;
+            }
+
+            throw new Error(message);
+          }
+
+          return payload as Record<string, unknown>;
+        } catch (error) {
+          lastError =
+            error instanceof Error
+              ? error
+              : new Error(`${operationLabel} failed.`);
+
+          if (endpointIndex < endpoints.length - 1 && /404|not found|route/i.test(lastError.message)) {
+            continue;
+          }
+
+          if (attempt < 3) {
+            await new Promise((resolve) =>
+              window.setTimeout(resolve, attempt * 350),
+            );
+            break;
+          }
+        } finally {
+          window.clearTimeout(timeout);
         }
-      } finally {
-        window.clearTimeout(timeout);
       }
     }
 
@@ -18847,6 +18859,7 @@ ${notes.trim()}` : notes.trim(),
       updateTaskDetails,
       updateTeamAssignment,
       updateWorkPlanTask,
+      updateWorkOrderRecord,
       vehicleCare,
       vehicleDueScore,
       vendorRecords,
