@@ -290,6 +290,8 @@ export default function AtlasDashboardWorkspace(props: any) {
     return "Nick";
   })();
   const [dashboardWorkTitle, setDashboardWorkTitle] = useState("");
+  const [dashboardWorkNote, setDashboardWorkNote] = useState("");
+  const [dashboardCompletionNotes, setDashboardCompletionNotes] = useState<Record<string, string>>({});
   const [dashboardWorkAssignee, setDashboardWorkAssignee] = useState(initialDashboardAssignee);
   const [dashboardWorkDate, setDashboardWorkDate] = useState(() => todayISO());
   const dashboardAssigneeName = (value: unknown) => {
@@ -1679,9 +1681,11 @@ export default function AtlasDashboardWorkspace(props: any) {
       effort: "30 minutes",
       assignedTo: dashboardWorkAssignee,
       responsibilityArea: "Dashboard · Quick Work",
+      notes: dashboardWorkNote.trim(),
     });
     setServiceRecords((current) => byTitle([record, ...current]));
     setDashboardWorkTitle("");
+    setDashboardWorkNote("");
     const saved = await postAtlasRecord("work_orders", record);
     showSaveToast(saved ? `Added to ${dashboardWorkAssignee}’s Work list.` : "Work was added locally, but shared sync did not finish.", saved ? "success" : "warning");
   };
@@ -1701,10 +1705,17 @@ export default function AtlasDashboardWorkspace(props: any) {
       effort: "30 minutes",
       assignedTo: dashboardWorkAssignee,
       responsibilityArea: "Dashboard · Logged Work",
+      notes: dashboardWorkNote.trim(),
     });
     setServiceRecords((current) => byTitle([record, ...current]));
+    const completionNote = dashboardWorkNote.trim();
     setDashboardWorkTitle("");
-    await completeWorkOrder(record, { completedDate: today, allowEarly: true });
+    setDashboardWorkNote("");
+    await completeWorkOrder(record, {
+      completedDate: today,
+      completionNote,
+      allowEarly: true,
+    });
   };
 
   const openDashboardWorkOrderDraft = () => {
@@ -1715,6 +1726,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     setQuickCaptureMode("create");
     setQuickCaptureOpen(true);
     setDashboardWorkTitle("");
+    setDashboardWorkNote("");
   };
 
   const addTodayLogEntry = () => {
@@ -2407,6 +2419,7 @@ export default function AtlasDashboardWorkspace(props: any) {
           </div>
           <div style={{ display: "grid", gap: 7, marginTop: 10 }}>
             <input value={dashboardWorkTitle} onChange={(event) => setDashboardWorkTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void createDashboardUnifiedWork(); }} placeholder="What is being done or needs to be done?" aria-label="Work title" style={inputStyle}/>
+            <input value={dashboardWorkNote} onChange={(event) => setDashboardWorkNote(event.currentTarget.value)} placeholder="Work done / note (optional) — e.g. Rinsed off only, not a full clean" aria-label="Work done or note" style={inputStyle}/>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "150px 170px repeat(3,max-content)", gap: 7, alignItems: "center" }}>
               <select value={dashboardWorkAssignee} onChange={(event) => setDashboardWorkAssignee(event.currentTarget.value as typeof dashboardWorkAssignee)} aria-label="Assign work" style={{ ...selectStyle, width: "100%" }}>
                 {dashboardWorkPeople.map((person) => <option key={person} value={person}>{person === initialDashboardAssignee ? `${person} (me)` : person}</option>)}
@@ -2416,20 +2429,31 @@ export default function AtlasDashboardWorkspace(props: any) {
               <button type="button" onClick={() => void logCompletedDashboardWork()} disabled={!dashboardWorkTitle.trim()} style={{ ...secondaryButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Done Today</button>
               <button type="button" onClick={openDashboardWorkOrderDraft} disabled={!dashboardWorkTitle.trim()} style={{ ...secondaryButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Work Order</button>
             </div>
-            <small style={mutedSmallStyle}>Use Done Today when you notice work already happening. Schedule keeps it in the plan.</small>
+            <small style={mutedSmallStyle}>Add what was actually done before completing. That note is saved in history and the owner report.</small>
           </div>
           <div style={{ display: "grid", gap: 6, marginTop: 10, maxHeight: 326, overflowY: "auto", paddingRight: 2 }}>
             {dashboardUnifiedWork.slice(0, 8).map((record) => {
               const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) || "Nick";
-              return <div key={record.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 7, alignItems: "start", border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF" }}>
-                <input type="checkbox" checked={false} aria-label={`Complete ${record.title}`} onChange={() => void completeWorkOrder(record as AtlasServiceRecord)} style={{ marginTop: 5 }}/>
-                <div style={{ minWidth: 0 }}>
-                  <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, width: "100%", cursor: "pointer" }}><strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title}</strong></button>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(125px,145px) minmax(125px,1fr)", gap: 6, marginTop: 5 }}>
-                    <input type="date" value={String(record.date || "").slice(0, 10)} onChange={(event) => void syncWorkOrderPatch(record, { date: event.currentTarget.value })} aria-label={`Due date for ${record.title}`} style={{ ...inputStyle, minHeight: 30, padding: "3px 5px", fontSize: 11, color: record.date && record.date < today ? colors.red : colors.text }}/>
-                    <select value={assigned} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })} aria-label={`Reassign ${record.title}`} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name}</option>)}</select>
+              const completionNote = dashboardCompletionNotes[String(record.id)] || "";
+              return <div key={record.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF", display: "grid", gap: 7 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "start" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, width: "100%", cursor: "pointer" }}><strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.title}</strong></button>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(125px,145px) minmax(125px,1fr)", gap: 6, marginTop: 5 }}>
+                      <input type="date" value={String(record.date || "").slice(0, 10)} onChange={(event) => void syncWorkOrderPatch(record, { date: event.currentTarget.value })} aria-label={`Due date for ${record.title}`} style={{ ...inputStyle, minHeight: 30, padding: "3px 5px", fontSize: 11, color: record.date && record.date < today ? colors.red : colors.text }}/>
+                      <select value={assigned} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })} aria-label={`Reassign ${record.title}`} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name}</option>)}</select>
+                    </div>
                   </div>
+                  <button type="button" onClick={async () => {
+                    await completeWorkOrder(record as AtlasServiceRecord, { completionNote });
+                    setDashboardCompletionNotes((current) => {
+                      const next = { ...current };
+                      delete next[String(record.id)];
+                      return next;
+                    });
+                  }} style={{ ...goldButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Complete</button>
                 </div>
+                <input value={completionNote} onChange={(event) => setDashboardCompletionNotes((current) => ({ ...current, [String(record.id)]: event.currentTarget.value }))} placeholder="Work done / completion note (optional)" aria-label={`Work done for ${record.title}`} style={{ ...inputStyle, minHeight: 30, padding: "4px 7px", fontSize: 11 }}/>
               </div>;
             })}
             {!dashboardUnifiedWork.length ? <div style={noticeStyle}>Nothing due today.</div> : null}
