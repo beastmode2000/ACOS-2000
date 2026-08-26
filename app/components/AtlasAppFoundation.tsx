@@ -255,6 +255,12 @@ export type AtlasTaskMeta = {
   recurrenceEndDate?: string;
   lastCompletedDate?: string;
   completionHistory?: string[];
+  lastCompletionNote?: string;
+  completionNotes?: Array<{
+    id: string;
+    completedAt: string;
+    note: string;
+  }>;
   season?: WorkSeason;
   weatherDependency?: "None" | "Dry" | "No rain" | "Warm" | "Cool" | "Low wind";
   flexibleTime?: boolean;
@@ -876,6 +882,7 @@ export function isServiceStatus(value: unknown): value is ServiceStatus {
     value === "Open" ||
     value === "Scheduled" ||
     value === "Completed" ||
+    value === "Cancelled" ||
     value === "Monitor" ||
     value === "In Progress" ||
     value === "Waiting"
