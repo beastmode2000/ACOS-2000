@@ -2483,7 +2483,24 @@ export default function AtlasDashboardWorkspace(props: any) {
                       <input type="date" value={String(record.date || "").slice(0, 10)} onChange={(event) => void syncWorkOrderPatch(record, { date: event.currentTarget.value })} aria-label={`Due date for ${record.title}`} style={{ ...inputStyle, minHeight: 30, padding: "3px 5px", fontSize: 11, color: record.date && record.date < today ? colors.red : colors.text }}/>
                       <select value={assigned} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })} aria-label={`Reassign ${record.title}`} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name}</option>)}</select>
                     </div>
-                    <input value={completionNote} onChange={(event) => setDashboardCompletionNotes((current) => ({ ...current, [String(record.id)]: event.currentTarget.value }))} placeholder="Work done / completion note" aria-label={`Work done for ${record.title}`} style={{ ...inputStyle, minHeight: 30, padding: "4px 7px", fontSize: 11 }}/>
+                    <textarea
+                      value={completionNote}
+                      onChange={(event) => setDashboardCompletionNotes((current) => ({ ...current, [String(record.id)]: event.currentTarget.value }))}
+                      onFocus={() => {
+                        if (!completionNote && record.notes) {
+                          setDashboardCompletionNotes((current) => ({ ...current, [String(record.id)]: String(record.notes || "") }));
+                        }
+                      }}
+                      onBlur={(event) => {
+                        const nextNote = event.currentTarget.value.trim();
+                        const currentNote = String(record.notes || "").trim();
+                        if (nextNote !== currentNote) void syncWorkOrderPatch(record, { notes: nextNote });
+                      }}
+                      placeholder="Notes / update"
+                      aria-label={`Notes for ${record.title}`}
+                      rows={2}
+                      style={{ ...inputStyle, minHeight: 54, padding: "5px 7px", fontSize: 11, resize: "vertical" }}
+                    />
                   </div>
                 </details>
               </div>;
