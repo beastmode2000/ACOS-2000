@@ -1661,21 +1661,38 @@ export default function AtlasDashboardWorkspace(props: any) {
     .filter((record) => !record.date || String(record.date) <= today)
     .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || priorityRank(a) - priorityRank(b) || a.title.localeCompare(b.title));
 
-  const dashboardWorkListRecords = serviceRecords
-    .filter((record) => record.status !== "Completed")
-    .filter((record) => {
-      const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo);
-      if (!dashboardWorkPeople.some((person) => assigned === person)) return false;
-      return dashboardWorkPersonFilter === "Everyone" || assigned === dashboardWorkPersonFilter;
-    })
-    .filter((record) => {
+  const dashboardWorkListRecords = (() => {
+    const normalizedWorkIdentity = (record: ServiceRecord) => {
+      const title = String(record.title || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
       const date = String(record.date || "").slice(0, 10);
-      if (dashboardWorkListFilter === "All") return true;
-      if (dashboardWorkListFilter === "Upcoming") return Boolean(date && date > today);
-      if (dashboardWorkListFilter === "Overdue") return Boolean(date && date < today);
-      return !date || date <= today;
-    })
-    .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || priorityRank(a) - priorityRank(b) || a.title.localeCompare(b.title));
+      const assetId = String((record as AtlasServiceRecord).assetId || "");
+      const locationId = String((record as AtlasServiceRecord).locationId || "");
+      const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo);
+      return `${title}|${date}|${assetId}|${locationId}|${assigned}`;
+    };
+    const seen = new Set<string>();
+    return serviceRecords
+      .filter((record) => record.status !== "Completed")
+      .filter((record) => {
+        const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo);
+        if (!dashboardWorkPeople.some((person) => assigned === person)) return false;
+        return dashboardWorkPersonFilter === "Everyone" || assigned === dashboardWorkPersonFilter;
+      })
+      .filter((record) => {
+        const date = String(record.date || "").slice(0, 10);
+        if (dashboardWorkListFilter === "All") return true;
+        if (dashboardWorkListFilter === "Upcoming") return Boolean(date && date > today);
+        if (dashboardWorkListFilter === "Overdue") return Boolean(date && date < today);
+        return !date || date <= today;
+      })
+      .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || priorityRank(a) - priorityRank(b) || a.title.localeCompare(b.title))
+      .filter((record) => {
+        const key = normalizedWorkIdentity(record);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  })();
 
   const dashboardCompletedToday = serviceRecords.filter((record) => {
     const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo);
@@ -2063,13 +2080,24 @@ export default function AtlasDashboardWorkspace(props: any) {
   const foremanSchedule = nonRoutineTodayEvents.slice().sort((a, b) => String(a.time || "99:99").localeCompare(String(b.time || "99:99")));
   const dashboardScheduleItems = (() => {
     const seen = new Set<string>();
+    const workOrderIds = new Set(serviceRecords.map((record) => String(record.id || "")));
+    const workOrderTitles = new Set(serviceRecords.map((record) => String(record.title || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()));
     return foremanSchedule.filter((event) => {
+      const linkedType = String(event.linkedType || "").trim().toLowerCase();
+      const linkedId = String(event.linkedId || "").trim();
       const normalizedTitle = String(event.title || "")
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, " ")
         .replace(/\s+/g, " ")
         .trim();
+
+      // Work Orders belong in the Work checklist once. Their calendar projection
+      // must not be rendered as a second "Meeting / onsite" row.
+      if (linkedType === "work order" || linkedType === "work-order" || linkedType === "work_order") return false;
+      if (linkedId && workOrderIds.has(linkedId)) return false;
+      if (workOrderTitles.has(normalizedTitle)) return false;
+
       const key = `${normalizedTitle}|${String(event.date || today).slice(0, 10)}|${String(event.time || "all-day").trim().toLowerCase()}`;
       if (seen.has(key)) return false;
       seen.add(key);
@@ -2465,7 +2493,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                   <input type="checkbox" checked={false} aria-label={`Complete ${record.title}`} onChange={async () => { await completeWorkOrder(record as AtlasServiceRecord, { completionNote }); setDashboardCompletionNotes((current) => { const next = { ...current }; delete next[String(record.id)]; return next; }); }} />
                   <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: "pointer" }}>
                     <strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14, lineHeight: 1.3, fontWeight: 700 }}>{record.title}</strong>
-                    <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2, fontSize: 14, lineHeight: 1.3, fontWeight: 700 }}>{record.date ? `${String(record.date).slice(0, 10) < today ? "Overdue · " : ""}${formatDate(String(record.date).slice(0, 10))}` : "No due date"} · {assigned}</small>
+                    <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2, fontSize: 14, lineHeight: 1.3, fontWeight: 700 }}>Work Order · {record.date ? `${String(record.date).slice(0, 10) < today ? "Overdue · " : ""}${formatDate(String(record.date).slice(0, 10))}` : "No due date"} · {assigned}</small>
                   </button>
                 </div>
                 <details style={{ marginTop: 6, marginLeft: 24 }}>
