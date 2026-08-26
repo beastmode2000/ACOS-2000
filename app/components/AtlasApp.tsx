@@ -1546,7 +1546,7 @@ export default function AtlasApp() {
   const [contactSearch, setContactSearch] = useState("");
   const [contactMessage, setContactMessage] = useState("");
   const [serviceRecords, setServiceRecords] =
-    useState<AtlasServiceRecord[]>(fallbackWorkOrders);
+    useState<AtlasServiceRecord[]>([]);
   const workOrderDatabaseCleanupRunningRef = useRef(false);
   const aiGeneratedPurgeRunningRef = useRef(false);
   const [workOrderSeasonFilter, setWorkOrderSeasonFilter] = useState<
@@ -3365,7 +3365,7 @@ export default function AtlasApp() {
 
   useEffect(() => {
     if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000" || typeof window === "undefined") return;
-    const purgeKey = "atlas-ai-generated-record-purge-v2-2000";
+    const purgeKey = "atlas-ai-generated-record-purge-v3-2000";
     if (window.localStorage.getItem(purgeKey) === "done" || aiGeneratedPurgeRunningRef.current) return;
 
     const generatedTaskTitles = new Set([
@@ -3412,10 +3412,41 @@ export default function AtlasApp() {
     });
     const generatedTaskIds = new Set(generatedTasks.map((task) => String(task.id)));
 
+    const generatedWorkOrderTitles = new Set([
+      "replace all 14 house hvac filters",
+      "replace both sundance 880 spa filters",
+      "clean both sundance 880 spa filters",
+      "test pool chlorine and refill chlorine tabs",
+      "check tire pressure and fluids on all onsite cars",
+      "aqua quip pool and spa water testing",
+      "monthly pest control service",
+      "clean skylights above the ipe deck",
+      "clean addition exterior windows",
+      "clean original home accessible exterior windows",
+      "post pollen pressure washing",
+      "post leaf fall pressure washing",
+      "clean courtyard gutters and flat roof",
+      "add winter traction sandbags ford truck",
+      "replace annual registration tabs cobalt",
+      "replace annual registration tabs 2024 sea doo",
+      "weekly landscaping crew waterside beds first",
+      "boiler 2 recalled heat exchanger igniter issue"
+    ]);
+    const generatedFleetCleaningTitle = (title: string) =>
+      /^(?:clean|wash|rinse) (?:vehicle )?(?:ford|f 150|raptor|rivian|subaru|porsche|lucid|mercedes(?: gl)?|kia|honda|cobalt|sea doo|seadoo|boat)$/.test(title);
     const generatedWorkOrders = serviceRecords.filter((record) => {
       const id = String(record.id || "");
       const title = normalizedWorkOrderText(record.title);
-      return generatedWorkOrderIds(id) || / recurring service$/.test(title) || title.startsWith("annual service ");
+      const notes = normalizedWorkOrderText(record.notes);
+      const responsibility = normalizedWorkOrderText(record.responsibilityArea);
+      return generatedWorkOrderIds(id) ||
+        / recurring service$/.test(title) ||
+        title.startsWith("annual service ") ||
+        generatedWorkOrderTitles.has(title) ||
+        generatedFleetCleaningTitle(title) ||
+        notes.startsWith("weekly garage cleaning for ") ||
+        notes.startsWith("recurring garage service for ") ||
+        responsibility.startsWith("garage ") && /^(?:clean|service|maintenance)/.test(title);
     });
     const generatedWorkOrderIdSet = new Set(generatedWorkOrders.map((record) => String(record.id)));
 
@@ -3841,7 +3872,7 @@ export default function AtlasApp() {
     ).map(normalizeContact);
     const storedServices = readStoredArray<ServiceRecord>(
       storageKeys.workOrders,
-      fallbackWorkOrders,
+      [],
     ).map(normalizeService);
     const storedProcedures = readStoredArray<ProcedureRecord>(
       storageKeys.procedures,
@@ -3892,7 +3923,7 @@ export default function AtlasApp() {
     );
     setContactRecords(byName(storedContacts));
     setServiceRecords(
-      storedServices.length ? byTitle(storedServices) : fallbackWorkOrders,
+      storedServices.length ? byTitle(storedServices) : [],
     );
     setProcedureRecords(
       storedProcedures.length ? byTitle(storedProcedures) : fallbackProcedures,
