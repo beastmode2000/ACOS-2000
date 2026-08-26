@@ -186,7 +186,18 @@ function completedTaskItems(tasks: Row[]) {
         person: displayPerson({ ...row, ...meta }),
         department: inferDepartment({ ...row, ...meta }),
         title: String(row.title || meta.title || "Task completed"),
-        notes: String(meta.addisonNote || meta.notes || row.notes || ""),
+        notes: String(
+          (Array.isArray(meta.completionNotes)
+            ? meta.completionNotes.find(
+                (entry: Row) => dateOnly(entry.completedAt) === date,
+              )?.note
+            : "") ||
+            meta.lastCompletionNote ||
+            meta.addisonNote ||
+            meta.notes ||
+            row.notes ||
+            "",
+        ),
       });
     }
   }
