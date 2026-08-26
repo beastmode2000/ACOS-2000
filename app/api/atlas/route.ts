@@ -2749,22 +2749,20 @@ export async function DELETE(request: NextRequest) {
     }
 
     if (!deletedRows.length) {
-      if (table === "work_orders" && workOrderAlreadyDeleted) {
-        return NextResponse.json({
+      // DELETE is idempotent across Atlas. If another tab, cleanup pass, or an
+      // older generated-record cleanup already removed the row, the requested
+      // end state is still correct. Returning success prevents stale UI records
+      // from producing user-visible 404s or being resurrected by retry logic.
+      return atlasJson(
+        {
           ok: true,
           id,
           alreadyDeleted: true,
-        });
-      }
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Record was not found in property " +
-            propertyId +
-            ".",
+          table,
+          propertyId,
         },
-        { status: 404 },
+        200,
+        requestId,
       );
     }
 
