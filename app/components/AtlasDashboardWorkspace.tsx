@@ -294,6 +294,7 @@ export default function AtlasDashboardWorkspace(props: any) {
   const [dashboardCompletionNotes, setDashboardCompletionNotes] = useState<Record<string, string>>({});
   const [dashboardWorkAssignee, setDashboardWorkAssignee] = useState(initialDashboardAssignee);
   const [dashboardWorkDate, setDashboardWorkDate] = useState(() => todayISO());
+  const [dashboardWorkListFilter, setDashboardWorkListFilter] = useState<"Today" | "All" | "Upcoming" | "Overdue">("Today");
   const dashboardAssigneeName = (value: unknown) => {
     const name = String(value || "").trim();
     const normalized = name.toLowerCase();
@@ -1659,6 +1660,21 @@ export default function AtlasDashboardWorkspace(props: any) {
     .filter((record) => !record.date || String(record.date) <= today)
     .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || priorityRank(a) - priorityRank(b) || a.title.localeCompare(b.title));
 
+  const dashboardWorkListRecords = serviceRecords
+    .filter((record) => record.status !== "Completed")
+    .filter((record) => {
+      const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo);
+      return dashboardWorkPeople.some((person) => assigned === person);
+    })
+    .filter((record) => {
+      const date = String(record.date || "").slice(0, 10);
+      if (dashboardWorkListFilter === "All") return true;
+      if (dashboardWorkListFilter === "Upcoming") return Boolean(date && date > today);
+      if (dashboardWorkListFilter === "Overdue") return Boolean(date && date < today);
+      return !date || date <= today;
+    })
+    .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || priorityRank(a) - priorityRank(b) || a.title.localeCompare(b.title));
+
   const dashboardCompletedToday = serviceRecords.filter((record) => {
     const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo);
     const belongsToDashboard = dashboardWorkPeople.some((person) => assigned === person);
@@ -2411,28 +2427,17 @@ export default function AtlasDashboardWorkspace(props: any) {
         </div>
         ) : null}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12, alignItems: "stretch" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.7fr) minmax(280px,.7fr)", gap: 12, alignItems: "start" }}>
         <section style={{ ...cardStyle, minWidth: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <div><div style={eyebrowStyle}>Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Today + quick entry</h2></div>
-            <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={badgeStyle(dashboardUnifiedWork.length ? "Scheduled" : "Completed")}>{dashboardUnifiedWork.length}</span><button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Open All Work</button></div>
+            <div><div style={eyebrowStyle}>Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Work List</h2></div>
+            <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={badgeStyle(dashboardWorkListRecords.length ? "Scheduled" : "Completed")}>{dashboardWorkListRecords.length}</span><button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Open All Work</button></div>
           </div>
-          <div style={{ display: "grid", gap: 7, marginTop: 10 }}>
-            <input value={dashboardWorkTitle} onChange={(event) => setDashboardWorkTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void createDashboardUnifiedWork(); }} placeholder="What is being done or needs to be done?" aria-label="Work title" style={inputStyle}/>
-            <input value={dashboardWorkNote} onChange={(event) => setDashboardWorkNote(event.currentTarget.value)} placeholder="Work done / note (optional) — e.g. Rinsed off only, not a full clean" aria-label="Work done or note" style={inputStyle}/>
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "150px 170px repeat(3,max-content)", gap: 7, alignItems: "center" }}>
-              <select value={dashboardWorkAssignee} onChange={(event) => setDashboardWorkAssignee(event.currentTarget.value as typeof dashboardWorkAssignee)} aria-label="Assign work" style={{ ...selectStyle, width: "100%" }}>
-                {dashboardWorkPeople.map((person) => <option key={person} value={person}>{person === initialDashboardAssignee ? `${person} (me)` : person}</option>)}
-              </select>
-              <input type="date" value={dashboardWorkDate} onChange={(event) => setDashboardWorkDate(event.currentTarget.value)} aria-label="Work date" style={inputStyle}/>
-              <button type="button" onClick={() => void createDashboardUnifiedWork()} disabled={!dashboardWorkTitle.trim()} style={{ ...goldButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Schedule</button>
-              <button type="button" onClick={() => void logCompletedDashboardWork()} disabled={!dashboardWorkTitle.trim()} style={{ ...secondaryButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Done Today</button>
-              <button type="button" onClick={openDashboardWorkOrderDraft} disabled={!dashboardWorkTitle.trim()} style={{ ...secondaryButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Work Order</button>
-            </div>
-            <small style={mutedSmallStyle}>Add what was actually done before completing. That note is saved in history and the owner report.</small>
+          <div style={{ display: "flex", gap: 6, overflowX: "auto", marginTop: 9, paddingBottom: 2 }}>
+            {(["Today", "All", "Upcoming", "Overdue"] as const).map((filter) => <button key={filter} type="button" onClick={() => setDashboardWorkListFilter(filter)} style={{ ...(dashboardWorkListFilter === filter ? goldButtonStyle : secondaryButtonStyle), minHeight: 30, padding: "4px 9px", fontSize: 11, whiteSpace: "nowrap" }}>{filter}</button>)}
           </div>
-          <div style={{ display: "grid", gap: 6, marginTop: 10, maxHeight: 326, overflowY: "auto", paddingRight: 2 }}>
-            {dashboardUnifiedWork.slice(0, 8).map((record) => {
+          <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: 470, overflowY: "auto", paddingRight: 2 }}>
+            {dashboardWorkListRecords.map((record) => {
               const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) || "Nick";
               const completionNote = dashboardCompletionNotes[String(record.id)] || "";
               return <div key={record.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF", display: "grid", gap: 7 }}>
@@ -2444,35 +2449,43 @@ export default function AtlasDashboardWorkspace(props: any) {
                       <select value={assigned} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })} aria-label={`Reassign ${record.title}`} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name}</option>)}</select>
                     </div>
                   </div>
-                  <button type="button" onClick={async () => {
-                    await completeWorkOrder(record as AtlasServiceRecord, { completionNote });
-                    setDashboardCompletionNotes((current) => {
-                      const next = { ...current };
-                      delete next[String(record.id)];
-                      return next;
-                    });
-                  }} style={{ ...goldButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Complete</button>
+                  <button type="button" onClick={async () => { await completeWorkOrder(record as AtlasServiceRecord, { completionNote }); setDashboardCompletionNotes((current) => { const next = { ...current }; delete next[String(record.id)]; return next; }); }} style={{ ...goldButtonStyle, minHeight: 30, padding: "4px 8px", fontSize: 11 }}>Complete</button>
                 </div>
                 <input value={completionNote} onChange={(event) => setDashboardCompletionNotes((current) => ({ ...current, [String(record.id)]: event.currentTarget.value }))} placeholder="Work done / completion note (optional)" aria-label={`Work done for ${record.title}`} style={{ ...inputStyle, minHeight: 30, padding: "4px 7px", fontSize: 11 }}/>
               </div>;
             })}
-            {!dashboardUnifiedWork.length ? <div style={noticeStyle}>Nothing due today.</div> : null}
+            {dashboardWorkListFilter === "Today" ? foremanSchedule.map((event) => <button key={`schedule-${event.instanceId || event.id}`} type="button" onClick={() => openDashboardCalendarItem(event)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: 8, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>) : null}
+            {!dashboardWorkListRecords.length && !(dashboardWorkListFilter === "Today" && foremanSchedule.length) ? <div style={noticeStyle}>No work in this view.</div> : null}
           </div>
-          {dashboardUnifiedWork.length > 8 ? <button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, width: "100%", marginTop: 8 }}>{dashboardUnifiedWork.length - 8} more in All Work</button> : null}
           {dashboardCompletedToday.length ? <details style={{ marginTop: 8 }}><summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 850 }}>Completed today · {dashboardCompletedToday.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 6 }}>{dashboardCompletedToday.slice(0, 8).map((record) => <button key={`done-${record.id}`} type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#F3F7F4", textAlign: "left", color: colors.navy, textDecoration: "line-through", opacity: .7 }}>{record.title}</button>)}</div></details> : null}
         </section>
         <section style={{ ...cardStyle, minWidth: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-            <div><div style={eyebrowStyle}>Today’s Schedule</div><h2 style={{ margin: "2px 0", color: colors.navy }}>On site and meetings</h2></div>
-            <span style={badgeStyle("Scheduled")}>{foremanSchedule.length}</span>
-          </div>
-          <div style={{ display: "grid", gap: 7, marginTop: 10, maxHeight: 430, overflowY: "auto", paddingRight: 2 }}>
-            {foremanSchedule.slice(0, 8).map((event) => <button key={event.instanceId || event.id} type="button" onClick={() => openDashboardCalendarItem(event)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{event.title}</strong><small style={mutedSmallStyle}>{event.time || "All day"}{event.area ? ` · ${event.area}` : ""}</small></button>)}
-            {!foremanSchedule.length ? <div style={noticeStyle}>Nothing scheduled today.</div> : null}
+          <div><div style={eyebrowStyle}>Quick Entry</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Add Work</h2></div>
+          <div style={{ display: "grid", gap: 7, marginTop: 10 }}>
+            <input value={dashboardWorkTitle} onChange={(event) => setDashboardWorkTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void createDashboardUnifiedWork(); }} placeholder="What needs to be done?" aria-label="Work title" style={inputStyle}/>
+            <input value={dashboardWorkNote} onChange={(event) => setDashboardWorkNote(event.currentTarget.value)} placeholder="Note (optional)" aria-label="Work done or note" style={inputStyle}/>
+            <select value={dashboardWorkAssignee} onChange={(event) => setDashboardWorkAssignee(event.currentTarget.value as typeof dashboardWorkAssignee)} aria-label="Assign work" style={{ ...selectStyle, width: "100%" }}>{dashboardWorkPeople.map((person) => <option key={person} value={person}>{person === initialDashboardAssignee ? `${person} (me)` : person}</option>)}</select>
+            <input type="date" value={dashboardWorkDate} onChange={(event) => setDashboardWorkDate(event.currentTarget.value)} aria-label="Work date" style={inputStyle}/>
+            <button type="button" onClick={() => void createDashboardUnifiedWork()} disabled={!dashboardWorkTitle.trim()} style={{ ...goldButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Schedule</button>
+            <button type="button" onClick={() => void logCompletedDashboardWork()} disabled={!dashboardWorkTitle.trim()} style={{ ...secondaryButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Done Today</button>
+            <button type="button" onClick={openDashboardWorkOrderDraft} disabled={!dashboardWorkTitle.trim()} style={{ ...secondaryButtonStyle, opacity: dashboardWorkTitle.trim() ? 1 : .55 }}>Work Order</button>
           </div>
         </section>
-
       </div>
+
+      <section style={{ ...cardStyle, overflow: "hidden" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div><div style={eyebrowStyle}>Recent Activity</div><h3 style={{ margin: 0, color: colors.navy }}>Updates from the last 7 days</h3></div><span style={{ ...badgeStyle("Monitor"), flex: "0 0 auto" }}>{dashboardFeedCounts.All}</span></div>
+        <div style={{ marginTop: 10, display: "grid", gap: 7 }}>{filteredDashboardFeed.slice(0, 10).map((item) => <button key={`primary-${item.id}`} type="button" onClick={item.action} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: 8, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{item.title}</strong><small style={mutedSmallStyle}>{item.detail}</small></button>)}{!filteredDashboardFeed.length ? <div style={noticeStyle}>No recent activity.</div> : null}</div>
+      </section>
+
+      <section id="atlas-dashboard-vendor-log" style={{ ...cardStyle, padding: 11 }}>
+        <div><div style={eyebrowStyle}>Quick Log</div><h3 style={{ margin: "2px 0", color: colors.navy }}>Vendor Visit</h3></div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px,.8fr) minmax(0,1.4fr) auto", gap: 7, marginTop: 8, alignItems: "end" }}>
+          <CreatableRelationshipField label="Vendor" value={dashboardVendorVisitId} emptyLabel="Choose or type vendor" options={vendorRecords.slice().sort((a,b) => a.name.localeCompare(b.name)).map((vendor) => ({ id: vendor.id, label: vendor.name }))} onChange={setDashboardVendorVisitId} onCreate={quickCreateVendor} compact/>
+          <input value={dashboardVendorVisitNote} onChange={(event) => setDashboardVendorVisitNote(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") logDashboardVendorVisit(); }} placeholder="Work completed or visit note" style={{ ...inputStyle, minHeight: 34, padding: "5px 8px", fontSize: 11 }}/>
+          <button type="button" onClick={logDashboardVendorVisit} disabled={!dashboardVendorVisitId && !dashboardVendorVisitNote.trim()} style={{ ...goldButtonStyle, minHeight: 34, padding: "5px 12px", fontSize: 11, opacity: !dashboardVendorVisitId && !dashboardVendorVisitNote.trim() ? .55 : 1 }}>Log Visit</button>
+        </div>
+      </section>
 
       <section style={{ ...cardStyle, padding: isMobile ? 10 : 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -2503,14 +2516,7 @@ export default function AtlasDashboardWorkspace(props: any) {
         </div>
       </section>
 
-      <section id="atlas-dashboard-vendor-log" style={{ ...cardStyle, padding: 11 }}>
-        <div><div style={eyebrowStyle}>Quick Log</div><h3 style={{ margin: "2px 0", color: colors.navy }}>Vendor Visit</h3></div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px,.8fr) minmax(0,1.4fr) auto", gap: 7, marginTop: 8, alignItems: "end" }}>
-          <CreatableRelationshipField label="Vendor" value={dashboardVendorVisitId} emptyLabel="Choose or type vendor" options={vendorRecords.slice().sort((a,b) => a.name.localeCompare(b.name)).map((vendor) => ({ id: vendor.id, label: vendor.name }))} onChange={setDashboardVendorVisitId} onCreate={quickCreateVendor} compact/>
-          <input value={dashboardVendorVisitNote} onChange={(event) => setDashboardVendorVisitNote(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") logDashboardVendorVisit(); }} placeholder="Work completed or visit note" style={{ ...inputStyle, minHeight: 34, padding: "5px 8px", fontSize: 11 }}/>
-          <button type="button" onClick={logDashboardVendorVisit} disabled={!dashboardVendorVisitId && !dashboardVendorVisitNote.trim()} style={{ ...goldButtonStyle, minHeight: 34, padding: "5px 12px", fontSize: 11, opacity: !dashboardVendorVisitId && !dashboardVendorVisitNote.trim() ? .55 : 1 }}>Log Visit</button>
-        </div>
-      </section>
+
       {false ? (
       <section style={{ ...cardStyle, padding: isMobile ? 11 : 14 }}>
         <div><div style={eyebrowStyle}>Daily Work Lists</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Today’s Lists</h2><small style={mutedSmallStyle}>Add, edit, complete, and move today’s work here.</small></div>
@@ -2593,19 +2599,6 @@ export default function AtlasDashboardWorkspace(props: any) {
         </div>
       </section>
       ) : null}
-      <section style={{ ...cardStyle, padding: isMobile ? 11 : 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Coming Up</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Upcoming</h2><small style={mutedSmallStyle}>A compact preview so you can move work without opening the planner.</small></div><span style={badgeStyle("Scheduled")}>{dashboardTomorrowTasks.length}</span></div>
-        <div style={{ display: "grid", gap: 6, marginTop: 9 }}>{dashboardTomorrowTasks.slice(0, 8).map((task) => { const meta = taskDetails(task.id); return <div key={`tomorrow-${task.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF" }}><button type="button" onClick={() => openDashboardTaskEditor(task)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", color: colors.navy, cursor: "pointer" }}><strong style={{ display: "block" }}>{task.title}</strong><small style={{ color: "#000000", fontSize: 11, fontWeight: 400, lineHeight: 1.35 }}>{meta.assignee || "Nick"} · {minutesLabel(task.minutes)}</small></button><button type="button" onClick={() => updateTaskDetails(task.id, { dueDate: today, status: "Open", completedAt: undefined })} style={compactUtilityButtonStyle}>Move to Today</button></div>; })}{!dashboardTomorrowTasks.length ? <div style={noticeStyle}>Nothing is scheduled for tomorrow yet.</div> : null}</div>
-      </section>
-      {activeDashboardLists.map((list) => <section key={`dashboard-list-${list.id}`} style={{ ...cardStyle, padding: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 9, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Active List</div><h2 style={{ margin: "2px 0", color: colors.navy }}>{list.name}</h2><small style={mutedSmallStyle}>{list.completed} of {list.items.length} complete</small></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" onClick={() => { setSelectedListId(list.id); setTasksView("lists"); setScreen("planner"); }} style={secondaryButtonStyle}>Open List</button><button type="button" onClick={() => removeListFromDashboard(list.id)} style={compactUtilityButtonStyle}>Remove</button></div></div>
-        <div style={{ display: "grid", gap: 5, maxHeight: 330, overflowY: "auto", marginTop: 9, paddingRight: 3 }}>{list.items.map((task) => { const meta = taskDetails(task.id); const done = meta.status === "Completed"; return <label key={`dashboard-list-item-${task.id}`} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center", padding: "7px 8px", border: `1px solid ${done ? "#B8E0CD" : colors.line}`, borderRadius: 9, background: done ? "#EFFAF4" : "#FFFFFF", cursor: "pointer" }}><input type="checkbox" checked={done} onChange={(event) => event.currentTarget.checked ? completeAtlasTask(task) : updateTaskDetails(task.id, { status: "Open", completedAt: undefined })}/><span style={{ color: colors.navy, fontSize: 12, fontWeight: 800, textDecoration: done ? "line-through" : "none", opacity: done ? .68 : 1 }}>{task.title}</span><small style={{ ...mutedSmallStyle, whiteSpace: "nowrap" }}>{meta.assignee}</small></label>; })}{!list.items.length ? <div style={noticeStyle}>No checklist items yet. Open the list to add the first item.</div> : null}</div>
-      </section>)}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 }}>
-        <section style={cardStyle}><div style={eyebrowStyle}>Needs Attention</div><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{foremanProblems.map((item) => <button key={item.id} type="button" onClick={item.action} style={{ border: `1px solid #F4C7C7`, borderRadius: 10, background: "#FFF8F8", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block" }}>{item.title}</strong><small style={mutedSmallStyle}>{item.detail}</small></button>)}{!foremanProblems.length ? <div style={noticeStyle}>Nothing is blocked or overdue.</div> : null}</div></section>
-        <section style={cardStyle}><div style={eyebrowStyle}>If Time Allows</div><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{ifTimeTasks.slice(0, 5).map((task) => <button key={task.id} type="button" onClick={() => { openTaskById(task.id); }} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#F8FAFC", padding: 9, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block" }}>{task.title}</strong><small style={mutedSmallStyle}>{minutesLabel(task.minutes)} · {taskDetails(task.id).assignee}</small></button>)}{!ifTimeTasks.length ? <div style={noticeStyle}>No optional work is suggested right now.</div> : null}</div></section>
-      </div>
-      <details style={{ ...cardStyle, padding: 0, overflow: "hidden" }}><summary style={{ cursor: "pointer", padding: 12, fontWeight: 950, color: colors.navy }}>Planning Tools · suggestions and essential checks</summary><div style={{ borderTop: `1px solid ${colors.line}`, padding: 12, display: "grid", gap: 8 }}>{smartDaySuggestions.slice(0, 5).map((suggestion) => <div key={suggestion.title} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}><span><strong style={{ display: "block" }}>{suggestion.title}</strong><small style={mutedSmallStyle}>{suggestion.detail}</small></span><button type="button" onClick={suggestion.action} style={secondaryButtonStyle}>{suggestion.label}</button></div>)}<button type="button" onClick={() => { setTasksView("build"); setScreen("planner"); }} style={secondaryButtonStyle}>Open Build My Day</button>{canUseAdminTools ? <details style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 8 }}><summary style={{ cursor: "pointer", fontWeight: 900, color: colors.navy }}>Recent Change History · {atlasAuditLog.length}</summary><div style={{ display: "grid", gap: 6, marginTop: 8, maxHeight: 240, overflowY: "auto" }}>{atlasAuditLog.slice(0, 30).map((entry) => <div key={entry.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF" }}><strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>{entry.action}</strong><small style={mutedSmallStyle}>{entry.detail} · {entry.user} · {new Date(entry.at).toLocaleString()}</small></div>)}{!atlasAuditLog.length ? <div style={noticeStyle}>No tracked changes yet.</div> : null}</div></details> : null}</div></details>
       {morningBriefOpen ? <div role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setMorningBriefOpen(false); }} style={{ position: "fixed", inset: 0, zIndex: 10050, background: "rgba(4,18,31,.68)", display: "grid", placeItems: "center", padding: 16 }}><section role="dialog" aria-modal="true" aria-label="Morning Brief" style={{ ...cardStyle, width: "min(620px,100%)", maxHeight: "86vh", overflowY: "auto", padding: isMobile ? 16 : 20 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}><div><div style={eyebrowStyle}>Atlas Morning Brief</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{dayName} at {activeProperty.name}</h2></div><button type="button" onClick={() => setMorningBriefOpen(false)} style={mapIconButtonStyle}>×</button></div><p style={{ lineHeight: 1.65, color: colors.text }}>{morningBriefText}</p><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={readMorningBrief} style={goldButtonStyle}>Read Aloud</button><button type="button" onClick={() => setMorningBriefOpen(false)} style={secondaryButtonStyle}>Start Checklist</button></div></section></div> : null}
     </div>
   );
@@ -2617,8 +2610,10 @@ export default function AtlasDashboardWorkspace(props: any) {
     // Live Operating Areas removed from the primary dashboard. Department access remains in the sidebar.
     if (id === "property-status") return null;
     if (id === "routine") return null;
-    if (id === "atlas-brief") return <section className="atlas-brief-strip" style={{ ...cardStyle, padding: isMobile ? "10px 12px" : "10px 16px", background: "#F8FAFC" }}><div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 4 : 12, minWidth: 0 }}><strong style={{ color: colors.navy, whiteSpace: "nowrap" }}>Atlas Brief</strong><div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? "3px 12px" : "3px 18px", minWidth: 0, fontSize: 13, lineHeight: 1.35, color: colors.text }}>{(briefLines.length ? briefLines : ["All clear"]).slice(0, isMobile ? 3 : 5).map((line, index) => <span key={index} style={{ whiteSpace: "normal" }}><span style={{ color: String(line).includes("overdue") ? colors.red : colors.gold, fontWeight: 950 }}>•</span> {line}</span>)}</div></div></section>;
-    if (id === "recent-activity") return <details style={{ ...cardStyle, overflow: "hidden" }}>
+    if (id === "atlas-brief") return null;
+    if (false) return <section className="atlas-brief-strip" style={{ ...cardStyle, padding: isMobile ? "10px 12px" : "10px 16px", background: "#F8FAFC" }}><div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 4 : 12, minWidth: 0 }}><strong style={{ color: colors.navy, whiteSpace: "nowrap" }}>Atlas Brief</strong><div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? "3px 12px" : "3px 18px", minWidth: 0, fontSize: 13, lineHeight: 1.35, color: colors.text }}>{(briefLines.length ? briefLines : ["All clear"]).slice(0, isMobile ? 3 : 5).map((line, index) => <span key={index} style={{ whiteSpace: "normal" }}><span style={{ color: String(line).includes("overdue") ? colors.red : colors.gold, fontWeight: 950 }}>•</span> {line}</span>)}</div></div></section>;
+    if (id === "recent-activity") return null;
+    if (false) return <details style={{ ...cardStyle, overflow: "hidden" }}>
       <summary style={{ cursor: "pointer", listStyle: "none", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <div><div style={eyebrowStyle}>Recent Activity</div><h3 style={{ margin: 0, color: colors.navy }}>Updates from the last 7 days</h3></div>
         <span style={{ ...badgeStyle("Monitor"), flex: "0 0 auto" }}>{dashboardFeedCounts.All}</span>
