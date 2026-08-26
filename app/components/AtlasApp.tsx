@@ -2708,7 +2708,7 @@ export default function AtlasApp() {
       applianceAnnualServiceSetupRunningRef.current
     ) return;
 
-    const setupKey = "atlas-user-approved-annual-appliance-service-v1-2000";
+    const setupKey = "atlas-user-approved-annual-appliance-service-v2-2000";
     if (window.localStorage.getItem(setupKey) === "done") return;
 
     const appliances = byName(
@@ -2716,7 +2716,55 @@ export default function AtlasApp() {
         String(asset.category || "").trim().toLowerCase() === "appliance",
       ),
     );
-    if (!appliances.length) return;
+    if (appliances.length !== 25) return;
+
+    const applianceIds = new Set(appliances.map((asset) => String(asset.id || "")));
+    const applianceNames = new Set(
+      appliances.map((asset) => normalizedWorkOrderText(asset.name || "")),
+    );
+
+    const isPriorApplianceServiceRecord = (record: AtlasServiceRecord) => {
+      const id = String(record.id || "");
+      const title = normalizedWorkOrderText(record.title || "");
+      const notes = normalizedWorkOrderText(record.notes || "");
+      const assetId = String(record.assetId || "");
+      const linkedAppliance = Boolean(assetId && applianceIds.has(assetId));
+      const titleMatchesApprovedFormat = Array.from(applianceNames).some(
+        (name) => title === `annual service ${name}`,
+      );
+
+      return (
+        id.startsWith("annual-appliance-") ||
+        id.startsWith("wo-approved-appliance-service-") ||
+        id.startsWith("wo-appliance-annual-service-") ||
+        notes.includes("cold season appliance maintenance") ||
+        notes.includes("cold season appliance work scheduled") ||
+        notes.includes("annual appliance preventive service") ||
+        titleMatchesApprovedFormat ||
+        (linkedAppliance &&
+          Boolean(record.recurring) &&
+          record.recurrenceUnit === "Years" &&
+          /annual service|appliance service/.test(
+            normalizedWorkOrderText(`${record.title || ""} ${record.notes || ""}`),
+          ))
+      );
+    };
+
+    const staleWorkOrders = serviceRecords.filter(isPriorApplianceServiceRecord);
+    const staleWorkOrderIds = new Set(
+      staleWorkOrders.map((record) => String(record.id || "")).filter(Boolean),
+    );
+    const staleCalendar = calendarItems.filter((item) => {
+      const id = String(item.id || "");
+      const linkedId = String(item.linkedId || "");
+      const notes = normalizedWorkOrderText(item.notes || "");
+      return (
+        id.startsWith("calendar-annual-appliance-") ||
+        staleWorkOrderIds.has(linkedId) ||
+        notes.includes("cold season appliance maintenance") ||
+        notes.includes("cold season appliance work scheduled")
+      );
+    });
 
     const locationDate = (asset: AtlasAssetRecord, index: number) => {
       const location = normalizeLocationName(locationName(asset.locationId));
@@ -2745,134 +2793,110 @@ export default function AtlasApp() {
       return fallbackDates[index % fallbackDates.length];
     };
 
-    const checklistFor = (asset: AtlasAssetRecord) => {
-      const text = `${asset.name} ${asset.manufacturer || ""} ${asset.model || ""}`.toLowerCase();
-      const items = /freezer|refrigerator|fridge|frige|wine|cooler|chiller/.test(text)
-        ? [
-            "Verify and record operating temperature",
-            "Inspect door seals, hinges and interior condition",
-            "Clean accessible condenser area and ventilation",
-            "Check for unusual noise, frost, moisture or alarms",
-          ]
-        : /dryer/.test(text)
-          ? [
-              "Clean lint screen and accessible lint areas",
-              "Inspect exhaust connection and verify airflow",
-              "Check drum, door seal and controls",
-              "Record unusual heat, noise or drying time",
-            ]
-          : /washer/.test(text)
-            ? [
-                "Inspect supply hoses, valves and drain",
-                "Check for leaks, vibration and unusual noise",
-                "Clean dispenser, seal and accessible filter",
-                "Run and verify a test cycle",
-              ]
-            : /dishwasher/.test(text)
-              ? [
-                  "Clean filter and spray-arm openings",
-                  "Inspect racks, seals, supply and drain connections",
-                  "Check for leaks, odor and drainage problems",
-                  "Run and verify a test cycle",
-                ]
-              : /range|oven|stove/.test(text)
-                ? [
-                    "Test burners, elements, ignition and controls",
-                    "Inspect seals, knobs and ventilation",
-                    "Clean accessible service areas",
-                    "Record uneven heat, ignition delay or error codes",
-                  ]
-                : [
-                    "Inspect and clean the appliance",
-                    "Test normal operation and controls",
-                    "Check connections, ventilation, leaks and unusual noise",
-                    "Record any repair or vendor follow-up needed",
-                  ];
-      return items.map((textValue, itemIndex) => ({
-        id: `annual-service-${asset.id}-${itemIndex + 1}`,
-        text: textValue,
-        completed: false,
-      }));
-    };
-
-    const existingIds = new Set(serviceRecords.map((record) => String(record.id || "")));
-    const tombstones = readWorkOrderTombstones(activePropertyId);
-    const recordsToCreate = appliances
-      .map((asset, index) => {
-        const stableAssetKey = String(asset.id || asset.name || index)
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "");
-        const id = `wo-approved-appliance-service-${stableAssetKey}`;
-        if (existingIds.has(id) || tombstones.has(id)) return null;
-        return normalizeService({
-          id,
-          propertyId: activePropertyId,
-          title: `Annual service - ${asset.name}`,
-          date: locationDate(asset, index),
-          status: "Open",
-          priority: "Medium",
-          notes: "Annual appliance preventive service. Scheduled for December. This work order can be edited, rescheduled, completed, skipped or deleted individually.",
-          assetId: asset.id,
-          vendorId: (asset.vendorIds || [])[0] || "",
-          procedureId: "",
-          followUpDate: "",
-          recurring: true,
-          recurrenceInterval: 1,
-          recurrenceUnit: "Years",
-          recurrenceEndDate: "",
-          season: "Winter",
-          lastCompletedDate: "",
-          completionHistory: [],
-          workType: "Preventive Maintenance",
-          workCategory: "🔧 Maintenance",
-          effort: "30 minutes",
-          responsibilityArea: "House & Maintenance",
-          photos: [],
-          documents: [],
-          checklist: checklistFor(asset),
-          notesHistory: [],
-          serviceHistory: [],
-        });
-      })
-      .filter((record): record is AtlasServiceRecord => Boolean(record));
-
-    if (!recordsToCreate.length) {
-      window.localStorage.setItem(setupKey, "done");
-      return;
-    }
+    const targetRecords = appliances.map((asset, index) => {
+      const stableAssetKey = String(asset.id || asset.name || index)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      return normalizeService({
+        id: `wo-appliance-annual-service-${stableAssetKey}`,
+        propertyId: activePropertyId,
+        title: `Annual Service - ${asset.name}`,
+        date: locationDate(asset, index),
+        status: "Open",
+        priority: "Medium",
+        notes: "",
+        assetId: asset.id,
+        locationId: asset.locationId || "",
+        vendorId: (asset.vendorIds || [])[0] || "",
+        procedureId: "",
+        followUpDate: "",
+        recurring: true,
+        recurrenceInterval: 1,
+        recurrenceUnit: "Years",
+        recurrenceEndDate: "",
+        season: "Winter",
+        lastCompletedDate: "",
+        completionHistory: [],
+        workType: "Preventive Maintenance",
+        workCategory: "Maintenance",
+        effort: "",
+        responsibilityArea: "House & Maintenance",
+        photos: [],
+        documents: [],
+        checklist: [],
+        notesHistory: [],
+        serviceHistory: [],
+      });
+    });
 
     applianceAnnualServiceSetupRunningRef.current = true;
-    setServiceRecords((current) => byTitle([...recordsToCreate, ...current]));
 
     void (async () => {
       try {
-        const results = await Promise.all(
-          recordsToCreate.map((record) =>
+        const deleteWorkResults = await Promise.all(
+          staleWorkOrders.map((record) =>
+            deleteAtlasRecord("work_orders", record.id, {
+              suppressFailureToast: true,
+            }),
+          ),
+        );
+        const deleteCalendarResults = await Promise.all(
+          staleCalendar.map((item) =>
+            deleteAtlasRecord("calendar", item.id, {
+              suppressFailureToast: true,
+            }),
+          ),
+        );
+
+        if (
+          deleteWorkResults.some((result) => !result) ||
+          deleteCalendarResults.some((result) => !result)
+        ) {
+          showSaveToast(
+            "Appliance service cleanup did not finish. No replacement set was created.",
+            "warning",
+          );
+          return;
+        }
+
+        const saveResults = await Promise.all(
+          targetRecords.map((record) =>
             postAtlasRecord("work_orders", {
               ...record,
               propertyId: activePropertyId,
             }),
           ),
         );
-        if (results.every(Boolean)) {
-          window.localStorage.setItem(setupKey, "done");
+
+        if (saveResults.some((result) => !result)) {
           showSaveToast(
-            `${recordsToCreate.length} annual appliance service work orders scheduled for December.`,
-          );
-        } else {
-          setServiceRecords((current) =>
-            current.filter(
-              (record) =>
-                !recordsToCreate.some((created) => created.id === record.id) ||
-                results[recordsToCreate.findIndex((created) => created.id === record.id)],
-            ),
-          );
-          showSaveToast(
-            "Some annual appliance services did not save. Atlas will retry the missing records.",
+            "Some annual appliance services did not save. Atlas will retry the correction.",
             "warning",
           );
+          return;
         }
+
+        const targetIds = new Set(targetRecords.map((record) => record.id));
+        setServiceRecords((current) =>
+          byTitle([
+            ...targetRecords,
+            ...current.filter(
+              (record) =>
+                !staleWorkOrderIds.has(String(record.id || "")) &&
+                !targetIds.has(String(record.id || "")),
+            ),
+          ]),
+        );
+        if (staleCalendar.length) {
+          const staleCalendarIds = new Set(staleCalendar.map((item) => item.id));
+          setCalendarItems((current) =>
+            current.filter((item) => !staleCalendarIds.has(item.id)),
+          );
+        }
+
+        window.localStorage.setItem(setupKey, "done");
+        showSaveToast("25 annual appliance services scheduled for December.");
       } finally {
         applianceAnnualServiceSetupRunningRef.current = false;
       }
@@ -2884,6 +2908,7 @@ export default function AtlasApp() {
     activePropertyId,
     assetRecords,
     serviceRecords,
+    calendarItems,
   ]);
 
   useEffect(() => { saveStoredArray("atlas-backlog-v1", backlogItems); }, [backlogItems]);
