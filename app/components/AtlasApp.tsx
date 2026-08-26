@@ -3365,7 +3365,7 @@ export default function AtlasApp() {
 
   useEffect(() => {
     if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000" || typeof window === "undefined") return;
-    const purgeKey = "atlas-ai-generated-record-purge-v3-2000";
+    const purgeKey = "atlas-ai-generated-record-purge-v4-2000";
     if (window.localStorage.getItem(purgeKey) === "done" || aiGeneratedPurgeRunningRef.current) return;
 
     const generatedTaskTitles = new Set([
@@ -3405,48 +3405,22 @@ export default function AtlasApp() {
 
     const generatedTasks = workPlanTasks.filter((task) => {
       const id = String(task.id || "");
-      const title = normalizedWorkOrderText(task.title);
-      const notes = String(task.notes || taskDetails(task.id).notes || "");
-      return id.startsWith("fleet-task-") || id.startsWith("routine-task-") || id.startsWith("care-task-") ||
-        notes.startsWith("Created from ") || generatedTaskTitles.has(title);
+      // Cleanup now keys only from legacy generator provenance. Do not match by
+      // title: a user may intentionally create new recurring work with the same
+      // wording as an old generated item.
+      return id.startsWith("fleet-task-") || id.startsWith("routine-task-") || id.startsWith("care-task-");
     });
     const generatedTaskIds = new Set(generatedTasks.map((task) => String(task.id)));
 
-    const generatedWorkOrderTitles = new Set([
-      "replace all 14 house hvac filters",
-      "replace both sundance 880 spa filters",
-      "clean both sundance 880 spa filters",
-      "test pool chlorine and refill chlorine tabs",
-      "check tire pressure and fluids on all onsite cars",
-      "aqua quip pool and spa water testing",
-      "monthly pest control service",
-      "clean skylights above the ipe deck",
-      "clean addition exterior windows",
-      "clean original home accessible exterior windows",
-      "post pollen pressure washing",
-      "post leaf fall pressure washing",
-      "clean courtyard gutters and flat roof",
-      "add winter traction sandbags ford truck",
-      "replace annual registration tabs cobalt",
-      "replace annual registration tabs 2024 sea doo",
-      "weekly landscaping crew waterside beds first",
-      "boiler 2 recalled heat exchanger igniter issue"
-    ]);
-    const generatedFleetCleaningTitle = (title: string) =>
-      /^(?:clean|wash|rinse) (?:vehicle )?(?:ford|f 150|raptor|rivian|subaru|porsche|lucid|mercedes(?: gl)?|kia|honda|cobalt|sea doo|seadoo|boat)$/.test(title);
     const generatedWorkOrders = serviceRecords.filter((record) => {
       const id = String(record.id || "");
-      const title = normalizedWorkOrderText(record.title);
       const notes = normalizedWorkOrderText(record.notes);
-      const responsibility = normalizedWorkOrderText(record.responsibilityArea);
+      // Only records carrying legacy generator IDs or legacy generator-authored
+      // notes are cleanup candidates. Never delete a future manual work order
+      // because its title happens to be "Clean Rivian", "recurring service", etc.
       return generatedWorkOrderIds(id) ||
-        / recurring service$/.test(title) ||
-        title.startsWith("annual service ") ||
-        generatedWorkOrderTitles.has(title) ||
-        generatedFleetCleaningTitle(title) ||
         notes.startsWith("weekly garage cleaning for ") ||
-        notes.startsWith("recurring garage service for ") ||
-        responsibility.startsWith("garage ") && /^(?:clean|service|maintenance)/.test(title);
+        notes.startsWith("recurring garage service for ");
     });
     const generatedWorkOrderIdSet = new Set(generatedWorkOrders.map((record) => String(record.id)));
 
@@ -11953,10 +11927,31 @@ export default function AtlasApp() {
       ...initial,
       id: initial.id || uid("wo"),
     });
+    // A newly-created work order must exist in the shared database before the
+    // editor starts changing recurrence, notes, dates, or linked calendar data.
+    // Otherwise a fast follow-up edit can race the initial insert and surface a
+    // misleading 404. Explicit creation also clears only this new ID from any
+    // stale local tombstone; deleted historical IDs remain protected.
+    clearWorkOrderTombstone(record.id);
     setServiceRecords((current) => byTitle([record, ...current]));
     setSelectedServiceId(record.id);
     markRecordDirty("work_order", record.id);
     setScreen("history");
+    void (async () => {
+      const saved = await postAtlasRecord("work_orders", {
+        ...record,
+        propertyId: activePropertyId,
+      });
+      if (saved) {
+        clearRecordDirty("work_order", record.id);
+        setDatabaseStatus(`Saved ${record.title || "work order"}.`);
+      } else {
+        markRecordDirty("work_order", record.id);
+        setDatabaseStatus(
+          `${record.title || "Work order"} was created locally, but shared saving did not finish.`,
+        );
+      }
+    })();
   }
 
   function updateWorkOrder(patch: Partial<AtlasServiceRecord>) {
