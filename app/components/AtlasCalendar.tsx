@@ -228,38 +228,56 @@ function hoverText(event: any): string {
 }
 
 
-const calendarEventTypes = [
-  { value: "Calendar Event", icon: "📅", description: "Standard scheduled event" },
-  { value: "Work Order", icon: "🔧", description: "Work that can be converted into a work order" },
-  { value: "Reminder", icon: "⏰", description: "A simple follow-up reminder" },
-  { value: "Vendor Visit", icon: "🚚", description: "Vendor appointment or site visit" },
-  { value: "Personal", icon: "👤", description: "Private personal calendar item" },
-  { value: "Property Milestone", icon: "📌", description: "Important property-history milestone" },
-] as const;
-
 function eventTypeDefaults(value: string) {
-  if (value === "Work Order") {
-    return { source: "manual", categoryLabel: "Work Order", area: "Work Order" };
+  const base: Record<string, any> = {
+    source: "manual",
+    eventType: value,
+    categoryLabel: value,
+    area: value,
+  };
+
+  if (value === "Vendor Visit") return { ...base, linkedType: "Vendor" };
+  if (value === "Deadline / Reminder") return { ...base, reminder: "1 day before" };
+  if (value === "PTO / Off") return { ...base, allDay: true, time: "" };
+  return base;
+}
+
+function calendarTimeParts(value: unknown) {
+  const text = String(value || "").trim();
+  const match24 = text.match(/^(\d{1,2}):(\d{2})/);
+  if (match24) {
+    const hour24 = Math.min(23, Math.max(0, Number(match24[1])));
+    const minute = String(Math.min(59, Math.max(0, Number(match24[2])))).padStart(2, "0");
+    return {
+      hour: String(hour24 % 12 || 12),
+      minute,
+      period: hour24 >= 12 ? "PM" : "AM",
+    };
   }
-  if (value === "Reminder") {
-    return { source: "manual", categoryLabel: "Reminder", area: "Reminder", reminder: "1 day before" };
+
+  const match12 = text.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (match12) {
+    return {
+      hour: String(Math.min(12, Math.max(1, Number(match12[1])))),
+      minute: String(Math.min(59, Math.max(0, Number(match12[2] || 0)))).padStart(2, "0"),
+      period: String(match12[3]).toUpperCase(),
+    };
   }
-  if (value === "Vendor Visit") {
-    return { source: "manual", categoryLabel: "Vendor Visit", area: "Vendor Visit", linkedType: "Vendor" };
-  }
-  if (value === "Personal") {
-    return { source: "manual", categoryLabel: "Personal", area: "Personal" };
-  }
-  if (value === "Property Milestone") {
-    return { source: "manual", categoryLabel: "Property Milestone", area: "Property Milestone", allDay: true };
-  }
-  return { source: "manual", categoryLabel: "Calendar Event", area: "Calendar Event" };
+
+  return { hour: "9", minute: "00", period: "AM" };
+}
+
+function calendarTimeValue(hour: string, minute: string, period: string) {
+  const hour12 = Math.min(12, Math.max(1, Number(hour) || 9));
+  const minuteValue = String(Math.min(59, Math.max(0, Number(minute) || 0))).padStart(2, "0");
+  const hour24 = period === "PM" ? (hour12 % 12) + 12 : hour12 % 12;
+  return `${String(hour24).padStart(2, "0")}:${minuteValue}`;
 }
 
 function sortAgenda(events: any[]): any[] {
   return [...events].sort((a, b) => {
     if (Boolean(a.allDay) !== Boolean(b.allDay)) {
-      return a.allDay ? -1 : 1;
+      return a.allDay ? 1 : -1;
     }
 
     const timeCompare = String(a.time || "").localeCompare(
@@ -617,25 +635,32 @@ export default function AtlasCalendar(
   }
 
   function openEvent(event: any) {
-    const eventId = String(event?.instanceId || event?.id || "");
+    const eventId = String(event?.id || "");
     if (eventId) {
       const nextRecent = [eventId, ...recentEventIds.filter((id) => id !== eventId)].slice(0, 8);
       setRecentEventIds(nextRecent);
       safeWriteStringList(CALENDAR_RECENT_STORAGE_KEY, nextRecent);
     }
+    const linkedType = String(event?.linkedType || "");
+    const linkedId = String(event?.linkedId || "");
 
-    const source = String(event?.source || "").toLowerCase();
-    const sourceBacked =
-      source === "work-order" ||
-      source === "task" ||
-      event?.linkedType === "Work Order" ||
-      event?.linkedType === "Task";
+    if (
+      linkedId &&
+      linkedType &&
+      linkedType !== "None" &&
+      onOpenLinkedRecord
+    ) {
+      const handled = onOpenLinkedRecord(event);
 
-    if (sourceBacked) {
-      openCalendarItem(event);
-      setEditorOpen(false);
-      setDetailOpen(true);
-      return;
+      if (handled !== false) {
+        setDetailOpen(false);
+        setEditorOpen(false);
+        setSelectedCalendarId("");
+        setCalendarDraft(
+          blankCalendarItem(selectedCalendarDate),
+        );
+        return;
+      }
     }
 
     editEvent(event);
@@ -1062,14 +1087,7 @@ export default function AtlasCalendar(
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                           <button
                             type="button"
-                            onClick={() => {
-                              const source = String(event.source || "").toLowerCase();
-                              if ((source === "work-order" || source === "task" || event.linkedType === "Work Order" || event.linkedType === "Task") && onOpenLinkedRecord) {
-                                onOpenLinkedRecord(event);
-                                return;
-                              }
-                              editEvent(event);
-                            }}
+                            onClick={() => editEvent(event)}
                             style={secondaryButtonStyle}
                           >
                             Edit
@@ -1080,7 +1098,7 @@ export default function AtlasCalendar(
                               {event.repeat && event.repeat !== "None" ? <span style={mutedSmallStyle}>Repeats {event.repeat}</span> : null}
                               {event.linkedType && event.linkedType !== "None" && event.linkedName ? <span style={mutedSmallStyle}>{event.linkedType}: {event.linkedName}</span> : null}
                               <button type="button" onClick={() => togglePinnedEvent(event)} style={secondaryButtonStyle}>{pinnedEventIds.includes(String(event.id || "")) ? "Unpin" : "Pin"}</button>
-                              {event.linkedId && event.linkedType && event.linkedType !== "None" ? <button type="button" onClick={() => { if (onOpenLinkedRecord) onOpenLinkedRecord(event); }} style={secondaryButtonStyle}>Open {event.linkedType}</button> : null}
+                              {event.linkedId && event.linkedType && event.linkedType !== "None" ? <button type="button" onClick={() => openEvent(event)} style={secondaryButtonStyle}>Open {event.linkedType}</button> : null}
                               {canConvertEvent(event) ? <button type="button" onClick={() => { void convertToWorkOrder(event); }} style={secondaryButtonStyle}>Convert to Work Order</button> : null}
                             </div>
                           </details>
@@ -1176,26 +1194,38 @@ export default function AtlasCalendar(
                 >
                   <span style={fieldLabelStyle}>Event Type</span>
                   <select
-                    value={selectedCalendar.eventType || "Calendar Event"}
+                    value={
+                      selectedCalendar.categoryLabel ||
+                      selectedCalendar.area ||
+                      selectedCalendar.eventType ||
+                      "Other"
+                    }
                     onChange={(event) => {
                       const value = event.currentTarget.value;
+                      const matchingColor = calendarColors.find((color: any) => color.label === value);
                       updateCalendarItem({
-                        eventType: value,
                         ...eventTypeDefaults(value),
-                        linkedId: value === "Vendor Visit" ? selectedCalendar.linkedId || "" : selectedCalendar.linkedId || "",
-                        linkedName: value === "Vendor Visit" ? selectedCalendar.linkedName || "" : selectedCalendar.linkedName || "",
+                        colorId: matchingColor?.id || categoryToColorId(value),
+                        colorName: matchingColor?.colorName,
+                        linkedId: value === "Vendor Visit" ? selectedCalendar.linkedId || "" : "",
+                        linkedName: value === "Vendor Visit" ? selectedCalendar.linkedName || "" : "",
+                        linkedType: value === "Vendor Visit" ? "Vendor" : "None",
                       });
                     }}
-                    style={{
-                      ...inputStyle,
-                      fontWeight: 800,
-                    }}
+                    style={{ ...inputStyle, fontWeight: 800 }}
                   >
-                    {calendarEventTypes.map((type) => (
-                      <option key={type.value} value={type.value}>
-                        {type.icon} {type.value} — {type.description}
-                      </option>
-                    ))}
+                    {Array.from(
+                      new Set<string>([
+                        ...standardCalendarCategoryLabels,
+                        ...calendarColors.map((color: any) => color.label),
+                      ]),
+                    )
+                      .filter(Boolean)
+                      .filter((label) => !["Work Order", "Vendor", "Personal / Owner", "Reminder"].includes(label))
+                      .sort((a, b) => a.localeCompare(b))
+                      .map((label) => (
+                        <option key={label} value={label}>{label}</option>
+                      ))}
                   </select>
                 </label>
 
@@ -1209,51 +1239,65 @@ export default function AtlasCalendar(
                   }
                 />
 
-                <Field
-                  label="Date"
-                  value={
-                    selectedCalendar.date ||
-                    selectedCalendarDate
-                  }
-                  onChange={(value: string) => {
-                    updateCalendarItem({
-                      date: value,
-                    });
-
-                    setSelectedCalendarDate(value);
-                  }}
-                />
-
-                <label
-                  style={{
-                    display: "grid",
-                    gap: 6,
-                    minWidth: 0,
-                  }}
-                >
-                  <span style={fieldLabelStyle}>
-                    Time
-                  </span>
-
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span style={fieldLabelStyle}>Date</span>
                   <input
-                    type="time"
-                    value={selectedCalendar.time || ""}
-                    disabled={
-                      Boolean(selectedCalendar.allDay)
-                    }
-                    onChange={(event) =>
-                      updateCalendarItem({
-                        time: event.currentTarget.value,
-                      })
-                    }
-                    style={{
-                      ...inputStyle,
-                      background:
-                        selectedCalendar.allDay
-                          ? "#EEF2F6"
-                          : "#FFFFFF",
+                    type="date"
+                    value={selectedCalendar.date || selectedCalendarDate}
+                    onClick={(event) => event.currentTarget.showPicker?.()}
+                    onFocus={(event) => event.currentTarget.showPicker?.()}
+                    onKeyDown={(event) => event.preventDefault()}
+                    onPaste={(event) => event.preventDefault()}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value;
+                      updateCalendarItem({ date: value });
+                      setSelectedCalendarDate(value);
                     }}
+                    style={inputStyle}
                   />
+                </label>
+
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span style={fieldLabelStyle}>Time</span>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                    <select
+                      value={calendarTimeParts(selectedCalendar.time).hour}
+                      disabled={Boolean(selectedCalendar.allDay)}
+                      onChange={(event) => {
+                        const parts = calendarTimeParts(selectedCalendar.time);
+                        updateCalendarItem({ time: calendarTimeValue(event.currentTarget.value, parts.minute, parts.period) });
+                      }}
+                      style={{ ...inputStyle, background: selectedCalendar.allDay ? "#EEF2F6" : "#FFFFFF" }}
+                      aria-label="Hour"
+                    >
+                      {Array.from({ length: 12 }, (_, index) => String(index + 1)).map((hour) => <option key={hour} value={hour}>{hour}</option>)}
+                    </select>
+                    <select
+                      value={calendarTimeParts(selectedCalendar.time).minute}
+                      disabled={Boolean(selectedCalendar.allDay)}
+                      onChange={(event) => {
+                        const parts = calendarTimeParts(selectedCalendar.time);
+                        updateCalendarItem({ time: calendarTimeValue(parts.hour, event.currentTarget.value, parts.period) });
+                      }}
+                      style={{ ...inputStyle, background: selectedCalendar.allDay ? "#EEF2F6" : "#FFFFFF" }}
+                      aria-label="Minute"
+                    >
+                      {Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0")).map((minute) => <option key={minute} value={minute}>{minute}</option>)}
+                    </select>
+                    <select
+                      value={calendarTimeParts(selectedCalendar.time).period}
+                      disabled={Boolean(selectedCalendar.allDay)}
+                      onChange={(event) => {
+                        const parts = calendarTimeParts(selectedCalendar.time);
+                        updateCalendarItem({ time: calendarTimeValue(parts.hour, parts.minute, event.currentTarget.value) });
+                      }}
+                      style={{ ...inputStyle, background: selectedCalendar.allDay ? "#EEF2F6" : "#FFFFFF" }}
+                      aria-label="AM or PM"
+                    >
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  </div>
                 </label>
 
                 <label style={checkboxLineStyle}>
@@ -1270,71 +1314,6 @@ export default function AtlasCalendar(
                     }
                   />
                   All-day event
-                </label>
-
-                <label
-                  style={{
-                    display: "grid",
-                    gap: 6,
-                    minWidth: 0,
-                  }}
-                >
-                  <span style={fieldLabelStyle}>
-                    Category
-                  </span>
-
-                  <select
-                    value={
-                      selectedCalendar.categoryLabel ||
-                      selectedCalendar.area ||
-                      ""
-                    }
-                    onChange={(event) => {
-                      const label =
-                        event.currentTarget.value;
-
-                      const matchingColor =
-                        calendarColors.find(
-                          (color: any) =>
-                            color.label === label,
-                        );
-
-                      updateCalendarItem({
-                        categoryLabel: label,
-                        area: label,
-                        colorId:
-                          matchingColor?.id ||
-                          categoryToColorId(label),
-                        colorName:
-                          matchingColor?.colorName,
-                      });
-                    }}
-                    style={inputStyle}
-                  >
-                    <option value=""></option>
-
-                    {Array.from(
-                      new Set<string>([
-                        ...standardCalendarCategoryLabels,
-                        ...calendarColors.map(
-                          (color: any) =>
-                            color.label,
-                        ),
-                      ]),
-                    )
-                      .filter(Boolean)
-                      .sort((a, b) =>
-                        a.localeCompare(b),
-                      )
-                      .map((label) => (
-                        <option
-                          key={label}
-                          value={label}
-                        >
-                          {label}
-                        </option>
-                      ))}
-                  </select>
                 </label>
 
                 <label
