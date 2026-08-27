@@ -275,6 +275,21 @@ function calendarTimeValue(hour: string, minute: string, period: string) {
   return `${String(hour24).padStart(2, "0")}:${minuteValue}`;
 }
 
+function calendarMinutes(value: unknown) {
+  const parts = calendarTimeParts(value);
+  const hour12 = Math.max(1, Math.min(12, Number(parts.hour) || 12));
+  const hour24 = parts.period === "PM" ? (hour12 % 12) + 12 : hour12 % 12;
+  return hour24 * 60 + (Number(parts.minute) || 0);
+}
+
+function calendarTimeRangeLabel(event: any) {
+  if (event?.allDay) return "All day";
+  const start = calendarTimeLabel(event?.time || "");
+  const end = calendarTimeLabel(event?.endTime || "");
+  return end && event?.endTime ? `${start}–${end}` : start;
+}
+
+
 function calendarTimeLabel(value: unknown) {
   const parts = calendarTimeParts(value);
   return `${parts.hour}:${parts.minute} ${parts.period}`;
@@ -299,6 +314,7 @@ function sortAgenda(events: any[]): any[] {
 }
 
 const CALENDAR_PIN_STORAGE_KEY = "atlas-calendar-pins-v1";
+const CALENDAR_VIEW_STATE_KEY = "atlas-calendar-view-state-v1";
 const CALENDAR_RECENT_STORAGE_KEY = "atlas-calendar-recent-v1";
 
 function safeReadStringList(key: string): string[] {
@@ -394,6 +410,9 @@ export default function AtlasCalendar(
     onOpenLinkedRecord,
     onConvertToWorkOrder,
     onCreateWorkOrder,
+    selectedCalendarOccurrenceDate = "",
+    onSaveOccurrence,
+    onDeleteOccurrence,
     reminderOptions,
     repeatOptions,
     saveCalendarItem,
@@ -434,6 +453,35 @@ export default function AtlasCalendar(
   const [recentEventIds, setRecentEventIds] = React.useState<string[]>([]);
   const [showUpcoming, setShowUpcoming] = React.useState(false);
   const [quickScope, setQuickScope] = React.useState<"All" | "Events" | "Work" | "Meetings" | "Vendors" | "Landscaping" | "PTO">("All");
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(CALENDAR_VIEW_STATE_KEY);
+      if (!raw) return;
+      const state = JSON.parse(raw) as { date?: string; cursor?: string; view?: "month" | "week"; scope?: typeof quickScope };
+      if (state.date) setSelectedCalendarDate(state.date);
+      if (state.cursor) {
+        const parsed = new Date(`${state.cursor}T12:00:00`);
+        if (!Number.isNaN(parsed.getTime())) setCalendarCursor(parsed);
+      }
+      if (state.view === "month" || state.view === "week") setCalendarView(state.view);
+      if (state.scope) setQuickScope(state.scope);
+    } catch {}
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(CALENDAR_VIEW_STATE_KEY, JSON.stringify({
+        date: selectedCalendarDate,
+        cursor: calendarDateKey(calendarCursor),
+        view: calendarView,
+        scope: quickScope,
+      }));
+    } catch {}
+  }, [selectedCalendarDate, calendarCursor, calendarView, quickScope]);
+
 
   React.useEffect(() => {
     setPinnedEventIds(safeReadStringList(CALENDAR_PIN_STORAGE_KEY));
@@ -553,12 +601,14 @@ export default function AtlasCalendar(
   const selectedConflicts = React.useMemo(() => {
     if (!selectedCalendar?.date || selectedCalendar?.allDay || !selectedCalendar?.time) return [];
     const selectedDateKey = calendarDateKey(selectedCalendar.date);
-    return expandedCalendarItems.filter((event: any) =>
-      event.id !== selectedCalendar.id &&
-      calendarDateKey(event.date) === selectedDateKey &&
-      !event.allDay &&
-      String(event.time || "") === String(selectedCalendar.time || ""),
-    );
+    const selectedStart = calendarMinutes(selectedCalendar.time);
+    const selectedEnd = selectedCalendar.endTime ? calendarMinutes(selectedCalendar.endTime) : selectedStart + 1;
+    return expandedCalendarItems.filter((event: any) => {
+      if (event.id === selectedCalendar.id || calendarDateKey(event.date) !== selectedDateKey || event.allDay || !event.time) return false;
+      const eventStart = calendarMinutes(event.time);
+      const eventEnd = event.endTime ? calendarMinutes(event.endTime) : eventStart + 1;
+      return selectedStart < eventEnd && eventStart < selectedEnd;
+    });
   }, [expandedCalendarItems, selectedCalendar]);
 
   const selectedWarnings = React.useMemo(() => {
@@ -1047,9 +1097,7 @@ export default function AtlasCalendar(
                                 </strong>
 
                                 <span style={{ display: "block", marginTop: 3 }}>
-                                  {event.allDay
-                                    ? "All day"
-                                    : event.time || "No time"}{" "}
+                                  {calendarTimeRangeLabel(event) || "No time"}{" "}
                                   · {type.label}
                                 </span>
 
@@ -1294,6 +1342,24 @@ export default function AtlasCalendar(
                   </div>
                 </label>
 
+                {!selectedCalendar.allDay ? (
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>End Time <span style={{ fontWeight: 500, color: colors.muted }}>(optional)</span></span>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                      <select value={calendarTimeParts(selectedCalendar.endTime || selectedCalendar.time).hour} onChange={(event) => { const parts = calendarTimeParts(selectedCalendar.endTime || selectedCalendar.time); updateCalendarItem({ endTime: calendarTimeValue(event.currentTarget.value, parts.minute, parts.period) }); }} style={inputStyle} aria-label="End hour">
+                        {Array.from({ length: 12 }, (_, index) => String(index + 1)).map((hour) => <option key={hour} value={hour}>{hour}</option>)}
+                      </select>
+                      <select value={calendarTimeParts(selectedCalendar.endTime || selectedCalendar.time).minute} onChange={(event) => { const parts = calendarTimeParts(selectedCalendar.endTime || selectedCalendar.time); updateCalendarItem({ endTime: calendarTimeValue(parts.hour, event.currentTarget.value, parts.period) }); }} style={inputStyle} aria-label="End minute">
+                        {Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0")).map((minute) => <option key={minute} value={minute}>{minute}</option>)}
+                      </select>
+                      <select value={calendarTimeParts(selectedCalendar.endTime || selectedCalendar.time).period} onChange={(event) => { const parts = calendarTimeParts(selectedCalendar.endTime || selectedCalendar.time); updateCalendarItem({ endTime: calendarTimeValue(parts.hour, parts.minute, event.currentTarget.value) }); }} style={inputStyle} aria-label="End AM or PM">
+                        <option value="AM">AM</option><option value="PM">PM</option>
+                      </select>
+                    </div>
+                    {selectedCalendar.endTime ? <button type="button" onClick={() => updateCalendarItem({ endTime: "" })} style={{ ...secondaryButtonStyle, justifySelf: "start", padding: "5px 8px", fontSize: 11 }}>Remove end time</button> : null}
+                  </label>
+                ) : null}
+
                 <label style={checkboxLineStyle}>
                   <input
                     type="checkbox"
@@ -1302,8 +1368,8 @@ export default function AtlasCalendar(
                     }
                     onChange={(event) =>
                       updateCalendarItem({
-                        allDay:
-                          event.currentTarget.checked,
+                        allDay: event.currentTarget.checked,
+                        ...(event.currentTarget.checked ? { time: "", endTime: "" } : {}),
                       })
                     }
                   />
@@ -1564,25 +1630,25 @@ export default function AtlasCalendar(
                 }}
               >
                 {showCalendarSave ? (
-                  <button
-                    type="button"
-                    onClick={saveCalendarItem}
-                    style={goldButtonStyle}
-                  >
-                    Save
-                  </button>
+                  selectedCalendarOccurrenceDate && selectedCalendar.repeat && selectedCalendar.repeat !== "None" && onSaveOccurrence ? (
+                    <>
+                      <button type="button" onClick={() => void onSaveOccurrence()} style={goldButtonStyle}>Save This Event</button>
+                      <button type="button" onClick={saveCalendarItem} style={secondaryButtonStyle}>Save Series</button>
+                    </>
+                  ) : (
+                    <button type="button" onClick={saveCalendarItem} style={goldButtonStyle}>Save</button>
+                  )
                 ) : null}
 
                 {hasSelectedEvent ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void deleteSelectedEvent();
-                    }}
-                    style={dangerButtonStyle}
-                  >
-                    Delete
-                  </button>
+                  selectedCalendarOccurrenceDate && selectedCalendar.repeat && selectedCalendar.repeat !== "None" && onDeleteOccurrence ? (
+                    <>
+                      <button type="button" onClick={() => void onDeleteOccurrence()} style={dangerButtonStyle}>Delete This Event</button>
+                      <button type="button" onClick={() => void deleteSelectedEvent()} style={{ ...dangerButtonStyle, background: "#FFFFFF", color: colors.red }}>Delete Series</button>
+                    </>
+                  ) : (
+                    <button type="button" onClick={() => void deleteSelectedEvent()} style={dangerButtonStyle}>Delete</button>
+                  )
                 ) : null}
 
                 <button
@@ -1866,6 +1932,20 @@ export default function AtlasCalendar(
                 </select>
               )}
 
+
+              {!isMobile ? (
+                <div style={{ display: "flex", gap: 4, alignItems: "center", minWidth: 0, overflow: "hidden" }}>
+                  {calendarColors.slice(0, 8).map((color: any) => {
+                    const visible = calendarCategoryFilters[color.label] !== false;
+                    return (
+                      <button key={color.id} type="button" title={`${visible ? "Hide" : "Show"} ${color.label}`} onClick={() => setCalendarCategoryFilters((current: any) => ({ ...current, [color.label]: current[color.label] === false }))} style={{ display: "inline-flex", alignItems: "center", gap: 4, border: `1px solid ${visible ? color.hex : colors.line}`, background: visible ? `${color.hex}12` : "#FFFFFF", borderRadius: 999, padding: "4px 6px", fontSize: 10, fontWeight: 800, color: colors.text, cursor: "pointer", whiteSpace: "nowrap" }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: color.hex, flex: "0 0 auto" }} />{color.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
               <details
                 style={{
                   ...calendarFilterDropdownStyle,
@@ -2054,7 +2134,7 @@ export default function AtlasCalendar(
                       {pinnedEventIds.includes(String(event.id || "")) ? "📌 " : ""}{event.title || "Untitled event"}
                     </strong>
                     <span style={{ ...mutedSmallStyle, whiteSpace: "nowrap" }}>
-                      {formatDate(event.date)}{event.allDay ? "" : event.time ? ` · ${event.time}` : ""}
+                      {formatDate(event.date)}{event.allDay ? "" : event.time ? ` · ${calendarTimeRangeLabel(event)}` : ""}
                     </span>
                   </button>
                 ))}
