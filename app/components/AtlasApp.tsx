@@ -2915,7 +2915,7 @@ export default function AtlasApp() {
       "inverter-maintenance", "low-voltage-controls-inspection", "boat-cleaning",
       "pool-daily-treatment-cleaning",
     ]);
-    const generatedProcedures = procedureRecords.filter((record) =>
+    const generatedProcedures = (procedureRecords as ProcedureRecord[]).filter((record) =>
       legacyGeneratedProcedureIds.has(String(record.id || "")),
     );
     const generatedProcedureIds = new Set(generatedProcedures.map((record) => String(record.id)));
@@ -3015,6 +3015,52 @@ export default function AtlasApp() {
   // Automatic task/work-order/routine/calendar seeding is permanently disabled.
   // Atlas creates operational records only from explicit user actions.
   useEffect(() => { saveStoredArray(`atlas-day-sessions-v1-${activePropertyId}`, daySessions); }, [activePropertyId, daySessions]);
+
+  function updateVehicleCareRecord(
+    vehicleId: string,
+    patch: Partial<AtlasVehicleCare>,
+  ) {
+    setVehicleCare((current) => {
+      const existing = current.find((item) => item.id === vehicleId);
+      const matchingAsset = assetRecords.find(
+        (asset) => `asset-${asset.id}` === vehicleId || slugify(`vehicle-${asset.name}`) === vehicleId,
+      );
+      const matchingTask = workPlanTasks.find(
+        (task) =>
+          slugify(`vehicle-${String(task.title || "").replace(/^clean\s+/i, "").trim()}`) === vehicleId,
+      );
+      const inferredName =
+        matchingAsset?.name ||
+        String(matchingTask?.title || "").replace(/^clean\s+/i, "").trim() ||
+        "Vehicle";
+      const base: AtlasVehicleCare = existing || {
+        id: vehicleId,
+        name: inferredName,
+        onsite: true,
+        lastCleaned: matchingTask ? taskDetails(matchingTask.id).lastCompletedDate || "" : "",
+        priority: "Normal",
+        notes: "",
+        kind: "Vehicle",
+        assignedTo: matchingTask?.id && taskDetails(matchingTask.id).assignee === "Addison" ? "Addison" : "Nick",
+        cleaningIntervalDays: 7,
+        lastServiced: "",
+        nextServiceDate: "",
+        serviceIntervalDays: 180,
+        history: [],
+        assetId: matchingAsset?.id || "",
+        locationId: matchingAsset?.locationId || matchingTask?.locationId || "",
+      };
+      const updated = { ...base, ...patch, updatedAt: new Date().toISOString() };
+      const next = existing
+        ? current.map((item) => item.id === vehicleId ? updated : item)
+        : [updated, ...current];
+      // Save the exact edited value immediately. This prevents a first edit
+      // made just after opening Atlas from being replaced by delayed startup work.
+      saveStoredArray(`atlas-vehicle-care-v1-${activePropertyId}`, next);
+      if (activePropertyId === "2000") saveStoredArray("atlas-vehicle-care-v1", next);
+      return next;
+    });
+  }
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const draggingLabelRef = useRef<string | null>(null);
