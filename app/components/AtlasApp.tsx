@@ -439,6 +439,7 @@ function repairRecurringWorkOrderRecord(
       lastCompletedDate,
       schedule.interval,
       schedule.unit,
+      record.recurrenceDays,
     );
     const scheduleEnded = Boolean(
       record.recurrenceEndDate && nextDate > record.recurrenceEndDate,
@@ -5341,6 +5342,7 @@ export default function AtlasApp() {
               nextDate,
               schedule.interval,
               schedule.unit,
+              record.recurrenceDays,
             );
             if (!nextDate || nextDate > horizon) break;
             if (record.recurrenceEndDate && nextDate > record.recurrenceEndDate) break;
@@ -11828,6 +11830,7 @@ export default function AtlasApp() {
       completedDate,
       schedule.interval,
       schedule.unit,
+      preparedRecord.recurrenceDays,
     );
     const scheduleEnded = Boolean(
       preparedRecord.recurrenceEndDate &&
