@@ -130,8 +130,6 @@ import type {
 export default function AtlasDashboardWorkspace(props: any) {
   const {
     activePropertyId,
-    addAtlasTask,
-    createAddisonDashboardTask,
     addDashboardWorkOrder,
     addRoutineNote,
     addRoutinePhoto,
@@ -682,21 +680,16 @@ export default function AtlasDashboardWorkspace(props: any) {
       const addMyTask = () => {
         const title = String(dashboardAddisonQuickAddRef.current?.value || "").trim();
         if (!title) return;
-        const taskId = addAtlasTask(title);
-        if (!taskId) return;
-        updateTaskDetails(taskId, {
-          assignee: "Addison",
-          dueDate: todayKey,
+        addDashboardWorkOrder("Maintenance", {
+          title,
+          assignedTo: "Addison",
+          date: todayKey,
           status: "Open",
-          assignmentScope: "This occurrence",
-          completedAt: undefined,
-          needsReview: false,
         });
         if (dashboardAddisonQuickAddRef.current) {
           dashboardAddisonQuickAddRef.current.value = "";
           dashboardAddisonQuickAddRef.current.focus();
         }
-        showSaveToast("Task added.");
       };
 
       return (
@@ -2253,62 +2246,6 @@ export default function AtlasDashboardWorkspace(props: any) {
     });
     showSaveToast(`${list?.name || "List"} removed from Dashboard.`);
   };
-  const assignAddisonFromDashboard = async () => {
-    const title = window.prompt("What should Addison handle today?")?.trim();
-    if (!title) return;
-    if (typeof createAddisonDashboardTask === "function") {
-      await createAddisonDashboardTask(title);
-      return;
-    }
-    const taskId = addAtlasTask(title);
-    if (!taskId) return;
-    updateTaskDetails(taskId, { assignee: "Addison", dueDate: today, status: "Open", assignmentScope: "This occurrence" });
-    showSaveToast("Added to Addison’s checklist.");
-  };
-  const openDashboardTaskEditor = (task: WorkPlanTask) => {
-    setDashboardTaskEditorId((current) => current === task.id ? "" : task.id);
-  };
-  const addDashboardTaskFor = async (person: "Nick" | "Addison") => {
-    const input =
-      person === "Nick"
-        ? dashboardNickQuickAddRef.current
-        : dashboardAddisonQuickAddRef.current;
-    const title = String(input?.value || "").trim();
-    if (!title) return;
-
-    if (person === "Addison" && typeof createAddisonDashboardTask === "function") {
-      const taskId = await createAddisonDashboardTask(title);
-      if (!taskId) return;
-      if (input) {
-        input.value = "";
-        input.focus();
-      }
-      return;
-    }
-
-    const taskId = addAtlasTask(title);
-    if (!taskId) return;
-    const submittedDate = localISODate(new Date());
-    // Today's List quick-add is the same Atlas Task record used by the
-    // sidebar Tasks section. Explicitly keep it out of list-only storage.
-    updateTaskDetails(taskId, {
-      assignee: person,
-      dueDate: submittedDate,
-      status: "Open",
-      assignmentScope: "This occurrence",
-      completedAt: undefined,
-      lastCompletedDate: "",
-      completionHistory: [],
-      needsReview: false,
-      listId: undefined,
-      dashboardListPinned: false,
-    });
-    if (input) {
-      input.value = "";
-      input.focus();
-    }
-    showSaveToast(`Added to ${person}’s list.`);
-  };
   const saveDashboardNote = (text: string, dueDate?: string, existingId?: string) => {
     const clean = text.trim();
     if (!clean) return "";
@@ -2383,44 +2320,6 @@ export default function AtlasDashboardWorkspace(props: any) {
     showSaveToast(saved ? `Added to ${person}'s Work list.` : "Could not add work.", saved ? "success" : "warning");
   };
 
-  const convertDashboardReminderToTask = (noteId: string, person: "Nick" | "Addison") => {
-    const note = dashboardReminders.find((item) => item.id === noteId);
-    if (!note?.text.trim()) return;
-    const taskId = addAtlasTask(note.text.trim());
-    if (!taskId) return;
-    updateTaskDetails(taskId, {
-      assignee: person,
-      dueDate: note.dueDate || today,
-      status: "Open",
-      assignmentScope: "This occurrence",
-    });
-    deleteDashboardNote(noteId);
-    showSaveToast(`Moved note to ${person}’s list.`);
-  };
-  const dashboardQuickCapture = (kind: "note" | "task" | "addison" | "work-order") => {
-    const text = quickCaptureNote.trim();
-    if (!text) return;
-    if (kind === "note") {
-      saveDashboardNote(text);
-      setQuickCaptureNote("");
-      showSaveToast("Saved to Quick Notes and Notes.");
-      return;
-    }
-    if (kind === "task" || kind === "addison") {
-      const taskId = addAtlasTask(text);
-      if (!taskId) return;
-      const submittedDate = localISODate(new Date());
-      updateTaskDetails(taskId, { assignee: kind === "addison" ? "Addison" : "Nick", dueDate: submittedDate, status: "Open", assignmentScope: "This occurrence", completedAt: undefined, lastCompletedDate: "", completionHistory: [], needsReview: false });
-      setQuickCaptureNote("");
-      showSaveToast(kind === "addison" ? "Added to Addison’s list." : "Added to Nick’s list.");
-      return;
-    }
-    setQuickCreateKind("work-order");
-    setQuickCreateName(text);
-    setQuickCaptureMode("create");
-    setQuickCaptureOpen(true);
-    setQuickCaptureNote("");
-  };
   const morningBriefText = [
     `Good morning. Your ${dayName} routine checklist is ready.`,
     foremanSchedule.length ? `${foremanSchedule.length} scheduled item${foremanSchedule.length === 1 ? " is" : "s are"} on today’s calendar: ${foremanSchedule.slice(0, 4).map((event) => `${event.time || "all day"}, ${event.title}`).join("; ")}.` : "There are no meetings, vendors, crew visits, or deliveries scheduled today.",
