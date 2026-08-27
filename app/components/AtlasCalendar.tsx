@@ -136,6 +136,14 @@ function calendarDateKey(value: unknown): string {
   return parsed.toISOString().slice(0, 10);
 }
 
+function displayCalendarTitle(event: any): string {
+  const title = String(event?.title || "Untitled event").trim();
+  return title
+    .replace(/^work\s*order\s*:\s*/i, "")
+    .replace(/^wo\s*:\s*/i, "")
+    .trim() || title;
+}
+
 function eventType(event: any): {
   icon: string;
   label: string;
@@ -801,7 +809,7 @@ export default function AtlasCalendar(
     const selected = dateKey === calendarDateKey(selectedCalendarDate);
     const today = dateKey === todayKey;
     const weather = dateKey ? weatherByDate.get(dateKey) : undefined;
-    const visibleLimit = isMobile ? 2 : 5;
+    const visibleLimit = isMobile ? 2 : 4;
 
     return (
       <div
@@ -824,13 +832,13 @@ export default function AtlasCalendar(
           display: "grid",
           gridTemplateRows: "auto minmax(0, 1fr)",
           alignContent: "start",
-          padding: isMobile ? "3px" : "7px 7px 6px",
+          padding: isMobile ? "3px" : "6px 7px 5px",
           boxSizing: "border-box",
-          borderRadius: isMobile ? 6 : 10,
-          border: `1px solid ${selected ? "#B8C9D9" : today ? "#C8D9E8" : "#E7EDF3"}`,
-          background: selected ? "#F4F8FC" : today ? "#F7FAFD" : "#FFFFFF",
-          opacity: cell.outside ? 0.42 : 1,
-          boxShadow: selected ? "0 0 0 1px rgba(36,73,103,0.08)" : "none",
+          borderRadius: isMobile ? 6 : 8,
+          border: `1px solid ${selected ? "#C4D3DF" : today ? "#D3E0EA" : "#EDF1F4"}`,
+          background: selected ? "#F6F9FC" : today ? "#F8FBFD" : "#FFFFFF",
+          opacity: cell.outside ? 0.38 : 1,
+          boxShadow: selected ? "inset 0 0 0 1px rgba(36,73,103,0.05)" : "none",
           cursor: dateKey ? "pointer" : "default",
           textAlign: "left",
         }}
@@ -877,8 +885,8 @@ export default function AtlasCalendar(
                   borderRadius: 7,
                   border: 0,
                   background: "transparent",
-                  color: "#8294A5",
-                  fontSize: isMobile ? 12 : 16,
+                  color: "#A2AFBA",
+                  fontSize: isMobile ? 11 : 14,
                   lineHeight: 1,
                   cursor: "pointer",
                   padding: 0,
@@ -907,23 +915,23 @@ export default function AtlasCalendar(
                   gap: 4,
                   minWidth: 0,
                   overflow: "hidden",
-                  borderRadius: 5,
-                  borderLeft: `3px solid ${eventColor.hex}`,
-                  padding: isMobile ? "1px 3px" : "3px 5px",
-                  color: "#243746",
-                  background: "#F7F9FB",
-                  fontSize: isMobile ? 7 : 10.5,
-                  fontWeight: 700,
+                  borderRadius: 4,
+                  borderLeft: `2px solid ${eventColor.hex}`,
+                  padding: isMobile ? "1px 3px" : "2px 5px",
+                  color: "#2A3D4C",
+                  background: "#FAFBFC",
+                  fontSize: isMobile ? 7 : 10.25,
+                  fontWeight: 650,
                   lineHeight: 1.18,
                   cursor: "pointer",
                 }}
               >
                 {isWork && !isMobile ? (
-                  <span style={{ fontSize: 7.5, letterSpacing: ".05em", fontWeight: 900, color: eventColor.hex }}>WORK</span>
+                  <span style={{ fontSize: 7, letterSpacing: ".06em", fontWeight: 900, color: eventColor.hex }}>WORK</span>
                 ) : null}
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {!event.allDay && event.time ? <strong style={{ color: "#5D7284", marginRight: 4 }}>{calendarTimeLabel(event.time)}</strong> : null}
-                  {event.title}
+                  {displayCalendarTitle(event)}
                   {event.repeat && event.repeat !== "None" ? "  ↻" : ""}
                 </span>
               </span>
@@ -1695,9 +1703,12 @@ export default function AtlasCalendar(
           width: "100%",
           height: calendarHeight,
           minHeight: 0,
-          padding: isMobile ? 2 : 8,
+          padding: isMobile ? 1 : 3,
           overflow: "hidden",
           boxSizing: "border-box",
+          background: "transparent",
+          border: 0,
+          boxShadow: "none",
         }}
       >
         <div
@@ -1705,22 +1716,22 @@ export default function AtlasCalendar(
             width: "100%",
             height: "100%",
             minHeight: 0,
-            padding: isMobile ? 4 : 10,
+            padding: isMobile ? 4 : 8,
             boxSizing: "border-box",
             overflow: "hidden",
             display: "grid",
             gridTemplateRows: "auto auto minmax(0, 1fr)",
-            gap: isMobile ? 2 : 8,
+            gap: isMobile ? 2 : 5,
             background: "#FFFFFF",
-            border: `1px solid ${colors.line}`,
-            borderRadius: isMobile ? 10 : 16,
+            border: "1px solid #E5EBF0",
+            borderRadius: isMobile ? 10 : 12,
             position: "relative",
           }}
         >
           <header
             style={{
               display: "grid",
-              gap: isMobile ? 3 : 8,
+              gap: isMobile ? 3 : 5,
               minWidth: 0,
             }}
           >
@@ -1746,31 +1757,16 @@ export default function AtlasCalendar(
 
               <div
                 style={{
-                  position: "absolute",
-                  right: 0,
                   display: "flex",
                   alignItems: "center",
-                  gap: isMobile ? 1 : 2,
+                  gap: isMobile ? 1 : 4,
                   flexWrap: "nowrap",
+                  marginLeft: "auto",
                 }}
               >
-                {!isMobile ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      moveCalendarYear(-1)
-                    }
-                    style={normalControlStyle}
-                  >
-                    Previous Year
-                  </button>
-                ) : null}
-
                 <button
                   type="button"
-                  onClick={() =>
-                    moveCalendarPeriod(-1)
-                  }
+                  onClick={() => moveCalendarPeriod(-1)}
                   style={normalControlStyle}
                 >
                   Previous
@@ -1790,25 +1786,11 @@ export default function AtlasCalendar(
 
                 <button
                   type="button"
-                  onClick={() =>
-                    moveCalendarPeriod(1)
-                  }
+                  onClick={() => moveCalendarPeriod(1)}
                   style={normalControlStyle}
                 >
                   Next
                 </button>
-
-                {!isMobile ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      moveCalendarYear(1)
-                    }
-                    style={normalControlStyle}
-                  >
-                    Next Year
-                  </button>
-                ) : null}
               </div>
             </div>
 
@@ -1816,9 +1798,10 @@ export default function AtlasCalendar(
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: isMobile ? 3 : 6,
+                gap: isMobile ? 3 : 5,
                 minWidth: 0,
                 flexWrap: "nowrap",
+                overflow: "visible",
               }}
             >
               <button
@@ -1851,45 +1834,6 @@ export default function AtlasCalendar(
                 </button>
               ) : null}
 
-              {!isMobile ? (
-                <select
-                  value={calendarCursor.getFullYear()}
-                  onChange={(event) =>
-                    setCalendarCursor(
-                      (current: Date) =>
-                        new Date(
-                          Number(
-                            event.currentTarget.value,
-                          ),
-                          current.getMonth(),
-                          1,
-                        ),
-                    )
-                  }
-                  style={{
-                    ...inputStyle,
-                    width: 112,
-                    padding: "8px 10px",
-                  }}
-                  aria-label="Calendar year"
-                >
-                  {Array.from(
-                    { length: 31 },
-                    (_, index) =>
-                      new Date().getFullYear() -
-                      15 +
-                      index,
-                  ).map((year) => (
-                    <option
-                      key={year}
-                      value={year}
-                    >
-                      {year}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-
               <details style={{ position: "relative", zIndex: 70 }}>
                 <summary style={{ ...activeControlStyle, listStyle: "none", cursor: "pointer", userSelect: "none" }}>+ Add</summary>
                 <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, minWidth: 150, padding: 6, display: "grid", gap: 5, background: "#FFFFFF", border: `1px solid ${colors.line}`, borderRadius: 10, boxShadow: "0 14px 34px rgba(7,27,47,0.16)" }}>
@@ -1906,7 +1850,7 @@ export default function AtlasCalendar(
                 aria-label="Search calendar"
                 style={{
                   ...inputStyle,
-                  width: isMobile ? 108 : 190,
+                  width: isMobile ? 108 : 170,
                   minWidth: 0,
                   padding: isMobile ? "5px 7px" : "8px 10px",
                   fontSize: isMobile ? 10 : 13,
@@ -1923,7 +1867,7 @@ export default function AtlasCalendar(
 
               {!isMobile ? (
                 <div style={{ display: "flex", gap: 3, alignItems: "center", minWidth: 0 }}>
-                  {(["All","Events","Work","Meetings","Vendors","Landscaping","PTO"] as const).map((scope) => (
+                  {(["All","Events","Work"] as const).map((scope) => (
                     <button key={scope} type="button" onClick={() => setQuickScope(scope)} style={{ ...normalControlStyle, padding: "6px 8px", fontSize: 11, background: quickScope === scope ? "#EDF3F8" : "#FFFFFF", borderColor: quickScope === scope ? "#AFC3D4" : colors.line, color: quickScope === scope ? colors.navy : colors.muted }}>
                       {scope}
                     </button>
@@ -1931,28 +1875,13 @@ export default function AtlasCalendar(
                 </div>
               ) : (
                 <select value={quickScope} onChange={(event) => setQuickScope(event.currentTarget.value as any)} style={{ ...inputStyle, width: 92, padding: "5px 6px", fontSize: 10 }} aria-label="Calendar quick filter">
-                  {["All","Events","Work","Meetings","Vendors","Landscaping","PTO"].map((scope) => <option key={scope} value={scope}>{scope}</option>)}
+                  {["All","Events","Work"].map((scope) => <option key={scope} value={scope}>{scope}</option>)}
                 </select>
               )}
-
-
-              {!isMobile ? (
-                <div style={{ display: "flex", gap: 4, alignItems: "center", minWidth: 0, overflow: "hidden" }}>
-                  {calendarColors.slice(0, 8).map((color: any) => {
-                    const visible = calendarCategoryFilters[color.label] !== false;
-                    return (
-                      <button key={color.id} type="button" title={`${visible ? "Hide" : "Show"} ${color.label}`} onClick={() => setCalendarCategoryFilters((current: any) => ({ ...current, [color.label]: current[color.label] === false }))} style={{ display: "inline-flex", alignItems: "center", gap: 4, border: `1px solid ${visible ? color.hex : colors.line}`, background: visible ? `${color.hex}12` : "#FFFFFF", borderRadius: 999, padding: "4px 6px", fontSize: 10, fontWeight: 800, color: colors.text, cursor: "pointer", whiteSpace: "nowrap" }}>
-                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: color.hex, flex: "0 0 auto" }} />{color.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
 
               <details
                 style={{
                   ...calendarFilterDropdownStyle,
-                  marginLeft: "auto",
                   position: "relative",
                   overflow: "visible",
                   zIndex: 60,
@@ -2073,6 +2002,15 @@ export default function AtlasCalendar(
                               }),
                             )
                           }
+                        />
+                        <span
+                          style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: "50%",
+                            background: calendarColors.find((color: any) => color.label === label)?.hex || "#A8B4BE",
+                            flex: "0 0 auto",
+                          }}
                         />
                         {label}
                       </label>
