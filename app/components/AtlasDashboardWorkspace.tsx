@@ -339,7 +339,7 @@ export default function AtlasDashboardWorkspace(props: any) {
       recurrenceInterval: 1,
       recurrenceUnit: "Weeks",
       recurrenceEndDate: "",
-      workType: recurring ? "Recurring Work" : "One-Time Work",
+      workType: "Quick Task",
       workCategory: "Maintenance",
       responsibilityArea: "Dashboard Work",
       notes: "",
@@ -2358,7 +2358,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     const record = normalizeService({
       id: uid("work"), propertyId: activePropertyId, title: note.text,
       date: note.dueDate || todayISO(), status: "Open", priority: "Medium",
-      assignedTo: person, recurring: false, workType: "One-Time Work",
+      assignedTo: person, recurring: false, workType: "Quick Task",
       workCategory: "Maintenance", responsibilityArea: "Dashboard Work", notes: "",
     });
     setServiceRecords((current) => byTitle([record, ...current]));
