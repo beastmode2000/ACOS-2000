@@ -5351,6 +5351,10 @@ export default function AtlasApp() {
         if (isRecurringInstanceOnDate(item, dateKey)) {
           const generatedInstanceId = `${item.id}-${dateKey}`;
           const savedOccurrence = occurrenceOverrides.get(generatedInstanceId);
+          if (savedOccurrence?.status === "Cancelled") {
+            date.setDate(date.getDate() + 1);
+            continue;
+          }
 
           expanded.set(
             generatedInstanceId,
@@ -11895,6 +11899,7 @@ export default function AtlasApp() {
         categoryLabel: nextCategory,
         date: patch.date ?? current.date ?? selectedCalendarDate ?? todayISO(),
         time: nextAllDay ? "" : (patch.time ?? current.time ?? ""),
+        endTime: nextAllDay ? "" : ((patch as Partial<AtlasCalendarItem>).endTime ?? current.endTime ?? ""),
         colorId:
           (patch.categoryLabel === "Meeting" || patch.area === "Meeting")
             ? "meeting"
@@ -11973,6 +11978,7 @@ export default function AtlasApp() {
       ).trim(),
       date: dateToPersist || selectedCalendarDate || todayISO(),
       time: calendarDraft.allDay ? "" : calendarDraft.time || "",
+      endTime: calendarDraft.allDay ? "" : calendarDraft.endTime || "",
       colorId:
         calendarDraft.colorId ||
         categoryToColorId(
@@ -12109,6 +12115,69 @@ export default function AtlasApp() {
     setCalendarDirty(false);
     setDatabaseStatus("Calendar event saved to shared Atlas.");
     resetCalendarEntryForm(dateToKeepOpen);
+  }
+
+
+  async function saveCalendarOccurrenceOnly() {
+    if (!selectedCalendarId || !selectedCalendarOccurrenceDate) {
+      await saveCalendarItem();
+      return;
+    }
+    const original = calendarItems.find((item) => item.id === selectedCalendarId);
+    if (!original || !original.repeat || original.repeat === "None") {
+      await saveCalendarItem();
+      return;
+    }
+    const instanceId = `${original.id}-${selectedCalendarOccurrenceDate}`;
+    const override = normalizeCalendar({
+      ...calendarDraft,
+      id: instanceId,
+      date: calendarDraft.date || selectedCalendarOccurrenceDate,
+      repeat: "None",
+      originalId: original.id,
+      instanceId,
+      source: "manual",
+      propertyId: String(calendarDraft.propertyId || activePropertyId),
+      status: "Scheduled",
+    });
+    const saved = await postAtlasRecord("calendar", { ...override, propertyId: override.propertyId || activePropertyId, status: "Scheduled" });
+    if (!saved) {
+      setDatabaseStatus("This occurrence was not saved.");
+      return;
+    }
+    setCalendarItems((current) => byTitle([override, ...current.filter((item) => item.id !== instanceId)]));
+    setDatabaseStatus("This occurrence was saved without changing the series.");
+    resetCalendarEntryForm(override.date || selectedCalendarOccurrenceDate);
+  }
+
+  async function deleteCalendarOccurrenceOnly() {
+    if (!selectedCalendarId || !selectedCalendarOccurrenceDate) return;
+    const original = calendarItems.find((item) => item.id === selectedCalendarId);
+    if (!original || !original.repeat || original.repeat === "None") {
+      await deleteCalendarItem(selectedCalendarId);
+      return;
+    }
+    if (!window.confirm(`Delete only ${original.title || "this event"} on ${formatDate(selectedCalendarOccurrenceDate)}?`)) return;
+    const instanceId = `${original.id}-${selectedCalendarOccurrenceDate}`;
+    const cancelled = normalizeCalendar({
+      ...original,
+      id: instanceId,
+      date: selectedCalendarOccurrenceDate,
+      repeat: "None",
+      originalId: original.id,
+      instanceId,
+      source: "manual",
+      status: "Cancelled",
+      propertyId: String(original.propertyId || activePropertyId),
+    });
+    const saved = await postAtlasRecord("calendar", { ...cancelled, propertyId: cancelled.propertyId || activePropertyId, status: "Cancelled" });
+    if (!saved) {
+      setDatabaseStatus("This occurrence was not deleted.");
+      return;
+    }
+    setCalendarItems((current) => byTitle([cancelled, ...current.filter((item) => item.id !== instanceId)]));
+    setDatabaseStatus("Only this occurrence was deleted. The series is unchanged.");
+    resetCalendarEntryForm(selectedCalendarOccurrenceDate);
   }
 
 
