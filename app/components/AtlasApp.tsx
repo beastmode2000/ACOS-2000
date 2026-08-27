@@ -11956,8 +11956,14 @@ export default function AtlasApp() {
         categoryLabel: nextCategory,
         date: patch.date ?? current.date ?? selectedCalendarDate ?? todayISO(),
         time: nextAllDay ? "" : (patch.time ?? current.time ?? ""),
-        colorId: patch.colorId ?? current.colorId ?? "",
-        colorName: patch.colorName ?? current.colorName,
+        colorId:
+          (patch.categoryLabel === "Meeting" || patch.area === "Meeting")
+            ? "meeting"
+            : (patch.colorId ?? current.colorId ?? ""),
+        colorName:
+          (patch.categoryLabel === "Meeting" || patch.area === "Meeting")
+            ? "red"
+            : (patch.colorName ?? current.colorName),
         allDay: nextAllDay,
         repeat: patch.repeat ?? current.repeat,
         reminder: patch.reminder ?? current.reminder,
@@ -12539,6 +12545,28 @@ export default function AtlasApp() {
 
   function categoryFromCalendarIntake(text: string) {
     const lower = text.toLowerCase();
+
+    if (/meeting|meet with|weekly meeting|staff meeting/.test(lower)) {
+      return { label: "Meeting", colorId: "meeting", colorName: "red" as CalendarColorName };
+    }
+    if (/pto|day off|time off|out of office|ooo/.test(lower)) {
+      return { label: "PTO / Off", colorId: "pto-off", colorName: "orange" as CalendarColorName };
+    }
+    if (/delivery|drop[- ]?off|pickup|pick[- ]?up/.test(lower)) {
+      return { label: "Delivery", colorId: "delivery", colorName: "orange" as CalendarColorName };
+    }
+    if (/travel|flight|airport|depart|arrival/.test(lower)) {
+      return { label: "Travel", colorId: "travel", colorName: "blue" as CalendarColorName };
+    }
+    if (/deadline|due by|remind me|reminder/.test(lower)) {
+      return { label: "Deadline / Reminder", colorId: "deadline-reminder", colorName: "red" as CalendarColorName };
+    }
+    if (/appointment/.test(lower)) {
+      return { label: "Appointment", colorId: "appointment", colorName: "blue" as CalendarColorName };
+    }
+    if (/service visit|technician visit|service call/.test(lower)) {
+      return { label: "Service Visit", colorId: "service-visit", colorName: "purple" as CalendarColorName };
+    }
 
     if (
       /landscape|weeding|grounds|lawn|irrigation|hydrawise|sprinkler/.test(
