@@ -687,7 +687,7 @@ export const atlasNavigationSections: {
   { label: "Overview", items: ["dashboard", "portfolio"] },
   {
     label: "Work",
-    items: ["history", "calendar", "planner", "routines", "team"],
+    items: ["history", "calendar", "team"],
   },
   { label: "Intake", items: ["inbox", "requests", "qr"] },
   { label: "Reports", items: ["reports"] },
