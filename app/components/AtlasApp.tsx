@@ -18112,20 +18112,58 @@ ${notes.trim()}` : notes.trim(),
     const title = String(titleValue || "").trim();
     if (!title || activePropertyId !== "2000") return "";
 
-    const workOrderId = uid("wo");
-    addWorkOrder({
-      id: workOrderId,
+    const workOrder = normalizeService({
+      id: uid("wo"),
+      propertyId: activePropertyId,
       title,
       date: todayISO(),
       status: "Open",
       priority: "Medium",
-      assignedTo: "Addison",
+      notes: "",
+      assetId: "",
+      vendorId: "",
+      procedureId: "",
+      followUpDate: "",
+      recurring: false,
+      recurrenceInterval: 1,
+      recurrenceUnit: "Weeks",
+      recurrenceEndDate: "",
+      season: seasonForDate(),
+      lastCompletedDate: "",
+      completionHistory: [],
       workType: "Work Order",
       workCategory: "🔧 Maintenance",
+      effort: "30 minutes",
       responsibilityArea: "Dashboard · Addison",
+      assignedTo: "Addison",
+      photos: [],
+      documents: [],
+      checklist: [],
+      notesHistory: [],
+      serviceHistory: [],
     });
-    recordAtlasAudit("Work assigned", `${title} → Addison · ${formatDate(todayISO())}`);
-    return workOrderId;
+
+    clearWorkOrderTombstone(workOrder.id);
+    markRecordDirty("work_order", workOrder.id);
+    setDatabaseStatus(`Saving ${title}...`);
+
+    const saved = await postAtlasRecord("work_orders", workOrder);
+    if (!saved) {
+      markRecordDirty("work_order", workOrder.id);
+      return "";
+    }
+
+    clearRecordDirty("work_order", workOrder.id);
+    setServiceRecords((current) => byTitle([workOrder, ...current]));
+    setSelectedServiceId(workOrder.id);
+    setScreen("history");
+    setDatabaseStatus(`Saved ${title}.`);
+    recordAtlasAudit(
+      "Work assigned",
+      `${title} → Addison · ${formatDate(todayISO())}`,
+    );
+    showSaveToast("Added to Addison’s Work list.");
+    return workOrder.id;
   }
 
   async function updateAddisonDashboardTask(
