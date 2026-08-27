@@ -1932,7 +1932,15 @@ export default function AtlasApp() {
             });
             return map;
           }, new Map<string, any>()).values(),
-        );
+        ) as Array<{
+          id: string;
+          name: string;
+          email: string;
+          role: string;
+          active: boolean;
+          propertyIds: string[];
+          accessProfiles: string[];
+        }>;
         setTeamDirectory(uniqueTeamMembers);
 
         // FIELD DEVICE BINDING
