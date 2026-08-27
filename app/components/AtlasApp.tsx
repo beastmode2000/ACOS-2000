@@ -1551,7 +1551,6 @@ export default function AtlasApp() {
   const aiGeneratedPurgeRunningRef = useRef(false);
   const applianceAnnualServiceSetupRunningRef = useRef(false);
   const approvedWorkResetRunningRef = useRef(false);
-  const approvedMaintenanceRestoreRunningRef = useRef(false);
   const [workOrderSeasonFilter, setWorkOrderSeasonFilter] = useState<
     WorkSeason | "All"
   >("All");
@@ -2578,23 +2577,9 @@ export default function AtlasApp() {
   const [walkVoiceListening, setWalkVoiceListening] = useState(false);
   const [backlogItems, setBacklogItems] = useState<AtlasBacklogItem[]>(() => readStoredArray<AtlasBacklogItem>(["atlas-backlog-v1"], []));
   const [newBacklogTitle, setNewBacklogTitle] = useState("");
-  const [vehicleCare, setVehicleCare] = useState<AtlasVehicleCare[]>(() => readStoredArray<AtlasVehicleCare>(["atlas-vehicle-care-v1"], [
-    "Mercedes", "Rivian", "Porsche", "Lucid", "Ford", "Kia", "Honda", "Subaru", "Cobalt", "Sea-Doo"
-  ].map((name) => ({
-    id: slugify(`vehicle-${name}`),
-    name,
-    onsite: true,
-    lastCleaned: "",
-    priority: "Normal" as const,
-    notes: "",
-    kind: name === "Cobalt" ? "Boat" as const : name === "Sea-Doo" ? "Watercraft" as const : "Vehicle" as const,
-    assignedTo: "Nick" as const,
-    cleaningIntervalDays: name === "Cobalt" || name === "Sea-Doo" ? 7 : 14,
-    lastServiced: "",
-    nextServiceDate: "",
-    serviceIntervalDays: 180,
-    history: [],
-  }))));
+  const [vehicleCare, setVehicleCare] = useState<AtlasVehicleCare[]>(() =>
+    readStoredArray<AtlasVehicleCare>(["atlas-vehicle-care-v1"], []),
+  );
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [garageVehicleTab, setGarageVehicleTab] = useState<"Overview" | "Maintenance" | "Cleaning" | "Documents" | "Photos">("Overview");
   const [garageVehicleEditing, setGarageVehicleEditing] = useState(false);
@@ -3110,237 +3095,58 @@ export default function AtlasApp() {
   }, [ready, operationsHydrated, syncState, activePropertyId, calendarItems, workPlanTasks, serviceRecords]);
 
   useEffect(() => {
-    if (
-      !ready ||
-      !operationsHydrated ||
-      syncState !== "synced" ||
-      activePropertyId !== "2000" ||
-      typeof window === "undefined" ||
-      approvedMaintenanceRestoreRunningRef.current
-    ) return;
+    if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000") return;
 
-    const restoreKey = "atlas-approved-maintenance-restore-v1-2000";
-    if (window.localStorage.getItem(restoreKey) === "done") return;
+    const cleanupKey = "atlas-restored-vehicle-duplicate-cleanup-v2-2000";
+    if (typeof window !== "undefined" && window.localStorage.getItem(cleanupKey) === "done") return;
 
-    // This is a one-time, user-approved migration only. It is intentionally
-    // time-limited so these records can never become a permanent generator.
-    // Once imported, they are ordinary Work Orders and deletion stays deletion.
-    if (todayISO() > "2026-08-27") {
-      window.localStorage.setItem(restoreKey, "done");
+    const assetIds = new Set(assetRecords.map((asset) => String(asset.id || "")).filter(Boolean));
+    const realVehicleAssetNames = new Set(
+      assetRecords
+        .filter((asset) => {
+          const name = String(asset.name || "").trim();
+          const category = String(asset.category || "");
+          return Boolean(name) && /vehicle|car|automotive/i.test(`${category} ${name}`) && !/fleet|tire|cleaning|detailing/i.test(name);
+        })
+        .map((asset) => normalizedWorkOrderText(String(asset.name || "").replace(/^vehicle\s+/i, "")))
+        .filter(Boolean),
+    );
+
+    const staleCleaningWork = serviceRecords.filter((record) =>
+      String(record.id || "").startsWith("wo-approved-vehicle-cleaning-") &&
+      (!String(record.assetId || "").trim() || !assetIds.has(String(record.assetId || "")))
+    );
+
+    const legacySeedIds = new Set(
+      ["Mercedes", "Rivian", "Porsche", "Lucid", "Ford", "Kia", "Honda", "Subaru", "Cobalt", "Sea-Doo"]
+        .map((name) => slugify(`vehicle-${name}`)),
+    );
+    const staleVehicleCare = vehicleCare.filter((vehicle) => {
+      if (String(vehicle.assetId || "").trim()) return false;
+      const vehicleName = normalizedWorkOrderText(String(vehicle.name || "").replace(/^vehicle\s+/i, ""));
+      return legacySeedIds.has(String(vehicle.id || "")) || realVehicleAssetNames.has(vehicleName);
+    });
+
+    if (!staleCleaningWork.length && !staleVehicleCare.length) {
+      if (typeof window !== "undefined") window.localStorage.setItem(cleanupKey, "done");
       return;
     }
 
-    const tombstones = readWorkOrderTombstones();
-    const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
-    const nextMay15Year = todayISO() <= `${currentYear}-05-15` ? currentYear : currentYear + 1;
-    const nextMay15 = `${nextMay15Year}-05-15`;
-    const nextSeptemberFirst = todayISO() <= `${currentYear}-09-01`
-      ? `${currentYear}-09-01`
-      : `${currentYear + 1}-09-01`;
-    const nextThursday = (() => {
-      const base = new Date(`${todayISO()}T12:00:00`);
-      const delta = (4 - base.getDay() + 7) % 7;
-      return addDays(todayISO(), delta);
-    })();
+    const staleWorkIds = new Set(staleCleaningWork.map((record) => String(record.id || "")));
+    const staleVehicleIds = new Set(staleVehicleCare.map((vehicle) => String(vehicle.id || "")));
 
-    const cobaltAsset = assetRecords.find((asset) =>
-      /cobalt/i.test(`${asset.name || ""} ${asset.make || ""} ${asset.model || ""}`),
-    );
-    const seaDooAsset = assetRecords.find((asset) =>
-      /sea[ -]?doo|gti\s*(se\s*)?170/i.test(`${asset.name || ""} ${asset.make || ""} ${asset.model || ""}`),
-    );
-    const pestVendor = vendorRecords.find((vendor) =>
-      /unrivaled|pest/i.test(String(vendor.name || "")),
-    );
+    staleCleaningWork.forEach((record) => addWorkOrderTombstone(String(record.id || "")));
+    setServiceRecords((current) => current.filter((record) => !staleWorkIds.has(String(record.id || ""))));
+    setVehicleCare((current) => current.filter((vehicle) => !staleVehicleIds.has(String(vehicle.id || ""))));
 
-    const definitions: AtlasServiceRecord[] = [
-      normalizeService({
-        id: "wo-approved-hvac-filter-replacement",
-        propertyId: activePropertyId,
-        title: "Replace house HVAC filters",
-        date: nextSeptemberFirst,
-        status: "Scheduled",
-        priority: "Medium",
-        recurring: true,
-        recurrenceInterval: 3,
-        recurrenceUnit: "Months",
-        recurrenceEndDate: "",
-        recurrenceDays: [],
-        workType: "Preventive Maintenance",
-        workCategory: "Maintenance",
-        responsibilityArea: "House & Maintenance",
-        assignedTo: "Nick",
-        effort: "1 hour",
-        notes: "Approved quarterly HVAC filter replacement. Edit the interval, date, assignee, or details at any time.",
-        checklist: [],
-        notesHistory: [],
-        serviceHistory: [],
-        completionHistory: [],
-        photos: [],
-        documents: [],
-      }),
-      normalizeService({
-        id: "wo-approved-monthly-pest-control",
-        propertyId: activePropertyId,
-        title: "Monthly pest control service",
-        date: nextSeptemberFirst,
-        status: "Scheduled",
-        priority: "Medium",
-        recurring: true,
-        recurrenceInterval: 1,
-        recurrenceUnit: "Months",
-        recurrenceEndDate: "",
-        recurrenceDays: [],
-        workType: "Preventive Maintenance",
-        workCategory: "Maintenance",
-        responsibilityArea: "House & Maintenance",
-        assignedTo: "Nick",
-        vendorId: pestVendor?.id || "",
-        effort: "30 minutes",
-        notes: "Approved recurring pest-control service. This is a normal Work Order and can be edited, rescheduled, or permanently deleted.",
-        checklist: [],
-        notesHistory: [],
-        serviceHistory: [],
-        completionHistory: [],
-        photos: [],
-        documents: [],
-      }),
-      ...(cobaltAsset ? [normalizeService({
-        id: "wo-approved-cobalt-registration-tabs",
-        propertyId: activePropertyId,
-        title: "Replace annual registration tabs — Cobalt",
-        date: nextMay15,
-        status: "Scheduled",
-        priority: "Medium",
-        recurring: true,
-        recurrenceInterval: 1,
-        recurrenceUnit: "Years",
-        recurrenceEndDate: "",
-        recurrenceDays: [],
-        workType: "Preventive Maintenance",
-        workCategory: "Dock & Waterfront",
-        responsibilityArea: "Dock & Waterfront",
-        assignedTo: "Nick",
-        assetId: cobaltAsset.id,
-        locationId: String(cobaltAsset.locationId || ""),
-        effort: "30 minutes",
-        notes: "Approved annual registration-tab renewal. Due each May; edit or delete this Work Order at any time.",
-        checklist: [],
-        notesHistory: [],
-        serviceHistory: [],
-        completionHistory: [],
-        photos: [],
-        documents: [],
-      })] : []),
-      ...(seaDooAsset ? [normalizeService({
-        id: "wo-approved-seadoo-registration-tabs",
-        propertyId: activePropertyId,
-        title: "Replace annual registration tabs — Sea-Doo",
-        date: nextMay15,
-        status: "Scheduled",
-        priority: "Medium",
-        recurring: true,
-        recurrenceInterval: 1,
-        recurrenceUnit: "Years",
-        recurrenceEndDate: "",
-        recurrenceDays: [],
-        workType: "Preventive Maintenance",
-        workCategory: "Dock & Waterfront",
-        responsibilityArea: "Dock & Waterfront",
-        assignedTo: "Nick",
-        assetId: seaDooAsset.id,
-        locationId: String(seaDooAsset.locationId || ""),
-        effort: "30 minutes",
-        notes: "Approved annual registration-tab renewal. Due each May; edit or delete this Work Order at any time.",
-        checklist: [],
-        notesHistory: [],
-        serviceHistory: [],
-        completionHistory: [],
-        photos: [],
-        documents: [],
-      })] : []),
-    ];
-
-    const vehicleSources = new Map<string, { name: string; assetId: string; locationId: string }>();
-    assetRecords.forEach((asset) => {
-      const raw = String(asset.name || "").trim();
-      const category = String(asset.category || "");
-      if (!raw || !/vehicle/i.test(`${category} ${raw}`) || /fleet|tires|cleaning|detailing/i.test(raw)) return;
-      const name = raw.replace(/^vehicle\s+/i, "").trim();
-      const key = normalizedWorkOrderText(name);
-      if (key) vehicleSources.set(key, { name, assetId: asset.id, locationId: String(asset.locationId || "") });
-    });
-    vehicleCare.forEach((vehicle) => {
-      const raw = String(vehicle.name || "").trim();
-      if (!raw || /fleet|tires|cleaning|detailing/i.test(raw)) return;
-      const name = raw.replace(/^vehicle\s+/i, "").trim();
-      const key = normalizedWorkOrderText(name);
-      if (!key || vehicleSources.has(key)) return;
-      vehicleSources.set(key, { name, assetId: "", locationId: String(vehicle.locationId || "") });
-    });
-
-    Array.from(vehicleSources.values()).forEach((vehicle) => {
-      const slug = normalizedWorkOrderText(vehicle.name).replace(/\s+/g, "-") || uid("vehicle");
-      definitions.push(normalizeService({
-        id: `wo-approved-vehicle-cleaning-${slug}`,
-        propertyId: activePropertyId,
-        title: `Clean ${vehicle.name}`,
-        date: nextThursday,
-        status: "Scheduled",
-        priority: "Medium",
-        recurring: true,
-        recurrenceInterval: 1,
-        recurrenceUnit: "Weeks",
-        recurrenceEndDate: "",
-        recurrenceDays: [4],
-        workType: "Preventive Maintenance",
-        workCategory: "Garage",
-        responsibilityArea: "Garage",
-        assignedTo: "Nick",
-        assetId: vehicle.assetId,
-        locationId: vehicle.locationId,
-        effort: "1 hour",
-        notes: "Approved weekly vehicle cleaning. Use Not Needed This Time when the vehicle is already clean. This Work Order can be edited or permanently deleted.",
-        checklist: [],
-        notesHistory: [],
-        serviceHistory: [],
-        completionHistory: [],
-        photos: [],
-        documents: [],
-      }));
-    });
-
-    const existingTitleKeys = new Set(serviceRecords.map((record) => normalizedWorkOrderText(record.title)));
-    const missing = definitions.filter((record) =>
-      !tombstones.has(String(record.id)) &&
-      !serviceRecords.some((existing) => String(existing.id) === String(record.id)) &&
-      !existingTitleKeys.has(normalizedWorkOrderText(record.title)),
-    );
-
-    approvedMaintenanceRestoreRunningRef.current = true;
     void (async () => {
-      try {
-        if (!missing.length) {
-          window.localStorage.setItem(restoreKey, "done");
-          return;
-        }
-        const savedRecords: AtlasServiceRecord[] = [];
-        for (const record of missing) {
-          const saved = await postAtlasRecord("work_orders", record);
-          if (!saved) throw new Error(`Could not save ${record.title}`);
-          savedRecords.push(record);
-        }
-        setServiceRecords((current) => byTitle([...savedRecords, ...current]));
-        window.localStorage.setItem(restoreKey, "done");
-        showSaveToast(`Restored ${savedRecords.length} approved maintenance Work Order${savedRecords.length === 1 ? "" : "s"}.`);
-      } catch (error) {
-        console.error("Approved maintenance restore failed", error);
-        showSaveToast("Approved maintenance Work Orders did not all save. Refresh to retry.", "warning");
-      } finally {
-        approvedMaintenanceRestoreRunningRef.current = false;
-      }
+      await Promise.all([
+        ...staleCleaningWork.map((record) => deleteOperationalRecord("work_orders" as AtlasTable, String(record.id || ""))),
+        ...staleVehicleCare.map((vehicle) => deleteOperationalRecord("vehicle_care" as AtlasTable, String(vehicle.id || ""))),
+      ]);
+      if (typeof window !== "undefined") window.localStorage.setItem(cleanupKey, "done");
     })();
-  }, [ready, operationsHydrated, syncState, activePropertyId, serviceRecords, assetRecords, vehicleCare, vendorRecords]);
+  }, [ready, operationsHydrated, syncState, activePropertyId, serviceRecords, assetRecords, vehicleCare]);
 
   // Automatic task/work-order/routine/calendar seeding is permanently disabled.
   // Atlas creates operational records only from explicit user actions.
@@ -3961,6 +3767,8 @@ export default function AtlasApp() {
             !taskTombstones.has(String(record.id)) &&
             (activePropertyId === "2000" || !isAtlas2000WeeklySeedTask(record)),
         );
+        const vehicleCarePayloadPresent =
+          Array.isArray(operationsPayload.vehicleCareRecords) || Array.isArray(operationsPayload.vehicleCare);
         const apiVehicles = Array.isArray(operationsPayload.vehicleCareRecords) ? operationsPayload.vehicleCareRecords : Array.isArray(operationsPayload.vehicleCare) ? operationsPayload.vehicleCare : [];
         const apiDaySessions = Array.isArray(operationsPayload.daySessions) ? operationsPayload.daySessions : [];
         const apiPhotos = (
@@ -4101,7 +3909,27 @@ export default function AtlasApp() {
             return mergedMeta;
           });
         }
-        if (apiVehicles.length) setVehicleCare((localVehicles) => { const remoteIds = new Set(apiVehicles.map((vehicle) => vehicle.id)); return [...apiVehicles.map((remote) => { const local = localVehicles.find((vehicle) => vehicle.id === remote.id); return local?.updatedAt && local.updatedAt > String(remote.updatedAt || "") ? local : remote; }), ...localVehicles.filter((vehicle) => !remoteIds.has(vehicle.id))]; });
+        if (vehicleCarePayloadPresent) {
+          const dedupedVehicles = new Map<string, AtlasVehicleCare>();
+          apiVehicles.forEach((vehicle) => {
+            const key = normalizeLocationName(vehicle.name || vehicle.id);
+            const existing = dedupedVehicles.get(key);
+            if (!existing) {
+              dedupedVehicles.set(key, vehicle);
+              return;
+            }
+            const existingLinked = Boolean(String(existing.assetId || "").trim());
+            const candidateLinked = Boolean(String(vehicle.assetId || "").trim());
+            if (candidateLinked && !existingLinked) {
+              dedupedVehicles.set(key, vehicle);
+              return;
+            }
+            if (candidateLinked === existingLinked && String(vehicle.updatedAt || "") > String(existing.updatedAt || "")) {
+              dedupedVehicles.set(key, vehicle);
+            }
+          });
+          setVehicleCare(Array.from(dedupedVehicles.values()));
+        }
         if (apiDaySessions.length) setDaySessions(apiDaySessions);
         setOperationsHydrated(true);
 
