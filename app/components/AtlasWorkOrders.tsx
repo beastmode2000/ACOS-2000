@@ -858,6 +858,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       workCategory: template.workCategory,
       priority: template.priority,
       date: template.workType === "Quick Task" ? todayKey() : "",
+      recurrenceDays:
+        template.workType === "Preventive Maintenance"
+          ? [...DEFAULT_WORK_WEEK]
+          : [],
     });
     setNewWorkOpen(true);
     window.setTimeout(() => {
