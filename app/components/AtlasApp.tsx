@@ -27571,7 +27571,7 @@ ${notes.trim()}` : notes.trim(),
 
                   {garageVehicleTab === "Maintenance" ? <div style={{ display: "grid", gap: 8 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Maintenance history</strong><button type="button" onClick={() => createVehicleWorkOrder(selectedGarageVehicle)} style={goldButtonStyle}>+ Add record</button></div>{vehicleWork.map((record) => <button key={record.id} type="button" onClick={() => { setDepartmentCenter(""); openWorkOrderById(record.id); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "No date"}</small></span><span style={badgeStyle(record.status || "Open")}>{record.status || "Open"}</span></button>)}{serviceHistory.map((entry) => <div key={entry.id} style={recordInfoItemStyle}><strong>{entry.type}</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{formatDate(String(entry.date || "").slice(0, 10))}{entry.notes ? ` · ${entry.notes}` : ""}</small></div>)}{!vehicleWork.length && !serviceHistory.length ? <div style={noticeStyle}>No maintenance history recorded.</div> : null}</div> : null}
 
-                  {garageVehicleTab === "Cleaning" ? <div style={{ display: "grid", gap: 10 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Cleaning schedule & history</strong><span style={badgeStyle(!nextCleaning ? "Monitor" : nextCleaning <= todayISO() ? "Open" : "Scheduled")}>{!nextCleaning ? "Not scheduled" : nextCleaning <= todayISO() ? "Due" : "Scheduled"}</span></div><div style={{ ...recordInfoItemStyle, background: "#F0F6FC", display: "grid", gap: 9 }}><span style={fieldLabelStyle}>NEXT CLEANING</span><strong style={{ color: colors.navy, fontSize: 16 }}>{nextCleaning ? formatDate(nextCleaning) : "No cleaning history yet"}</strong><small style={mutedSmallStyle}>Exterior wash · Interior tidy · Glass · Check supplies · Tire pressure</small><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 6 }}><button type="button" onClick={() => { ensureSelectedVehicleSaved(); markVehicleCleaned(selectedGarageVehicle); }} style={goldButtonStyle}>Complete</button><button type="button" onClick={skipSelectedCleaning} style={smallSubtleButtonStyle}>Skip</button><button type="button" onClick={moveSelectedCleaningToThursday} style={smallSubtleButtonStyle}>Move to Thursday</button><button type="button" onClick={assignSelectedCleaningToAddison} style={smallSubtleButtonStyle}>Assign to Addison</button><button type="button" onClick={addSelectedCleaningNote} style={smallSubtleButtonStyle}>Add Note</button><button type="button" onClick={() => selectedGarageAsset ? openAssetById(selectedGarageAsset.id) : showSaveToast("Link this vehicle to an Asset before adding photos.")} style={smallSubtleButtonStyle}>Add Photo</button><button type="button" onClick={() => createVehicleCleaningTask(selectedGarageVehicle)} style={smallSubtleButtonStyle}>{selectedCleaningTask ? "Open Task" : "Create Task"}</button><button type="button" onClick={() => createVehicleWorkOrder(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Create Work Order</button></div><small style={mutedSmallStyle}>Assigned to {selectedGarageVehicle.assignedTo || "Nick"}{selectedCleaningTask && taskDetails(selectedCleaningTask.id).dueDate ? ` · Task due ${formatDate(taskDetails(selectedCleaningTask.id).dueDate)}` : ""}</small></div>{cleaningHistory.map((entry) => { const skipped = entry.type === "Note" && /^Skipped\b/i.test(entry.notes || ""); return <div key={entry.id} style={{ ...recordInfoItemStyle, display: "grid", gridTemplateColumns: "90px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}><small style={mutedSmallStyle}>{formatDate(String(entry.date || "").slice(0, 10))}</small><span><strong style={{ display: "block" }}>{skipped ? "Cleaning skipped" : "Vehicle cleaning"}</strong>{entry.notes ? <small style={mutedSmallStyle}>{entry.notes}</small> : null}</span><span style={badgeStyle(skipped ? "Monitor" : "Completed")}>{skipped ? "Skipped" : "Completed"}</span></div>; })}{!cleaningHistory.length ? <div style={noticeStyle}>No cleaning history recorded yet.</div> : null}</div> : null}
+                  {garageVehicleTab === "Cleaning" ? <div style={{ display: "grid", gap: 10 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Cleaning schedule & history</strong><span style={badgeStyle(!nextCleaning ? "Monitor" : nextCleaning <= todayISO() ? "Open" : "Scheduled")}>{!nextCleaning ? "Not scheduled" : nextCleaning <= todayISO() ? "Due" : "Scheduled"}</span></div><div style={{ ...recordInfoItemStyle, background: "#F0F6FC", display: "grid", gap: 9 }}><span style={fieldLabelStyle}>NEXT CLEANING</span><strong style={{ color: colors.navy, fontSize: 16 }}>{nextCleaning ? formatDate(nextCleaning) : "No cleaning history yet"}</strong><small style={mutedSmallStyle}>Exterior wash · Interior tidy · Glass · Check supplies · Tire pressure</small><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 6 }}><button type="button" onClick={() => { ensureSelectedVehicleSaved(); markVehicleCleaned(selectedGarageVehicle); }} style={goldButtonStyle}>Complete</button><button type="button" onClick={skipSelectedCleaning} style={smallSubtleButtonStyle}>Skip</button><button type="button" onClick={moveSelectedCleaningToThursday} style={smallSubtleButtonStyle}>Move to Thursday</button><button type="button" onClick={assignSelectedCleaningToAddison} style={smallSubtleButtonStyle}>Assign to Addison</button><button type="button" onClick={addSelectedCleaningNote} style={smallSubtleButtonStyle}>Add Note</button><button type="button" onClick={() => selectedGarageAsset ? openAssetById(selectedGarageAsset.id) : showSaveToast("Link this vehicle to an Asset before adding photos.")} style={smallSubtleButtonStyle}>Add Photo</button><button type="button" onClick={() => createVehicleWorkOrder(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Create Work Order</button></div><small style={mutedSmallStyle}>Assigned to {selectedGarageVehicle.assignedTo || "Nick"}</small></div>{cleaningHistory.map((entry) => { const skipped = entry.type === "Note" && /^Skipped\b/i.test(entry.notes || ""); return <div key={entry.id} style={{ ...recordInfoItemStyle, display: "grid", gridTemplateColumns: "90px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}><small style={mutedSmallStyle}>{formatDate(String(entry.date || "").slice(0, 10))}</small><span><strong style={{ display: "block" }}>{skipped ? "Cleaning skipped" : "Vehicle cleaning"}</strong>{entry.notes ? <small style={mutedSmallStyle}>{entry.notes}</small> : null}</span><span style={badgeStyle(skipped ? "Monitor" : "Completed")}>{skipped ? "Skipped" : "Completed"}</span></div>; })}{!cleaningHistory.length ? <div style={noticeStyle}>No cleaning history recorded yet.</div> : null}</div> : null}
 
                   {garageVehicleTab === "Documents" ? <div style={{ display: "grid", gap: 8 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Documents</strong>{selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={goldButtonStyle}>+ Add document</button> : null}</div>{vehicleDocuments.map((document) => <button key={document.id} type="button" onClick={() => { setSelectedDocumentId(document.id); openCenter("documents"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{document.title}</strong><small style={mutedSmallStyle}>{document.type || "Document"}</small></span><span>Open ›</span></button>)}{!vehicleDocuments.length ? <div style={noticeStyle}>No documents attached to this vehicle.</div> : null}</div> : null}
 
@@ -27824,48 +27824,7 @@ ${notes.trim()}` : notes.trim(),
                 </div>
               </div>
 
-              <div style={centerCardStyle}>
-                <strong style={{ color: colors.navy, fontSize: 16 }}>
-                  Car Tasks
-                </strong>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {sortedCarTasks.map((task) => {
-                    const meta = taskDetails(task.id);
-                    return (
-                      <button
-                        key={task.id}
-                        type="button"
-                        onClick={() => {
-                          setDepartmentCenter("");
-                          setSelectedTaskId(task.id);
-                          setTasksView("tasks");
-                          setScreen("planner");
-                        }}
-                        style={{
-                          ...compactLinkedRowStyle,
-                          width: "100%",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <span>
-                          <strong>{task.title}</strong>
-                          <small style={mutedSmallStyle}>
-                            {meta.dueDate
-                              ? formatDate(meta.dueDate)
-                              : "No due date"}
-                          </small>
-                        </span>
-                        <span style={badgeStyle(meta.status || "Open")}>
-                          {meta.status || "Open"}
-                        </span>
-                      </button>
-                    );
-                  })}
-                  {!sortedCarTasks.length ? (
-                    <div style={noticeStyle}>No car tasks.</div>
-                  ) : null}
-                </div>
-              </div>
+
             </div>
           </div>
         </section>
@@ -27971,49 +27930,6 @@ ${notes.trim()}` : notes.trim(),
                   ))}
                   {!sortedMarineWork.length ? (
                     <div style={noticeStyle}>No Dock or Marine work orders.</div>
-                  ) : null}
-                </div>
-              </div>
-
-              <div style={centerCardStyle}>
-                <strong style={{ color: colors.navy, fontSize: 16 }}>
-                  Dock & Marine Tasks
-                </strong>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {sortedMarineTasks.map((task) => {
-                    const meta = taskDetails(task.id);
-                    return (
-                      <button
-                        key={task.id}
-                        type="button"
-                        onClick={() => {
-                          setDepartmentCenter("");
-                          setSelectedTaskId(task.id);
-                          setTasksView("tasks");
-                          setScreen("planner");
-                        }}
-                        style={{
-                          ...compactLinkedRowStyle,
-                          width: "100%",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <span>
-                          <strong>{task.title}</strong>
-                          <small style={mutedSmallStyle}>
-                            {meta.dueDate
-                              ? formatDate(meta.dueDate)
-                              : "No due date"}
-                          </small>
-                        </span>
-                        <span style={badgeStyle(meta.status || "Open")}>
-                          {meta.status || "Open"}
-                        </span>
-                      </button>
-                    );
-                  })}
-                  {!sortedMarineTasks.length ? (
-                    <div style={noticeStyle}>No Dock or Marine tasks.</div>
                   ) : null}
                 </div>
               </div>
@@ -30327,6 +30243,7 @@ ${notes.trim()}` : notes.trim(),
                     <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>{section.label}</div>
                     <div style={sidebarNavItemsStyle}>
                       {section.items.map((screenId) => {
+                        if (screenId === "planner" || screenId === "routines") return null;
                         if (screenId === "planner") {
                           const workNavigation = isAddisonUser
                             ? [{ id: "tasks", label: "My Tasks", view: "tasks" as const }]
