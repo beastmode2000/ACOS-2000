@@ -1489,11 +1489,20 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       updateWorkOrder({ date: tomorrowDate(), status: "Scheduled" });
     if (value === "next-week")
       updateWorkOrder({ date: nextWeekDate(), status: "Scheduled" });
+    if (value === "edit-series") {
+      setWorkEditorOpen(true);
+    }
+    if (value === "stop-series") {
+      const stopDate = String(selectedService.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+      if (window.confirm(`Stop future occurrences of “${selectedService.title || "this work"}” after ${formatDate(stopDate)}?`)) {
+        void updateWorkOrderRecord(selectedService, { recurrenceEndDate: stopDate });
+      }
+    }
     if (value === "not-needed") {
       const occurrenceDate = selectedService.date || "";
       const next = recurrencePreviewDates(selectedService, 1)[0];
       if (next) {
-        updateWorkOrder({
+        void updateWorkOrderRecord(selectedService, {
           date: next,
           status: "Scheduled",
           lastSkippedAt: new Date().toISOString(),
@@ -2586,7 +2595,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               <section style={{ ...detailSectionStyle, padding: 10, background: "#F8FAFC" }}>
                 <select value="" onChange={(event) => { handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, minHeight: 38, color: colors.muted, fontSize: 13, fontWeight: 500, background: "#FFFFFF" }} aria-label="Work order actions">
                   <option value="">Actions...</option>
-                  {isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="start">Start</option><option value="complete">{selectedService.recurring ? "Complete & Advance" : "Mark Done"}</option><option value="reschedule">Reschedule</option><option value="tomorrow">Tomorrow</option><option value="next-week">Next Week</option>{selectedService.recurring ? <option value="not-needed">Not Needed This Time</option> : null}<option value="convert">Convert Type</option></>}
+                  {isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="start">Start</option><option value="complete">{selectedService.recurring ? "Complete & Advance" : "Mark Done"}</option><option value="reschedule">{selectedService.recurring ? "Reschedule This Time" : "Reschedule"}</option><option value="tomorrow">Tomorrow</option><option value="next-week">Next Week</option>{selectedService.recurring ? <><option value="not-needed">Not Needed This Time</option><option value="edit-series">Edit Series</option><option value="stop-series">Stop Series</option></> : null}<option value="convert">Convert Type</option></>}
                   <option value="photo">Add Photo</option>
                   <option value="duplicate">Duplicate</option>
                   <option value="delete">Delete</option>
