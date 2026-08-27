@@ -272,7 +272,6 @@ export default function AtlasDashboardWorkspace(props: any) {
     updateTaskDetails,
     updateTeamAssignment,
     updateWorkPlanTask,
-    updateWorkOrderRecord,
     vehicleCare,
     vehicleDueScore,
     vendorRecords,
@@ -2063,9 +2062,16 @@ export default function AtlasDashboardWorkspace(props: any) {
 
   const foremanSchedule = nonRoutineTodayEvents
     .filter((event) => {
-      const source = String((event as any).source || "").toLowerCase();
-      const linkedType = String((event as any).linkedType || "");
-      return source !== "work-order" && source !== "task" && linkedType !== "Work Order" && linkedType !== "Task";
+      const source = String(event.source || "").toLowerCase();
+      const linkedType = String(event.linkedType || "").toLowerCase();
+      return (
+        source !== "task" &&
+        source !== "work-order" &&
+        source !== "workorder" &&
+        source !== "service" &&
+        linkedType !== "task" &&
+        linkedType !== "work order"
+      );
     })
     .slice()
     .sort((a, b) => String(a.time || "99:99").localeCompare(String(b.time || "99:99")));
@@ -2483,24 +2489,10 @@ export default function AtlasDashboardWorkspace(props: any) {
                       <input type="date" value={String(record.date || "").slice(0, 10)} onChange={(event) => void syncWorkOrderPatch(record, { date: event.currentTarget.value })} aria-label={`Due date for ${record.title}`} style={{ ...inputStyle, minHeight: 30, padding: "3px 5px", fontSize: 11, color: record.date && record.date < today ? colors.red : colors.text }}/>
                       <select value={assigned} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })} aria-label={`Reassign ${record.title}`} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name}</option>)}</select>
                     </div>
-                    <textarea
-                      value={completionNote}
-                      onChange={(event) => setDashboardCompletionNotes((current) => ({ ...current, [String(record.id)]: event.currentTarget.value }))}
-                      onFocus={() => {
-                        if (!completionNote && record.notes) {
-                          setDashboardCompletionNotes((current) => ({ ...current, [String(record.id)]: String(record.notes || "") }));
-                        }
-                      }}
-                      onBlur={(event) => {
-                        const nextNote = event.currentTarget.value.trim();
-                        const currentNote = String(record.notes || "").trim();
-                        if (nextNote !== currentNote) void syncWorkOrderPatch(record, { notes: nextNote });
-                      }}
-                      placeholder="Notes / update"
-                      aria-label={`Notes for ${record.title}`}
-                      rows={2}
-                      style={{ ...inputStyle, minHeight: 54, padding: "5px 7px", fontSize: 11, resize: "vertical" }}
-                    />
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 6 }}>
+                      <input value={completionNote} onChange={(event) => setDashboardCompletionNotes((current) => ({ ...current, [String(record.id)]: event.currentTarget.value }))} onKeyDown={(event) => { if (event.key === "Enter") void saveDashboardWorkUpdate(record); }} placeholder="Add update note" aria-label={`Update note for ${record.title}`} style={{ ...inputStyle, minHeight: 30, padding: "4px 7px", fontSize: 11 }}/>
+                      <button type="button" onClick={() => void saveDashboardWorkUpdate(record)} disabled={!completionNote.trim()} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 9px", fontSize: 11, opacity: completionNote.trim() ? 1 : .55 }}>Save Update</button>
+                    </div>
                   </div>
                 </details>
               </div>;
@@ -2831,14 +2823,36 @@ export default function AtlasDashboardWorkspace(props: any) {
   ].filter(Boolean) as { priority: string; title: string; detail: string; action: () => void }[];
 
   const syncWorkOrderPatch = async (record: ServiceRecord, patch: Partial<AtlasServiceRecord>) => {
-    if (typeof updateWorkOrderRecord === "function") {
-      await updateWorkOrderRecord(record as AtlasServiceRecord, patch);
-      return;
-    }
     const updated = normalizeService({ ...(record as AtlasServiceRecord), ...patch });
     setServiceRecords((current) => byTitle(current.map((item) => item.id === updated.id ? updated : item)));
     const saved = await postAtlasRecord("work_orders", updated);
     showSaveToast(saved ? `Saved ${updated.title}.` : `${updated.title} changed locally, but shared sync did not finish.`, saved ? "success" : "warning");
+  };
+  const saveDashboardWorkUpdate = async (record: ServiceRecord) => {
+    const text = String(dashboardCompletionNotes[String(record.id)] || "").trim();
+    if (!text) return;
+    const updated = normalizeService({
+      ...(record as AtlasServiceRecord),
+      notesHistory: [
+        { id: uid("note"), text, createdAt: new Date().toISOString() },
+        ...((record as AtlasServiceRecord).notesHistory || []),
+      ],
+    });
+    setServiceRecords((current) =>
+      byTitle(current.map((item) => item.id === updated.id ? updated : item)),
+    );
+    const saved = await postAtlasRecord("work_orders", updated);
+    if (saved) {
+      setDashboardCompletionNotes((current) => {
+        const next = { ...current };
+        delete next[String(record.id)];
+        return next;
+      });
+    }
+    showSaveToast(
+      saved ? `Update saved to ${updated.title}.` : `${updated.title} update did not sync.`,
+      saved ? "success" : "warning",
+    );
   };
   const skipWorkOccurrence = async (record: ServiceRecord) => {
     if (!record.recurring) return;
