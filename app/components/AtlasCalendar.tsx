@@ -81,7 +81,7 @@ type AtlasCalendarProps = {
   openCalendarItem: any;
   onOpenLinkedRecord?: (event: any) => boolean | void;
   onConvertToWorkOrder?: (event: any) => boolean | Promise<boolean>;
-  onCreateWorkOrder?: (date: string) => void | Promise<void>;
+  onCreateWorkOrder?: (date: string) => unknown | Promise<unknown>;
   reminderOptions: string[];
   repeatOptions: string[];
   saveCalendarItem: any;
