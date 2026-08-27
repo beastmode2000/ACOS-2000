@@ -2453,6 +2453,11 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                               Complete
                             </button>
                           ) : null}
+                          <select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: "auto", minWidth: 128, minHeight: 36, color: colors.text, fontSize: 12, fontWeight: 700, background: "#FFFFFF" }} aria-label="Work order actions">
+                            <option value="">Actions</option>
+                            {isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="reschedule">{selectedService.recurring ? "Reschedule This Time" : "Reschedule"}</option>{selectedService.recurring ? <><option value="not-needed">Not Needed This Time</option><option value="edit-series">Edit Series</option><option value="stop-series">Stop Series</option></> : null}<option value="complete">{selectedService.recurring ? "Complete & Advance" : "Complete"}</option></>}
+                            <option value="delete">Delete</option>
+                          </select>
                           <button type="button" onClick={() => setWorkEditorOpen(true)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 36, padding: "8px 12px" }}>
                             Edit
                           </button>
@@ -2505,7 +2510,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <div style={{ display: "grid", gap: 11 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                       <div style={eyebrowStyle}>Edit Work</div>
-                      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={async () => { await saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Save</button><button type="button" onClick={() => void deleteWorkOrderRecord(selectedService)} style={{ ...dangerButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Delete</button><button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button></div>
+                      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={async () => { await saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Save</button><button type="button" onClick={() => void deleteWorkOrderRecord(selectedService)} style={{ ...dangerButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Delete</button><select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: "auto", minWidth: 120, minHeight: 32, color: colors.text, fontSize: 12, fontWeight: 700, background: "#FFFFFF" }} aria-label="Work order actions"><option value="">Actions</option>{isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="reschedule">{selectedService.recurring ? "Reschedule This Time" : "Reschedule"}</option>{selectedService.recurring ? <><option value="not-needed">Not Needed This Time</option><option value="edit-series">Edit Series</option><option value="stop-series">Stop Series</option></> : null}<option value="complete">{selectedService.recurring ? "Complete & Advance" : "Complete"}</option></>}<option value="delete">Delete</option></select><button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button></div>
                     </div>
                     <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, fontSize: 20, fontWeight: 800 }} />
                     <label style={{ display: "grid", gap: 5 }}>
@@ -2629,15 +2634,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 </details>
               ) : null}
 
-              <section style={{ ...detailSectionStyle, padding: 10, background: "#F8FAFC" }}>
-                <select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, minHeight: 38, color: colors.muted, fontSize: 13, fontWeight: 500, background: "#FFFFFF" }} aria-label="Work order actions">
-                  <option value="">Actions...</option>
-                  {isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="start">Start</option><option value="complete">{selectedService.recurring ? "Complete & Advance" : "Mark Done"}</option><option value="reschedule">{selectedService.recurring ? "Reschedule This Time" : "Reschedule"}</option><option value="tomorrow">Tomorrow</option><option value="next-week">Next Week</option>{selectedService.recurring ? <><option value="not-needed">Not Needed This Time</option><option value="edit-series">Edit Series</option><option value="stop-series">Stop Series</option></> : null}<option value="convert">Convert Type</option></>}
-                  <option value="photo">Add Photo</option>
-                  <option value="duplicate">Duplicate</option>
-                  <option value="delete">Delete</option>
-                </select>
-
+              {workEditorOpen && selectedService.recurring ? <section style={{ ...detailSectionStyle, padding: 10, background: "#F8FAFC" }}>
                 {workEditorOpen && selectedService.recurring ? (
                   <div
                     style={{
@@ -2803,7 +2800,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     </button>
                   </div>
                 ) : null}
-              </section>
+              </section> : null}
 
               {isRecordDirty("work_orders", selectedService.id) ? (
                 <div style={{ position: "sticky", bottom: 0, zIndex: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: 10, border: `1px solid ${colors.gold}`, borderRadius: 12, background: "rgba(255,255,255,.97)", boxShadow: "0 -6px 20px rgba(15,42,67,.12)" }}>
