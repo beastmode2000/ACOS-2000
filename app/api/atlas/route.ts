@@ -333,6 +333,11 @@ async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
 
   await sql`
     ALTER TABLE atlas_calendar_items
+    ADD COLUMN IF NOT EXISTS end_time text
+  `;
+
+  await sql`
+    ALTER TABLE atlas_calendar_items
     ADD COLUMN IF NOT EXISTS category_label text
   `;
 
@@ -795,6 +800,7 @@ function mapCalendarItem(row: JsonRecord) {
     id: String(row.id || ""),
     date: databaseDateKey(row.item_date || row.date),
     time: row.time ? String(row.time) : "",
+    endTime: row.end_time ? String(row.end_time) : "",
     title: String(row.title || ""),
     area: String(row.area || ""),
     categoryLabel: row.category_label ? String(row.category_label) : "",
@@ -1151,6 +1157,7 @@ export async function GET(request: NextRequest) {
         item_date,
         date,
         time,
+        end_time,
         title,
         area,
         category_label,
@@ -2110,7 +2117,7 @@ if (table === "assets") {
 
       const savedRows = (await sql`
         INSERT INTO atlas_calendar_items (
-          id, item_date, date, time, title, area, category_label, color_id,
+          id, item_date, date, time, end_time, title, area, category_label, color_id,
           color_name, all_day, repeat, reminder, notes, linked_type, linked_id,
           linked_name, completed, source, original_id, instance_id, event_type,
           status, updated_at, property_id
@@ -2118,6 +2125,7 @@ if (table === "assets") {
         VALUES (
           ${id}, ${savedDate}::date, ${savedDate}::date,
           ${nullableString(record.time)},
+          ${nullableString(record.endTime)},
           ${asString(record.title) || "Untitled Calendar Item"},
           ${asString(record.area) || "General"},
           ${nullableString(record.categoryLabel)},
@@ -2146,6 +2154,7 @@ if (table === "assets") {
           item_date = EXCLUDED.item_date,
           date = EXCLUDED.date,
           time = EXCLUDED.time,
+          end_time = EXCLUDED.end_time,
           title = EXCLUDED.title,
           area = EXCLUDED.area,
           category_label = EXCLUDED.category_label,
@@ -2399,7 +2408,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     let deletedRows: JsonRecord[] = [];
-    let alreadyDeleted = false;
+    let workOrderAlreadyDeleted = false;
 
     if (table === "locations") {
       const locationRows = (await sql`
@@ -2700,21 +2709,8 @@ export async function DELETE(request: NextRequest) {
           // another browser tab, or a retry may have already removed the row.
           // Treat that as success so the client can keep its tombstone and never
           // resurrect the deleted record.
-          alreadyDeleted = true;
+          workOrderAlreadyDeleted = true;
         }
-      }
-
-      if (deletedRows.length || alreadyDeleted) {
-        await ensureCalendarColumns(sql);
-        await sql`
-          DELETE FROM atlas_calendar_items
-          WHERE property_id = ${propertyId}
-            AND linked_id = ${id}
-            AND (
-              LOWER(COALESCE(linked_type, '')) = 'work order'
-              OR LOWER(COALESCE(source, '')) IN ('work-order', 'workorder', 'service')
-            )
-        `;
       }
     } else if (table === "calendar") {
       deletedRows = (await sql`
@@ -2759,30 +2755,10 @@ export async function DELETE(request: NextRequest) {
           AND property_id = ${propertyId}
         RETURNING id
       `) as unknown as JsonRecord[];
-
-      if (!deletedRows.length) {
-        alreadyDeleted = true;
-      }
-
-      if (table === "tasks") {
-        await ensureCalendarColumns(sql);
-        await sql`
-          DELETE FROM atlas_calendar_items
-          WHERE property_id = ${propertyId}
-            AND linked_id = ${id}
-            AND (
-              LOWER(COALESCE(linked_type, '')) = 'task'
-              OR LOWER(COALESCE(source, '')) = 'task'
-            )
-        `;
-      }
     }
 
     if (!deletedRows.length) {
-      if (
-        alreadyDeleted ||
-        table === "calendar"
-      ) {
+      if (table === "work_orders" && workOrderAlreadyDeleted) {
         return NextResponse.json({
           ok: true,
           id,
