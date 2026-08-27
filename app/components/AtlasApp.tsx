@@ -1551,6 +1551,7 @@ export default function AtlasApp() {
   const aiGeneratedPurgeRunningRef = useRef(false);
   const applianceAnnualServiceSetupRunningRef = useRef(false);
   const approvedWorkResetRunningRef = useRef(false);
+  const approvedMaintenanceRestoreRunningRef = useRef(false);
   const [workOrderSeasonFilter, setWorkOrderSeasonFilter] = useState<
     WorkSeason | "All"
   >("All");
@@ -3107,6 +3108,239 @@ export default function AtlasApp() {
       showSaveToast("Atlas cleanup did not fully finish. Refresh to retry.", "warning");
     });
   }, [ready, operationsHydrated, syncState, activePropertyId, calendarItems, workPlanTasks, serviceRecords]);
+
+  useEffect(() => {
+    if (
+      !ready ||
+      !operationsHydrated ||
+      syncState !== "synced" ||
+      activePropertyId !== "2000" ||
+      typeof window === "undefined" ||
+      approvedMaintenanceRestoreRunningRef.current
+    ) return;
+
+    const restoreKey = "atlas-approved-maintenance-restore-v1-2000";
+    if (window.localStorage.getItem(restoreKey) === "done") return;
+
+    // This is a one-time, user-approved migration only. It is intentionally
+    // time-limited so these records can never become a permanent generator.
+    // Once imported, they are ordinary Work Orders and deletion stays deletion.
+    if (todayISO() > "2026-08-27") {
+      window.localStorage.setItem(restoreKey, "done");
+      return;
+    }
+
+    const tombstones = readWorkOrderTombstones();
+    const currentYear = new Date(`${todayISO()}T12:00:00`).getFullYear();
+    const nextMay15Year = todayISO() <= `${currentYear}-05-15` ? currentYear : currentYear + 1;
+    const nextMay15 = `${nextMay15Year}-05-15`;
+    const nextSeptemberFirst = todayISO() <= `${currentYear}-09-01`
+      ? `${currentYear}-09-01`
+      : `${currentYear + 1}-09-01`;
+    const nextThursday = (() => {
+      const base = new Date(`${todayISO()}T12:00:00`);
+      const delta = (4 - base.getDay() + 7) % 7;
+      return addDays(todayISO(), delta);
+    })();
+
+    const cobaltAsset = assetRecords.find((asset) =>
+      /cobalt/i.test(`${asset.name || ""} ${asset.make || ""} ${asset.model || ""}`),
+    );
+    const seaDooAsset = assetRecords.find((asset) =>
+      /sea[ -]?doo|gti\s*(se\s*)?170/i.test(`${asset.name || ""} ${asset.make || ""} ${asset.model || ""}`),
+    );
+    const pestVendor = vendorRecords.find((vendor) =>
+      /unrivaled|pest/i.test(String(vendor.name || "")),
+    );
+
+    const definitions: AtlasServiceRecord[] = [
+      normalizeService({
+        id: "wo-approved-hvac-filter-replacement",
+        propertyId: activePropertyId,
+        title: "Replace house HVAC filters",
+        date: nextSeptemberFirst,
+        status: "Scheduled",
+        priority: "Medium",
+        recurring: true,
+        recurrenceInterval: 3,
+        recurrenceUnit: "Months",
+        recurrenceEndDate: "",
+        recurrenceDays: [],
+        workType: "Preventive Maintenance",
+        workCategory: "Maintenance",
+        responsibilityArea: "House & Maintenance",
+        assignedTo: "Nick",
+        effort: "1 hour",
+        notes: "Approved quarterly HVAC filter replacement. Edit the interval, date, assignee, or details at any time.",
+        checklist: [],
+        notesHistory: [],
+        serviceHistory: [],
+        completionHistory: [],
+        photos: [],
+        documents: [],
+      }),
+      normalizeService({
+        id: "wo-approved-monthly-pest-control",
+        propertyId: activePropertyId,
+        title: "Monthly pest control service",
+        date: nextSeptemberFirst,
+        status: "Scheduled",
+        priority: "Medium",
+        recurring: true,
+        recurrenceInterval: 1,
+        recurrenceUnit: "Months",
+        recurrenceEndDate: "",
+        recurrenceDays: [],
+        workType: "Preventive Maintenance",
+        workCategory: "Maintenance",
+        responsibilityArea: "House & Maintenance",
+        assignedTo: "Nick",
+        vendorId: pestVendor?.id || "",
+        effort: "30 minutes",
+        notes: "Approved recurring pest-control service. This is a normal Work Order and can be edited, rescheduled, or permanently deleted.",
+        checklist: [],
+        notesHistory: [],
+        serviceHistory: [],
+        completionHistory: [],
+        photos: [],
+        documents: [],
+      }),
+      ...(cobaltAsset ? [normalizeService({
+        id: "wo-approved-cobalt-registration-tabs",
+        propertyId: activePropertyId,
+        title: "Replace annual registration tabs — Cobalt",
+        date: nextMay15,
+        status: "Scheduled",
+        priority: "Medium",
+        recurring: true,
+        recurrenceInterval: 1,
+        recurrenceUnit: "Years",
+        recurrenceEndDate: "",
+        recurrenceDays: [],
+        workType: "Preventive Maintenance",
+        workCategory: "Dock & Waterfront",
+        responsibilityArea: "Dock & Waterfront",
+        assignedTo: "Nick",
+        assetId: cobaltAsset.id,
+        locationId: String(cobaltAsset.locationId || ""),
+        effort: "30 minutes",
+        notes: "Approved annual registration-tab renewal. Due each May; edit or delete this Work Order at any time.",
+        checklist: [],
+        notesHistory: [],
+        serviceHistory: [],
+        completionHistory: [],
+        photos: [],
+        documents: [],
+      })] : []),
+      ...(seaDooAsset ? [normalizeService({
+        id: "wo-approved-seadoo-registration-tabs",
+        propertyId: activePropertyId,
+        title: "Replace annual registration tabs — Sea-Doo",
+        date: nextMay15,
+        status: "Scheduled",
+        priority: "Medium",
+        recurring: true,
+        recurrenceInterval: 1,
+        recurrenceUnit: "Years",
+        recurrenceEndDate: "",
+        recurrenceDays: [],
+        workType: "Preventive Maintenance",
+        workCategory: "Dock & Waterfront",
+        responsibilityArea: "Dock & Waterfront",
+        assignedTo: "Nick",
+        assetId: seaDooAsset.id,
+        locationId: String(seaDooAsset.locationId || ""),
+        effort: "30 minutes",
+        notes: "Approved annual registration-tab renewal. Due each May; edit or delete this Work Order at any time.",
+        checklist: [],
+        notesHistory: [],
+        serviceHistory: [],
+        completionHistory: [],
+        photos: [],
+        documents: [],
+      })] : []),
+    ];
+
+    const vehicleSources = new Map<string, { name: string; assetId: string; locationId: string }>();
+    assetRecords.forEach((asset) => {
+      const raw = String(asset.name || "").trim();
+      const category = String(asset.category || "");
+      if (!raw || !/vehicle/i.test(`${category} ${raw}`) || /fleet|tires|cleaning|detailing/i.test(raw)) return;
+      const name = raw.replace(/^vehicle\s+/i, "").trim();
+      const key = normalizedWorkOrderText(name);
+      if (key) vehicleSources.set(key, { name, assetId: asset.id, locationId: String(asset.locationId || "") });
+    });
+    vehicleCare.forEach((vehicle) => {
+      const raw = String(vehicle.name || "").trim();
+      if (!raw || /fleet|tires|cleaning|detailing/i.test(raw)) return;
+      const name = raw.replace(/^vehicle\s+/i, "").trim();
+      const key = normalizedWorkOrderText(name);
+      if (!key || vehicleSources.has(key)) return;
+      vehicleSources.set(key, { name, assetId: "", locationId: String(vehicle.locationId || "") });
+    });
+
+    Array.from(vehicleSources.values()).forEach((vehicle) => {
+      const slug = normalizedWorkOrderText(vehicle.name).replace(/\s+/g, "-") || uid("vehicle");
+      definitions.push(normalizeService({
+        id: `wo-approved-vehicle-cleaning-${slug}`,
+        propertyId: activePropertyId,
+        title: `Clean ${vehicle.name}`,
+        date: nextThursday,
+        status: "Scheduled",
+        priority: "Medium",
+        recurring: true,
+        recurrenceInterval: 1,
+        recurrenceUnit: "Weeks",
+        recurrenceEndDate: "",
+        recurrenceDays: ["Thursday"],
+        workType: "Preventive Maintenance",
+        workCategory: "Garage",
+        responsibilityArea: "Garage",
+        assignedTo: "Nick",
+        assetId: vehicle.assetId,
+        locationId: vehicle.locationId,
+        effort: "1 hour",
+        notes: "Approved weekly vehicle cleaning. Use Not Needed This Time when the vehicle is already clean. This Work Order can be edited or permanently deleted.",
+        checklist: [],
+        notesHistory: [],
+        serviceHistory: [],
+        completionHistory: [],
+        photos: [],
+        documents: [],
+      }));
+    });
+
+    const existingTitleKeys = new Set(serviceRecords.map((record) => normalizedWorkOrderText(record.title)));
+    const missing = definitions.filter((record) =>
+      !tombstones.has(String(record.id)) &&
+      !serviceRecords.some((existing) => String(existing.id) === String(record.id)) &&
+      !existingTitleKeys.has(normalizedWorkOrderText(record.title)),
+    );
+
+    approvedMaintenanceRestoreRunningRef.current = true;
+    void (async () => {
+      try {
+        if (!missing.length) {
+          window.localStorage.setItem(restoreKey, "done");
+          return;
+        }
+        const savedRecords: AtlasServiceRecord[] = [];
+        for (const record of missing) {
+          const saved = await postAtlasRecord("work_orders", record);
+          if (!saved) throw new Error(`Could not save ${record.title}`);
+          savedRecords.push(record);
+        }
+        setServiceRecords((current) => byTitle([...savedRecords, ...current]));
+        window.localStorage.setItem(restoreKey, "done");
+        showSaveToast(`Restored ${savedRecords.length} approved maintenance Work Order${savedRecords.length === 1 ? "" : "s"}.`);
+      } catch (error) {
+        console.error("Approved maintenance restore failed", error);
+        showSaveToast("Approved maintenance Work Orders did not all save. Refresh to retry.", "warning");
+      } finally {
+        approvedMaintenanceRestoreRunningRef.current = false;
+      }
+    })();
+  }, [ready, operationsHydrated, syncState, activePropertyId, serviceRecords, assetRecords, vehicleCare, vendorRecords]);
 
   // Automatic task/work-order/routine/calendar seeding is permanently disabled.
   // Atlas creates operational records only from explicit user actions.
@@ -19974,6 +20208,13 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function renderWorkOrders() {
+    if (!ready || !operationsHydrated) {
+      return (
+        <div className="atlas-work-orders-page" style={{ minHeight: 360, display: "grid", placeItems: "center" }}>
+          <div style={{ color: colors.muted, fontSize: 13, fontWeight: 700 }}>Loading Work…</div>
+        </div>
+      );
+    }
     return (
       <div className="atlas-work-orders-page">
         {dashboardWorkFilter ? (
