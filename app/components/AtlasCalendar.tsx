@@ -809,7 +809,7 @@ export default function AtlasCalendar(
     const selected = dateKey === calendarDateKey(selectedCalendarDate);
     const today = dateKey === todayKey;
     const weather = dateKey ? weatherByDate.get(dateKey) : undefined;
-    const visibleLimit = isMobile ? 2 : 4;
+    const visibleLimit = 3;
 
     return (
       <div
@@ -898,7 +898,7 @@ export default function AtlasCalendar(
           </div>
         </div>
 
-        <div style={{ display: "grid", alignContent: "start", gap: isMobile ? 1 : 3, marginTop: isMobile ? 2 : 5, minHeight: 0, overflow: "hidden" }}>
+        <div style={{ display: "grid", alignContent: "start", gridAutoRows: isMobile ? 14 : 18, gap: isMobile ? 1 : 2, marginTop: isMobile ? 2 : 4, minHeight: 0, overflow: "hidden" }}>
           {events.slice(0, visibleLimit).map((event: any) => {
             const eventColor = colorForEvent(event);
             const type = eventType(event);
@@ -917,12 +917,15 @@ export default function AtlasCalendar(
                   overflow: "hidden",
                   borderRadius: 4,
                   borderLeft: `2px solid ${eventColor.hex}`,
-                  padding: isMobile ? "1px 3px" : "2px 5px",
+                  padding: isMobile ? "1px 3px" : "1px 5px",
+                  minHeight: isMobile ? 14 : 18,
+                  height: isMobile ? 14 : 18,
+                  boxSizing: "border-box",
                   color: "#2A3D4C",
                   background: "#FAFBFC",
                   fontSize: isMobile ? 7 : 10.25,
                   fontWeight: 650,
-                  lineHeight: 1.18,
+                  lineHeight: 1,
                   cursor: "pointer",
                 }}
               >
@@ -939,9 +942,26 @@ export default function AtlasCalendar(
           })}
 
           {events.length > visibleLimit ? (
-            <span style={{ color: colors.muted, fontSize: isMobile ? 7 : 9.5, fontWeight: 800, lineHeight: 1, paddingLeft: 4 }}>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                if (dateKey) showDay(dateKey);
+              }}
+              style={{
+                justifySelf: "start",
+                border: 0,
+                padding: "0 4px",
+                background: "transparent",
+                color: colors.muted,
+                fontSize: isMobile ? 7 : 9.5,
+                fontWeight: 800,
+                lineHeight: 1,
+                cursor: "pointer",
+              }}
+            >
               +{events.length - visibleLimit} more
-            </span>
+            </button>
           ) : null}
         </div>
       </div>
