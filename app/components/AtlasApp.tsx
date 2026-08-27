@@ -1290,7 +1290,6 @@ export default function AtlasApp() {
     useState<AtlasServiceRecord[]>([]);
   const aiGeneratedPurgeRunningRef = useRef(false);
   const applianceAnnualServiceSetupRunningRef = useRef(false);
-  const approvedWorkResetRunningRef = useRef(false);
   const [workOrderSeasonFilter, setWorkOrderSeasonFilter] = useState<
     WorkSeason | "All"
   >("All");
@@ -2770,69 +2769,9 @@ export default function AtlasApp() {
       }
     })();
   }, [ready, operationsHydrated, syncState, activePropertyId, workPlanTasks, serviceRecords, procedureRecords, calendarItems]);
-  useEffect(() => {
-    if (!ready || !operationsHydrated || syncState !== "synced" || typeof window === "undefined" || approvedWorkResetRunningRef.current) return;
-    const resetKey = `atlas-approved-work-only-reset-v1-${activePropertyId}`;
-    if (window.localStorage.getItem(resetKey) === "done") return;
-    approvedWorkResetRunningRef.current = true;
-
-    const obsoleteApplianceWork = serviceRecords.filter((record) => {
-      const id = String(record.id || "");
-      if (id.startsWith("wo-appliance-annual-service-")) return false;
-      const text = normalizedWorkOrderText(`${record.title || ""} ${record.notes || ""}`);
-      return /cold weather|cold season|colder months|appliance winter|winter appliance/.test(text);
-    });
-
-    void (async () => {
-      const calendarResults = await Promise.all(
-        calendarItems.map((item) => deleteAtlasRecord("calendar", String(item.id), { suppressFailureToast: true })),
-      );
-      const taskResults = await Promise.all(
-        workPlanTasks.map((task) => deleteOperationalRecord("tasks" as AtlasTable, String(task.id))),
-      );
-      const applianceResults = await Promise.all(
-        obsoleteApplianceWork.map((record) => deleteAtlasRecord("work_orders", String(record.id), { suppressFailureToast: true })),
-      );
-      let routinesCleared = true;
-      try {
-        const response = await fetch("/api/atlas-routines", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-atlas-property-id": activePropertyId },
-          body: JSON.stringify({ action: "clear-all", propertyId: activePropertyId }),
-        });
-        routinesCleared = response.ok;
-      } catch {
-        routinesCleared = false;
-      }
-
-      if (![...calendarResults, ...taskResults, ...applianceResults].every(Boolean) || !routinesCleared) {
-        showSaveToast("Atlas cleanup did not fully finish. Refresh to retry.", "warning");
-        approvedWorkResetRunningRef.current = false;
-        return;
-      }
-
-      setCalendarItems([]);
-      setWorkPlanTasks([]);
-      setTaskMeta({});
-      if (obsoleteApplianceWork.length) {
-        const obsoleteIds = new Set(obsoleteApplianceWork.map((record) => String(record.id)));
-        setServiceRecords((current) => current.filter((record) => !obsoleteIds.has(String(record.id))));
-      }
-      try {
-        saveStoredArray(storageKeys.calendar[0], []);
-        saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, []);
-        if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", []);
-        window.localStorage.setItem(`atlas-task-meta-v1-${activePropertyId}`, "{}");
-        if (activePropertyId === "2000") window.localStorage.setItem("atlas-task-meta-v1", "{}");
-        window.localStorage.setItem(resetKey, "done");
-      } catch {}
-      showSaveToast("Calendar, Tasks, and Routines cleared. Calendar now follows approved Work.");
-      approvedWorkResetRunningRef.current = false;
-    })().catch(() => {
-      approvedWorkResetRunningRef.current = false;
-      showSaveToast("Atlas cleanup did not fully finish. Refresh to retry.", "warning");
-    });
-  }, [ready, operationsHydrated, syncState, activePropertyId, calendarItems, workPlanTasks, serviceRecords]);
+  // Historical one-time reset removed: live Calendar/Work data is authoritative and must never
+  // be bulk-deleted by a code deployment or first-load cleanup. Future cleanup must target
+  // explicit record IDs only.
 
   useEffect(() => {
     if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000") return;
