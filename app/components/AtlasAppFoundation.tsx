@@ -2420,11 +2420,20 @@ export function categoryToColorId(value: string) {
   )
     return "accounting-invoices";
   if (lower.includes("meeting")) return "meeting";
+  if (lower.includes("pto") || lower.includes("off")) return "pto-off";
+  if (lower.includes("appointment")) return "appointment";
+  if (lower.includes("delivery")) return "delivery";
+  if (lower.includes("service visit")) return "service-visit";
+  if (lower.includes("vendor visit")) return "vendor-visit";
+  if (lower.includes("property event")) return "property-event";
+  if (lower.includes("owner") && lower.includes("guest")) return "owner-guest";
+  if (lower.includes("travel")) return "travel";
+  if (lower.includes("deadline")) return "deadline-reminder";
   if (lower.includes("reminder")) return "reminder";
   if (lower.includes("vendor")) return "vendor";
   if (lower.includes("family")) return "family";
-  if (lower.includes("owner") || lower.includes("personal"))
-    return "personal-owner";
+  if (lower.includes("personal")) return "personal";
+  if (lower.includes("owner")) return "personal-owner";
   if (lower.includes("work order")) return "work-order";
   if (lower.includes("maintenance") || lower.includes("work"))
     return "maintenance";
@@ -2469,13 +2478,24 @@ export const linkTypeOptions: CalendarLinkType[] = [
 ];
 
 export const standardCalendarCategoryLabels = [
+  "Meeting",
+  "Landscaping",
+  "Vendor Visit",
+  "PTO / Off",
+  "Appointment",
+  "Delivery",
+  "Service Visit",
+  "Property Event",
+  "Owner / Guest",
+  "Travel",
+  "Deadline / Reminder",
+  "Personal",
   "Maintenance",
   "Vendor",
   "Family",
   "Personal / Owner",
   "Work Order",
   "Holiday",
-  "Landscaping",
   "Irrigation",
   "HVAC",
   "Paint / Stain",
@@ -2489,7 +2509,6 @@ export const standardCalendarCategoryLabels = [
   "Exterior",
   "Supplies / Orders",
   "Accounting / Invoices",
-  "Meeting",
   "Reminder",
   "Other",
 ];
@@ -2503,6 +2522,14 @@ export function plainColor(value?: string) {
 }
 
 export function colorNameFromLegacyColorId(colorId?: string): CalendarColorName {
+  if (colorId === "meeting") return "red";
+  if (colorId === "pto-off") return "orange";
+  if (colorId === "appointment") return "blue";
+  if (colorId === "delivery") return "orange";
+  if (colorId === "service-visit" || colorId === "vendor-visit") return "purple";
+  if (colorId === "property-event" || colorId === "owner-guest" || colorId === "personal") return "yellow";
+  if (colorId === "travel") return "blue";
+  if (colorId === "deadline-reminder") return "red";
   if (colorId === "personal-owner") return "yellow";
   if (colorId === "landscaping") return "green";
   if (colorId === "boat-dock") return "blue";
@@ -2584,7 +2611,17 @@ export const defaultCalendarColors: CalendarColor[] = [
     hex: "#7C3AED",
     colorName: "purple",
   },
-  { id: "meeting", label: "Meeting", hex: "#175CD3", colorName: "blue" },
+  { id: "meeting", label: "Meeting", hex: "#B42318", colorName: "red" },
+  { id: "pto-off", label: "PTO / Off", hex: "#B54708", colorName: "orange" },
+  { id: "appointment", label: "Appointment", hex: "#175CD3", colorName: "blue" },
+  { id: "delivery", label: "Delivery", hex: "#B54708", colorName: "orange" },
+  { id: "service-visit", label: "Service Visit", hex: "#7C3AED", colorName: "purple" },
+  { id: "vendor-visit", label: "Vendor Visit", hex: "#7C3AED", colorName: "purple" },
+  { id: "property-event", label: "Property Event", hex: "#C99A3D", colorName: "yellow" },
+  { id: "owner-guest", label: "Owner / Guest", hex: "#C99A3D", colorName: "yellow" },
+  { id: "travel", label: "Travel", hex: "#175CD3", colorName: "blue" },
+  { id: "deadline-reminder", label: "Deadline / Reminder", hex: "#B42318", colorName: "red" },
+  { id: "personal", label: "Personal", hex: "#C99A3D", colorName: "yellow" },
   { id: "reminder", label: "Reminder", hex: "#C99A3D", colorName: "yellow" },
   { id: "other", label: "Other", hex: "#94A3B8", colorName: "gray" },
 ];
