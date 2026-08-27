@@ -824,6 +824,7 @@ export function blankCalendarItem(
     id: "",
     date,
     time: "",
+    endTime: "",
     title: "",
     area: "",
     categoryLabel: "",
@@ -1859,6 +1860,7 @@ export function normalizeCalendar(record: Partial<AtlasCalendarItem>): AtlasCale
     id: String(record.id || slugify(title)),
     date: String(record.date ?? todayISO()),
     time: String(record.time || ""),
+    endTime: String(record.endTime || ""),
     title,
     area: categoryLabel,
     categoryLabel,
@@ -1905,6 +1907,7 @@ export function mergeCalendarItemRecords(
       shared.reminder && shared.reminder !== "None"
         ? shared.reminder
         : browser.reminder;
+    const endTime = String(shared.endTime || "").trim() ? shared.endTime : browser.endTime;
     const notes = shared.notes.trim() ? shared.notes : browser.notes;
     const linkedType =
       shared.linkedType && shared.linkedType !== "None"
@@ -2921,6 +2924,7 @@ export function getWeekCells(cursor: Date) {
     date.setDate(start.getDate() + index);
     const iso = localISODate(date);
     return {
+      endTime,
       key: iso,
       date: iso,
       day: date.getDate(),
