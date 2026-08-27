@@ -18112,40 +18112,20 @@ ${notes.trim()}` : notes.trim(),
     const title = String(titleValue || "").trim();
     if (!title || activePropertyId !== "2000") return "";
 
-    try {
-      const response = await fetch("/api/landscape-help?token=addison-2000-7f94f468dca84de3a7b8c2d942ca3819", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token: "addison-2000-7f94f468dca84de3a7b8c2d942ca3819",
-          action: "task-create",
-          title,
-          dueDate: todayISO(),
-          frequency: "One-time",
-          preferredDay: "Auto",
-          locationId: "general",
-          instructions: "",
-          priority: "Medium",
-          minutes: 30,
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !payload?.ok || payload?.mode !== "addison") {
-        throw new Error(payload?.error || "Could not add Addison task.");
-      }
-      const created = Array.isArray(payload?.addison?.tasks)
-        ? payload.addison.tasks.find((record: Record<string, any>) =>
-            String(record?.title || "").trim().toLowerCase() === title.toLowerCase() &&
-            String((record?.taskMeta || record)?.dueDate || "").slice(0, 10) === todayISO()
-          )
-        : null;
-      showSaveToast(`${title} added to Addison.`);
-      recordAtlasAudit("Task assigned", `${title} → Addison · ${formatDate(todayISO())}`);
-      return String(created?.id || "");
-    } catch (error) {
-      showSaveToast(error instanceof Error ? error.message : "Could not add Addison task.", "warning");
-      return "";
-    }
+    const workOrderId = uid("wo");
+    addWorkOrder({
+      id: workOrderId,
+      title,
+      date: todayISO(),
+      status: "Open",
+      priority: "Medium",
+      assignedTo: "Addison",
+      workType: "Work Order",
+      workCategory: "🔧 Maintenance",
+      responsibilityArea: "Dashboard · Addison",
+    });
+    recordAtlasAudit("Work assigned", `${title} → Addison · ${formatDate(todayISO())}`);
+    return workOrderId;
   }
 
   async function updateAddisonDashboardTask(
