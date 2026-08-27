@@ -7101,10 +7101,7 @@ export default function AtlasApp() {
       return;
     }
     if (kind === "work-order") {
-      addWorkOrder({
-        title: name,
-        assignedTo: quickCreateAssignee === "Unassigned" ? "" : quickCreateAssignee,
-      });
+      addWorkOrder({ title: name });
       return;
     }
     if (kind === "asset") {
@@ -11241,7 +11238,7 @@ export default function AtlasApp() {
     }
   }
 
-  function addDashboardWorkOrder(areaLabel: string) {
+  function addDashboardWorkOrder(areaLabel: string, initial: Partial<AtlasServiceRecord> = {}) {
     const contextByArea: Record<string, Partial<AtlasServiceRecord>> = {
       Maintenance: { workCategory: "🔧 Maintenance", responsibilityArea: "Operations Dashboard · Maintenance" },
       Landscaping: { workCategory: "🌳 Landscaping", responsibilityArea: "Operations Dashboard · Landscaping" },
@@ -11251,7 +11248,10 @@ export default function AtlasApp() {
       Vehicles: { workCategory: "🚗 Vehicles", responsibilityArea: "Operations Dashboard · Vehicles" },
     };
     setDashboardWorkFilter("");
-    addWorkOrder(contextByArea[areaLabel] || { responsibilityArea: `Operations Dashboard · ${areaLabel}` });
+    addWorkOrder({
+      ...(contextByArea[areaLabel] || { responsibilityArea: `Operations Dashboard · ${areaLabel}` }),
+      ...initial,
+    });
   }
 
   function addRoutinePhoto(task: { id: string; title: string }) {
@@ -12002,15 +12002,23 @@ export default function AtlasApp() {
 
   function addCalendarItem(date?: string) {
     startNewCalendarDraft(date);
-    if (isSeanMarineUser) {
-      setCalendarDraft((current) => ({
-        ...current,
-        propertyId: seanCalendarPropertyFilter === "all" ? "2000" : seanCalendarPropertyFilter,
-        calendarOwner: "sean",
-        ownerUserId: String(currentAtlasUser?.id || currentAtlasUser?.email || "sean"),
-      }));
-      setCalendarDirty(true);
-    }
+    const currentName = String(currentAtlasUser?.name || "Nick").trim().toLowerCase();
+    const defaultOwner = isSeanMarineUser
+      ? "Sean Powell"
+      : currentName.startsWith("addison")
+        ? "Addison"
+        : currentName.startsWith("pat")
+          ? "Patrick Tanner"
+          : currentName.startsWith("sean")
+            ? "Sean Powell"
+            : "Nick";
+    setCalendarDraft((current) => ({
+      ...current,
+      propertyId: isSeanMarineUser && seanCalendarPropertyFilter !== "all" ? seanCalendarPropertyFilter : activePropertyId,
+      calendarOwner: defaultOwner,
+      ownerUserId: String(currentAtlasUser?.id || currentAtlasUser?.email || defaultOwner),
+    }));
+    setCalendarDirty(true);
   }
 
   function updateCalendarItem(patch: Partial<CalendarItem>) {
@@ -28470,17 +28478,6 @@ ${notes.trim()}` : notes.trim(),
             {quickCreateKind ? (
               <form onSubmit={(event) => { event.preventDefault(); saveQuickCreate(); }} style={{ display: "grid", gap: 12 }}>
                 <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>NAME</span><input autoFocus value={quickCreateName} onChange={(event) => setQuickCreateName(event.currentTarget.value)} placeholder={`${quickCreateLabel(quickCreateKind)} name`} style={{ ...inputStyle, minHeight: 48, fontSize: 16 }} /></label>
-                {quickCreateKind === "task" || quickCreateKind === "work-order" ? (
-                  <label style={{ display: "grid", gap: 6 }}>
-                    <span style={fieldLabelStyle}>ASSIGNED TO</span>
-                    <select value={quickCreateAssignee} onChange={(event) => setQuickCreateAssignee(event.currentTarget.value as "Nick" | "Addison" | "Pat" | "Unassigned")} style={{ ...inputStyle, minHeight: 44, fontSize: 15 }}>
-                      <option value="Nick">Nick</option>
-                      <option value="Addison">Addison</option>
-                      <option value="Pat">Pat</option>
-                      <option value="Unassigned">Unassigned</option>
-                    </select>
-                  </label>
-                ) : null}
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => { setQuickCreateKind(""); setQuickCreateName(""); setQuickCreateAssignee("Nick"); }} style={secondaryButtonStyle}>Back</button><button type="submit" disabled={!quickCreateName.trim()} style={goldButtonStyle}>Save & Continue</button></div>
               </form>
             ) : <>
@@ -28491,8 +28488,7 @@ ${notes.trim()}` : notes.trim(),
               <div className="atlas-quick-capture-actions">
                 <button type="button" onClick={() => openQuickCapture("photo")}><span>📷</span>{quickCaptureMode === "create" ? "New Photo" : "Existing Photo"}</button>
                 <button type="button" onClick={() => openQuickCapture("document")}><span>📄</span>{quickCaptureMode === "create" ? "New Document" : "Existing Document"}</button>
-                <button type="button" onClick={() => openQuickCapture("task")}><span>✓</span>{quickCaptureMode === "create" ? "New Task" : "Existing Task"}</button>
-                <button type="button" onClick={() => openQuickCapture("work-order")}><span>🔧</span>{quickCaptureMode === "create" ? "New Work Order" : "Existing Work Order"}</button>
+                <button type="button" onClick={() => openQuickCapture("work-order")}><span>🔧</span>{quickCaptureMode === "create" ? "New Work" : "Existing Work"}</button>
                 <button type="button" onClick={() => openQuickCapture("project")}><span>▣</span>{quickCaptureMode === "create" ? "New Project" : "Existing Project"}</button>
                 <button type="button" onClick={() => openQuickCapture("asset")}><span>◇</span>{quickCaptureMode === "create" ? "New Asset" : "Existing Asset"}</button>
                 <button type="button" onClick={() => openQuickCapture("vendor")}><span>V</span>{quickCaptureMode === "create" ? "New Vendor" : "Existing Vendor"}</button>
