@@ -3292,7 +3292,7 @@ export default function AtlasApp() {
         recurrenceInterval: 1,
         recurrenceUnit: "Weeks",
         recurrenceEndDate: "",
-        recurrenceDays: ["Thursday"],
+        recurrenceDays: [4],
         workType: "Preventive Maintenance",
         workCategory: "Garage",
         responsibilityArea: "Garage",
