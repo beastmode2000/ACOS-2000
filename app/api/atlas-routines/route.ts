@@ -116,96 +116,14 @@ function weekdayFromDate(dateKey: string) {
   return day === 0 ? 7 : day;
 }
 
-function seedTemplates(): RoutineTemplate[] {
-  return [
-    {
-      day: 1,
-      name: "Monday Morning Routine",
-      tasks: [
-        {
-          id: "mon-garbage-cans",
-          title: "Clean garbage cans after they are emptied",
-          enabled: true,
-        },
-        {
-          id: "mon-goose",
-          title: "Clean up after geese",
-          enabled: true,
-        },
-        {
-          id: "mon-dog",
-          title: "Clean up after the dog",
-          enabled: true,
-        },
-        {
-          id: "mon-garages",
-          title: "Check garages",
-          enabled: true,
-        },
-        {
-          id: "mon-front-entry",
-          title: "Check front entry",
-          enabled: true,
-        },
-        {
-          id: "mon-water-pots",
-          title: "Water pots",
-          enabled: true,
-        },
-        {
-          id: "mon-dry-spots",
-          title: "Water dry spots",
-          enabled: true,
-        },
-        {
-          id: "mon-fountain",
-          title: "Clean and treat fountain",
-          enabled: true,
-        },
-      ],
-    },
-    {
-      day: 2,
-      name: "Tuesday Routine",
-      tasks: [],
-    },
-    {
-      day: 3,
-      name: "Wednesday Landscape Routine",
-      tasks: [],
-    },
-    {
-      day: 4,
-      name: "Thursday Routine",
-      tasks: [],
-    },
-    {
-      day: 5,
-      name: "Friday Boat and Cars Routine",
-      tasks: [
-        {
-          id: "fri-clean-boat",
-          title: "Clean boat",
-          enabled: true,
-        },
-        {
-          id: "fri-clean-cars",
-          title: "Clean cars",
-          enabled: true,
-        },
-      ],
-    },
-    {
-      day: 6,
-      name: "Saturday Routine",
-      tasks: [],
-    },
-    {
-      day: 7,
-      name: "Sunday Routine",
-      tasks: [],
-    },
-  ];
+const LEGACY_GENERATED_ROUTINE_TASK_IDS = new Set([
+  "mon-garbage-cans", "mon-goose", "mon-dog", "mon-garages", "mon-front-entry",
+  "mon-water-pots", "mon-dry-spots", "mon-fountain", "fri-clean-boat", "fri-clean-cars",
+]);
+
+function isLegacyGeneratedRoutineTask(task: RoutineTask) {
+  const id = String(task.id || "");
+  return id.startsWith("atlas-ops-") || LEGACY_GENERATED_ROUTINE_TASK_IDS.has(id);
 }
 
 async function ensureTables(sql: ReturnType<typeof neon>) {
@@ -295,25 +213,43 @@ async function ensureTables(sql: ReturnType<typeof neon>) {
   `;
 }
 
-async function ensurePropertySeeds(
+async function cleanupLegacyGeneratedRoutines(
   sql: ReturnType<typeof neon>,
   propertyId: string,
 ) {
-  for (const seed of seedTemplates()) {
+  const templates = (await sql`
+    SELECT day_of_week, name, tasks
+    FROM atlas_routine_templates
+    WHERE property_id = ${propertyId}
+  `) as unknown as Array<Record<string, unknown>>;
+
+  for (const row of templates) {
+    const tasks = normalizeTasks(row.tasks);
+    const cleaned = tasks.filter((task) => !isLegacyGeneratedRoutineTask(task));
+    if (cleaned.length === tasks.length) continue;
     await sql`
-      INSERT INTO atlas_routine_templates (
-        property_id,
-        day_of_week,
-        name,
-        tasks
-      )
-      VALUES (
-        ${propertyId},
-        ${seed.day},
-        ${seed.name},
-        ${JSON.stringify(seed.tasks)}::jsonb
-      )
-      ON CONFLICT (property_id, day_of_week) DO NOTHING
+      UPDATE atlas_routine_templates
+      SET tasks = ${JSON.stringify(cleaned.map(asTemplateTask))}::jsonb, updated_at = NOW()
+      WHERE property_id = ${propertyId}
+        AND day_of_week = ${Number(row.day_of_week)}
+    `;
+  }
+
+  const occurrences = (await sql`
+    SELECT occurrence_date, tasks
+    FROM atlas_routine_occurrences
+    WHERE property_id = ${propertyId}
+  `) as unknown as Array<Record<string, unknown>>;
+
+  for (const row of occurrences) {
+    const tasks = normalizeTasks(row.tasks);
+    const cleaned = tasks.filter((task) => !isLegacyGeneratedRoutineTask(task));
+    if (cleaned.length === tasks.length) continue;
+    await sql`
+      UPDATE atlas_routine_occurrences
+      SET tasks = ${JSON.stringify(cleaned)}::jsonb, updated_at = NOW()
+      WHERE property_id = ${propertyId}
+        AND occurrence_date = ${String(row.occurrence_date).slice(0, 10)}::date
     `;
   }
 }
@@ -493,7 +429,7 @@ export async function GET(request: NextRequest) {
     const dateKey = asDateKey(request.nextUrl.searchParams.get("date"));
 
     await ensureTables(sql);
-    await ensurePropertySeeds(sql, propertyId);
+    await cleanupLegacyGeneratedRoutines(sql, propertyId);
 
     const [templates, occurrence] = await Promise.all([
       loadTemplates(sql, propertyId),
@@ -540,7 +476,7 @@ export async function POST(request: NextRequest) {
     const action = String(body.action || "");
 
     await ensureTables(sql);
-    await ensurePropertySeeds(sql, propertyId);
+    await cleanupLegacyGeneratedRoutines(sql, propertyId);
 
     if (action === "save-template") {
       const day = Number(body.day);
