@@ -20288,6 +20288,9 @@ ${notes.trim()}` : notes.trim(),
         selectedCalendar={selectedCalendar}
         selectedCalendarDate={selectedCalendarDate}
         selectedCalendarId={selectedCalendarId}
+        selectedCalendarOccurrenceDate={selectedCalendarOccurrenceDate}
+        onSaveOccurrence={saveCalendarOccurrenceOnly}
+        onDeleteOccurrence={deleteCalendarOccurrenceOnly}
         selectedDayEvents={selectedDayEvents}
         serviceRecords={serviceRecords}
         setCalendarCategoryFilters={setCalendarCategoryFilters}
