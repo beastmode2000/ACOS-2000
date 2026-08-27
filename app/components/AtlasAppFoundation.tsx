@@ -2924,7 +2924,6 @@ export function getWeekCells(cursor: Date) {
     date.setDate(start.getDate() + index);
     const iso = localISODate(date);
     return {
-      endTime,
       key: iso,
       date: iso,
       day: date.getDate(),
