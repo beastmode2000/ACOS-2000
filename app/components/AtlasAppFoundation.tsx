@@ -733,6 +733,7 @@ export type WorkCompletionEntry = {
 };
 
 export type AtlasServiceRecord = ServiceRecord & {
+  recurrenceDays?: number[];
   workType?: WorkItemType;
   workCategory?: string;
   effort?: WorkEffort;
@@ -943,6 +944,24 @@ export function workSeasonDescription(season: WorkSeason) {
 export function recurrenceLabel(record: ServiceRecord) {
   if (!record.recurring) return "One-time";
 
+  const recurrenceDays = Array.isArray((record as ServiceRecord & { recurrenceDays?: number[] }).recurrenceDays)
+    ? Array.from(
+        new Set(
+          ((record as ServiceRecord & { recurrenceDays?: number[] }).recurrenceDays || [])
+            .map((day) => Math.floor(Number(day)))
+            .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
+        ),
+      )
+    : [];
+  if (recurrenceDays.length) {
+    const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    return recurrenceDays
+      .slice()
+      .sort((left, right) => ((left + 6) % 7) - ((right + 6) % 7))
+      .map((day) => names[day])
+      .join(", ");
+  }
+
   const interval = Math.max(1, Number(record.recurrenceInterval || 1));
   const unit = isWorkOrderRecurrenceUnit(record.recurrenceUnit)
     ? record.recurrenceUnit
@@ -958,9 +977,30 @@ export function nextRecurrenceDate(
   startDate: string,
   intervalValue: number,
   unitValue: WorkOrderRecurrenceUnit,
+  recurrenceDays?: number[],
 ) {
   const date = calendarDateValue(startDate || todayISO());
   const interval = Math.max(1, Math.floor(Number(intervalValue) || 1));
+  const selectedDays = Array.isArray(recurrenceDays)
+    ? Array.from(
+        new Set(
+          recurrenceDays
+            .map((day) => Math.floor(Number(day)))
+            .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
+        ),
+      )
+    : [];
+
+  // When weekdays are explicitly selected, they are the recurrence rule.
+  // This is intentionally independent of the legacy interval/unit fields so
+  // a Monday-Friday schedule never drifts onto weekends after completion.
+  if (selectedDays.length) {
+    for (let offset = 1; offset <= 14; offset += 1) {
+      const candidate = new Date(date);
+      candidate.setDate(candidate.getDate() + offset);
+      if (selectedDays.includes(candidate.getDay())) return localISODate(candidate);
+    }
+  }
 
   if (unitValue === "Days") date.setDate(date.getDate() + interval);
   if (unitValue === "Weeks") date.setDate(date.getDate() + interval * 7);
@@ -1655,6 +1695,15 @@ export function normalizeService(
     recurrenceUnit: isWorkOrderRecurrenceUnit(record.recurrenceUnit)
       ? record.recurrenceUnit
       : "Weeks",
+    recurrenceDays: Array.isArray(record.recurrenceDays)
+      ? Array.from(
+          new Set(
+            record.recurrenceDays
+              .map((day) => Math.floor(Number(day)))
+              .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
+          ),
+        ).sort((left, right) => left - right)
+      : [],
     recurrenceEndDate: String(record.recurrenceEndDate || ""),
     season: isWorkSeason(record.season)
       ? record.season
