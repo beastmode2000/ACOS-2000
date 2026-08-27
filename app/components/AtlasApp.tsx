@@ -20078,6 +20078,7 @@ ${notes.trim()}` : notes.trim(),
         isRecordDirty={isRecordDirty}
         saveWorkOrderRecord={saveWorkOrderRecord}
         completeWorkOrder={completeWorkOrder}
+        reopenWorkOrder={reopenWorkOrder}
         secondaryButtonStyle={secondaryButtonStyle}
         deleteWorkOrderRecord={deleteWorkOrderRecord}
         dangerButtonStyle={dangerButtonStyle}
