@@ -478,6 +478,12 @@ export async function POST(request: NextRequest) {
     await ensureTables(sql);
     await cleanupLegacyGeneratedRoutines(sql, propertyId);
 
+    if (action === "clear-all") {
+      await sql`DELETE FROM atlas_routine_occurrences WHERE property_id = ${propertyId}`;
+      await sql`DELETE FROM atlas_routine_templates WHERE property_id = ${propertyId}`;
+      return NextResponse.json({ ok: true, propertyId, templates: [], occurrence: null });
+    }
+
     if (action === "save-template") {
       const day = Number(body.day);
 
