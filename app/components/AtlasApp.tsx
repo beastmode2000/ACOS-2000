@@ -20211,6 +20211,7 @@ ${notes.trim()}` : notes.trim(),
         openCalendarItem={openCalendarItem}
         onOpenLinkedRecord={openCalendarLinkedRecord}
         onConvertToWorkOrder={convertCalendarItemToWorkOrder}
+        onCreateWorkOrder={(date) => addWorkOrder({ date })}
         reminderOptions={reminderOptions}
         repeatOptions={repeatOptions}
         saveCalendarItem={saveCalendarItem}
