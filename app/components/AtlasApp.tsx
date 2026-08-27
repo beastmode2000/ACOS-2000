@@ -3097,12 +3097,12 @@ export default function AtlasApp() {
   useEffect(() => {
     if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000") return;
 
-    const cleanupKey = "atlas-vehicle-duplicate-cleanup-v3-2000";
+    const cleanupKey = "atlas-vehicle-asset-authority-v4-2000";
     if (typeof window !== "undefined" && window.localStorage.getItem(cleanupKey) === "done") return;
 
     const roadBrands = ["mercedes", "rivian", "porsche", "lucid", "ford", "kia", "honda", "subaru", "audi"];
     const cleanVehicleName = (value: unknown) =>
-      normalizedWorkOrderText(String(value || "").replace(/^vehicle\s+/i, ""));
+      normalizedWorkOrderText(String(value || "").replace(/^vehicle\s+/i, "").replace(/\s+ev$/i, ""));
     const vehicleBrand = (value: unknown) => {
       const text = cleanVehicleName(value);
       return roadBrands.find((brand) => new RegExp(`\\b${brand}\\b`, "i").test(text)) || "";
@@ -3155,9 +3155,9 @@ export default function AtlasApp() {
 
       const displayName = String(targetAsset.name || "").replace(/^Vehicle\s+/i, "").trim() || targetAsset.name;
       let title = String(record.title || "");
-      if (/^(clean|wash)\s+vehicle\s+/i.test(title)) {
-        const action = /^wash\b/i.test(title) ? "Wash" : "Clean";
-        title = `${action} ${displayName}`;
+      const cleaningAction = title.match(/^\s*(clean|wash)\b/i)?.[1];
+      if (cleaningAction && vehicleBrand(title) && vehicleBrand(targetAsset.name) === vehicleBrand(title)) {
+        title = `${cleaningAction.toLowerCase() === "wash" ? "Wash" : "Clean"} ${displayName}`;
       }
 
       const next = normalizeService({
@@ -3174,19 +3174,81 @@ export default function AtlasApp() {
       return changed ? next : record;
     });
 
-    const legacyVehicleCareIds = new Set(
-      ["Mercedes", "Rivian", "Porsche", "Lucid", "Ford", "Kia", "Honda", "Subaru"]
-        .map((name) => slugify(`vehicle-${name}`)),
-    );
-    const staleVehicleCare = vehicleCare.filter((vehicle) =>
-      legacyVehicleCareIds.has(String(vehicle.id || "")),
-    );
+    const careGroups = new Map<string, Array<{ vehicle: AtlasVehicleCare; asset: AtlasAssetRecord }>>();
+    const unmatchedVehicleCare: AtlasVehicleCare[] = [];
+    vehicleCare.forEach((vehicle) => {
+      const asset =
+        (vehicle.assetId ? duplicateAssetToKeeper.get(String(vehicle.assetId)) || vehicleAssetsById.get(String(vehicle.assetId)) : undefined) ||
+        findRealVehicleAsset(vehicle.name);
+      if (!asset) {
+        unmatchedVehicleCare.push(vehicle);
+        return;
+      }
+      const key = String(asset.id);
+      careGroups.set(key, [...(careGroups.get(key) || []), { vehicle, asset }]);
+    });
 
+    const vehicleCareUpdates: AtlasVehicleCare[] = [];
+    const duplicateVehicleCare: AtlasVehicleCare[] = [];
+    const canonicalVehicleCare: AtlasVehicleCare[] = [];
+    const mergeHistory = (items: AtlasVehicleCare[]) => {
+      const seen = new Set<string>();
+      return items
+        .flatMap((item) => item.history || [])
+        .filter((entry) => {
+          const key = `${String(entry.id || "")}|${String(entry.type || "")}|${String(entry.date || "")}|${String(entry.notes || "")}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+    };
+    const latestDate = (values: Array<string | undefined>) =>
+      values.filter((value): value is string => Boolean(String(value || "").trim())).sort().at(-1) || "";
+
+    careGroups.forEach((group) => {
+      const sorted = [...group].sort((a, b) => {
+        const aLinked = String(a.vehicle.assetId || "") === String(a.asset.id) ? 1 : 0;
+        const bLinked = String(b.vehicle.assetId || "") === String(b.asset.id) ? 1 : 0;
+        if (aLinked !== bLinked) return bLinked - aLinked;
+        return String(b.vehicle.updatedAt || "").localeCompare(String(a.vehicle.updatedAt || ""));
+      });
+      const keeperEntry = sorted[0];
+      if (!keeperEntry) return;
+      const all = sorted.map((item) => item.vehicle);
+      const keeper = keeperEntry.vehicle;
+      const asset = keeperEntry.asset;
+      const notes = Array.from(new Set(all.map((item) => String(item.notes || "").trim()).filter(Boolean))).join("\n");
+      const canonical: AtlasVehicleCare = {
+        ...keeper,
+        name: asset.name,
+        assetId: asset.id,
+        locationId: assetLocationIds(asset)[0] || asset.locationId || keeper.locationId || "",
+        onsite: all.some((item) => item.onsite),
+        priority: all.some((item) => item.priority === "High") ? "High" : keeper.priority || "Normal",
+        assignedTo: keeper.assignedTo || all.find((item) => item.assignedTo)?.assignedTo || "Nick",
+        cleaningIntervalDays: keeper.cleaningIntervalDays || all.find((item) => item.cleaningIntervalDays)?.cleaningIntervalDays || 7,
+        serviceIntervalDays: keeper.serviceIntervalDays || all.find((item) => item.serviceIntervalDays)?.serviceIntervalDays || 180,
+        lastCleaned: latestDate(all.map((item) => item.lastCleaned)),
+        lastServiced: latestDate(all.map((item) => item.lastServiced)),
+        nextServiceDate: latestDate(all.map((item) => item.nextServiceDate)),
+        notes,
+        history: mergeHistory(all),
+        updatedAt: new Date().toISOString(),
+      };
+      canonicalVehicleCare.push(canonical);
+      sorted.slice(1).forEach((item) => duplicateVehicleCare.push(item.vehicle));
+      if (JSON.stringify({ ...canonical, updatedAt: "" }) !== JSON.stringify({ ...keeper, updatedAt: "" })) {
+        vehicleCareUpdates.push(canonical);
+      }
+    });
+
+    const reconciledVehicleCare = [...canonicalVehicleCare, ...unmatchedVehicleCare];
     const duplicateAssets = Array.from(duplicateAssetToKeeper.keys())
       .map((id) => generatedVehicleAssets.find((asset) => String(asset.id) === id))
       .filter(Boolean) as AtlasAssetRecord[];
 
-    if (!workOrderUpdates.length && !staleVehicleCare.length && !duplicateAssets.length) {
+    if (!workOrderUpdates.length && !vehicleCareUpdates.length && !duplicateVehicleCare.length && !duplicateAssets.length) {
       if (typeof window !== "undefined") window.localStorage.setItem(cleanupKey, "done");
       return;
     }
@@ -3198,7 +3260,17 @@ export default function AtlasApp() {
         ),
       );
       if (workResults.some((saved) => !saved)) {
-        showSaveToast("Vehicle duplicate cleanup paused because a Work Order did not save.", "warning");
+        showSaveToast("Vehicle Asset linking paused because a Work Order did not save.", "warning");
+        return;
+      }
+
+      const careResults = await Promise.all(
+        vehicleCareUpdates.map((vehicle) =>
+          postAtlasRecord("vehicle_care" as AtlasTable, { ...vehicle, propertyId: activePropertyId }),
+        ),
+      );
+      if (careResults.some((saved) => !saved)) {
+        showSaveToast("Vehicle Asset linking paused because Garage history did not save.", "warning");
         return;
       }
 
@@ -3211,7 +3283,7 @@ export default function AtlasApp() {
         ...duplicateAssets.map((asset) =>
           deleteAtlasRecord("assets", String(asset.id), { suppressFailureToast: true }),
         ),
-        ...staleVehicleCare.map((vehicle) =>
+        ...duplicateVehicleCare.map((vehicle) =>
           deleteOperationalRecord("vehicle_care" as AtlasTable, String(vehicle.id || "")),
         ),
       ]);
@@ -3226,13 +3298,12 @@ export default function AtlasApp() {
         const ids = new Set(duplicateAssets.map((asset) => String(asset.id)));
         setAssetRecords((current) => current.filter((asset) => !ids.has(String(asset.id))));
       }
-      if (staleVehicleCare.length) {
-        const ids = new Set(staleVehicleCare.map((vehicle) => String(vehicle.id)));
-        setVehicleCare((current) => current.filter((vehicle) => !ids.has(String(vehicle.id))));
+      if (vehicleCareUpdates.length || duplicateVehicleCare.length) {
+        setVehicleCare(reconciledVehicleCare);
       }
 
       if (typeof window !== "undefined") window.localStorage.setItem(cleanupKey, "done");
-      showSaveToast("Duplicate vehicle records removed and vehicle Work Orders linked to the real Assets.");
+      showSaveToast("Vehicle Work is linked to the real Assets and duplicate Garage records were removed.");
     })();
   }, [ready, operationsHydrated, syncState, activePropertyId, serviceRecords, assetRecords, vehicleCare]);
 
@@ -3246,7 +3317,10 @@ export default function AtlasApp() {
   ) {
     setVehicleCare((current) => {
       const existing = current.find((item) => item.id === vehicleId);
-      const matchingAsset = assetRecords.find(
+      const existingAsset = existing?.assetId
+        ? assetRecords.find((asset) => asset.id === existing.assetId)
+        : undefined;
+      const matchingAsset = existingAsset || assetRecords.find(
         (asset) => `asset-${asset.id}` === vehicleId || slugify(`vehicle-${asset.name}`) === vehicleId,
       );
       const matchingTask = workPlanTasks.find(
@@ -3274,7 +3348,18 @@ export default function AtlasApp() {
         assetId: matchingAsset?.id || "",
         locationId: matchingAsset?.locationId || matchingTask?.locationId || "",
       };
-      const updated = { ...base, ...patch, updatedAt: new Date().toISOString() };
+      const updated = {
+        ...base,
+        ...patch,
+        ...(matchingAsset
+          ? {
+              name: matchingAsset.name,
+              assetId: matchingAsset.id,
+              locationId: assetLocationIds(matchingAsset)[0] || matchingAsset.locationId || base.locationId || "",
+            }
+          : {}),
+        updatedAt: new Date().toISOString(),
+      };
       const next = existing
         ? current.map((item) => item.id === vehicleId ? updated : item)
         : [updated, ...current];
@@ -4000,7 +4085,9 @@ export default function AtlasApp() {
         if (vehicleCarePayloadPresent) {
           const dedupedVehicles = new Map<string, AtlasVehicleCare>();
           apiVehicles.forEach((vehicle) => {
-            const key = normalizeLocationName(vehicle.name || vehicle.id);
+            const key = String(vehicle.assetId || "").trim()
+              ? `asset:${String(vehicle.assetId)}`
+              : `name:${normalizeLocationName(vehicle.name || vehicle.id)}`;
             const existing = dedupedVehicles.get(key);
             if (!existing) {
               dedupedVehicles.set(key, vehicle);
@@ -27635,11 +27722,7 @@ ${notes.trim()}` : notes.trim(),
     if (kind === "garage") {
       const garageVehicles = departmentAssets
         .map((asset) => {
-          const linkedCare = vehicleCare.find((vehicle) => vehicle.assetId === asset.id);
-          const exactNameCare = vehicleCare.find(
-            (vehicle) => !vehicle.assetId && normalizeLocationName(vehicle.name) === normalizeLocationName(asset.name),
-          );
-          const savedCare = linkedCare || exactNameCare;
+          const savedCare = vehicleCare.find((vehicle) => vehicle.assetId === asset.id);
           return {
             id: savedCare?.id || `asset-${asset.id}`,
             name: asset.name,
@@ -27664,18 +27747,13 @@ ${notes.trim()}` : notes.trim(),
       const selectedGarageVehicle =
         garageVehicles.find((vehicle) => vehicle.id === selectedVehicleId) || garageVehicles[0];
       const selectedGarageAsset = selectedGarageVehicle
-        ? departmentAssets.find((asset) =>
-            asset.id === selectedGarageVehicle.assetId ||
-            asset.name.toLowerCase().includes(selectedGarageVehicle.name.toLowerCase()) ||
-            selectedGarageVehicle.name.toLowerCase().includes(asset.name.toLowerCase()),
-          )
+        ? departmentAssets.find((asset) => asset.id === selectedGarageVehicle.assetId)
         : undefined;
       const vehicleData = (selectedGarageVehicle || {}) as AtlasVehicleCare & Record<string, any>;
       const assetData = (selectedGarageAsset || {}) as Record<string, any>;
       const vehicleWork = selectedGarageVehicle
         ? departmentWork.filter((record) =>
-            Boolean(selectedGarageVehicle.assetId && record.assetId === selectedGarageVehicle.assetId) ||
-            recordSearchText(record).toLowerCase().includes(selectedGarageVehicle.name.toLowerCase()),
+            Boolean(selectedGarageVehicle.assetId && record.assetId === selectedGarageVehicle.assetId),
           )
         : [];
       const vehicleTasks = selectedGarageVehicle
