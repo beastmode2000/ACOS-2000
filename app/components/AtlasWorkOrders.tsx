@@ -1731,9 +1731,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           <option value="">Unassigned</option>
           {assignmentChoices.map((name) => <option key={name} value={name}>{name}</option>)}
         </select>
-        <input type="date" value={String(record.date || "").slice(0, 10)} onChange={(event) => void updateWorkOrderRecord(record, { date: event.currentTarget.value })} aria-label={`Due date for ${record.title || "work"}`} style={{ ...controlStyle, minHeight: 34, padding: "5px 7px", fontSize: 11, color: overdue ? colors.red : colors.text }} />
+        <input type="date" onClick={(event) => event.currentTarget.showPicker?.()} onFocus={(event) => event.currentTarget.showPicker?.()} onKeyDown={(event) => event.preventDefault()} onPaste={(event) => event.preventDefault()} value={String(record.date || "").slice(0, 10)} onChange={(event) => void updateWorkOrderRecord(record, { date: event.currentTarget.value })} aria-label={`Due date for ${record.title || "work"}`} style={{ ...controlStyle, minHeight: 34, padding: "5px 7px", fontSize: 11, color: overdue ? colors.red : colors.text }} />
         <button type="button" onClick={openRecord} style={{ ...miniButtonStyle, minHeight: 34, padding: "5px 8px", fontSize: 11 }}>Details</button></> : null}
-        {isMobile ? <div style={{ gridColumn: "2", display: "grid", gridTemplateColumns: "minmax(0,1fr) 142px", gap: 7 }}><select value={assignee} onChange={(event) => void updateWorkOrderRecord(record, { assignedTo: event.currentTarget.value })} aria-label={`Assign ${record.title || "work"}`} style={{ ...controlStyle, minHeight: 34, padding: "5px 7px", fontSize: 11 }}><option value="">Unassigned</option>{assignmentChoices.map((name) => <option key={name} value={name}>{name}</option>)}</select><input type="date" value={String(record.date || "").slice(0, 10)} onChange={(event) => void updateWorkOrderRecord(record, { date: event.currentTarget.value })} aria-label={`Due date for ${record.title || "work"}`} style={{ ...controlStyle, minHeight: 34, padding: "5px 7px", fontSize: 11, color: overdue ? colors.red : colors.text }} /></div> : null}
+        {isMobile ? <div style={{ gridColumn: "2", display: "grid", gridTemplateColumns: "minmax(0,1fr) 142px", gap: 7 }}><select value={assignee} onChange={(event) => void updateWorkOrderRecord(record, { assignedTo: event.currentTarget.value })} aria-label={`Assign ${record.title || "work"}`} style={{ ...controlStyle, minHeight: 34, padding: "5px 7px", fontSize: 11 }}><option value="">Unassigned</option>{assignmentChoices.map((name) => <option key={name} value={name}>{name}</option>)}</select><input type="date" onClick={(event) => event.currentTarget.showPicker?.()} onFocus={(event) => event.currentTarget.showPicker?.()} onKeyDown={(event) => event.preventDefault()} onPaste={(event) => event.preventDefault()} value={String(record.date || "").slice(0, 10)} onChange={(event) => void updateWorkOrderRecord(record, { date: event.currentTarget.value })} aria-label={`Due date for ${record.title || "work"}`} style={{ ...controlStyle, minHeight: 34, padding: "5px 7px", fontSize: 11, color: overdue ? colors.red : colors.text }} /></div> : null}
       </div>
     );
   }
@@ -2051,7 +2051,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     <option value="High">High Priority</option>
                   </select>
                   <input
-                    type="date"
+                    type="date" onClick={(event) => event.currentTarget.showPicker?.()} onFocus={(event) => event.currentTarget.showPicker?.()} onKeyDown={(event) => event.preventDefault()} onPaste={(event) => event.preventDefault()}
                     value={newWorkDraft.date}
                     onChange={(event) =>
                       setNewWorkDraft((current) => ({
@@ -2518,7 +2518,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       <textarea value={selectedService.notes || ""} onChange={(event) => updateWorkOrder({ notes: event.currentTarget.value })} rows={3} style={{ ...inputStyle, minHeight: 78, resize: "vertical" }} />
                     </label>
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))", gap: 9 }}>
-                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due Date"}</span><input type="date" value={String(selectedService.date || "")} onChange={(event) => { const selectedDays = normalizedRecurrenceDays((selectedService as any).recurrenceDays); updateWorkOrder({ date: selectedService.recurring && selectedDays.length ? alignDateToSelectedDay(event.currentTarget.value, selectedDays) : event.currentTarget.value }); }} style={inputStyle} /></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due Date"}</span><input type="date" onClick={(event) => event.currentTarget.showPicker?.()} onFocus={(event) => event.currentTarget.showPicker?.()} onKeyDown={(event) => event.preventDefault()} onPaste={(event) => event.preventDefault()} value={String(selectedService.date || "")} onChange={(event) => { const selectedDays = normalizedRecurrenceDays((selectedService as any).recurrenceDays); updateWorkOrder({ date: selectedService.recurring && selectedDays.length ? alignDateToSelectedDay(event.currentTarget.value, selectedDays) : event.currentTarget.value }); }} style={inputStyle} /></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Assigned To</span><select value={canonicalAssigneeName(selectedService.assignedTo)} onChange={(event) => safeSelectChange(event, { assignedTo: event.currentTarget.value })} style={inputStyle}><option value="">Unassigned</option>{assignmentChoices.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Status</span><select value={selectedService.status || "Open"} onChange={(event) => safeSelectChange(event, { status: event.currentTarget.value })} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="In Progress">In Progress</option><option value="Waiting">Waiting</option><option value="Monitor">Monitor</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Priority</span><select value={selectedService.priority || "Medium"} onChange={(event) => safeSelectChange(event, { priority: event.currentTarget.value })} style={inputStyle}><option value="High">High</option><option value="Medium">Normal</option><option value="Low">Low</option></select></label>
@@ -2705,7 +2705,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                       <span style={fieldLabelStyle}>Stop Repeating After</span>
                       <input
-                        type="date"
+                        type="date" onClick={(event) => event.currentTarget.showPicker?.()} onFocus={(event) => event.currentTarget.showPicker?.()} onKeyDown={(event) => event.preventDefault()} onPaste={(event) => event.preventDefault()}
                         value={selectedService.recurrenceEndDate || ""}
                         onChange={(event) => updateWorkOrder({ recurrenceEndDate: event.currentTarget.value })}
                         style={inputStyle}
