@@ -534,7 +534,7 @@ type AtlasWorkOrdersProps = {
   Field: any;
   SelectField?: any;
   isMobile: boolean;
-  addWorkOrder: (initial?: Record<string, unknown>) => void;
+  addWorkOrder: (initial?: Record<string, unknown>) => Promise<any> | any;
   goldButtonStyle: React.CSSProperties;
   stackStyle: React.CSSProperties;
   eyebrowStyle: React.CSSProperties;
@@ -558,7 +558,7 @@ type AtlasWorkOrdersProps = {
   detailSectionStyle: React.CSSProperties;
   formGridStyle: React.CSSProperties;
   updateWorkOrder: (patch: Record<string, unknown>) => void;
-  updateWorkOrderRecord: (record: any, patch: Record<string, unknown>) => Promise<void> | void;
+  updateWorkOrderRecord: (record: any, patch: Record<string, unknown>) => Promise<boolean> | boolean | void;
   fieldLabelStyle: React.CSSProperties;
   inputStyle: React.CSSProperties;
   byName: (records: any[]) => any[];
@@ -1409,15 +1409,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     setNewWorkOpen(true);
   }
 
-  function createNewWork() {
+  async function createNewWork() {
     const title = newWorkTitleRef.current?.value.trim() || "";
     if (!title) {
       window.alert("Add a title before creating this work item.");
       return;
     }
 
-    setDetailOpen(true);
-    addWorkOrder({
+    const created = await addWorkOrder({
       title,
       workType: newWorkDraft.workType,
       workCategory: newWorkDraft.workCategory,
@@ -1444,6 +1443,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       canReassign: true,
       checklist: (pendingTemplate?.checklist || []).map((text) => ({ id: uid("check"), text, completed: false })),
     } as any);
+    if (!created) return;
+    setDetailOpen(true);
     setNewWorkOpen(false);
     setPendingTemplate(null);
   }
@@ -1535,7 +1536,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }
 
   function duplicateWork(record: any) {
-    addWorkOrder({
+    void addWorkOrder({
       ...record,
       id: undefined,
       title: `${record.title || "Work"} Copy`,
@@ -2037,7 +2038,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   />
                   <button
                     type="button"
-                    onClick={createNewWork}
+                    onClick={() => void createNewWork()}
                     style={goldButtonStyle}
                   >
                     Create Work
