@@ -297,7 +297,6 @@ export default function AtlasDashboardWorkspace(props: any) {
   const [dashboardWorkPersonFilter, setDashboardWorkPersonFilter] = useState<"Everyone" | "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell">("Everyone");
   const [dashboardWorkView, setDashboardWorkView] = useState<"Daily" | "Sean Powell" | "Patrick Tanner" | "Everyone">("Daily");
   const [dashboardQuickDrafts, setDashboardQuickDrafts] = useState<Record<string, string>>({ Nick: "", Addison: "", "Sean Powell": "", "Patrick Tanner": "" });
-  const [dashboardQuickRecurring, setDashboardQuickRecurring] = useState<Record<string, boolean>>({ Nick: false, Addison: false, "Sean Powell": false, "Patrick Tanner": false });
   const dashboardAssigneeName = (value: unknown) => {
     const name = String(value || "").trim();
     const normalized = name.toLowerCase();
@@ -323,31 +322,47 @@ export default function AtlasDashboardWorkspace(props: any) {
     return record.lastCompletedDate === today || (record.completionHistory || []).includes(today) || (record.serviceHistory || []).some((entry) => String(entry.completedAt || "").slice(0, 10) === today);
   });
 
-  const createDashboardWorkForPerson = async (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") => {
+  const createDashboardWorkForPerson = (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") => {
     const title = String(dashboardQuickDrafts[person] || "").trim();
     if (!title) return;
-    const recurring = Boolean(dashboardQuickRecurring[person]);
-    const record = normalizeService({
-      id: uid("work"),
-      propertyId: activePropertyId,
+    setDashboardQuickDrafts((current) => ({ ...current, [person]: "" }));
+    addDashboardWorkOrder("Maintenance", {
       title,
+      assignedTo: person,
       date: todayISO(),
       status: "Open",
-      priority: "Medium",
-      assignedTo: person,
-      recurring,
-      recurrenceInterval: 1,
-      recurrenceUnit: "Weeks",
-      recurrenceEndDate: "",
-      workType: "Quick Task",
-      workCategory: "Maintenance",
-      responsibilityArea: "Dashboard Work",
-      notes: "",
     });
-    setServiceRecords((current) => byTitle([record, ...current]));
-    setDashboardQuickDrafts((current) => ({ ...current, [person]: "" }));
-    const saved = await postAtlasRecord("work_orders", record);
-    showSaveToast(saved ? `Added to ${person}'s Work list.` : "Work was added locally, but shared sync did not finish.", saved ? "success" : "warning");
+  };
+
+  const dashboardCalendarOwner = (event: AtlasCalendarItem) => {
+    const owner = dashboardAssigneeName((event as AtlasCalendarItem).calendarOwner || "");
+    if (owner === "Addison" || owner === "Patrick Tanner" || owner === "Sean Powell" || owner === "Nick") return owner;
+    return "Nick";
+  };
+
+  const dashboardCalendarForPersonToday = (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") =>
+    todayEvents
+      .filter((event) => event.source !== "work-order" && event.source !== "us-holiday" && event.source !== "jewish-holiday")
+      .filter((event) => dashboardCalendarOwner(event as AtlasCalendarItem) === person)
+      .sort((a, b) => String(a.time || "99:99").localeCompare(String(b.time || "99:99")) || a.title.localeCompare(b.title));
+
+  const dashboardUpcomingForPerson = (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") => {
+    const horizon = addDays(todayISO(), 7);
+    const work = serviceRecords
+      .filter((record) => record.status !== "Completed")
+      .filter((record) => dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) === person)
+      .filter((record) => {
+        const date = String(record.date || "").slice(0, 10);
+        return Boolean(date && date > todayISO() && date <= horizon);
+      })
+      .map((record) => ({ kind: "work" as const, date: String(record.date || "").slice(0, 10), title: record.title, record }));
+    const calendar = upcomingEvents
+      .filter((event) => event.source !== "work-order" && event.source !== "us-holiday" && event.source !== "jewish-holiday")
+      .filter((event) => dashboardCalendarOwner(event as AtlasCalendarItem) === person)
+      .filter((event) => event.date > todayISO() && event.date <= horizon)
+      .map((event) => ({ kind: "calendar" as const, date: event.date, title: event.title, event }));
+    return [...work, ...calendar]
+      .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
   };
   const dashboardNotesOpenStorageKey = `atlas-dashboard-notes-open-${activePropertyId}`;
   const [dashboardNotesOpen, setDashboardNotesOpen] = useState(() => {
@@ -2457,7 +2472,7 @@ export default function AtlasDashboardWorkspace(props: any) {
           <button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Open All Work</button>
         </div>
         <div style={{ display: "flex", gap: 6, overflowX: "auto", marginTop: 9, paddingBottom: 2 }}>
-          {(["Today", "All", "Upcoming", "Overdue"] as const).map((filter) => <button key={filter} type="button" onClick={() => setDashboardWorkListFilter(filter)} style={{ ...(dashboardWorkListFilter === filter ? goldButtonStyle : secondaryButtonStyle), minHeight: 30, padding: "4px 9px", fontSize: 11, whiteSpace: "nowrap" }}>{filter}</button>)}
+          {(["Today", "All", "Overdue"] as const).map((filter) => <button key={filter} type="button" onClick={() => setDashboardWorkListFilter(filter)} style={{ ...(dashboardWorkListFilter === filter ? goldButtonStyle : secondaryButtonStyle), minHeight: 30, padding: "4px 9px", fontSize: 11, whiteSpace: "nowrap" }}>{filter}</button>)}
           <span style={{ width: 1, background: colors.line, margin: "0 2px" }}/>
           {(["Daily", "Sean Powell", "Patrick Tanner", "Everyone"] as const).map((view) => <button key={view} type="button" onClick={() => setDashboardWorkView(view)} style={{ ...(dashboardWorkView === view ? goldButtonStyle : secondaryButtonStyle), minHeight: 30, padding: "4px 9px", fontSize: 11, whiteSpace: "nowrap" }}>{view === "Daily" ? "Nick + Addison" : view === "Patrick Tanner" ? "Pat" : view === "Sean Powell" ? "Sean" : "Everyone"}</button>)}
         </div>
@@ -2465,15 +2480,16 @@ export default function AtlasDashboardWorkspace(props: any) {
           {(dashboardWorkView === "Daily" ? (["Nick", "Addison"] as const) : dashboardWorkView === "Everyone" ? (["Nick", "Addison", "Sean Powell", "Patrick Tanner"] as const) : ([dashboardWorkView] as const)).map((person) => {
             const records = dashboardWorkForPerson(person);
             const completedToday = dashboardCompletedForPersonToday(person);
+            const calendarToday = dashboardCalendarForPersonToday(person);
+            const upcoming = dashboardUpcomingForPerson(person);
             return <section key={`dashboard-work-${person}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 10, background: "#FAFCFE", minWidth: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                 <div><strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>{person === "Patrick Tanner" ? "Pat" : person === "Sean Powell" ? "Sean" : person}</strong><small style={mutedSmallStyle}>{records.length} active · {completedToday.length} done today</small></div>
                 <span style={badgeStyle(records.length ? "Scheduled" : completedToday.length ? "Completed" : "Monitor")}>{records.length}</span>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 112px auto", gap: 6, marginTop: 9 }}>
-                <input value={dashboardQuickDrafts[person] || ""} onChange={(event) => setDashboardQuickDrafts((current) => ({ ...current, [person]: event.currentTarget.value }))} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createDashboardWorkForPerson(person); } }} placeholder="Add work…" style={{ ...inputStyle, minHeight: 34 }}/>
-                <select value={dashboardQuickRecurring[person] ? "Recurring" : "One time"} onChange={(event) => setDashboardQuickRecurring((current) => ({ ...current, [person]: event.currentTarget.value === "Recurring" }))} style={{ ...selectStyle, minHeight: 34, fontSize: 11 }}><option>One time</option><option>Recurring</option></select>
-                <button type="button" onClick={() => void createDashboardWorkForPerson(person)} disabled={!String(dashboardQuickDrafts[person] || "").trim()} style={{ ...goldButtonStyle, minHeight: 34, padding: "6px 10px", opacity: String(dashboardQuickDrafts[person] || "").trim() ? 1 : .55 }}>Add</button>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 6, marginTop: 9 }}>
+                <input value={dashboardQuickDrafts[person] || ""} onChange={(event) => setDashboardQuickDrafts((current) => ({ ...current, [person]: event.currentTarget.value }))} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); createDashboardWorkForPerson(person); } }} placeholder="Add work title…" style={{ ...inputStyle, minHeight: 34 }}/>
+                <button type="button" onClick={() => createDashboardWorkForPerson(person)} disabled={!String(dashboardQuickDrafts[person] || "").trim()} style={{ ...goldButtonStyle, minHeight: 34, padding: "6px 10px", opacity: String(dashboardQuickDrafts[person] || "").trim() ? 1 : .55 }}>Save & Edit</button>
               </div>
               <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: 470, overflowY: "auto", paddingRight: 2 }}>
                 {records.map((record) => {
@@ -2507,8 +2523,13 @@ export default function AtlasDashboardWorkspace(props: any) {
                     </details>
                   </div>;
                 })}
-                {!records.length ? <div style={noticeStyle}>No work in this view.</div> : null}
+                {dashboardWorkListFilter === "Today" ? calendarToday.map((event) => <button key={`calendar-${person}-${event.instanceId || event.id}`} type="button" onClick={() => openDashboardCalendarItem(event as AtlasCalendarItem)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF", textAlign: "left", cursor: "pointer" }}>
+                  <strong style={{ color: colors.navy, display: "block", fontSize: 14, lineHeight: 1.3, fontWeight: 700 }}>{event.title}</strong>
+                  <small style={{ color: colors.muted, display: "block", marginTop: 2, fontSize: 12, lineHeight: 1.3 }}>{event.time || "All day"} · Calendar</small>
+                </button>) : null}
+                {!records.length && !(dashboardWorkListFilter === "Today" && calendarToday.length) ? <div style={noticeStyle}>No work in this view.</div> : null}
               </div>
+              {upcoming.length ? <details style={{ marginTop: 8 }}><summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 850 }}>Upcoming · next 7 days · {upcoming.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 6 }}>{upcoming.map((item, index) => item.kind === "work" ? <button key={`upcoming-work-${person}-${item.record.id}`} type="button" onClick={() => openWorkOrderById(item.record.id)} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#FFFFFF", textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy, fontSize: 13 }}>{item.title}</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{formatDate(item.date)} · Work</small></button> : <button key={`upcoming-calendar-${person}-${item.event.instanceId || item.event.id}-${index}`} type="button" onClick={() => openDashboardCalendarItem(item.event as AtlasCalendarItem)} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#FFFFFF", textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy, fontSize: 13 }}>{item.title}</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{formatDate(item.date)}{item.event.time ? ` · ${item.event.time}` : " · All day"} · Calendar</small></button>)}</div></details> : null}
               {completedToday.length ? <details style={{ marginTop: 8 }}><summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 850 }}>Completed today · {completedToday.length}</summary><div style={{ display: "grid", gap: 5, marginTop: 6 }}>{completedToday.map((record) => <button key={`done-${person}-${record.id}`} type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#F3F7F4", textAlign: "left", color: colors.navy, textDecoration: "line-through", opacity: .7, fontSize: 13 }}>{record.title}</button>)}</div></details> : null}
             </section>;
           })}
