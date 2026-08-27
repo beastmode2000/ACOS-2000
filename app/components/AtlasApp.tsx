@@ -15947,33 +15947,51 @@ export default function AtlasApp() {
     });
   }
 
-  function createVehicleCleaningTask(vehicle: AtlasVehicleCare) {
-    const task: WorkPlanTask = {
-      id: uid("plan-task"),
-      title: `Clean ${vehicle.name}`,
-      minutes: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? 75 : 45,
+  async function createVehicleCleaningWorkOrder(
+    vehicle: AtlasVehicleCare,
+    date = todayISO(),
+  ) {
+    const normalizedVehicleName = normalizedWorkOrderText(
+      String(vehicle.name || "").replace(/^vehicle\s+/i, ""),
+    );
+    const linkedAsset =
+      (vehicle.assetId
+        ? assetRecords.find((asset) => asset.id === vehicle.assetId)
+        : undefined) ||
+      assetRecords.find(
+        (asset) =>
+          normalizedWorkOrderText(
+            String(asset.name || "").replace(/^vehicle\s+/i, ""),
+          ) === normalizedVehicleName &&
+          /vehicle|car|automobile/i.test(
+            `${asset.category || ""} ${asset.name || ""}`,
+          ),
+      );
+
+    if (!linkedAsset) {
+      showSaveToast(
+        "Link this vehicle to its real Asset before creating cleaning Work.",
+        "warning",
+      );
+      return null;
+    }
+
+    const displayName =
+      String(linkedAsset.name || "").replace(/^Vehicle\s+/i, "").trim() ||
+      linkedAsset.name;
+
+    return addWorkOrder({
+      title: `Clean ${displayName}`,
+      date,
+      assetId: linkedAsset.id,
+      locationId: linkedAsset.locationId || vehicle.locationId || "",
+      assignedTo: vehicle.assignedTo === "Addison" ? "Addison" : "Nick",
+      responsibilityArea: `Garage · ${displayName}`,
+      workCategory: "Garage",
       priority: vehicle.priority === "High" ? "High" : "Medium",
-      category: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? "Boat / Dock" : "Garage",
-      locationId: vehicle.locationId || "general",
-      preferredDay: "Thursday",
-      locked: false,
-      recurring: false,
-      fixedTime: "",
-      notes: `Created from Garage.${vehicle.notes ? ` ${vehicle.notes}` : ""}`,
-    };
-    setWorkPlanTasks((current) => [task, ...current]);
-    setTaskMeta((current) => ({
-      ...current,
-      [task.id]: {
-        status: "Open",
-        dueDate: todayISO(),
-        assignee: vehicle.assignedTo === "Addison" ? "Addison" : "Nick",
-        createdAt: new Date().toISOString(),
-      },
-    }));
-    setSelectedTaskId(task.id);
-    setTasksView("tasks");
-    showSaveToast(`${vehicle.name} cleaning added to Tasks.`);
+      notes: vehicle.notes || "Created from Garage cleaning.",
+      workType: "Work Order",
+    });
   }
 
   function markVehicleCleaned(vehicle: AtlasVehicleCare) {
@@ -17049,7 +17067,7 @@ ${notes.trim()}` : notes.trim(),
           <div style={{ marginTop: 8 }}><Field label="Notes" multiline value={selectedVehicle.notes} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { notes: value })} /></div>
 
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
-            <button type="button" disabled={!selectedVehicle.onsite} onClick={() => createVehicleCleaningTask(selectedVehicle)} style={goldButtonStyle}>Cleaning Task</button>
+            <button type="button" disabled={!selectedVehicle.onsite} onClick={() => void createVehicleCleaningWorkOrder(selectedVehicle)} style={goldButtonStyle}>Cleaning Task</button>
             <button type="button" onClick={() => markVehicleCleaned(selectedVehicle)} style={secondaryButtonStyle}>Mark Cleaned</button>
             <button type="button" onClick={() => markVehicleServiced(selectedVehicle)} style={secondaryButtonStyle}>Mark Serviced</button>
             <button type="button" onClick={() => addVehicleIssue(selectedVehicle)} style={secondaryButtonStyle}>Add Issue</button>
@@ -22029,44 +22047,6 @@ ${notes.trim()}` : notes.trim(),
     setSelectedInboxId("");
   }
 
-  async function createTaskFromFieldReport(item: InboxItemRecord) {
-    const info = fieldReportInfo(item);
-    if (info.convertedId) {
-      showSaveToast("This report has already been converted.");
-      return;
-    }
-    if (convertingFieldReportsRef.current.has(item.id)) return;
-    convertingFieldReportsRef.current.add(item.id);
-
-    try {
-      const taskId = addAtlasTask(item.title);
-      if (!taskId) return;
-
-      updateWorkPlanTask(taskId, {
-        locationId: info.locationId || "general",
-        notes: item.notes || "",
-      });
-      updateTaskDetails(taskId, {
-        status: "Open",
-        assignee: info.canHandle ? "Addison" : "Nick",
-        dueDate: todayISO(),
-        notes: item.notes || "",
-        instructions: item.notes || "",
-        photos: Array.isArray(item.files) ? item.files : [],
-        needsReview: false,
-      });
-
-      await archiveConvertedFieldReport(item, "Task", taskId);
-      showSaveToast(
-        info.canHandle
-          ? "Task created and assigned to Addison."
-          : "Task created and assigned to Nick.",
-      );
-    } finally {
-      convertingFieldReportsRef.current.delete(item.id);
-    }
-  }
-
   async function createWorkOrderFromFieldReport(item: InboxItemRecord) {
     const info = fieldReportInfo(item);
     if (info.convertedId) {
@@ -22513,17 +22493,10 @@ ${notes.trim()}` : notes.trim(),
                       <>
                         <button
                           type="button"
-                          onClick={() => void createTaskFromFieldReport(selected)}
+                          onClick={() => void createWorkOrderFromFieldReport(selected)}
                           style={goldButtonStyle}
                         >
-                          Create Task
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void createWorkOrderFromFieldReport(selected)}
-                          style={secondaryButtonStyle}
-                        >
-                          Convert to Work Order
+                          Create Work Order
                         </button>
                         <button
                           type="button"
@@ -27417,7 +27390,7 @@ ${notes.trim()}` : notes.trim(),
         if (!selectedGarageVehicle) return;
         ensureSelectedVehicleSaved();
         if (selectedCleaningTask) updateTaskDetails(selectedCleaningTask.id, { status: "Open", dueDate: nearestThursday });
-        else createVehicleCleaningTask({ ...selectedGarageVehicle, assignedTo: selectedGarageVehicle.assignedTo || "Nick" });
+        else void createVehicleCleaningWorkOrder({ ...selectedGarageVehicle, assignedTo: selectedGarageVehicle.assignedTo || "Nick" }, nearestThursday);
         showSaveToast(`${selectedGarageVehicle.name} cleaning moved to Thursday, ${formatDate(nearestThursday)}.`);
       };
       const assignSelectedCleaningToAddison = () => {
@@ -27565,7 +27538,7 @@ ${notes.trim()}` : notes.trim(),
                         {infoTile("Stored at", locationName(selectedGarageVehicle.locationId) || "Not linked")}
                       </div>
                     </section>
-                    <section style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 13 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}><strong style={{ color: colors.navy }}>Next up</strong><button type="button" onClick={() => setGarageVehicleTab("Cleaning")} style={smallSubtleButtonStyle}>View all</button></div><div style={{ ...recordInfoItemStyle, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><span><strong style={{ display: "block" }}>Cleaning {nextCleaning <= todayISO() ? "due" : formatDate(nextCleaning)}</strong><small style={mutedSmallStyle}>{selectedGarageVehicle.assignedTo || "Unassigned"}</small></span><button type="button" onClick={() => createVehicleCleaningTask(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Open</button></div></section>
+                    <section style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 13 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}><strong style={{ color: colors.navy }}>Next up</strong><button type="button" onClick={() => setGarageVehicleTab("Cleaning")} style={smallSubtleButtonStyle}>View all</button></div><div style={{ ...recordInfoItemStyle, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><span><strong style={{ display: "block" }}>Cleaning {nextCleaning <= todayISO() ? "due" : formatDate(nextCleaning)}</strong><small style={mutedSmallStyle}>{selectedGarageVehicle.assignedTo || "Unassigned"}</small></span><button type="button" onClick={() => void createVehicleCleaningWorkOrder(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Open</button></div></section>
                     <section style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 13 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}><strong style={{ color: colors.navy }}>Recent maintenance</strong><button type="button" onClick={() => setGarageVehicleTab("Maintenance")} style={smallSubtleButtonStyle}>Full history</button></div>{vehicleWork.slice(0, 3).map((record) => <button key={record.id} type="button" onClick={() => { setDepartmentCenter(""); openWorkOrderById(record.id); }} style={{ ...compactLinkedRowStyle, width: "100%", marginBottom: 7 }}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "No date"}</small></span><span style={badgeStyle(record.status || "Open")}>{record.status || "Open"}</span></button>)}{!vehicleWork.length ? <div style={noticeStyle}>No maintenance records yet.</div> : null}</section>
                   </div> : null}
 
