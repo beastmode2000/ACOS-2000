@@ -70,6 +70,9 @@ const DEFAULT_CATEGORIES = [
   "\u2705 Inspection",
   "\u{1F6A8} Safety",
   "\u{1F4C4} Admin",
+  "Meeting",
+  "PTO / Off",
+  "Vendor Visit",
 ];
 
 const DEFAULT_SECTIONS: WorkSection[] = [
@@ -648,6 +651,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [sections, setSections] = useState<WorkSection[]>(DEFAULT_SECTIONS);
   const [activeSectionId, setActiveSectionId] = useState("my-work");
   const [categoryFilter, setCategoryFilter] = useState("All");
+  const [showFilters, setShowFilters] = useState(false);
   const [typeFilter, setTypeFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("Active");
   const [dueDateFilter, setDueDateFilter] = useState("All");
@@ -2148,6 +2152,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 }}
               />
 
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <button type="button" onClick={() => setShowFilters((current) => !current)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, padding: "6px 10px" }}>
+                  {showFilters ? "Hide Filters" : activeFilterCount ? `Filters · ${activeFilterCount}` : "Filters"}
+                </button>
+                {activeFilterCount ? <button type="button" onClick={clearFilters} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, padding: "6px 9px", fontWeight: 500 }}>Clear</button> : null}
+              </div>
+
+              {(showFilters || activeFilterCount > 0) ? (
               <div
                 style={{
                   display: "flex",
@@ -2254,22 +2266,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   ))}
                 </select>
 
-                {activeFilterCount ? (
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    style={{
-                      ...secondaryButtonStyle,
-                      width: "auto",
-                      minHeight: 34,
-                      padding: "6px 9px",
-                      fontWeight: 500,
-                    }}
-                  >
-                    Clear
-                  </button>
-                ) : null}
               </div>
+              ) : null}
             </div>
 
             {manageSectionsOpen ? (
@@ -2469,7 +2467,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => void deleteWorkOrderRecord(selectedService)} style={{ ...dangerButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Delete</button><button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button></div>
                     </div>
                     <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, fontSize: 20, fontWeight: 800 }} />
-                    <textarea value={selectedService.notes || ""} onChange={(event) => updateWorkOrder({ notes: event.currentTarget.value })} rows={3} style={{ ...inputStyle, minHeight: 78, resize: "vertical" }} />
+                    <label style={{ display: "grid", gap: 5 }}>
+                      <span style={fieldLabelStyle}>What to do</span>
+                      <textarea value={selectedService.notes || ""} onChange={(event) => updateWorkOrder({ notes: event.currentTarget.value })} rows={3} style={{ ...inputStyle, minHeight: 78, resize: "vertical" }} />
+                    </label>
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))", gap: 9 }}>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due Date"}</span><input type="date" value={String(selectedService.date || "")} onChange={(event) => { const selectedDays = normalizedRecurrenceDays((selectedService as any).recurrenceDays); updateWorkOrder({ date: selectedService.recurring && selectedDays.length ? alignDateToSelectedDay(event.currentTarget.value, selectedDays) : event.currentTarget.value }); }} style={inputStyle} /></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Estimated Time</span><select value={selectedService.effort || ""} onChange={(event) => updateWorkOrder({ effort: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No estimate</option>{["5 minutes","15 minutes","30 minutes","1 hour","Half Day","Full Day","Multi-Day"].map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label>
@@ -2494,30 +2495,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   </div>
                 )}
               </section>
-
-              {workEditorOpen || (selectedService.checklist || []).length ? <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 9 }}>
-                  <div>
-                    <div style={eyebrowStyle}>Procedure</div>
-                    <strong>{(selectedService.checklist || []).length ? `${(selectedService.checklist || []).filter((item: ChecklistItem) => item.completed).length} of ${(selectedService.checklist || []).length} complete` : "Add procedure steps"}</strong>
-                  </div>
-                </div>
-                {(selectedService.checklist || []).length ? (
-                  <div style={{ display: "grid", gap: 5 }}>
-                    {(selectedService.checklist || []).map((item: ChecklistItem, index: number) => (
-                      <div key={item.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", alignItems: "center", gap: 9, padding: "8px 9px", borderBottom: `1px solid ${colors.line}` }}>
-                        <input type="checkbox" checked={Boolean(item.completed)} onChange={() => toggleChecklistItem(item.id)} aria-label={`Complete step ${index + 1}`} />
-                        <span style={{ color: item.completed ? colors.muted : colors.text, textDecoration: item.completed ? "line-through" : "none", fontSize: 13 }}>{item.text}</span>
-                        {workEditorOpen ? <button type="button" onClick={() => deleteChecklistItem(item.id)} style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer", padding: 4 }} aria-label={`Remove step ${index + 1}`}>{SYMBOL.close}</button> : <span />}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {workEditorOpen ? <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, marginTop: 9 }}>
-                  <input value={newChecklistText} onChange={(event) => setNewChecklistText(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addChecklistItem(); } }} style={inputStyle} />
-                  <button type="button" onClick={addChecklistItem} style={{ ...secondaryButtonStyle, width: "auto", padding: "7px 10px" }}>Add</button>
-                </div> : null}
-              </section> : null}
 
               {workEditorOpen || (selectedService.photos || []).length ? <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
                 <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Photos ({(selectedService.photos || []).length})</summary>
@@ -2566,28 +2543,16 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 ) : null}
               </details> : null}
 
-              {workEditorOpen || selectedService.estimatedCost || selectedService.actualCost || selectedService.invoiceNumber || selectedService.internalNotes ? <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
-                <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Cost, Invoice & Notes</summary>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 9, marginTop: 9 }}>
-                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Estimated Cost</span><input type="number" min="0" step="0.01" value={selectedService.estimatedCost || ""} onChange={(event) => updateWorkOrder({ estimatedCost: Number(event.currentTarget.value || 0) })} style={inputStyle} /></label>
-                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Actual Cost</span><input type="number" min="0" step="0.01" value={selectedService.actualCost || ""} onChange={(event) => updateWorkOrder({ actualCost: Number(event.currentTarget.value || 0) })} style={inputStyle} /></label>
-                  <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Invoice</span><input value={selectedService.invoiceNumber || ""} onChange={(event) => updateWorkOrder({ invoiceNumber: event.currentTarget.value })} style={inputStyle} /></label>
-                </div>
-                <textarea value={selectedService.internalNotes || ""} onChange={(event) => updateWorkOrder({ internalNotes: event.currentTarget.value })} rows={3} style={{ ...inputStyle, minHeight: 78, resize: "vertical", marginTop: 9 }} />
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><button type="button" onClick={() => void saveWorkOrderRecord()} style={{ ...goldButtonStyle, width: "auto" }}>Save</button></div>
-              </details> : null}
-
               {!isClosedWorkStatus(selectedService.status) ? (
                 <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14, background: "#FFFDF7", borderColor: "#E7D39E" }}>
                   <div style={{ display: "grid", gap: 7 }}>
                     <div>
-                      <div style={eyebrowStyle}>Work Done</div>
-                      <strong style={{ display: "block", marginTop: 2, color: colors.navy }}>Completion note</strong>
+                      <div style={eyebrowStyle}>What was done</div>
                     </div>
                     <textarea
                       value={completionNoteDraft}
                       onChange={(event) => setCompletionNoteDraft(event.currentTarget.value)}
-                      placeholder="What was actually done? Example: Rinsed off only — did not fully clean vehicle."
+                      placeholder="What was done?"
                       rows={2}
                       style={{ ...inputStyle, minHeight: 62, resize: "vertical" }}
                     />
@@ -2596,9 +2561,29 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                         {selectedService.recurring ? "Complete & Advance" : "Complete"}
                       </button>
                     </div>
-                    <small style={mutedSmallStyle}>This note is saved with the completion history and shown in the owner report.</small>
+                    
                   </div>
                 </section>
+              ) : null}
+
+              {selectedService.procedureId ? (
+                <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>
+                    Procedure{(selectedService.checklist || []).length ? ` · ${(selectedService.checklist || []).filter((item: ChecklistItem) => item.completed).length}/${(selectedService.checklist || []).length}` : ""}
+                  </summary>
+                  {(selectedService.checklist || []).length ? (
+                    <div style={{ display: "grid", gap: 5, marginTop: 9 }}>
+                      {(selectedService.checklist || []).map((item: ChecklistItem, index: number) => (
+                        <div key={item.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", alignItems: "center", gap: 9, padding: "8px 9px", borderBottom: `1px solid ${colors.line}` }}>
+                          <input type="checkbox" checked={Boolean(item.completed)} onChange={() => toggleChecklistItem(item.id)} aria-label={`Complete step ${index + 1}`} />
+                          <span style={{ color: item.completed ? colors.muted : colors.text, textDecoration: item.completed ? "line-through" : "none", fontSize: 13 }}>{item.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ ...mutedSmallStyle, marginTop: 9 }}>Attached procedure has no checklist steps.</div>
+                  )}
+                </details>
               ) : null}
 
               <section style={{ ...detailSectionStyle, padding: 10, background: "#F8FAFC" }}>
@@ -2677,13 +2662,15 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       </select>
                     </label>
 
-                    <Field
-                      label="Stop Repeating After"
-                      value={selectedService.recurrenceEndDate || ""}
-                      onChange={(value: string) =>
-                        updateWorkOrder({ recurrenceEndDate: value })
-                      }
-                    />
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Stop Repeating After</span>
+                      <input
+                        type="date"
+                        value={selectedService.recurrenceEndDate || ""}
+                        onChange={(event) => updateWorkOrder({ recurrenceEndDate: event.currentTarget.value })}
+                        style={inputStyle}
+                      />
+                    </label>
                     <div style={{ display: "grid", gap: 6, gridColumn: "1 / -1" }}>
                       <span style={fieldLabelStyle}>Run on</span>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 5 }}>
@@ -2714,22 +2701,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                         })}
                       </div>
                     </div>
-                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                      <span style={fieldLabelStyle}>Completion Window</span>
-                      <select value={String(selectedService.completionWindowDays ?? 2)} onChange={(event) => updateWorkOrder({ completionWindowDays: Number(event.currentTarget.value) })} style={inputStyle}>
-                        <option value="0">Same day</option><option value="1">Within 1 day</option><option value="2">Within 2 days</option><option value="3">Within 3 days</option><option value="7">Anytime this week</option><option value="14">Within 2 weeks</option>
-                      </select>
-                    </label>
-                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                      <span style={fieldLabelStyle}>Scheduling Rule</span>
-                      <select value={selectedService.routineFlexibility || "Flexible"} onChange={(event) => updateWorkOrder({ routineFlexibility: event.currentTarget.value })} style={inputStyle}>
-                        <option value="Fixed">Fixed date</option><option value="Flexible">Flexible around preferred day</option><option value="Anytime This Week">Anytime this week</option>
-                      </select>
-                    </label>
-                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                      <span style={fieldLabelStyle}>Backup Assignee</span>
-                      <select value={selectedService.backupAssignee || ""} onChange={(event) => updateWorkOrder({ backupAssignee: event.currentTarget.value })} style={inputStyle}><option value="">None</option>{byName(contactRecords).map((contact: any) => <option key={contact.id || contact.name} value={contact.name}>{contact.name}</option>)}</select>
-                    </label>
+                    
+                    
+                    
                     <label style={{ display: "flex", alignItems: "center", gap: 8, gridColumn: "1 / -1", fontWeight: 700 }}>
                       <input type="checkbox" checked={selectedService.canReassign !== false} onChange={(event) => updateWorkOrder({ canReassign: event.currentTarget.checked })} /> Allow this occurrence to be reassigned
                     </label>
