@@ -103,6 +103,80 @@ type WorkTemplate = {
 
 const WORK_TEMPLATES: WorkTemplate[] = [];
 
+const WEEKDAY_OPTIONS = [
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+  { value: 0, label: "Sun" },
+] as const;
+const DEFAULT_WORK_WEEK = [1, 2, 3, 4, 5];
+
+function normalizedRecurrenceDays(value: unknown) {
+  if (!Array.isArray(value)) return [] as number[];
+  return Array.from(
+    new Set(
+      value
+        .map((day) => Math.floor(Number(day)))
+        .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
+    ),
+  );
+}
+
+function nextSelectedRecurrenceDate(record: any, startDate: string) {
+  const start = parseDate(startDate);
+  if (!start) return "";
+  const selectedDays = normalizedRecurrenceDays(record?.recurrenceDays);
+  if (selectedDays.length) {
+    for (let offset = 1; offset <= 14; offset += 1) {
+      const candidate = new Date(start);
+      candidate.setDate(candidate.getDate() + offset);
+      if (selectedDays.includes(candidate.getDay())) {
+        return [
+          candidate.getFullYear(),
+          String(candidate.getMonth() + 1).padStart(2, "0"),
+          String(candidate.getDate()).padStart(2, "0"),
+        ].join("-");
+      }
+    }
+  }
+  const interval = Math.max(1, Math.floor(Number(record?.recurrenceInterval || 1)));
+  const unit = String(record?.recurrenceUnit || "Weeks");
+  const candidate = new Date(start);
+  if (unit === "Days") candidate.setDate(candidate.getDate() + interval);
+  else if (unit === "Months") candidate.setMonth(candidate.getMonth() + interval);
+  else if (unit === "Years") candidate.setFullYear(candidate.getFullYear() + interval);
+  else candidate.setDate(candidate.getDate() + interval * 7);
+  return [
+    candidate.getFullYear(),
+    String(candidate.getMonth() + 1).padStart(2, "0"),
+    String(candidate.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+
+function alignDateToSelectedDay(dateValue: string, recurrenceDays: number[]) {
+  const key = dateKey(dateValue);
+  if (!key) return dateValue;
+  const selectedDays = normalizedRecurrenceDays(recurrenceDays);
+  if (!selectedDays.length) return key;
+  const date = parseDate(key);
+  if (!date || selectedDays.includes(date.getDay())) return key;
+  for (let offset = 1; offset <= 7; offset += 1) {
+    const candidate = new Date(date);
+    candidate.setDate(candidate.getDate() + offset);
+    if (selectedDays.includes(candidate.getDay())) {
+      return [
+        candidate.getFullYear(),
+        String(candidate.getMonth() + 1).padStart(2, "0"),
+        String(candidate.getDate()).padStart(2, "0"),
+      ].join("-");
+    }
+  }
+  return key;
+}
 
 function itemType(record: any): WorkItemType {
   if (
@@ -257,34 +331,18 @@ function parseDate(value: string) {
 }
 
 function recurrencePreviewDates(record: any, count = 3) {
-  const start = parseDate(String(record.date || ""));
-  if (!start || !record.recurring) return [];
+  const startKey = dateKey(String(record.date || ""));
+  if (!startKey || !record.recurring) return [];
 
-  const interval = Math.max(
-    1,
-    Math.floor(Number(record.recurrenceInterval || 1)),
-  );
-  const unit = String(record.recurrenceUnit || "Weeks");
   const endKey = dateKey(String(record.recurrenceEndDate || ""));
   const dates: string[] = [];
-  let cursor = new Date(start);
+  let cursor = startKey;
 
   for (let index = 0; index < count; index += 1) {
-    if (unit === "Days") cursor.setDate(cursor.getDate() + interval);
-    else if (unit === "Months")
-      cursor.setMonth(cursor.getMonth() + interval);
-    else if (unit === "Years")
-      cursor.setFullYear(cursor.getFullYear() + interval);
-    else cursor.setDate(cursor.getDate() + interval * 7);
-
-    const nextKey = [
-      cursor.getFullYear(),
-      String(cursor.getMonth() + 1).padStart(2, "0"),
-      String(cursor.getDate()).padStart(2, "0"),
-    ].join("-");
-
-    if (endKey && nextKey > endKey) break;
+    const nextKey = nextSelectedRecurrenceDate(record, cursor);
+    if (!nextKey || (endKey && nextKey > endKey)) break;
     dates.push(nextKey);
+    cursor = nextKey;
   }
 
   return dates;
@@ -627,12 +685,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     workCategory: string;
     priority: "Low" | "Medium" | "High";
     date: string;
+    recurrenceDays: number[];
   }>({
     title: "",
     workType: "Work Order",
     workCategory: "🔧 Maintenance",
     priority: "Medium",
     date: "",
+    recurrenceDays: [],
   });
   const [newChecklistText, setNewChecklistText] = useState("");
   const [newHistoryNote, setNewHistoryNote] = useState("");
@@ -1335,6 +1395,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         workType === "Quick Task"
           ? new Date().toISOString().slice(0, 10)
           : "",
+      recurrenceDays:
+        workType === "Preventive Maintenance" ? [...DEFAULT_WORK_WEEK] : [],
     });
     setNewWorkOpen(true);
   }
@@ -1352,12 +1414,19 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       workType: newWorkDraft.workType,
       workCategory: newWorkDraft.workCategory,
       priority: newWorkDraft.priority,
-      date: newWorkDraft.date,
+      date:
+        newWorkDraft.workType === "Preventive Maintenance"
+          ? alignDateToSelectedDay(newWorkDraft.date, newWorkDraft.recurrenceDays)
+          : newWorkDraft.date,
       effort: newWorkDraft.workType === "Quick Task" ? "15 minutes" : "30 minutes",
       status: "Open",
       recurring: newWorkDraft.workType === "Preventive Maintenance",
       recurrenceInterval: pendingTemplate?.recurrenceInterval || 1,
       recurrenceUnit: pendingTemplate?.recurrenceUnit || "Weeks",
+      recurrenceDays:
+        newWorkDraft.workType === "Preventive Maintenance"
+          ? newWorkDraft.recurrenceDays
+          : [],
       preferredDay: pendingTemplate?.preferredDay || "Any",
       completionWindowDays: pendingTemplate?.completionWindowDays ?? 2,
       routineFlexibility: pendingTemplate?.flexibility || "Flexible",
@@ -1851,6 +1920,12 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       setNewWorkDraft((current) => ({
                         ...current,
                         workType: event.currentTarget.value as WorkItemType,
+                        recurrenceDays:
+                          event.currentTarget.value === "Preventive Maintenance"
+                            ? current.recurrenceDays.length
+                              ? current.recurrenceDays
+                              : [...DEFAULT_WORK_WEEK]
+                            : current.recurrenceDays,
                       }))
                     }
                     style={controlStyle}
@@ -1860,6 +1935,22 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     <option value="Preventive Maintenance">Recurring</option>
                     <option value="Project">Project</option>
                   </select>
+                  {newWorkDraft.workType === "Preventive Maintenance" ? (
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <span style={fieldLabelStyle}>Run on</span>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 5 }}>
+                        {WEEKDAY_OPTIONS.map((day) => {
+                          const checked = newWorkDraft.recurrenceDays.includes(day.value);
+                          return (
+                            <label key={day.value} style={{ display: "grid", justifyItems: "center", gap: 3, padding: "6px 2px", border: `1px solid ${checked ? colors.gold : colors.line}`, borderRadius: 8, background: checked ? "#FFF8E6" : "#FFFFFF", cursor: "pointer", fontSize: 11, fontWeight: 800 }}>
+                              <input type="checkbox" checked={checked} onChange={(event) => setNewWorkDraft((current) => { const nextDays = event.currentTarget.checked ? Array.from(new Set([...current.recurrenceDays, day.value])) : current.recurrenceDays.filter((value) => value !== day.value); return { ...current, recurrenceDays: nextDays.length ? nextDays : current.recurrenceDays }; })} />
+                              {day.label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                   <select
                     value={newWorkDraft.workCategory}
                     onChange={(event) =>
@@ -1901,7 +1992,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     onChange={(event) =>
                       setNewWorkDraft((current) => ({
                         ...current,
-                        date: event.currentTarget.value,
+                        date:
+                          current.workType === "Preventive Maintenance"
+                            ? alignDateToSelectedDay(
+                                event.currentTarget.value,
+                                current.recurrenceDays,
+                              )
+                            : event.currentTarget.value,
                       }))
                     }
                     style={controlStyle}
@@ -2355,11 +2452,11 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, fontSize: 20, fontWeight: 800 }} />
                     <textarea value={selectedService.notes || ""} onChange={(event) => updateWorkOrder({ notes: event.currentTarget.value })} rows={3} style={{ ...inputStyle, minHeight: 78, resize: "vertical" }} />
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))", gap: 9 }}>
-                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due Date"}</span><input type="date" value={String(selectedService.date || "")} onChange={(event) => updateWorkOrder({ date: event.currentTarget.value })} style={inputStyle} /></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>{selectedService.recurring ? "Next Due" : "Due Date"}</span><input type="date" value={String(selectedService.date || "")} onChange={(event) => { const selectedDays = normalizedRecurrenceDays((selectedService as any).recurrenceDays); updateWorkOrder({ date: selectedService.recurring && selectedDays.length ? alignDateToSelectedDay(event.currentTarget.value, selectedDays) : event.currentTarget.value }); }} style={inputStyle} /></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Estimated Time</span><select value={selectedService.effort || ""} onChange={(event) => updateWorkOrder({ effort: event.currentTarget.value || undefined })} style={inputStyle}><option value="">No estimate</option>{["5 minutes","15 minutes","30 minutes","1 hour","Half Day","Full Day","Multi-Day"].map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Status</span><select value={selectedService.status || "Open"} onChange={(event) => safeSelectChange(event, { status: event.currentTarget.value })} style={inputStyle}><option value="Open">Open</option><option value="Scheduled">Scheduled</option><option value="In Progress">In Progress</option><option value="Waiting">Waiting</option><option value="Monitor">Monitor</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Priority</span><select value={selectedService.priority || "Medium"} onChange={(event) => safeSelectChange(event, { priority: event.currentTarget.value })} style={inputStyle}><option value="High">High</option><option value="Medium">Normal</option><option value="Low">Low</option></select></label>
-                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Type</span><select value={itemType(selectedService)} onChange={(event) => { const workType = event.currentTarget.value as WorkItemType; safeSelectChange(event, { workType, recurring: workType === "Preventive Maintenance" ? true : selectedService.recurring }); }} style={inputStyle}><option value="Quick Task">Task</option><option value="Work Order">Work Order</option><option value="Preventive Maintenance">Recurring</option><option value="Project">Project</option></select></label>
+                      <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Type</span><select value={itemType(selectedService)} onChange={(event) => { const workType = event.currentTarget.value as WorkItemType; const recurrenceDays = normalizedRecurrenceDays((selectedService as any).recurrenceDays); safeSelectChange(event, { workType, recurring: workType === "Preventive Maintenance" ? true : selectedService.recurring, ...(workType === "Preventive Maintenance" && !recurrenceDays.length ? { recurrenceDays: [...DEFAULT_WORK_WEEK], recurrenceInterval: 1, recurrenceUnit: "Weeks" } : {}) }); }} style={inputStyle}><option value="Quick Task">Task</option><option value="Work Order">Work Order</option><option value="Preventive Maintenance">Recurring</option><option value="Project">Project</option></select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Asset</span><select value={selectedService.assetId || ""} onChange={(event) => updateWorkOrder(assetPhotoPatch(event.currentTarget.value))} style={inputStyle}><option value="">No asset</option>{byName(assetRecords).map((asset: any) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Location</span><select value={selectedService.locationId || ""} onChange={(event) => safeSelectChange(event, { locationId: event.currentTarget.value })} style={inputStyle}><option value="">No location</option>{byName(locationRecords).map((location: any) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
                       <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Sub-Location</span><input value={selectedService.subLocation || ""} onChange={(event) => updateWorkOrder({ subLocation: event.currentTarget.value })} style={inputStyle} /></label>
@@ -2568,12 +2665,36 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                         updateWorkOrder({ recurrenceEndDate: value })
                       }
                     />
-                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                      <span style={fieldLabelStyle}>Preferred Day</span>
-                      <select value={selectedService.preferredDay || "Any"} onChange={(event) => updateWorkOrder({ preferredDay: event.currentTarget.value })} style={inputStyle}>
-                        {["Any", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => <option key={day} value={day}>{day}</option>)}
-                      </select>
-                    </label>
+                    <div style={{ display: "grid", gap: 6, gridColumn: "1 / -1" }}>
+                      <span style={fieldLabelStyle}>Run on</span>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 5 }}>
+                        {WEEKDAY_OPTIONS.map((day) => {
+                          const selectedDays = normalizedRecurrenceDays((selectedService as any).recurrenceDays);
+                          const checked = selectedDays.includes(day.value);
+                          return (
+                            <label key={day.value} style={{ display: "grid", justifyItems: "center", gap: 3, padding: "6px 2px", border: `1px solid ${checked ? colors.gold : colors.line}`, borderRadius: 8, background: checked ? "#FFF8E6" : "#FFFFFF", cursor: "pointer", fontSize: 11, fontWeight: 800 }}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(event) => {
+                                  const nextDays = event.currentTarget.checked
+                                    ? Array.from(new Set([...selectedDays, day.value]))
+                                    : selectedDays.filter((value) => value !== day.value);
+                                  if (!nextDays.length) return;
+                                  updateWorkOrder({
+                                    recurrenceDays: nextDays,
+                                    recurrenceInterval: 1,
+                                    recurrenceUnit: "Weeks",
+                                    date: alignDateToSelectedDay(String(selectedService.date || ""), nextDays),
+                                  });
+                                }}
+                              />
+                              {day.label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                       <span style={fieldLabelStyle}>Completion Window</span>
                       <select value={String(selectedService.completionWindowDays ?? 2)} onChange={(event) => updateWorkOrder({ completionWindowDays: Number(event.currentTarget.value) })} style={inputStyle}>
