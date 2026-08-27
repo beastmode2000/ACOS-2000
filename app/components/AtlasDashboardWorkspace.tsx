@@ -2339,9 +2339,6 @@ export default function AtlasDashboardWorkspace(props: any) {
   };
   const dailyForemanPanel = (
     <div style={{ display: "grid", gap: 12 }}>
-      <section style={{ ...cardStyle, padding: isMobile ? 12 : 16, background: `linear-gradient(135deg, ${colors.navy}, #173E68)`, color: "#FFFFFF", border: 0 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Mission Control</div><h1 style={{ margin: "3px 0", fontSize: isMobile ? 24 : 29 }}>Today</h1><small style={{ opacity: .82 }}>{new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => setMorningBriefOpen(true)} style={teamGoldButtonStyle}>Morning Brief</button><button type="button" onClick={() => setScreen("calendar")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Calendar</button><button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, background: "rgba(255,255,255,.1)", color: "#FFFFFF", borderColor: "rgba(255,255,255,.3)" }}>Work</button></div></div>
-      </section>
       <section style={{ ...cardStyle, padding: isMobile ? 10 : 12, borderColor: "#D7C07A", background: "linear-gradient(135deg,#FFFDF6,#FFFFFF)" }}>
         <button type="button" onClick={toggleDashboardNotes} aria-expanded={dashboardNotesOpen} style={{ display: "flex", width: "100%", justifyContent: "space-between", gap: 8, alignItems: "center", border: 0, background: "transparent", padding: 0, cursor: "pointer", textAlign: "left" }}>
           <h2 style={{ margin: 0, color: colors.navy, fontSize: 18 }}>Remember It</h2>
@@ -2369,7 +2366,7 @@ export default function AtlasDashboardWorkspace(props: any) {
       </section>
       <section style={{ ...cardStyle, minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <div><div style={eyebrowStyle}>Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Daily Work Lists</h2></div>
+          <div><div style={eyebrowStyle}>Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Work Lists</h2></div>
           <button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Open All Work</button>
         </div>
         <div style={{ display: "flex", gap: 6, overflowX: "auto", marginTop: 9, paddingBottom: 2 }}>
