@@ -2399,7 +2399,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     let deletedRows: JsonRecord[] = [];
-    let workOrderAlreadyDeleted = false;
+    let alreadyDeleted = false;
 
     if (table === "locations") {
       const locationRows = (await sql`
@@ -2700,8 +2700,21 @@ export async function DELETE(request: NextRequest) {
           // another browser tab, or a retry may have already removed the row.
           // Treat that as success so the client can keep its tombstone and never
           // resurrect the deleted record.
-          workOrderAlreadyDeleted = true;
+          alreadyDeleted = true;
         }
+      }
+
+      if (deletedRows.length || alreadyDeleted) {
+        await ensureCalendarColumns(sql);
+        await sql`
+          DELETE FROM atlas_calendar_items
+          WHERE property_id = ${propertyId}
+            AND linked_id = ${id}
+            AND (
+              LOWER(COALESCE(linked_type, '')) = 'work order'
+              OR LOWER(COALESCE(source, '')) IN ('work-order', 'workorder', 'service')
+            )
+        `;
       }
     } else if (table === "calendar") {
       deletedRows = (await sql`
@@ -2746,23 +2759,45 @@ export async function DELETE(request: NextRequest) {
           AND property_id = ${propertyId}
         RETURNING id
       `) as unknown as JsonRecord[];
+
+      if (!deletedRows.length) {
+        alreadyDeleted = true;
+      }
+
+      if (table === "tasks") {
+        await ensureCalendarColumns(sql);
+        await sql`
+          DELETE FROM atlas_calendar_items
+          WHERE property_id = ${propertyId}
+            AND linked_id = ${id}
+            AND (
+              LOWER(COALESCE(linked_type, '')) = 'task'
+              OR LOWER(COALESCE(source, '')) = 'task'
+            )
+        `;
+      }
     }
 
     if (!deletedRows.length) {
-      // DELETE is idempotent across Atlas. If another tab, cleanup pass, or an
-      // older generated-record cleanup already removed the row, the requested
-      // end state is still correct. Returning success prevents stale UI records
-      // from producing user-visible 404s or being resurrected by retry logic.
-      return atlasJson(
-        {
+      if (
+        alreadyDeleted ||
+        table === "calendar"
+      ) {
+        return NextResponse.json({
           ok: true,
           id,
           alreadyDeleted: true,
-          table,
-          propertyId,
+        });
+      }
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Record was not found in property " +
+            propertyId +
+            ".",
         },
-        200,
-        requestId,
+        { status: 404 },
       );
     }
 
