@@ -322,9 +322,17 @@ export default function AtlasDashboardWorkspace(props: any) {
     return record.lastCompletedDate === today || (record.completionHistory || []).includes(today) || (record.serviceHistory || []).some((entry) => String(entry.completedAt || "").slice(0, 10) === today);
   });
 
-  const createDashboardWorkForPerson = (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") => {
+  const createDashboardWorkForPerson = async (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") => {
     const title = String(dashboardQuickDrafts[person] || "").trim();
     if (!title) return;
+
+    if (person === "Addison" && typeof createAddisonDashboardTask === "function") {
+      const workOrderId = await createAddisonDashboardTask(title);
+      if (!workOrderId) return;
+      setDashboardQuickDrafts((current) => ({ ...current, [person]: "" }));
+      return;
+    }
+
     setDashboardQuickDrafts((current) => ({ ...current, [person]: "" }));
     addDashboardWorkOrder("Maintenance", {
       title,
@@ -2488,8 +2496,8 @@ export default function AtlasDashboardWorkspace(props: any) {
                 <span style={badgeStyle(records.length ? "Scheduled" : completedToday.length ? "Completed" : "Monitor")}>{records.length}</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 6, marginTop: 9 }}>
-                <input value={dashboardQuickDrafts[person] || ""} onChange={(event) => setDashboardQuickDrafts((current) => ({ ...current, [person]: event.currentTarget.value }))} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); createDashboardWorkForPerson(person); } }} placeholder="Add work title…" style={{ ...inputStyle, minHeight: 34 }}/>
-                <button type="button" onClick={() => createDashboardWorkForPerson(person)} disabled={!String(dashboardQuickDrafts[person] || "").trim()} style={{ ...goldButtonStyle, minHeight: 34, padding: "6px 10px", opacity: String(dashboardQuickDrafts[person] || "").trim() ? 1 : .55 }}>Save & Edit</button>
+                <input value={dashboardQuickDrafts[person] || ""} onChange={(event) => setDashboardQuickDrafts((current) => ({ ...current, [person]: event.currentTarget.value }))} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createDashboardWorkForPerson(person); } }} placeholder="Add work title…" style={{ ...inputStyle, minHeight: 34 }}/>
+                <button type="button" onClick={() => void createDashboardWorkForPerson(person)} disabled={!String(dashboardQuickDrafts[person] || "").trim()} style={{ ...goldButtonStyle, minHeight: 34, padding: "6px 10px", opacity: String(dashboardQuickDrafts[person] || "").trim() ? 1 : .55 }}>Save & Edit</button>
               </div>
               <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: 470, overflowY: "auto", paddingRight: 2 }}>
                 {records.map((record) => {
