@@ -372,6 +372,39 @@ async function ensureTeamWorkListsTable(sql: ReturnType<typeof neon>) {
   `;
 }
 
+function canonicalCoworkerName(value: unknown) {
+  const name = String(value || "").trim();
+  const normalized = name.toLowerCase().replace(/[^a-z]+/g, " ").trim();
+  if (/^(pat|patrick)( tanner)?$/.test(normalized)) return "Patrick Tanner";
+  if (/^sean( powell)?$/.test(normalized)) return "Sean Powell";
+  if (/^addison(?: .*)?$/.test(normalized)) return "Addison";
+  if (/^nick(?: thornton)?$/.test(normalized)) return "Nick";
+  return name;
+}
+
+function dedupeCoworkerMembers<T extends { id: string; name: string; email: string; propertyIds?: string[]; accessProfiles?: string[] }>(members: T[]) {
+  const grouped = new Map<string, T>();
+  for (const member of members) {
+    const canonicalName = canonicalCoworkerName(member.name);
+    const key = canonicalName.toLowerCase();
+    const normalizedMember = { ...member, name: canonicalName } as T;
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, normalizedMember);
+      continue;
+    }
+    const existingFieldOnly = isFieldOnlyEmail(existing.email);
+    const incomingFieldOnly = isFieldOnlyEmail(normalizedMember.email);
+    const preferred = existingFieldOnly && !incomingFieldOnly ? normalizedMember : existing;
+    grouped.set(key, {
+      ...preferred,
+      propertyIds: Array.from(new Set([...(existing.propertyIds || []), ...(normalizedMember.propertyIds || [])])),
+      accessProfiles: Array.from(new Set([...(existing.accessProfiles || []), ...(normalizedMember.accessProfiles || [])])),
+    } as T);
+  }
+  return Array.from(grouped.values());
+}
+
 export async function GET(request: NextRequest) {
   try {
     const sql = getSql();
@@ -414,7 +447,7 @@ export async function GET(request: NextRequest) {
         a.name
     `) as unknown as Record<string, unknown>[];
 
-    const members = rows.map((row) => {
+    const rawMembers = rows.map((row) => {
       const role = normalizeRole(row.role);
       const id = String(row.id || "");
       const email = String(row.email || "").toLowerCase();
@@ -452,9 +485,10 @@ export async function GET(request: NextRequest) {
       request.headers.get("x-atlas-user-email") || ""
     ).toLowerCase();
 
-    const current = members.find(
+    const current = rawMembers.find(
       (member) => member.email.toLowerCase() === email,
     );
+    const members = dedupeCoworkerMembers(rawMembers);
 
     const headerRole = request.headers.get("x-atlas-user-role");
     const currentRole = normalizeRole(
