@@ -30244,39 +30244,6 @@ ${notes.trim()}` : notes.trim(),
                     <div style={sidebarNavItemsStyle}>
                       {section.items.map((screenId) => {
                         if (screenId === "planner" || screenId === "routines") return null;
-                        if (screenId === "planner") {
-                          const workNavigation = isAddisonUser
-                            ? [{ id: "tasks", label: "My Tasks", view: "tasks" as const }]
-                            : [{ id: "tasks", label: "Tasks", view: "tasks" as const }];
-                          return (
-                            <React.Fragment key="work-navigation">
-                              {workNavigation.map((entry) => {
-                                const active = screen === "planner" && tasksView === entry.view;
-                                return (
-                                  <button
-                                    key={entry.id}
-                                    type="button"
-                                    className="atlas-sidebar-nav-button"
-                                    title={sidebarCollapsed ? entry.label : undefined}
-                                    onClick={() => {
-                                      setTasksView(entry.view);
-                                      setScreen("planner");
-                                    }}
-                                    style={{
-                                      ...navButtonStyle,
-                                      borderColor: active ? colors.gold : "transparent",
-                                      background: active ? colors.gold : "transparent",
-                                      color: active ? colors.navy : "#FFFFFF",
-                                    }}
-                                  >
-                                    <span className="atlas-sidebar-nav-label">{entry.label}</span>
-                                  </button>
-                                );
-                              })}
-                            </React.Fragment>
-                          );
-                        }
-
                         const item = screens.find(
                           (candidate) => candidate.id === screenId,
                         );
