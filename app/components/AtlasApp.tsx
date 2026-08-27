@@ -9460,112 +9460,53 @@ export default function AtlasApp() {
       !window.confirm(`Delete work order ${record.title || "this work order"}?`)
     )
       return;
-    const actionKey = `delete-work-order:${record.id}`;
+    const recordId = String(record.id || "");
+    if (!recordId) return;
+    const actionKey = `delete-work-order:${recordId}`;
     if (atlasActionLocksRef.current.has(actionKey)) {
       showSaveToast("This work order is already being deleted.", "warning");
       return;
     }
     atlasActionLocksRef.current.add(actionKey);
-    const deletedTitle = normalizedWorkOrderText(record.title || "");
-    const targetDuplicateKey = workOrderDatabaseDuplicateKey(record);
-    const matchingWorkOrders = serviceRecords.filter(
-      (item) =>
-        item.id === record.id ||
-        workOrderDatabaseDuplicateKey(item) === targetDuplicateKey,
-    );
-    if (!matchingWorkOrders.some((item) => item.id === record.id)) {
-      matchingWorkOrders.push(record);
-    }
+    setDatabaseStatus(`Deleting ${record.title || "work order"}...`);
 
-    const workOrderIds = new Set(
-      matchingWorkOrders.map((item) => String(item.id || "")).filter(Boolean),
-    );
-    workOrderIds.forEach((workOrderId) => addWorkOrderTombstone(workOrderId));
-
-    const legacyTaskIds = new Set<string>();
-    matchingWorkOrders.forEach((item) => {
-      const unifiedTaskMatch = String(item.id || "").match(/^unified-task-(.+)$/);
-      if (unifiedTaskMatch?.[1]) legacyTaskIds.add(unifiedTaskMatch[1]);
-      const responsibilityMatch = String(
-        (item as AtlasServiceRecord).responsibilityArea || "",
-      ).match(/legacy task\s+(.+)$/i);
-      if (responsibilityMatch?.[1]?.trim()) {
-        legacyTaskIds.add(responsibilityMatch[1].trim());
-      }
-    });
-    workPlanTasks.forEach((task) => {
-      if (
-        deletedTitle &&
-        normalizedWorkOrderText(task.title || "") === deletedTitle
-      ) {
-        legacyTaskIds.add(task.id);
-      }
-    });
-
-    legacyTaskIds.forEach((taskId) => {
-      addTaskTombstone(taskId);
-      void deleteOperationalRecord("tasks" as AtlasTable, taskId);
-    });
-    if (legacyTaskIds.size) {
-      setWorkPlanTasks((current) => {
-        const next = current.filter((task) => !legacyTaskIds.has(task.id));
-        saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, next);
-        if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", next);
-        return next;
+    try {
+      const deleted = await deleteAtlasRecord("work_orders", recordId, {
+        suppressFailureToast: true,
       });
-      setTaskMeta((current) => {
-        const next = Object.fromEntries(
-          Object.entries(current).filter(
-            ([taskId]) => !legacyTaskIds.has(taskId),
-          ),
-        ) as Record<string, AtlasTaskMeta>;
-        try {
-          window.localStorage.setItem(
-            `atlas-task-meta-v1-${activePropertyId}`,
-            JSON.stringify(next),
-          );
-          if (activePropertyId === "2000") {
-            window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
-          }
-        } catch {}
-        return next;
-      });
-    }
+      if (!deleted) {
+        setDatabaseStatus(`${record.title || "Work order"} was not deleted.`);
+        showSaveToast("Work order delete did not finish. Nothing was removed locally.", "warning");
+        return;
+      }
 
-    setServiceRecords((current) =>
-      current.filter((item) => !workOrderIds.has(String(item.id || ""))),
-    );
-    const linkedCalendarRecords = calendarItems.filter(
-      (item) =>
-        workOrderIds.has(String(item.linkedId || "")) ||
-        legacyTaskIds.has(String(item.linkedId || "")),
-    );
-    linkedCalendarRecords.forEach((item) => {
-      rememberCalendarDeletion(item);
-      void deleteAtlasRecord("calendar", item.id);
-    });
-    if (linkedCalendarRecords.length) {
-      const linkedIds = new Set(linkedCalendarRecords.map((item) => item.id));
-      setCalendarItems((current) => current.filter((item) => !linkedIds.has(item.id)));
-    }
-    setSelectedServiceId("");
-    showSaveToast(
-      `${record.title || "Work order"} deleted${workOrderIds.size > 1 ? ` (${workOrderIds.size} copies)` : ""}.`,
-    );
+      addWorkOrderTombstone(recordId);
+      const linkedCalendarRecords = calendarItems.filter(
+        (item) => String(item.linkedId || "") === recordId,
+      );
+      for (const item of linkedCalendarRecords) {
+        rememberCalendarDeletion(item);
+        await deleteAtlasRecord("calendar", item.id, {
+          suppressFailureToast: true,
+        });
+      }
 
-    void (async () => {
-      try {
-        await Promise.all(
-          Array.from(workOrderIds).map((workOrderId) =>
-            deleteAtlasRecord("work_orders", workOrderId, {
-              suppressFailureToast: true,
-            }),
-          ),
+      setServiceRecords((current) =>
+        current.filter((item) => String(item.id || "") !== recordId),
+      );
+      if (linkedCalendarRecords.length) {
+        const linkedIds = new Set(linkedCalendarRecords.map((item) => item.id));
+        setCalendarItems((current) =>
+          current.filter((item) => !linkedIds.has(item.id)),
         );
-      } finally {
-        atlasActionLocksRef.current.delete(actionKey);
       }
-    })();
+      setSelectedServiceId((current) => (current === recordId ? "" : current));
+      clearRecordDirty("work_order", recordId);
+      setDatabaseStatus(`Deleted ${record.title || "work order"}.`);
+      showSaveToast(`${record.title || "Work order"} deleted.`);
+    } finally {
+      atlasActionLocksRef.current.delete(actionKey);
+    }
   }
 
   async function deleteProcedureRecord(record: ProcedureRecord) {
@@ -11425,7 +11366,7 @@ export default function AtlasApp() {
     }
   }
 
-  function addDashboardWorkOrder(areaLabel: string, initial: Partial<AtlasServiceRecord> = {}) {
+  async function addDashboardWorkOrder(areaLabel: string, initial: Partial<AtlasServiceRecord> = {}) {
     const contextByArea: Record<string, Partial<AtlasServiceRecord>> = {
       Maintenance: { workCategory: "🔧 Maintenance", responsibilityArea: "Operations Dashboard · Maintenance" },
       Landscaping: { workCategory: "🌳 Landscaping", responsibilityArea: "Operations Dashboard · Landscaping" },
@@ -11435,7 +11376,7 @@ export default function AtlasApp() {
       Vehicles: { workCategory: "🚗 Vehicles", responsibilityArea: "Operations Dashboard · Vehicles" },
     };
     setDashboardWorkFilter("");
-    addWorkOrder({
+    return await addWorkOrder({
       ...(contextByArea[areaLabel] || { responsibilityArea: `Operations Dashboard · ${areaLabel}` }),
       ...initial,
     });
@@ -11601,7 +11542,7 @@ export default function AtlasApp() {
     );
   }
 
-  function addWorkOrder(initial: Partial<AtlasServiceRecord> = {}) {
+  async function addWorkOrder(initial: Partial<AtlasServiceRecord> = {}) {
     const linkedAssetPhoto = initial.assetId
       ? [...photos]
           .filter(
@@ -11649,33 +11590,36 @@ export default function AtlasApp() {
       notesHistory: [],
       serviceHistory: [],
       ...initial,
+      propertyId: activePropertyId,
       id: initial.id || uid("wo"),
     });
-    // A newly-created work order must exist in the shared database before the
-    // editor starts changing recurrence, notes, dates, or linked calendar data.
-    // Otherwise a fast follow-up edit can race the initial insert and surface a
-    // misleading 404. Explicit creation also clears only this new ID from any
-    // stale local tombstone; deleted historical IDs remain protected.
+
+    const actionKey = `create-work-order:${record.id}`;
+    if (atlasActionLocksRef.current.has(actionKey)) return null;
+    atlasActionLocksRef.current.add(actionKey);
     clearWorkOrderTombstone(record.id);
-    setServiceRecords((current) => byTitle([record, ...current]));
-    setSelectedServiceId(record.id);
-    markRecordDirty("work_order", record.id);
-    setScreen("history");
-    void (async () => {
-      const saved = await postAtlasRecord("work_orders", {
-        ...record,
-        propertyId: activePropertyId,
-      });
-      if (saved) {
-        clearRecordDirty("work_order", record.id);
-        setDatabaseStatus(`Saved ${record.title || "work order"}.`);
-      } else {
+    setDatabaseStatus(`Saving ${record.title || "work order"}...`);
+
+    try {
+      const saved = await postAtlasRecord("work_orders", record);
+      if (!saved) {
         markRecordDirty("work_order", record.id);
         setDatabaseStatus(
-          `${record.title || "Work order"} was created locally, but shared saving did not finish.`,
+          `${record.title || "Work order"} was not created in shared Atlas.`,
         );
+        showSaveToast("Work order was not created. Try again.", "warning");
+        return null;
       }
-    })();
+
+      clearRecordDirty("work_order", record.id);
+      setServiceRecords((current) => byTitle([record, ...current]));
+      setSelectedServiceId(record.id);
+      setScreen("history");
+      setDatabaseStatus(`Saved ${record.title || "work order"}.`);
+      return record;
+    } finally {
+      atlasActionLocksRef.current.delete(actionKey);
+    }
   }
 
   function updateWorkOrder(patch: Partial<AtlasServiceRecord>) {
@@ -11768,16 +11712,33 @@ export default function AtlasApp() {
       ...safePatch,
       propertyId: activePropertyId,
     });
-    setServiceRecords((current) =>
-      byTitle(current.map((item) => (item.id === updated.id ? updated : item))),
-    );
-    const saved = await postAtlasRecord("work_orders", updated);
-    showSaveToast(
-      saved
-        ? `${updated.title || "Work"} saved.`
-        : `${updated.title || "Work"} changed locally, but shared sync did not finish.`,
-      saved ? "success" : "warning",
-    );
+    const actionKey = `update-work-order:${updated.id}`;
+    if (atlasActionLocksRef.current.has(actionKey)) {
+      showSaveToast("This work order is already saving.", "warning");
+      return false;
+    }
+    atlasActionLocksRef.current.add(actionKey);
+    setDatabaseStatus(`Saving ${updated.title || "work order"}...`);
+    try {
+      const saved = await postAtlasRecord("work_orders", updated);
+      if (!saved) {
+        markRecordDirty("work_order", updated.id);
+        showSaveToast(
+          `${updated.title || "Work"} was not changed because shared saving failed.`,
+          "warning",
+        );
+        return false;
+      }
+      clearRecordDirty("work_order", updated.id);
+      setServiceRecords((current) =>
+        byTitle(current.map((item) => (item.id === updated.id ? updated : item))),
+      );
+      setDatabaseStatus(`Saved ${updated.title || "work order"}.`);
+      showSaveToast(`${updated.title || "Work"} saved.`, "success");
+      return true;
+    } finally {
+      atlasActionLocksRef.current.delete(actionKey);
+    }
   }
 
   async function saveWorkOrderRecord() {
@@ -11986,12 +11947,20 @@ export default function AtlasApp() {
         serviceHistory,
       });
 
+      const saved = await postAtlasRecord("work_orders", completed);
+      if (!saved) {
+        markRecordDirty("work_order", completed.id);
+        setDatabaseStatus(`${completed.title || "Work order"} was not completed because shared saving failed.`);
+        showSaveToast("Completion was not saved. The work order remains open.", "warning");
+        atlasActionLocksRef.current.delete(actionKey);
+        return;
+      }
+      clearRecordDirty("work_order", completed.id);
       setServiceRecords((current) =>
         byTitle(
           current.map((item) => (item.id === completed.id ? completed : item)),
         ),
       );
-      await postAtlasRecord("work_orders", completed);
       recordConnectedProjectCompletion({
         projectId: String(completed.projectId || ""),
         title: completed.title || "Work order",
@@ -12004,7 +11973,6 @@ export default function AtlasApp() {
         ].filter(Boolean).join(" · "),
       });
       recordAtlasAudit("Work order completed", completed.title || completed.id);
-      clearRecordDirty("work_order", completed.id);
       setDatabaseStatus(`Completed ${completed.title}.`);
       showSaveToast(`${completed.title || "Work order"} completed.`);
       atlasActionLocksRef.current.delete(actionKey);
@@ -12035,12 +12003,20 @@ export default function AtlasApp() {
       })),
     });
 
+    const saved = await postAtlasRecord("work_orders", advanced);
+    if (!saved) {
+      markRecordDirty("work_order", advanced.id);
+      setDatabaseStatus(`${advanced.title || "Work order"} was not completed because shared saving failed.`);
+      showSaveToast("Completion was not saved. The recurring work order was not advanced.", "warning");
+      atlasActionLocksRef.current.delete(actionKey);
+      return;
+    }
+    clearRecordDirty("work_order", advanced.id);
     setServiceRecords((current) =>
       byTitle(
         current.map((item) => (item.id === advanced.id ? advanced : item)),
       ),
     );
-    await postAtlasRecord("work_orders", advanced);
     recordConnectedProjectCompletion({
       projectId: String(advanced.projectId || ""),
       title: advanced.title || "Work order",
@@ -12059,8 +12035,6 @@ export default function AtlasApp() {
         ? `${advanced.title || advanced.id} · recurring schedule ended`
         : `${advanced.title || advanced.id} · next due ${formatDate(nextDate)}`,
     );
-    clearRecordDirty("work_order", advanced.id);
-
     setDatabaseStatus(
       scheduleEnded
         ? `Completed ${advanced.title}. Its recurring schedule has ended.`
@@ -12118,18 +12092,19 @@ export default function AtlasApp() {
       locationId: latestCompletion?.locationId || record.locationId || "",
     });
 
-    setServiceRecords((current) =>
-      byTitle(current.map((item) => (item.id === reopened.id ? reopened : item))),
-    );
     setDatabaseStatus(`Reopening ${reopened.title || "work order"}...`);
     const saved = await postAtlasRecord("work_orders", reopened);
     if (!saved) {
       markRecordDirty("work_order", reopened.id);
-      window.alert("Atlas reopened this work order in this browser, but shared saving failed. Do not refresh until the save succeeds.");
+      showSaveToast("Work order was not reopened because shared saving failed.", "warning");
       return;
     }
     clearRecordDirty("work_order", reopened.id);
+    setServiceRecords((current) =>
+      byTitle(current.map((item) => (item.id === reopened.id ? reopened : item))),
+    );
     setDatabaseStatus(`Reopened ${reopened.title || "work order"}.`);
+    showSaveToast(`${reopened.title || "Work order"} reopened.`);
   }
 
   function startNewCalendarDraft(date?: string) {
@@ -12462,26 +12437,7 @@ export default function AtlasApp() {
         return true;
       }
 
-      const reopened = normalizeService({
-        ...workOrder,
-        status: "Open",
-      });
-
-      const saved = await postAtlasRecord("work_orders", reopened);
-      if (!saved) {
-        setDatabaseStatus("The linked work order could not be reopened.");
-        return false;
-      }
-
-      setServiceRecords((current) =>
-        byTitle(
-          current.map((record) =>
-            record.id === reopened.id ? reopened : record,
-          ),
-        ),
-      );
-      clearRecordDirty("work_order", reopened.id);
-      setDatabaseStatus(`Reopened ${reopened.title}.`);
+      await reopenWorkOrder(workOrder);
       return true;
     }
 
@@ -22370,7 +22326,7 @@ ${notes.trim()}` : notes.trim(),
 
     try {
       const workOrderId = uid("wo");
-      addWorkOrder({
+      const created = await addWorkOrder({
         id: workOrderId,
         title: item.title,
         date: todayISO(),
@@ -22384,6 +22340,7 @@ ${notes.trim()}` : notes.trim(),
         responsibilityArea: "Field Report",
         photos: Array.isArray(item.files) ? item.files : [],
       });
+      if (!created) return;
 
       await archiveConvertedFieldReport(item, "Work Order", workOrderId);
       showSaveToast("Work order created from Addison’s report.");
