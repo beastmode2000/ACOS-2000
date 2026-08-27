@@ -324,13 +324,14 @@ export default function AtlasDashboardWorkspace(props: any) {
     const title = String(dashboardQuickDrafts[person] || "").trim();
     if (!title) return;
 
-    setDashboardQuickDrafts((current) => ({ ...current, [person]: "" }));
-    addDashboardWorkOrder("Maintenance", {
+    const created = await addDashboardWorkOrder("Maintenance", {
       title,
       assignedTo: person,
       date: todayISO(),
       status: "Open",
     });
+    if (!created) return;
+    setDashboardQuickDrafts((current) => ({ ...current, [person]: "" }));
   };
 
   const dashboardCalendarOwner = (event: AtlasCalendarItem) => {
