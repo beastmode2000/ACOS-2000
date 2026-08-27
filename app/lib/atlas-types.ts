@@ -466,6 +466,7 @@ export type CalendarItem = {
   id: string;
   date: string;
   time?: string;
+  endTime?: string;
   title: string;
   area: string;
   categoryLabel?: string;
