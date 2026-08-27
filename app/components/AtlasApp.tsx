@@ -5506,58 +5506,6 @@ export default function AtlasApp() {
     [showJewishHolidays, holidayYears],
   );
 
-  const taskCalendarItems = useMemo(() => {
-    const horizon = addDays(todayISO(), 366);
-
-    return workPlanTasks.flatMap((task) => {
-      const meta = taskMeta[task.id] || taskDetails(task.id);
-      const baseDate = String(meta.dueDate || "").slice(0, 10);
-      if (!baseDate || meta.status === "Completed") return [];
-
-      const occurrenceDates = [baseDate];
-      if (task.recurring) {
-        const interval = Math.max(1, Number(meta.recurrenceInterval || 1));
-        const rawUnit = String(meta.recurrenceUnit || "Weeks");
-        const unit: WorkOrderRecurrenceUnit =
-          rawUnit === "Days" || rawUnit === "Weeks" || rawUnit === "Months" || rawUnit === "Years"
-            ? rawUnit
-            : "Weeks";
-        let nextDate = baseDate;
-        let count = 0;
-        while (count < 60) {
-          nextDate = nextRecurrenceDate(nextDate, interval, unit);
-          if (!nextDate || nextDate > horizon) break;
-          occurrenceDates.push(nextDate);
-          count += 1;
-        }
-      }
-
-      return occurrenceDates.map((date, index) =>
-        normalizeCalendar({
-          id: index === 0
-            ? `task-${task.id}`
-            : `task-${task.id}-occurrence-${date}`,
-          propertyId: activePropertyId,
-          date,
-          time: String(task.fixedTime || ""),
-          title: task.title,
-          area: task.category || "Tasks",
-          categoryLabel: task.category || "Tasks",
-          allDay: !task.fixedTime,
-          repeat: "None",
-          reminder: "None",
-          notes: String(meta.notes || task.notes || ""),
-          linkedType: "Task",
-          linkedId: task.id,
-          linkedName: task.title,
-          completed: false,
-          source: "task",
-          status: "Scheduled",
-        }),
-      );
-    });
-  }, [workPlanTasks, taskMeta, activePropertyId]);
-
   const workOrderCalendarItems = useMemo(() => {
     const records = isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords;
     const horizon = addDays(todayISO(), 366);
@@ -12328,53 +12276,6 @@ export default function AtlasApp() {
         )
       : undefined;
 
-    if (
-      selectedSourceRecord?.source === "task" &&
-      selectedSourceRecord.linkedId
-    ) {
-      const taskId = String(selectedSourceRecord.linkedId);
-      const task = workPlanTasks.find((item) => item.id === taskId);
-      if (!task) {
-        setDatabaseStatus("The linked task could not be found.");
-        return;
-      }
-
-      const updatedTask: WorkPlanTask = {
-        ...task,
-        title: calendarDraft.title.trim() || task.title,
-        fixedTime: calendarDraft.allDay ? "" : String(calendarDraft.time || ""),
-      };
-      const baseMeta = taskMeta[taskId] || taskDetails(taskId);
-      const updatedMeta: AtlasTaskMeta = {
-        ...baseMeta,
-        dueDate: String(calendarDraft.date || selectedCalendarDate || todayISO()).slice(0, 10),
-        notes: String(calendarDraft.notes || baseMeta.notes || ""),
-        updatedAt: new Date().toISOString(),
-      };
-
-      setWorkPlanTasks((current) =>
-        current.map((item) => (item.id === taskId ? updatedTask : item)),
-      );
-      setTaskMeta((current) => ({ ...current, [taskId]: updatedMeta }));
-
-      const saved = await postAtlasRecord("tasks" as AtlasTable, {
-        ...updatedTask,
-        ...updatedMeta,
-        taskMeta: updatedMeta,
-        propertyId: activePropertyId,
-        updatedAt: updatedMeta.updatedAt,
-      });
-
-      if (!saved) {
-        setDatabaseStatus("The task update did not save.");
-        return;
-      }
-
-      setDatabaseStatus(`Saved ${updatedTask.title}.`);
-      resetCalendarEntryForm(updatedMeta.dueDate || todayISO());
-      return;
-    }
-
     const originalSeriesRecord = selectedCalendarId
       ? calendarItems.find((item) => item.id === selectedCalendarId)
       : undefined;
@@ -12767,19 +12668,6 @@ export default function AtlasApp() {
         return;
       }
       await deleteWorkOrderRecord(workOrder);
-      resetCalendarEntryForm(sourceRecord.date || selectedCalendarDate);
-      return;
-    }
-
-    if (sourceRecord?.source === "task" && sourceRecord.linkedId) {
-      const taskId = String(sourceRecord.linkedId);
-      const task = workPlanTasks.find((item) => item.id === taskId);
-      if (!task) {
-        setDatabaseStatus("The linked task could not be found.");
-        return;
-      }
-      if (!window.confirm(`Delete task ${task.title || "this task"}?`)) return;
-      deleteAtlasTask(taskId);
       resetCalendarEntryForm(sourceRecord.date || selectedCalendarDate);
       return;
     }
