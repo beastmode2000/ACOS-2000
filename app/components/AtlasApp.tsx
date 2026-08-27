@@ -2983,12 +2983,23 @@ export default function AtlasApp() {
       }
     });
 
-    const reconciledVehicleCare = [...canonicalVehicleCare, ...unmatchedVehicleCare];
+    // Road-vehicle Garage care may supplement a real Asset, but it may never
+    // remain as a second vehicle identity when no real Asset exists. Preserve
+    // unmatched non-road records (boats/watercraft), and remove only orphaned
+    // road-vehicle care left behind by the legacy Garage system.
+    const orphanedRoadVehicleCare = unmatchedVehicleCare.filter((vehicle) => {
+      const text = cleanVehicleName(`${vehicle.name || ""} ${vehicle.kind || ""}`);
+      return roadBrands.some((brand) => new RegExp(`\\b${brand}\\b`, "i").test(text)) || /\b(vehicle|car|automobile)\b/i.test(text);
+    });
+    const preservedUnmatchedVehicleCare = unmatchedVehicleCare.filter(
+      (vehicle) => !orphanedRoadVehicleCare.some((orphan) => String(orphan.id) === String(vehicle.id)),
+    );
+    const reconciledVehicleCare = [...canonicalVehicleCare, ...preservedUnmatchedVehicleCare];
     const duplicateAssets = Array.from(duplicateAssetToKeeper.keys())
       .map((id) => generatedVehicleAssets.find((asset) => String(asset.id) === id))
       .filter(Boolean) as AtlasAssetRecord[];
 
-    if (!workOrderUpdates.length && !vehicleCareUpdates.length && !duplicateVehicleCare.length && !duplicateAssets.length) {
+    if (!workOrderUpdates.length && !vehicleCareUpdates.length && !duplicateVehicleCare.length && !orphanedRoadVehicleCare.length && !duplicateAssets.length) {
       if (typeof window !== "undefined") window.localStorage.setItem(cleanupKey, "done");
       return;
     }
@@ -3023,7 +3034,7 @@ export default function AtlasApp() {
         ...duplicateAssets.map((asset) =>
           deleteAtlasRecord("assets", String(asset.id), { suppressFailureToast: true }),
         ),
-        ...duplicateVehicleCare.map((vehicle) =>
+        ...[...duplicateVehicleCare, ...orphanedRoadVehicleCare].map((vehicle) =>
           deleteOperationalRecord("vehicle_care" as AtlasTable, String(vehicle.id || "")),
         ),
       ]);
@@ -3038,7 +3049,7 @@ export default function AtlasApp() {
         const ids = new Set(duplicateAssets.map((asset) => String(asset.id)));
         setAssetRecords((current) => current.filter((asset) => !ids.has(String(asset.id))));
       }
-      if (vehicleCareUpdates.length || duplicateVehicleCare.length) {
+      if (vehicleCareUpdates.length || duplicateVehicleCare.length || orphanedRoadVehicleCare.length) {
         setVehicleCare(reconciledVehicleCare);
       }
 
