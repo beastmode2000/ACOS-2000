@@ -2489,7 +2489,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                 <span style={badgeStyle(records.length ? "Scheduled" : completedToday.length ? "Completed" : "Monitor")}>{records.length}</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 6, marginTop: 9 }}>
-                <input value={dashboardQuickDrafts[person] || ""} onChange={(event) => setDashboardQuickDrafts((current) => ({ ...current, [person]: event.currentTarget.value }))} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createDashboardWorkForPerson(person); } }} placeholder="Add work title…" style={{ ...inputStyle, minHeight: 34 }}/>
+                <input value={dashboardQuickDrafts[person] || ""} onChange={(event) => { const value = event.currentTarget.value; setDashboardQuickDrafts((current) => ({ ...current, [person]: value })); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createDashboardWorkForPerson(person); } }} placeholder="Add work title…" style={{ ...inputStyle, minHeight: 34 }}/>
                 <button type="button" onClick={() => void createDashboardWorkForPerson(person)} disabled={!String(dashboardQuickDrafts[person] || "").trim()} style={{ ...goldButtonStyle, minHeight: 34, padding: "6px 10px", opacity: String(dashboardQuickDrafts[person] || "").trim() ? 1 : .55 }}>Save & Edit</button>
               </div>
               <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: 470, overflowY: "auto", paddingRight: 2 }}>
