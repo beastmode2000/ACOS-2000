@@ -2434,10 +2434,13 @@ export default function AtlasDashboardWorkspace(props: any) {
         </div>
       </section>
 
-      <section style={{ ...cardStyle, overflow: "hidden" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div><div style={eyebrowStyle}>Recent Activity</div><h3 style={{ margin: 0, color: colors.navy }}>Updates from the last 7 days</h3></div><span style={{ ...badgeStyle("Monitor"), flex: "0 0 auto" }}>{dashboardFeedCounts.All}</span></div>
+      <details open style={{ ...cardStyle, overflow: "hidden" }}>
+        <summary style={{ cursor: "pointer", listStyle: "none", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div><div style={eyebrowStyle}>Recent Activity</div><h3 style={{ margin: 0, color: colors.navy }}>Updates from the last 7 days</h3></div>
+          <span style={{ ...badgeStyle("Monitor"), flex: "0 0 auto" }}>{dashboardFeedCounts.All}</span>
+        </summary>
         <div style={{ marginTop: 10, display: "grid", gap: 7 }}>{filteredDashboardFeed.slice(0, 10).map((item) => <button key={`primary-${item.id}`} type="button" onClick={item.action} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: 8, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{item.title}</strong><small style={mutedSmallStyle}>{item.detail}</small></button>)}{!filteredDashboardFeed.length ? <div style={noticeStyle}>No recent activity.</div> : null}</div>
-      </section>
+      </details>
 
       <section id="atlas-dashboard-vendor-log" style={{ ...cardStyle, padding: 11 }}>
         <div><div style={eyebrowStyle}>Quick Log</div><h3 style={{ margin: "2px 0", color: colors.navy }}>Vendor Visit</h3></div>
