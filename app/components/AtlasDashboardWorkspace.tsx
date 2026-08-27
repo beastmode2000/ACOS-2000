@@ -326,13 +326,6 @@ export default function AtlasDashboardWorkspace(props: any) {
     const title = String(dashboardQuickDrafts[person] || "").trim();
     if (!title) return;
 
-    if (person === "Addison" && typeof createAddisonDashboardTask === "function") {
-      const workOrderId = await createAddisonDashboardTask(title);
-      if (!workOrderId) return;
-      setDashboardQuickDrafts((current) => ({ ...current, [person]: "" }));
-      return;
-    }
-
     setDashboardQuickDrafts((current) => ({ ...current, [person]: "" }));
     addDashboardWorkOrder("Maintenance", {
       title,
