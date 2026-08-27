@@ -274,6 +274,11 @@ function calendarTimeValue(hour: string, minute: string, period: string) {
   return `${String(hour24).padStart(2, "0")}:${minuteValue}`;
 }
 
+function calendarTimeLabel(value: unknown) {
+  const parts = calendarTimeParts(value);
+  return `${parts.hour}:${parts.minute} ${parts.period}`;
+}
+
 function sortAgenda(events: any[]): any[] {
   return [...events].sort((a, b) => {
     if (Boolean(a.allDay) !== Boolean(b.allDay)) {
@@ -387,6 +392,7 @@ export default function AtlasCalendar(
     openCalendarItem,
     onOpenLinkedRecord,
     onConvertToWorkOrder,
+    onCreateWorkOrder,
     reminderOptions,
     repeatOptions,
     saveCalendarItem,
@@ -426,6 +432,7 @@ export default function AtlasCalendar(
   const [pinnedEventIds, setPinnedEventIds] = React.useState<string[]>([]);
   const [recentEventIds, setRecentEventIds] = React.useState<string[]>([]);
   const [showUpcoming, setShowUpcoming] = React.useState(false);
+  const [quickScope, setQuickScope] = React.useState<"All" | "Events" | "Work" | "Meetings" | "Vendors" | "Landscaping" | "PTO">("All");
 
   React.useEffect(() => {
     setPinnedEventIds(safeReadStringList(CALENDAR_PIN_STORAGE_KEY));
@@ -509,15 +516,25 @@ export default function AtlasCalendar(
 
   const normalizedSearch = calendarSearch.trim().toLowerCase();
 
-  const visibleExpandedCalendarItems = React.useMemo(
-    () =>
-      normalizedSearch
-        ? expandedCalendarItems.filter((event: any) =>
-            eventSearchText(event).includes(normalizedSearch),
-          )
-        : expandedCalendarItems,
-    [expandedCalendarItems, normalizedSearch],
-  );
+  const visibleExpandedCalendarItems = React.useMemo(() => {
+    const matchesQuickScope = (event: any) => {
+      if (quickScope === "All") return true;
+      const type = eventType(event).label;
+      const text = `${event.categoryLabel || ""} ${event.area || ""} ${event.title || ""}`.toLowerCase();
+      if (quickScope === "Events") return type !== "Work Order";
+      if (quickScope === "Work") return type === "Work Order";
+      if (quickScope === "Meetings") return text.includes("meeting");
+      if (quickScope === "Vendors") return type === "Vendor Visit" || text.includes("vendor") || text.includes("service visit");
+      if (quickScope === "Landscaping") return text.includes("landscap") || text.includes("garden") || text.includes("lawn") || text.includes("irrigation");
+      if (quickScope === "PTO") return text.includes("pto") || text.includes("off");
+      return true;
+    };
+
+    return expandedCalendarItems.filter((event: any) =>
+      matchesQuickScope(event) &&
+      (!normalizedSearch || eventSearchText(event).includes(normalizedSearch)),
+    );
+  }, [expandedCalendarItems, normalizedSearch, quickScope]);
 
   const upcomingEvents = React.useMemo(() => {
     const start = calendarDateKey(todayISO());
@@ -672,6 +689,14 @@ export default function AtlasCalendar(
     setDetailOpen(true);
   }
 
+  function startNewWork() {
+    if (!onCreateWorkOrder) return;
+    const date = selectedCalendarDate || todayKey;
+    void onCreateWorkOrder(date);
+    setDetailOpen(false);
+    setEditorOpen(false);
+  }
+
   function closeEditor() {
     setSelectedCalendarId("");
     setCalendarDraft(
@@ -711,41 +736,29 @@ export default function AtlasCalendar(
 
   function renderCalendarCell(cell: any) {
     const dateKey = calendarDateKey(cell.date);
-
     const events = dateKey
       ? sortAgenda(
           visibleExpandedCalendarItems.filter(
-            (event: any) =>
-              calendarDateKey(event.date) === dateKey,
+            (event: any) => calendarDateKey(event.date) === dateKey,
           ),
         )
       : [];
 
-    const selected =
-      dateKey === calendarDateKey(selectedCalendarDate);
+    const selected = dateKey === calendarDateKey(selectedCalendarDate);
     const today = dateKey === todayKey;
-    const weather = dateKey
-      ? weatherByDate.get(dateKey)
-      : undefined;
-
-    const visibleLimit = isMobile ? 2 : 4;
+    const weather = dateKey ? weatherByDate.get(dateKey) : undefined;
+    const visibleLimit = isMobile ? 2 : 5;
 
     return (
-      <button
+      <div
         key={cell.key || dateKey}
-        type="button"
-        disabled={!dateKey}
-        onClick={() => {
-          if (dateKey) showDay(dateKey);
-        }}
-        onDoubleClick={(mouseEvent) => {
-          if (!dateKey) return;
-          mouseEvent.preventDefault();
-          mouseEvent.stopPropagation();
-          setSelectedCalendarDate(dateKey);
-          addCalendarItem(dateKey);
-          setEditorOpen(true);
-          setDetailOpen(true);
+        role={dateKey ? "button" : undefined}
+        tabIndex={dateKey ? 0 : -1}
+        onClick={() => { if (dateKey) showDay(dateKey); }}
+        onKeyDown={(event) => {
+          if (!dateKey || (event.key !== "Enter" && event.key !== " ")) return;
+          event.preventDefault();
+          showDay(dateKey);
         }}
         style={{
           ...calendarCellStyle,
@@ -757,140 +770,119 @@ export default function AtlasCalendar(
           display: "grid",
           gridTemplateRows: "auto minmax(0, 1fr)",
           alignContent: "start",
-          padding: isMobile ? "4px 3px" : "8px",
+          padding: isMobile ? "3px" : "7px 7px 6px",
           boxSizing: "border-box",
-          borderRadius: isMobile ? 8 : 12,
-          borderWidth: selected ? 2 : 1,
-          borderStyle: "solid",
-          borderColor: selected
-            ? colors.gold
-            : today
-              ? colors.gold2
-              : colors.line,
-          background: selected
-            ? "#FFF8E5"
-            : today
-              ? "#FFFDF3"
-              : "#FFFFFF",
-          opacity: cell.outside ? 0.45 : 1,
-          boxShadow: selected
-            ? "inset 0 0 0 1px rgba(201,154,61,0.18)"
-            : "none",
+          borderRadius: isMobile ? 6 : 10,
+          border: `1px solid ${selected ? "#B8C9D9" : today ? "#C8D9E8" : "#E7EDF3"}`,
+          background: selected ? "#F4F8FC" : today ? "#F7FAFD" : "#FFFFFF",
+          opacity: cell.outside ? 0.42 : 1,
+          boxShadow: selected ? "0 0 0 1px rgba(36,73,103,0.08)" : "none",
           cursor: dateKey ? "pointer" : "default",
           textAlign: "left",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 3,
-            minWidth: 0,
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4, minWidth: 0 }}>
           <strong
             style={{
-              color: cell.outside
-                ? colors.muted
-                : colors.navy,
-              fontSize: isMobile ? 10 : 14,
+              display: "grid",
+              placeItems: "center",
+              width: isMobile ? 18 : 25,
+              height: isMobile ? 18 : 25,
+              borderRadius: "50%",
+              background: today ? colors.navy : "transparent",
+              color: today ? "#FFFFFF" : cell.outside ? colors.muted : colors.navy,
+              fontSize: isMobile ? 9 : 12,
               lineHeight: 1,
+              flex: "0 0 auto",
             }}
           >
             {cell.day ?? ""}
           </strong>
 
-          {weather ? (
-            <span
-              title={weatherText(weather.code)}
-              style={{
-                ...calendarWeatherIconStyle,
-                fontSize: isMobile ? 8 : 13,
-                lineHeight: 1,
-              }}
-            >
-              {weatherIcon(weather.code)}
-            </span>
-          ) : null}
+          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            {weather ? (
+              <span title={weatherText(weather.code)} style={{ ...calendarWeatherIconStyle, fontSize: isMobile ? 8 : 12, lineHeight: 1 }}>
+                {weatherIcon(weather.code)}
+              </span>
+            ) : null}
+            {dateKey ? (
+              <button
+                type="button"
+                aria-label={`Add item on ${formatDate(dateKey)}`}
+                title="Add"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSelectedCalendarDate(dateKey);
+                  addCalendarItem(dateKey);
+                  setEditorOpen(true);
+                  setDetailOpen(true);
+                }}
+                style={{
+                  width: isMobile ? 17 : 22,
+                  height: isMobile ? 17 : 22,
+                  borderRadius: 7,
+                  border: 0,
+                  background: "transparent",
+                  color: "#8294A5",
+                  fontSize: isMobile ? 12 : 16,
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                +
+              </button>
+            ) : null}
+          </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            alignContent: "start",
-            gap: isMobile ? 1 : 3,
-            marginTop: isMobile ? 3 : 7,
-            minHeight: 0,
-            overflow: "hidden",
-          }}
-        >
-          {events
-            .slice(0, visibleLimit)
-            .map((event: any) => {
-              const eventColor = colorForEvent(event);
-              const type = eventType(event);
-
-              return (
-                <span
-                  key={event.instanceId || event.id}
-                  title={hoverText(event)}
-                  onClick={(mouseEvent) => {
-                    mouseEvent.stopPropagation();
-                    openEvent(event);
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: isMobile ? 2 : 5,
-                    minWidth: 0,
-                    overflow: "hidden",
-                    borderRadius: isMobile ? 4 : 6,
-                    padding: isMobile
-                      ? "1px 2px"
-                      : "3px 5px",
-                    color: eventColor.hex,
-                    background: `${eventColor.hex}0F`,
-                    fontSize: isMobile ? 7 : 11,
-                    fontWeight: 800,
-                    lineHeight: isMobile ? 1.05 : 1.2,
-                    cursor: "pointer",
-                  }}
-                >
-                  <span aria-hidden="true">
-                    {type.icon}
-                  </span>
-
-                  <span
-                    style={{
-                      minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {event.title}
-                    {event.repeat && event.repeat !== "None" ? "  ↻" : ""}
-                  </span>
+        <div style={{ display: "grid", alignContent: "start", gap: isMobile ? 1 : 3, marginTop: isMobile ? 2 : 5, minHeight: 0, overflow: "hidden" }}>
+          {events.slice(0, visibleLimit).map((event: any) => {
+            const eventColor = colorForEvent(event);
+            const type = eventType(event);
+            const isWork = type.label === "Work Order";
+            return (
+              <span
+                key={event.instanceId || event.id}
+                title={hoverText(event)}
+                onClick={(mouseEvent) => { mouseEvent.stopPropagation(); openEvent(event); }}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isWork && !isMobile ? "auto minmax(0,1fr)" : "minmax(0,1fr)",
+                  alignItems: "center",
+                  gap: 4,
+                  minWidth: 0,
+                  overflow: "hidden",
+                  borderRadius: 5,
+                  borderLeft: `3px solid ${eventColor.hex}`,
+                  padding: isMobile ? "1px 3px" : "3px 5px",
+                  color: "#243746",
+                  background: "#F7F9FB",
+                  fontSize: isMobile ? 7 : 10.5,
+                  fontWeight: 700,
+                  lineHeight: 1.18,
+                  cursor: "pointer",
+                }}
+              >
+                {isWork && !isMobile ? (
+                  <span style={{ fontSize: 7.5, letterSpacing: ".05em", fontWeight: 900, color: eventColor.hex }}>WORK</span>
+                ) : null}
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {!event.allDay && event.time ? <strong style={{ color: "#5D7284", marginRight: 4 }}>{calendarTimeLabel(event.time)}</strong> : null}
+                  {event.title}
+                  {event.repeat && event.repeat !== "None" ? "  ↻" : ""}
                 </span>
-              );
-            })}
+              </span>
+            );
+          })}
 
           {events.length > visibleLimit ? (
-            <span
-              style={{
-                color: colors.muted,
-                fontSize: isMobile ? 7 : 10,
-                fontWeight: 900,
-                lineHeight: 1,
-                paddingLeft: 2,
-              }}
-            >
+            <span style={{ color: colors.muted, fontSize: isMobile ? 7 : 9.5, fontWeight: 800, lineHeight: 1, paddingLeft: 4 }}>
               +{events.length - visibleLimit} more
             </span>
           ) : null}
         </div>
-      </button>
+      </div>
     );
   }
 
@@ -1136,7 +1128,8 @@ export default function AtlasCalendar(
               <div
                 style={{
                   display: "flex",
-                  justifyContent: "space-between",
+                  justifyContent: "center",
+                position: "relative",
                   alignItems: "center",
                   gap: 10,
                   marginBottom: 12,
@@ -1607,8 +1600,8 @@ export default function AtlasCalendar(
   }
 
   const calendarHeight = isMobile
-    ? "calc(100dvh - 76px)"
-    : "calc(100dvh - 104px)";
+    ? "calc(100dvh - 62px)"
+    : "calc(100dvh - 82px)";
 
   const normalControlStyle: React.CSSProperties = {
     ...secondaryButtonStyle,
@@ -1632,7 +1625,7 @@ export default function AtlasCalendar(
           width: "100%",
           height: calendarHeight,
           minHeight: 0,
-          padding: isMobile ? 4 : 14,
+          padding: isMobile ? 2 : 8,
           overflow: "hidden",
           boxSizing: "border-box",
         }}
@@ -1642,17 +1635,16 @@ export default function AtlasCalendar(
             width: "100%",
             height: "100%",
             minHeight: 0,
-            padding: isMobile ? 4 : 14,
+            padding: isMobile ? 4 : 10,
             boxSizing: "border-box",
             overflow: "hidden",
             display: "grid",
-            gridTemplateRows: showUpcoming
-              ? "auto auto auto minmax(0, 1fr)"
-              : "auto auto minmax(0, 1fr)",
+            gridTemplateRows: "auto auto minmax(0, 1fr)",
             gap: isMobile ? 2 : 8,
             background: "#FFFFFF",
             border: `1px solid ${colors.line}`,
-            borderRadius: isMobile ? 10 : 18,
+            borderRadius: isMobile ? 10 : 16,
+            position: "relative",
           }}
         >
           <header
@@ -1684,9 +1676,11 @@ export default function AtlasCalendar(
 
               <div
                 style={{
+                  position: "absolute",
+                  right: 0,
                   display: "flex",
                   alignItems: "center",
-                  gap: isMobile ? 2 : 7,
+                  gap: isMobile ? 1 : 2,
                   flexWrap: "nowrap",
                 }}
               >
@@ -1752,8 +1746,9 @@ export default function AtlasCalendar(
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: isMobile ? 3 : 8,
+                gap: isMobile ? 3 : 6,
                 minWidth: 0,
+                flexWrap: "nowrap",
               }}
             >
               <button
@@ -1825,19 +1820,13 @@ export default function AtlasCalendar(
                 </select>
               ) : null}
 
-              <button
-                type="button"
-                onClick={() => {
-                  const today = todayISO();
-                  setSelectedCalendarDate(today);
-                  addCalendarItem(today);
-                  setEditorOpen(true);
-                  setDetailOpen(true);
-                }}
-                style={activeControlStyle}
-              >
-                + Add Event
-              </button>
+              <details style={{ position: "relative", zIndex: 70 }}>
+                <summary style={{ ...activeControlStyle, listStyle: "none", cursor: "pointer", userSelect: "none" }}>+ Add</summary>
+                <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, minWidth: 150, padding: 6, display: "grid", gap: 5, background: "#FFFFFF", border: `1px solid ${colors.line}`, borderRadius: 10, boxShadow: "0 14px 34px rgba(7,27,47,0.16)" }}>
+                  <button type="button" onClick={() => { const date = selectedCalendarDate || todayISO(); setSelectedCalendarDate(date); addCalendarItem(date); setEditorOpen(true); setDetailOpen(true); }} style={{ ...secondaryButtonStyle, width: "100%", textAlign: "left" }}>Event</button>
+                  {onCreateWorkOrder ? <button type="button" onClick={startNewWork} style={{ ...secondaryButtonStyle, width: "100%", textAlign: "left" }}>Work</button> : null}
+                </div>
+              </details>
 
               <input
                 type="search"
@@ -1861,6 +1850,20 @@ export default function AtlasCalendar(
               >
                 Upcoming
               </button>
+
+              {!isMobile ? (
+                <div style={{ display: "flex", gap: 3, alignItems: "center", minWidth: 0 }}>
+                  {(["All","Events","Work","Meetings","Vendors","Landscaping","PTO"] as const).map((scope) => (
+                    <button key={scope} type="button" onClick={() => setQuickScope(scope)} style={{ ...normalControlStyle, padding: "6px 8px", fontSize: 11, background: quickScope === scope ? "#EDF3F8" : "#FFFFFF", borderColor: quickScope === scope ? "#AFC3D4" : colors.line, color: quickScope === scope ? colors.navy : colors.muted }}>
+                      {scope}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <select value={quickScope} onChange={(event) => setQuickScope(event.currentTarget.value as any)} style={{ ...inputStyle, width: 92, padding: "5px 6px", fontSize: 10 }} aria-label="Calendar quick filter">
+                  {["All","Events","Work","Meetings","Vendors","Landscaping","PTO"].map((scope) => <option key={scope} value={scope}>{scope}</option>)}
+                </select>
+              )}
 
               <details
                 style={{
@@ -1999,14 +2002,20 @@ export default function AtlasCalendar(
           {showUpcoming ? (
             <section
               style={{
+                position: "absolute",
+                zIndex: 80,
+                top: isMobile ? 78 : 94,
+                right: isMobile ? 8 : 14,
+                width: isMobile ? "min(330px, calc(100% - 16px))" : 420,
                 display: "grid",
                 gap: 8,
-                maxHeight: isMobile ? 110 : 150,
+                maxHeight: "min(360px, 55vh)",
                 overflowY: "auto",
-                padding: isMobile ? 7 : 10,
+                padding: 12,
                 border: `1px solid ${colors.line}`,
-                borderRadius: 12,
-                background: "#F8FAFC",
+                borderRadius: 14,
+                background: "#FFFFFF",
+                boxShadow: "0 18px 48px rgba(7,27,47,0.18)",
               }}
             >
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -2059,7 +2068,7 @@ export default function AtlasCalendar(
               display: "grid",
               gridTemplateColumns:
                 "repeat(7, minmax(0, 1fr))",
-              gap: isMobile ? 2 : 5,
+              gap: isMobile ? 1 : 2,
             }}
           >
             {[
@@ -2094,7 +2103,7 @@ export default function AtlasCalendar(
               style={{
                 display: "grid",
                 gridTemplateRows: `repeat(${monthWeeks.length}, minmax(0, 1fr))`,
-                gap: isMobile ? 2 : 5,
+                gap: isMobile ? 1 : 2,
                 width: "100%",
                 height: "100%",
                 minHeight: 0,
@@ -2109,7 +2118,7 @@ export default function AtlasCalendar(
                       display: "grid",
                       gridTemplateColumns:
                         "repeat(7, minmax(0, 1fr))",
-                      gap: isMobile ? 2 : 5,
+                      gap: isMobile ? 1 : 2,
                       width: "100%",
                       height: "100%",
                       minHeight: 0,
