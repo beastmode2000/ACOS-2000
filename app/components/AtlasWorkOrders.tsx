@@ -583,6 +583,7 @@ type AtlasWorkOrdersProps = {
     record: any,
     options?: { completedDate?: string; completionNote?: string; allowEarly?: boolean },
   ) => Promise<void> | void;
+  reopenWorkOrder: (record: any) => Promise<void> | void;
   secondaryButtonStyle: React.CSSProperties;
   deleteWorkOrderRecord: (record: any) => Promise<void> | void;
   dangerButtonStyle: React.CSSProperties;
@@ -641,6 +642,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     isRecordDirty,
     saveWorkOrderRecord,
     completeWorkOrder,
+    reopenWorkOrder,
     secondaryButtonStyle,
     deleteWorkOrderRecord,
     dangerButtonStyle,
@@ -1330,21 +1332,21 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     setPendingPatch({ recordId: record.id, patch });
   }
 
-  function quickReschedule(record: any) {
+  async function quickReschedule(record: any) {
     const value = window.prompt(
       "New due date (YYYY-MM-DD)",
       String(record.date || ""),
     );
-    if (value === null) return;
+    if (value === null) return false;
     const nextDate = value.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
       window.alert("Enter the date as YYYY-MM-DD.");
-      return;
+      return false;
     }
-    selectAndPatch(record, { date: nextDate, status: "Scheduled" });
+    return Boolean(await updateWorkOrderRecord(record, { date: nextDate, status: "Scheduled" }));
   }
 
-  function quickConvert(record: any) {
+  async function quickConvert(record: any) {
     const value = window.prompt(
       "Convert to: Task, Work Order, Maintenance, or Project",
       itemType(record) === "Quick Task" ? "Task" : itemType(record),
@@ -1366,7 +1368,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       window.alert("Use Task, Work Order, Maintenance, or Project.");
       return;
     }
-    selectAndPatch(record, {
+    await updateWorkOrderRecord(record, {
       workType,
       recurring:
         workType === "Preventive Maintenance"
@@ -1478,32 +1480,52 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     setCompletionNoteDraft("");
   }
 
-  function handleDetailAction(value: string) {
-    if (!value) return;
-    if (value === "reopen")
-      updateWorkOrder({ status: "Open", completedAt: "" });
-    if (value === "start") updateWorkOrder({ status: "In Progress" });
-    if (value === "complete") void completeSelectedWork();
-    if (value === "reschedule") quickReschedule(selectedService);
-    if (value === "convert") quickConvert(selectedService);
-    if (value === "tomorrow")
-      updateWorkOrder({ date: tomorrowDate(), status: "Scheduled" });
-    if (value === "next-week")
-      updateWorkOrder({ date: nextWeekDate(), status: "Scheduled" });
+  async function handleDetailAction(value: string) {
+    if (!value || !selectedService) return;
+    if (value === "reopen") {
+      await reopenWorkOrder(selectedService);
+      return;
+    }
+    if (value === "start") {
+      await updateWorkOrderRecord(selectedService, { status: "In Progress" });
+      return;
+    }
+    if (value === "complete") {
+      await completeSelectedWork();
+      return;
+    }
+    if (value === "reschedule") {
+      await quickReschedule(selectedService);
+      return;
+    }
+    if (value === "convert") {
+      await quickConvert(selectedService);
+      return;
+    }
+    if (value === "tomorrow") {
+      await updateWorkOrderRecord(selectedService, { date: tomorrowDate(), status: "Scheduled" });
+      return;
+    }
+    if (value === "next-week") {
+      await updateWorkOrderRecord(selectedService, { date: nextWeekDate(), status: "Scheduled" });
+      return;
+    }
     if (value === "edit-series") {
       setWorkEditorOpen(true);
+      return;
     }
     if (value === "stop-series") {
       const stopDate = String(selectedService.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
       if (window.confirm(`Stop future occurrences of “${selectedService.title || "this work"}” after ${formatDate(stopDate)}?`)) {
-        void updateWorkOrderRecord(selectedService, { recurrenceEndDate: stopDate });
+        await updateWorkOrderRecord(selectedService, { recurrenceEndDate: stopDate });
       }
+      return;
     }
     if (value === "not-needed") {
       const occurrenceDate = selectedService.date || "";
       const next = recurrencePreviewDates(selectedService, 1)[0];
       if (next) {
-        void updateWorkOrderRecord(selectedService, {
+        await updateWorkOrderRecord(selectedService, {
           date: next,
           status: "Scheduled",
           lastSkippedAt: new Date().toISOString(),
@@ -1517,10 +1539,19 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           ],
         });
       }
+      return;
     }
-    if (value === "photo") quickAddPhoto(selectedService);
-    if (value === "duplicate") duplicateWork(selectedService);
-    if (value === "delete") void deleteWorkOrderRecord(selectedService);
+    if (value === "photo") {
+      quickAddPhoto(selectedService);
+      return;
+    }
+    if (value === "duplicate") {
+      duplicateWork(selectedService);
+      return;
+    }
+    if (value === "delete") {
+      await deleteWorkOrderRecord(selectedService);
+    }
   }
 
   function tomorrowDate() {
@@ -2594,7 +2625,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               ) : null}
 
               <section style={{ ...detailSectionStyle, padding: 10, background: "#F8FAFC" }}>
-                <select value="" onChange={(event) => { handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, minHeight: 38, color: colors.muted, fontSize: 13, fontWeight: 500, background: "#FFFFFF" }} aria-label="Work order actions">
+                <select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, minHeight: 38, color: colors.muted, fontSize: 13, fontWeight: 500, background: "#FFFFFF" }} aria-label="Work order actions">
                   <option value="">Actions...</option>
                   {isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="start">Start</option><option value="complete">{selectedService.recurring ? "Complete & Advance" : "Mark Done"}</option><option value="reschedule">{selectedService.recurring ? "Reschedule This Time" : "Reschedule"}</option><option value="tomorrow">Tomorrow</option><option value="next-week">Next Week</option>{selectedService.recurring ? <><option value="not-needed">Not Needed This Time</option><option value="edit-series">Edit Series</option><option value="stop-series">Stop Series</option></> : null}<option value="convert">Convert Type</option></>}
                   <option value="photo">Add Photo</option>
