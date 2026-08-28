@@ -3612,6 +3612,9 @@ export default function AtlasApp() {
           vehicleCare?: AtlasVehicleCare[];
           vehicleCareRecords?: AtlasVehicleCare[];
           daySessions?: AtlasDaySession[];
+          notes?: Array<TodayLogEntry & {
+            title?: string; section?: NoteSection; pinned?: boolean; followUpDate?: string; attachments?: NoteAttachment[];
+          }>;
         };
         const pendingTaskDeleteIds = new Set(
           readStoredArray<{ table: string; id: string }>(
@@ -3637,6 +3640,8 @@ export default function AtlasApp() {
           Array.isArray(operationsPayload.vehicleCareRecords) || Array.isArray(operationsPayload.vehicleCare);
         const apiVehicles = Array.isArray(operationsPayload.vehicleCareRecords) ? operationsPayload.vehicleCareRecords : Array.isArray(operationsPayload.vehicleCare) ? operationsPayload.vehicleCare : [];
         const apiDaySessions = Array.isArray(operationsPayload.daySessions) ? operationsPayload.daySessions : [];
+        const notesPayloadPresent = Array.isArray(operationsPayload.notes);
+        const apiNotes = notesPayloadPresent ? operationsPayload.notes!.filter((note) => Boolean(note?.id && note?.text && note?.date)) : [];
         const apiPhotos = (
           Array.isArray(payload.photos)
             ? payload.photos
@@ -3799,6 +3804,39 @@ export default function AtlasApp() {
           setVehicleCare(Array.from(dedupedVehicles.values()));
         }
         if (apiDaySessions.length) setDaySessions(apiDaySessions);
+
+        if (notesPayloadPresent) {
+          if (apiNotes.length) {
+            const remoteIds = new Set(apiNotes.map((note) => String(note.id)));
+            setTodayLogEntries((current) => [
+              ...current.filter((entry) => !(entry.propertyId === activePropertyId && entry.category === "Note")),
+              ...apiNotes.map((note) => ({
+                id: String(note.id), propertyId: String(note.propertyId || activePropertyId), date: String(note.date),
+                category: "Note" as const, text: String(note.text),
+                createdAt: String(note.createdAt || new Date().toISOString()),
+                updatedAt: note.updatedAt ? String(note.updatedAt) : undefined,
+              })),
+            ]);
+            setNoteTitlesById((current) => ({ ...current, ...Object.fromEntries(apiNotes.map((note) => [String(note.id), String(note.title || "")])) }));
+            setNotesSectionById((current) => ({ ...current, ...Object.fromEntries(apiNotes.map((note) => [String(note.id), (note.section || "General") as NoteSection])) }));
+            setPinnedNoteIds((current) => Array.from(new Set([...current.filter((id) => !remoteIds.has(id)), ...apiNotes.filter((note) => note.pinned).map((note) => String(note.id))])));
+            setNoteFollowUpDates((current) => ({ ...current, ...Object.fromEntries(apiNotes.filter((note) => note.followUpDate).map((note) => [String(note.id), String(note.followUpDate)])) }));
+            setNoteAttachments((current) => ({ ...current, ...Object.fromEntries(apiNotes.map((note) => [String(note.id), Array.isArray(note.attachments) ? note.attachments : []])) }));
+          } else if (isMobile) {
+            // Shared Notes are authoritative on mobile. Never let an old phone cache repopulate the dashboard.
+            setTodayLogEntries((current) => current.filter((entry) => !(entry.propertyId === activePropertyId && entry.category === "Note")));
+          } else {
+            // One-time desktop migration path for notes created before shared Notes existed.
+            const localNotes = todayLogEntries.filter((entry) => entry.propertyId === activePropertyId && entry.category === "Note");
+            localNotes.forEach((entry) => {
+              void postAtlasRecord("notes" as AtlasTable, {
+                ...entry, propertyId: activePropertyId, title: noteTitlesById[entry.id] || "",
+                section: notesSectionById[entry.id] || "General", pinned: pinnedNoteIds.includes(entry.id),
+                followUpDate: noteFollowUpDates[entry.id] || "", attachments: noteAttachments[entry.id] || [],
+              });
+            });
+          }
+        }
         setOperationsHydrated(true);
 
         setSelectedLocationId((current) =>
@@ -7047,118 +7085,78 @@ export default function AtlasApp() {
     createProjectFromCommand(name);
   }
 
-  function saveQuickCaptureNote() {
+  async function saveQuickCaptureNote() {
     const text = quickCaptureNote.trim();
     if (!text) return;
-    setTodayLogEntries((current) => [{
-      id: uid("today-note"),
-      propertyId: activePropertyId,
-      date: todayISO(),
-      category: "Note",
-      text,
-      createdAt: new Date().toISOString(),
-    }, ...current]);
+    const note = { id: uid("today-note"), propertyId: activePropertyId, date: todayISO(), category: "Note" as const, text, createdAt: new Date().toISOString() };
+    const saved = await postAtlasRecord("notes" as AtlasTable, { ...note, title: noteTitle(text), section: "General", pinned: false, followUpDate: "", attachments: [] });
+    if (!saved) { showSaveToast("Note did not sync. Nothing was changed.", "warning"); return; }
+    setTodayLogEntries((current) => [note, ...current]);
     setQuickCaptureNote("");
     setQuickCaptureOpen(false);
   }
 
-  function savePermanentNote() {
-    const noteTitle = notesTitleDraft.trim();
+  async function savePermanentNote() {
+    const noteTitleValue = notesTitleDraft.trim();
     const noteText = notesDraft.trim();
-    if (!noteTitle || !noteText) return;
+    if (!noteTitleValue || !noteText) return;
     const noteId = uid("permanent-note");
-    setTodayLogEntries((current) => [{
-      id: noteId,
-      propertyId: activePropertyId,
-      date: todayISO(),
-      category: "Note",
-      text: noteText,
-      createdAt: new Date().toISOString(),
-    }, ...current]);
+    const note = { id: noteId, propertyId: activePropertyId, date: todayISO(), category: "Note" as const, text: noteText, createdAt: new Date().toISOString() };
+    const saved = await postAtlasRecord("notes" as AtlasTable, { ...note, title: noteTitleValue, section: notesSection, pinned: false, followUpDate: "", attachments: [] });
+    if (!saved) { showSaveToast("Note did not sync. Nothing was changed.", "warning"); return; }
+    setTodayLogEntries((current) => [note, ...current]);
     setNotesSectionById((current) => ({ ...current, [noteId]: notesSection }));
-    setNoteTitlesById((current) => ({ ...current, [noteId]: noteTitle }));
-    setNotesTitleDraft("");
-    setNotesDraft("");
-    setNotesComposerOpen(false);
+    setNoteTitlesById((current) => ({ ...current, [noteId]: noteTitleValue }));
+    setNotesTitleDraft(""); setNotesDraft(""); setNotesComposerOpen(false);
     showSaveToast(`${notesSection} note saved.`);
   }
 
-  function deletePermanentNote(noteId: string) {
+  async function deletePermanentNote(noteId: string) {
+    const deleted = await deleteAtlasRecord("notes" as AtlasTable, noteId, { suppressFailureToast: true });
+    if (!deleted) { showSaveToast("Note was not deleted because shared Atlas did not confirm it.", "warning"); return; }
     setTodayLogEntries((current) => current.filter((entry) => entry.id !== noteId));
-    setNotesSectionById((current) => {
-      const next = { ...current };
-      delete next[noteId];
-      return next;
-    });
-    setNoteTitlesById((current) => {
-      const next = { ...current };
-      delete next[noteId];
-      return next;
-    });
+    setNotesSectionById((current) => { const next = { ...current }; delete next[noteId]; return next; });
+    setNoteTitlesById((current) => { const next = { ...current }; delete next[noteId]; return next; });
     setPinnedNoteIds((current) => current.filter((id) => id !== noteId));
-    setNoteFollowUpDates((current) => {
-      const next = { ...current };
-      delete next[noteId];
-      return next;
-    });
-    setNoteAttachments((current) => {
-      const next = { ...current };
-      delete next[noteId];
-      return next;
-    });
+    setNoteFollowUpDates((current) => { const next = { ...current }; delete next[noteId]; return next; });
+    setNoteAttachments((current) => { const next = { ...current }; delete next[noteId]; return next; });
     showSaveToast("Note deleted.");
   }
 
   function updatePermanentNoteText(noteId: string, value: string) {
-    setTodayLogEntries((current) =>
-      current.map((entry) =>
-        entry.id === noteId
-          ? {
-              ...entry,
-              text: value,
-              updatedAt: new Date().toISOString(),
-            }
-          : entry,
-      ),
-    );
+    setTodayLogEntries((current) => current.map((entry) => entry.id === noteId ? { ...entry, text: value, updatedAt: new Date().toISOString() } : entry));
   }
 
-  function updatePermanentNoteTitle(noteId: string, value: string) {
-    setNoteTitlesById((current) => ({ ...current, [noteId]: value }));
-  }
+  function updatePermanentNoteTitle(noteId: string, value: string) { setNoteTitlesById((current) => ({ ...current, [noteId]: value })); }
 
-  function savePermanentNoteEdits(noteId: string) {
-    setTodayLogEntries((current) =>
-      current.map((entry) =>
-        entry.id === noteId
-          ? {
-              ...entry,
-              updatedAt: new Date().toISOString(),
-            }
-          : entry,
-      ),
-    );
+  async function savePermanentNoteEdits(noteId: string) {
+    const entry = todayLogEntries.find((item) => item.id === noteId);
+    if (!entry) return;
+    const updated = { ...entry, updatedAt: new Date().toISOString() };
+    const saved = await postAtlasRecord("notes" as AtlasTable, { ...updated, propertyId: activePropertyId, title: noteTitlesById[noteId] || noteTitle(entry.text), section: notesSectionById[noteId] || "General", pinned: pinnedNoteIds.includes(noteId), followUpDate: noteFollowUpDates[noteId] || "", attachments: noteAttachments[noteId] || [] });
+    if (!saved) { showSaveToast("Note edits did not sync.", "warning"); return; }
+    setTodayLogEntries((current) => current.map((item) => item.id === noteId ? updated : item));
     showSaveToast("Note saved.");
   }
 
-  function movePermanentNote(noteId: string, section: NoteSection) {
+  async function movePermanentNote(noteId: string, section: NoteSection) {
     setNotesSectionById((current) => ({ ...current, [noteId]: section }));
+    const entry = todayLogEntries.find((item) => item.id === noteId);
+    if (entry) await postAtlasRecord("notes" as AtlasTable, { ...entry, propertyId: activePropertyId, title: noteTitlesById[noteId] || noteTitle(entry.text), section, pinned: pinnedNoteIds.includes(noteId), followUpDate: noteFollowUpDates[noteId] || "", attachments: noteAttachments[noteId] || [] });
     showSaveToast(`Note moved to ${section}.`);
   }
 
-  function toggleNotePin(noteId: string) {
-    setPinnedNoteIds((current) =>
-      current.includes(noteId) ? current.filter((id) => id !== noteId) : [noteId, ...current],
-    );
+  async function toggleNotePin(noteId: string) {
+    const nextPinned = !pinnedNoteIds.includes(noteId);
+    setPinnedNoteIds((current) => nextPinned ? [noteId, ...current.filter((id) => id !== noteId)] : current.filter((id) => id !== noteId));
+    const entry = todayLogEntries.find((item) => item.id === noteId);
+    if (entry) await postAtlasRecord("notes" as AtlasTable, { ...entry, propertyId: activePropertyId, title: noteTitlesById[noteId] || noteTitle(entry.text), section: notesSectionById[noteId] || "General", pinned: nextPinned, followUpDate: noteFollowUpDates[noteId] || "", attachments: noteAttachments[noteId] || [] });
   }
 
-  function setNoteFollowUp(noteId: string, date: string) {
-    setNoteFollowUpDates((current) => {
-      const next = { ...current };
-      if (date) next[noteId] = date;
-      else delete next[noteId];
-      return next;
-    });
+  async function setNoteFollowUp(noteId: string, date: string) {
+    setNoteFollowUpDates((current) => { const next = { ...current }; if (date) next[noteId] = date; else delete next[noteId]; return next; });
+    const entry = todayLogEntries.find((item) => item.id === noteId);
+    if (entry) await postAtlasRecord("notes" as AtlasTable, { ...entry, propertyId: activePropertyId, title: noteTitlesById[noteId] || noteTitle(entry.text), section: notesSectionById[noteId] || "General", pinned: pinnedNoteIds.includes(noteId), followUpDate: date, attachments: noteAttachments[noteId] || [] });
   }
 
   function attachmentOptions(kind: NoteAttachmentKind) {
