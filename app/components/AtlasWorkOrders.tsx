@@ -754,7 +754,12 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }, [openResetKey]);
 
   useEffect(() => {
-    if (!selectedService?.id) setDetailOpen(false);
+    if (selectedService?.id) {
+      setNewWorkOpen(false);
+      setDetailOpen(true);
+    } else {
+      setDetailOpen(false);
+    }
     setWorkEditorOpen(false);
   }, [selectedService?.id]);
 
@@ -2645,7 +2650,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 ) : null}
               </section>
 
-              {(selectedService.serviceHistory || []).length ? <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
+              {(selectedService.serviceHistory || []).length ? <details key={`history-${selectedService.id}`} defaultOpen={isClosedWorkStatus(selectedService.status)} style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
                 <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>History ({(selectedService.serviceHistory || []).length})</summary>
                 {(selectedService.serviceHistory || []).length ? (
                   <div style={{ display: "grid", gap: 0, marginTop: 8 }}>
