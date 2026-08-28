@@ -469,7 +469,10 @@ export default function AtlasCalendar(
     if (typeof window === "undefined") return;
     try {
       const raw = window.localStorage.getItem(CALENDAR_VIEW_STATE_KEY);
-      if (!raw) return;
+      if (!raw) {
+        if (isMobile) setCalendarView("week");
+        return;
+      }
       const state = JSON.parse(raw) as { date?: string; cursor?: string; view?: "month" | "week"; scope?: typeof quickScope };
       if (state.date) setSelectedCalendarDate(state.date);
       if (state.cursor) {
@@ -746,7 +749,7 @@ export default function AtlasCalendar(
     );
     const today = dateKey === todayKey;
     const selected = dateKey === calendarDateKey(selectedCalendarDate);
-    const visibleLimit = 8;
+    const visibleLimit = isMobile ? 6 : 8;
     const people = Array.from(
       new Set(
         events
@@ -761,8 +764,8 @@ export default function AtlasCalendar(
         onClick={() => showDay(dateKey)}
         style={{
           minWidth: 0,
-          minHeight: 0,
-          height: "100%",
+          minHeight: isMobile ? 150 : 0,
+          height: isMobile ? "auto" : "100%",
           overflow: "hidden",
           display: "grid",
           gridTemplateRows: "auto auto minmax(0, 1fr)",
@@ -2354,12 +2357,13 @@ export default function AtlasCalendar(
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-                gap: 6,
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(7, minmax(0, 1fr))",
+                gap: isMobile ? 8 : 6,
                 width: "100%",
-                height: "100%",
+                height: isMobile ? "auto" : "100%",
                 minHeight: 0,
-                overflow: "hidden",
+                overflowY: isMobile ? "visible" : "hidden",
+                overflowX: "hidden",
               }}
             >
               {operationsWeekCells.map((cell: any) =>
