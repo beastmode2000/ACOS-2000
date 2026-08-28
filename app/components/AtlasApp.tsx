@@ -4123,6 +4123,149 @@ export default function AtlasApp() {
   useEffect(() => {
     if (!ready || typeof window === "undefined" || typeof document === "undefined") return;
 
+    let cancelled = false;
+    let running = false;
+
+    const refreshSharedNotes = async () => {
+      if (running || cancelled || !navigator.onLine || document.visibilityState !== "visible") return;
+      running = true;
+      try {
+        const response = await fetch(
+          `/api/atlas?notesSync=${Date.now()}&propertyId=${encodeURIComponent(activePropertyId)}`,
+          { cache: "no-store" },
+        );
+        if (!response.ok) return;
+
+        const payload = await response.json().catch(() => ({}));
+        if (cancelled || payload?.ok === false) return;
+
+        const operationsPayload =
+          payload?.operations && typeof payload.operations === "object"
+            ? payload.operations
+            : payload;
+        if (!Array.isArray(operationsPayload?.notes)) return;
+
+        const sharedNotes = operationsPayload.notes.filter(
+          (note: any) => Boolean(note?.id && note?.text && note?.date),
+        );
+        const sharedIds = new Set(sharedNotes.map((note: any) => String(note.id)));
+
+        setTodayLogEntries((current) => [
+          ...current.filter(
+            (entry) =>
+              !(
+                entry.propertyId === activePropertyId &&
+                entry.category === "Note"
+              ),
+          ),
+          ...sharedNotes.map((note: any) => ({
+            id: String(note.id),
+            propertyId: String(note.propertyId || activePropertyId),
+            date: String(note.date),
+            category: "Note" as const,
+            text: String(note.text),
+            createdAt: String(note.createdAt || new Date().toISOString()),
+            updatedAt: note.updatedAt ? String(note.updatedAt) : undefined,
+          })),
+        ]);
+
+        setNoteTitlesById((current) => {
+          const next = { ...current };
+          sharedNotes.forEach((note: any) => {
+            next[String(note.id)] = String(note.title || "");
+          });
+          return next;
+        });
+        setNotesSectionById((current) => {
+          const next = { ...current };
+          sharedNotes.forEach((note: any) => {
+            next[String(note.id)] = (note.section || "General") as NoteSection;
+          });
+          return next;
+        });
+        setPinnedNoteIds((current) => [
+          ...current.filter((id) => !sharedIds.has(id)),
+          ...sharedNotes.filter((note: any) => Boolean(note.pinned)).map((note: any) => String(note.id)),
+        ]);
+        setNoteFollowUpDates((current) => {
+          const next = { ...current };
+          sharedNotes.forEach((note: any) => {
+            const id = String(note.id);
+            if (note.followUpDate) next[id] = String(note.followUpDate);
+            else delete next[id];
+          });
+          return next;
+        });
+        setNoteAttachments((current) => {
+          const next = { ...current };
+          sharedNotes.forEach((note: any) => {
+            next[String(note.id)] = (Array.isArray(note.attachments) ? note.attachments : [])
+              .map((attachment: any) => ({
+                kind: String(attachment?.kind || "") as NoteAttachmentKind,
+                id: String(attachment?.id || ""),
+              }))
+              .filter(
+                (attachment: NoteAttachment) =>
+                  Boolean(attachment.id) &&
+                  ([
+                    "Asset",
+                    "Location",
+                    "Vendor",
+                    "Project",
+                    "Work Order",
+                    "Task",
+                    "Contact",
+                    "Procedure",
+                  ] as NoteAttachmentKind[]).includes(attachment.kind),
+              );
+          });
+          return next;
+        });
+        setDashboardReminders(
+          sharedNotes
+            .filter((note: any) => Boolean(note.dashboard))
+            .map((note: any) => ({
+              id: String(note.id),
+              text: String(note.text),
+              done: Boolean(note.done),
+              createdAt: String(note.createdAt || new Date().toISOString()),
+              dueDate: note.dueDate ? String(note.dueDate) : undefined,
+            }))
+            .sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt)),
+        );
+      } catch {
+        // Keep the current Notes visible if the dedicated Notes refresh fails.
+      } finally {
+        running = false;
+      }
+    };
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshSharedNotes();
+    };
+
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    // Opening Notes or Dashboard should always show the latest shared Notes immediately.
+    if (screen === "notes" || screen === "dashboard") void refreshSharedNotes();
+
+    const interval =
+      screen === "notes" || screen === "dashboard"
+        ? window.setInterval(() => void refreshSharedNotes(), 5000)
+        : null;
+
+    return () => {
+      cancelled = true;
+      if (interval !== null) window.clearInterval(interval);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [ready, activePropertyId, screen]);
+
+  useEffect(() => {
+    if (!ready || typeof window === "undefined" || typeof document === "undefined") return;
+
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible" && navigator.onLine) {
         requestSharedAtlasRefresh();
