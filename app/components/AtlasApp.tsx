@@ -675,6 +675,53 @@ function planWorkOrderDatabaseCleanup(
   return { keepers: byTitle(keepers), changedKeepers, duplicateIds };
 }
 
+const exactDuplicateIgnoredKeys = new Set([
+  "id",
+  "createdAt",
+  "updatedAt",
+  "lastUpdatedAt",
+  "savedAt",
+]);
+
+function stableExactDuplicateValue(value: unknown, key = ""): string {
+  if (exactDuplicateIgnoredKeys.has(key)) return "";
+  if (value === null || value === undefined) return "null";
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableExactDuplicateValue(item)).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .filter((entryKey) => !exactDuplicateIgnoredKeys.has(entryKey))
+      .sort()
+      .map((entryKey) => `${JSON.stringify(entryKey)}:${stableExactDuplicateValue(record[entryKey], entryKey)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function exactDuplicateRecordIds(records: Array<Record<string, unknown>>) {
+  const groups = new Map<string, Array<Record<string, unknown>>>();
+  records.forEach((record) => {
+    const signature = stableExactDuplicateValue(record);
+    groups.set(signature, [...(groups.get(signature) || []), record]);
+  });
+  const duplicateIds: string[] = [];
+  groups.forEach((group) => {
+    if (group.length < 2) return;
+    const ranked = [...group].sort((left, right) =>
+      String(right.updatedAt || right.createdAt || "").localeCompare(
+        String(left.updatedAt || left.createdAt || ""),
+      ),
+    );
+    ranked.slice(1).forEach((record) => {
+      const id = String(record.id || "");
+      if (id) duplicateIds.push(id);
+    });
+  });
+  return duplicateIds;
+}
+
 export default function AtlasApp() {
   const [ready, setReady] = useState(false);
   const [syncState, setSyncState] = useState<
@@ -4099,6 +4146,12 @@ export default function AtlasApp() {
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [ready, activePropertyId, dirtyRecords]);
+
+  useEffect(() => {
+    if (!ready || screen !== "history") return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    requestSharedAtlasRefresh();
+  }, [ready, screen, activePropertyId]);
 
   useEffect(() => {
     if (!ready || screen !== "calendar") return;
@@ -26299,6 +26352,118 @@ ${notes.trim()}` : notes.trim(),
     );
   }
 
+  async function cleanExactOperationalDuplicates() {
+    const workDuplicateIds = exactDuplicateRecordIds(
+      serviceRecords.map((record) => record as unknown as Record<string, unknown>),
+    );
+    const taskRows = workPlanTasks.map((task) => {
+      const meta = taskDetails(task.id);
+      return {
+        ...task,
+        ...meta,
+        taskMeta: meta,
+      } as unknown as Record<string, unknown>;
+    });
+    const taskDuplicateIds = exactDuplicateRecordIds(taskRows);
+    const total = workDuplicateIds.length + taskDuplicateIds.length;
+    if (!total) {
+      showSaveToast("No exact duplicate work or task records found.");
+      return;
+    }
+    if (!window.confirm(`Remove ${total} exact duplicate record${total === 1 ? "" : "s"}? Atlas will keep the newest identical copy of each record.`)) {
+      return;
+    }
+
+    const deletedWorkIds = new Set<string>();
+    for (const id of workDuplicateIds) {
+      const deleted = await deleteAtlasRecord("work_orders", id, { suppressFailureToast: true });
+      if (deleted) deletedWorkIds.add(id);
+    }
+    const deletedTaskIds = new Set<string>();
+    for (const id of taskDuplicateIds) {
+      const deleted = await deleteOperationalRecord("tasks" as AtlasTable, id);
+      if (deleted) deletedTaskIds.add(id);
+    }
+
+    if (deletedWorkIds.size) {
+      setServiceRecords((current) => current.filter((record) => !deletedWorkIds.has(String(record.id))));
+    }
+    if (deletedTaskIds.size) {
+      setWorkPlanTasks((current) => current.filter((task) => !deletedTaskIds.has(String(task.id))));
+      setTaskMeta((current) => {
+        const next = { ...current };
+        deletedTaskIds.forEach((id) => delete next[id]);
+        return next;
+      });
+    }
+
+    const deletedTotal = deletedWorkIds.size + deletedTaskIds.size;
+    showSaveToast(`Removed ${deletedTotal} exact duplicate record${deletedTotal === 1 ? "" : "s"}.`);
+    requestSharedAtlasRefresh();
+  }
+
+  function renderAtlasHealth() {
+    const workDuplicateIds = exactDuplicateRecordIds(
+      serviceRecords.map((record) => record as unknown as Record<string, unknown>),
+    );
+    const taskDuplicateIds = exactDuplicateRecordIds(
+      workPlanTasks.map((task) => {
+        const meta = taskDetails(task.id);
+        return { ...task, ...meta, taskMeta: meta } as unknown as Record<string, unknown>;
+      }),
+    );
+    const dirtyCount = Object.keys(dirtyRecords).length;
+    let pendingSaveCount = 0;
+    let pendingDeleteCount = 0;
+    if (typeof window !== "undefined") {
+      try {
+        const pending = window.localStorage.getItem(`atlas-operations-pending-v1-${activePropertyId}`);
+        pendingSaveCount = pending ? 1 : 0;
+        pendingDeleteCount = readStoredArray<{ table: string; id: string }>(
+          [`atlas-operations-deletes-v1-${activePropertyId}`],
+          [],
+        ).length;
+      } catch {
+        pendingSaveCount = 0;
+        pendingDeleteCount = 0;
+      }
+    }
+    const duplicateCount = workDuplicateIds.length + taskDuplicateIds.length;
+    const healthy = syncState === "synced" && operationsSyncState !== "failed" && dirtyCount === 0 && pendingSaveCount === 0 && pendingDeleteCount === 0;
+
+    return (
+      <section style={{ ...cardStyle, marginBottom: 12, padding: isMobile ? 12 : 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div>
+            <div style={eyebrowStyle}>Atlas Health</div>
+            <strong style={{ color: colors.navy }}>{healthy ? "Shared Atlas healthy" : "Atlas needs attention"}</strong>
+          </div>
+          <span style={badgeStyle(healthy ? "Completed" : syncState === "offline" ? "Open" : "Monitor")}>{syncState === "synced" ? "Connected" : syncState === "loading" ? "Loading" : "Offline"}</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(6,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
+          {[
+            ["Property", activePropertyId],
+            ["Last sync", lastSyncedAt || "—"],
+            ["Unsaved", dirtyCount],
+            ["Retry", pendingSaveCount + pendingDeleteCount],
+            ["Exact duplicates", duplicateCount],
+            ["Work records", serviceRecords.length],
+          ].map(([label, value]) => (
+            <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: "8px 9px", minWidth: 0 }}>
+              <small style={fieldLabelStyle}>{String(label).toUpperCase()}</small>
+              <strong style={{ display: "block", marginTop: 3, color: colors.navy, overflow: "hidden", textOverflow: "ellipsis" }}>{value}</strong>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
+          <button type="button" onClick={requestSharedAtlasRefresh} style={{ ...secondaryButtonStyle, width: "auto" }}>Refresh Shared Atlas</button>
+          {duplicateCount ? <button type="button" onClick={() => void cleanExactOperationalDuplicates()} style={{ ...secondaryButtonStyle, width: "auto" }}>Remove Exact Duplicates ({duplicateCount})</button> : null}
+        </div>
+        <small style={{ ...mutedSmallStyle, display: "block", marginTop: 8 }}>{operationsSyncMessage}</small>
+      </section>
+    );
+  }
+
   function renderReportsAccess() {
     return (
       <section style={sectionStyle}>
@@ -26307,6 +26472,7 @@ ${notes.trim()}` : notes.trim(),
           title="Reports"
           detail="Operational reporting and analytics for work, assets, vendors, documents, procedures, and schedules."
         />
+        {renderAtlasHealth()}
         <ReportsAccessCenter
           isMobile={isMobile}
           colors={colors}
