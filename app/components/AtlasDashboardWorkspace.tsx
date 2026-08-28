@@ -2338,7 +2338,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     window.speechSynthesis.speak(new SpeechSynthesisUtterance(morningBriefText));
   };
   const dailyForemanPanel = (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div style={{ display: "grid", gap: isMobile ? 8 : 12 }}>
       <section style={{ ...cardStyle, padding: isMobile ? 10 : 12, borderColor: "#D7C07A", background: "linear-gradient(135deg,#FFFDF6,#FFFFFF)" }}>
         <button type="button" onClick={toggleDashboardNotes} aria-expanded={dashboardNotesOpen} style={{ display: "flex", width: "100%", justifyContent: "space-between", gap: 8, alignItems: "center", border: 0, background: "transparent", padding: 0, cursor: "pointer", textAlign: "left" }}>
           <h2 style={{ margin: 0, color: colors.navy, fontSize: 18 }}>Remember It</h2>
@@ -2385,11 +2385,11 @@ export default function AtlasDashboardWorkspace(props: any) {
                 <div><strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>{person === "Patrick Tanner" ? "Pat" : person === "Sean Powell" ? "Sean" : person}</strong><small style={mutedSmallStyle}>{records.length} active · {completedToday.length} done today</small></div>
                 <span style={badgeStyle(records.length ? "Scheduled" : completedToday.length ? "Completed" : "Monitor")}>{records.length}</span>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 6, marginTop: 9 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "minmax(0,1fr) auto" : "minmax(0,1fr) auto", gap: 6, marginTop: 9 }}>
                 <input value={dashboardQuickDrafts[person] || ""} onChange={(event) => { const value = event.currentTarget.value; setDashboardQuickDrafts((current) => ({ ...current, [person]: value })); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createDashboardWorkForPerson(person); } }} placeholder="Add work title…" style={{ ...inputStyle, minHeight: 34 }}/>
                 <button type="button" onClick={() => void createDashboardWorkForPerson(person)} disabled={!String(dashboardQuickDrafts[person] || "").trim()} style={{ ...goldButtonStyle, minHeight: 34, padding: "6px 10px", opacity: String(dashboardQuickDrafts[person] || "").trim() ? 1 : .55 }}>Save & Edit</button>
               </div>
-              <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: 470, overflowY: "auto", paddingRight: 2 }}>
+              <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: isMobile ? 340 : 470, overflowY: "auto", paddingRight: 2 }}>
                 {records.map((record) => {
                   const completionNote = dashboardCompletionNotes[String(record.id)] || "";
                   const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) || person;
@@ -2434,12 +2434,12 @@ export default function AtlasDashboardWorkspace(props: any) {
         </div>
       </section>
 
-      <details open style={{ ...cardStyle, overflow: "hidden" }}>
+      <details open={!isMobile} style={{ ...cardStyle, overflow: "hidden" }}>
         <summary style={{ cursor: "pointer", listStyle: "none", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div><div style={eyebrowStyle}>Recent Activity</div><h3 style={{ margin: 0, color: colors.navy }}>Updates from the last 7 days</h3></div>
           <span style={{ ...badgeStyle("Monitor"), flex: "0 0 auto" }}>{dashboardFeedCounts.All}</span>
         </summary>
-        <div style={{ marginTop: 10, display: "grid", gap: 7 }}>{filteredDashboardFeed.slice(0, 10).map((item) => <button key={`primary-${item.id}`} type="button" onClick={item.action} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: 8, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{item.title}</strong><small style={mutedSmallStyle}>{item.detail}</small></button>)}{!filteredDashboardFeed.length ? <div style={noticeStyle}>No recent activity.</div> : null}</div>
+        <div style={{ marginTop: 10, display: "grid", gap: 7 }}>{filteredDashboardFeed.slice(0, isMobile ? 6 : 10).map((item) => <button key={`primary-${item.id}`} type="button" onClick={item.action} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: 8, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: colors.navy }}>{item.title}</strong><small style={mutedSmallStyle}>{item.detail}</small></button>)}{!filteredDashboardFeed.length ? <div style={noticeStyle}>No recent activity.</div> : null}</div>
       </details>
 
       <section id="atlas-dashboard-vendor-log" style={{ ...cardStyle, padding: 11 }}>
