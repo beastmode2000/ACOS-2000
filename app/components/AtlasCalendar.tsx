@@ -689,6 +689,184 @@ export default function AtlasCalendar(
     byTitle,
   ]);
 
+  const operationsWeekCells = React.useMemo(() => {
+    const cursor = new Date(calendarCursor);
+    cursor.setHours(12, 0, 0, 0);
+    const day = cursor.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const monday = new Date(cursor);
+    monday.setDate(cursor.getDate() + mondayOffset);
+
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + index);
+      const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      return {
+        key: `operations-week-${iso}`,
+        date: iso,
+        day: date.getDate(),
+        dayName: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][date.getDay()],
+      };
+    });
+  }, [calendarCursor]);
+
+  function workRecordForEvent(event: any) {
+    if (eventType(event).label !== "Work Order") return null;
+    const linkedId = String(event.linkedId || "");
+    if (!linkedId) return null;
+    return serviceRecords.find((record: any) => String(record.id || "") === linkedId) || null;
+  }
+
+  function eventPeopleLabel(event: any) {
+    const workRecord = workRecordForEvent(event);
+    if (workRecord) {
+      const assigned = String(workRecord.assignedTo || "").trim();
+      if (assigned) return assigned;
+      const people = Array.isArray(workRecord.assignedPersonIds)
+        ? workRecord.assignedPersonIds.map(String).filter(Boolean)
+        : [];
+      if (people.length) return people.join(", ");
+      return "Unassigned";
+    }
+
+    if (String(event.linkedType || "") === "Vendor" && event.linkedName) {
+      return String(event.linkedName);
+    }
+
+    const category = eventType(event).label;
+    return category && category !== "Event" ? category : "Event";
+  }
+
+  function renderOperationsWeekDay(cell: any) {
+    const dateKey = calendarDateKey(cell.date);
+    const events = sortAgenda(
+      visibleExpandedCalendarItems.filter(
+        (event: any) => calendarDateKey(event.date) === dateKey,
+      ),
+    );
+    const today = dateKey === todayKey;
+    const selected = dateKey === calendarDateKey(selectedCalendarDate);
+    const visibleLimit = 8;
+    const people = Array.from(
+      new Set(
+        events
+          .map((event: any) => eventPeopleLabel(event))
+          .filter((label: string) => label && label !== "Event"),
+      ),
+    );
+
+    return (
+      <section
+        key={cell.key}
+        onClick={() => showDay(dateKey)}
+        style={{
+          minWidth: 0,
+          minHeight: 0,
+          height: "100%",
+          overflow: "hidden",
+          display: "grid",
+          gridTemplateRows: "auto auto minmax(0, 1fr)",
+          gap: 7,
+          padding: "10px 9px",
+          boxSizing: "border-box",
+          borderRadius: 12,
+          border: `1px solid ${selected ? "#B7CAD9" : today ? "#C6D7E3" : "#E6EDF2"}`,
+          background: today ? "#F6FAFD" : "#FFFFFF",
+          boxShadow: selected ? "inset 0 0 0 1px rgba(36,73,103,0.06)" : "none",
+          cursor: "pointer",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: ".08em", textTransform: "uppercase", color: colors.muted }}>
+              {cell.dayName}
+            </div>
+            <div style={{ marginTop: 2, fontSize: 18, lineHeight: 1, fontWeight: 900, color: colors.navy }}>
+              {cell.day}
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label={`Add item on ${formatDate(dateKey)}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              setSelectedCalendarDate(dateKey);
+              addCalendarItem(dateKey);
+              setEditorOpen(true);
+              setDetailOpen(true);
+            }}
+            style={{ width: 25, height: 25, borderRadius: 8, border: `1px solid ${colors.line}`, background: "#FFFFFF", color: colors.muted, cursor: "pointer", padding: 0, fontSize: 15, lineHeight: 1 }}
+          >
+            +
+          </button>
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 3, minHeight: 18, alignContent: "start" }}>
+          {people.slice(0, 3).map((person) => (
+            <span key={person} style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "2px 5px", borderRadius: 999, background: "#F0F4F7", color: "#506779", fontSize: 8.5, fontWeight: 800 }}>
+              {person}
+            </span>
+          ))}
+          {people.length > 3 ? <span style={{ padding: "2px 4px", color: colors.muted, fontSize: 8.5, fontWeight: 800 }}>+{people.length - 3}</span> : null}
+        </div>
+
+        <div style={{ display: "grid", alignContent: "start", gap: 5, minHeight: 0, overflow: "hidden" }}>
+          {events.slice(0, visibleLimit).map((event: any) => {
+            const type = eventType(event);
+            const isWork = type.label === "Work Order";
+            const eventColor = colorForEvent(event);
+            const peopleLabel = eventPeopleLabel(event);
+            return (
+              <button
+                key={event.instanceId || event.id}
+                type="button"
+                onClick={(mouseEvent) => { mouseEvent.stopPropagation(); openEvent(event); }}
+                title={hoverText(event)}
+                style={{
+                  width: "100%",
+                  minWidth: 0,
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr)",
+                  gap: 2,
+                  padding: "6px 7px",
+                  borderRadius: 8,
+                  border: 0,
+                  borderLeft: `3px solid ${eventColor.hex}`,
+                  background: "#F9FBFC",
+                  color: colors.text,
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10, fontWeight: 850, lineHeight: 1.15 }}>
+                  {!event.allDay && event.time ? <strong style={{ color: "#526B7F", marginRight: 4 }}>{calendarTimeLabel(event.time)}</strong> : null}
+                  {displayCalendarTitle(event)}
+                </span>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 8.5, fontWeight: 750, color: isWork ? "#557086" : eventColor.hex }}>
+                  {isWork ? `${peopleLabel} · Work` : peopleLabel}
+                </span>
+              </button>
+            );
+          })}
+
+          {events.length > visibleLimit ? (
+            <button
+              type="button"
+              onClick={(event) => { event.stopPropagation(); showDay(dateKey); }}
+              style={{ justifySelf: "start", border: 0, background: "transparent", padding: "1px 3px", color: colors.muted, fontSize: 9, fontWeight: 850, cursor: "pointer" }}
+            >
+              +{events.length - visibleLimit} more
+            </button>
+          ) : null}
+
+          {!events.length ? (
+            <span style={{ padding: "7px 3px", color: "#9AA8B3", fontSize: 9.5, fontWeight: 700 }}>No scheduled work or events</span>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
   function togglePinnedEvent(event: any) {
     const eventId = String(event?.id || "");
     if (!eventId) return;
@@ -2117,15 +2295,10 @@ export default function AtlasCalendar(
               gap: isMobile ? 1 : 2,
             }}
           >
-            {[
-              "Sun",
-              "Mon",
-              "Tue",
-              "Wed",
-              "Thu",
-              "Fri",
-              "Sat",
-            ].map((day) => (
+            {(calendarView === "week"
+              ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+              : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+            ).map((day) => (
               <div
                 key={day}
                 style={{
@@ -2181,17 +2354,16 @@ export default function AtlasCalendar(
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns:
-                  "repeat(7, minmax(0, 1fr))",
-                gap: 5,
+                gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                gap: 6,
                 width: "100%",
                 height: "100%",
                 minHeight: 0,
                 overflow: "hidden",
               }}
             >
-              {weekCells.map((cell: any) =>
-                renderCalendarCell(cell),
+              {operationsWeekCells.map((cell: any) =>
+                renderOperationsWeekDay(cell),
               )}
             </div>
           )}
