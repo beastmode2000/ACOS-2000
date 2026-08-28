@@ -3591,7 +3591,14 @@ export default function AtlasApp() {
           vehicleCareRecords?: AtlasVehicleCare[];
           daySessions?: AtlasDaySession[];
           notes?: Array<TodayLogEntry & {
-            title?: string; section?: NoteSection; pinned?: boolean; followUpDate?: string; attachments?: NoteAttachment[];
+            title?: string;
+            section?: NoteSection;
+            pinned?: boolean;
+            followUpDate?: string;
+            attachments?: NoteAttachment[];
+            dashboard?: boolean;
+            dueDate?: string;
+            done?: boolean;
           }>;
         };
         const pendingTaskDeleteIds = new Set(
