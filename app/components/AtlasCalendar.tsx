@@ -832,7 +832,7 @@ export default function AtlasCalendar(
           display: "grid",
           gridTemplateRows: "auto minmax(0, 1fr)",
           alignContent: "start",
-          padding: isMobile ? "3px" : "6px 7px 5px",
+          padding: isMobile ? "3px" : "4px 7px 4px",
           boxSizing: "border-box",
           borderRadius: isMobile ? 6 : 8,
           border: `1px solid ${selected ? "#C4D3DF" : today ? "#D3E0EA" : "#EDF1F4"}`,
@@ -848,8 +848,8 @@ export default function AtlasCalendar(
             style={{
               display: "grid",
               placeItems: "center",
-              width: isMobile ? 18 : 25,
-              height: isMobile ? 18 : 25,
+              width: isMobile ? 18 : 22,
+              height: isMobile ? 18 : 22,
               borderRadius: "50%",
               background: today ? colors.navy : "transparent",
               color: today ? "#FFFFFF" : cell.outside ? colors.muted : colors.navy,
@@ -898,7 +898,7 @@ export default function AtlasCalendar(
           </div>
         </div>
 
-        <div style={{ display: "grid", alignContent: "start", gridAutoRows: isMobile ? 14 : 18, gap: isMobile ? 1 : 2, marginTop: isMobile ? 2 : 4, minHeight: 0, overflow: "hidden" }}>
+        <div style={{ display: "grid", alignContent: "start", gridAutoRows: isMobile ? 14 : 15, gap: isMobile ? 1 : 2, marginTop: isMobile ? 2 : 3, minHeight: 0, overflow: "hidden" }}>
           {events.slice(0, visibleLimit).map((event: any) => {
             const eventColor = colorForEvent(event);
             const type = eventType(event);
@@ -918,12 +918,12 @@ export default function AtlasCalendar(
                   borderRadius: 4,
                   borderLeft: `2px solid ${eventColor.hex}`,
                   padding: isMobile ? "1px 3px" : "1px 5px",
-                  minHeight: isMobile ? 14 : 18,
-                  height: isMobile ? 14 : 18,
+                  minHeight: isMobile ? 14 : 15,
+                  height: isMobile ? 14 : 15,
                   boxSizing: "border-box",
                   color: "#2A3D4C",
                   background: "#FAFBFC",
-                  fontSize: isMobile ? 7 : 10.25,
+                  fontSize: isMobile ? 7 : 9.75,
                   fontWeight: 650,
                   lineHeight: 1,
                   cursor: "pointer",
@@ -954,7 +954,11 @@ export default function AtlasCalendar(
                 padding: "0 4px",
                 background: "transparent",
                 color: colors.muted,
-                fontSize: isMobile ? 7 : 9.5,
+                minHeight: isMobile ? 12 : 13,
+                height: isMobile ? 12 : 13,
+                display: "inline-flex",
+                alignItems: "center",
+                fontSize: isMobile ? 7 : 9.25,
                 fontWeight: 800,
                 lineHeight: 1,
                 cursor: "pointer",
