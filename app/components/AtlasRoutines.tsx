@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type RoutineTask = {
   id: string;
@@ -127,6 +127,7 @@ export default function AtlasRoutines({
   const [selectedPersonId, setSelectedPersonId] = useState("nick");
   const [newTask, setNewTask] = useState("");
   const [status, setStatus] = useState("Loading routines…");
+  const loadedDateRef = useRef("");
   const [busy, setBusy] = useState(false);
   const [dashboardChecklistExpanded, setDashboardChecklistExpanded] = useState(false);
 
@@ -172,10 +173,11 @@ export default function AtlasRoutines({
 
   async function load() {
     setStatus("Loading routines…");
+    const requestedDate = todayKey();
 
     try {
       const response = await fetch(
-        `/api/atlas-routines?date=${todayKey()}&propertyId=${encodeURIComponent(activePropertyId)}`,
+        `/api/atlas-routines?date=${requestedDate}&propertyId=${encodeURIComponent(activePropertyId)}`,
         {
           cache: "no-store",
         }
@@ -197,6 +199,7 @@ export default function AtlasRoutines({
       setTemplates(cleanedTemplates);
 
       setOccurrence(payload.occurrence || null);
+      loadedDateRef.current = requestedDate;
       setStatus("");
     } catch (error) {
       setStatus(
@@ -209,6 +212,31 @@ export default function AtlasRoutines({
 
   useEffect(() => {
     void load();
+
+    const refreshForCurrentDay = () => {
+      const currentDate = todayKey();
+      if (loadedDateRef.current !== currentDate) {
+        void load();
+      }
+    };
+    const refreshOnFocus = () => {
+      // PWA/browser resume can leave yesterday's occurrence mounted. Refresh
+      // shared routines whenever Atlas becomes active again.
+      void load();
+    };
+    const refreshOnVisibility = () => {
+      if (document.visibilityState === "visible") refreshOnFocus();
+    };
+
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnVisibility);
+    const timer = window.setInterval(refreshForCurrentDay, 60_000);
+
+    return () => {
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnVisibility);
+      window.clearInterval(timer);
+    };
   }, [activePropertyId]);
 
   const selected = useMemo(
