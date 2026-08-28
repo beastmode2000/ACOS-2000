@@ -590,6 +590,11 @@ export type AtlasApiPayload = {
   vehicleCare?: VehicleCareRecord[];
   vehicleCareRecords?: VehicleCareRecord[];
   daySessions?: DaySessionRecord[];
+  notes?: Array<{
+    id: string; propertyId?: string; date: string; category?: string; text: string;
+    createdAt?: string; updatedAt?: string; title?: string; section?: string;
+    pinned?: boolean; followUpDate?: string; attachments?: Array<{ kind: string; id: string }>;
+  }>;
 };
 
 export type AtlasTable =
@@ -607,7 +612,8 @@ export type AtlasTable =
   | "documents"
   | "tasks"
   | "vehicle_care"
-  | "day_sessions";
+  | "day_sessions"
+  | "notes";
 
 export type SearchResult = {
   id: string;
