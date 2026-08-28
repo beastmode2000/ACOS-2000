@@ -703,6 +703,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [newChecklistText, setNewChecklistText] = useState("");
   const [newHistoryNote, setNewHistoryNote] = useState("");
   const [completionNoteDraft, setCompletionNoteDraft] = useState("");
+  const [undoCompletion, setUndoCompletion] = useState<{ id: string; title: string } | null>(null);
+  const undoCompletionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [recurrenceIntervalDraft, setRecurrenceIntervalDraft] = useState("1");
   const [completedHistoryOpen, setCompletedHistoryOpen] = useState(true);
   const [completedHistoryLimit, setCompletedHistoryLimit] = useState(5);
@@ -743,6 +745,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   useEffect(() => {
     setCompletionNoteDraft("");
   }, [selectedService?.id]);
+
+  useEffect(() => () => {
+    if (undoCompletionTimerRef.current) clearTimeout(undoCompletionTimerRef.current);
+  }, []);
 
   useEffect(() => {
     setNewWorkOpen(false);
@@ -1478,9 +1484,42 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     if (value.startsWith("template:")) openTemplate(value.replace("template:", ""));
   }
 
+  function armCompletionUndo(record: any) {
+    if (undoCompletionTimerRef.current) clearTimeout(undoCompletionTimerRef.current);
+    setUndoCompletion({ id: String(record.id || ""), title: String(record.title || "Work") });
+    undoCompletionTimerRef.current = setTimeout(() => {
+      setUndoCompletion(null);
+      undoCompletionTimerRef.current = null;
+    }, 12000);
+  }
+
+  async function completeRecordWithUndo(
+    record: any,
+    options?: { completedDate?: string; completionNote?: string; allowEarly?: boolean },
+  ) {
+    if (!record?.id) return;
+    await completeWorkOrder(record, options);
+    armCompletionUndo(record);
+  }
+
+  async function undoRecentCompletion() {
+    if (!undoCompletion?.id) return;
+    const currentRecord = serviceRecords.find((record: any) => String(record.id) === undoCompletion.id);
+    if (!currentRecord) {
+      setUndoCompletion(null);
+      return;
+    }
+    await reopenWorkOrder(currentRecord);
+    setUndoCompletion(null);
+    if (undoCompletionTimerRef.current) {
+      clearTimeout(undoCompletionTimerRef.current);
+      undoCompletionTimerRef.current = null;
+    }
+  }
+
   async function completeSelectedWork() {
     if (!selectedService) return;
-    await completeWorkOrder(selectedService, {
+    await completeRecordWithUndo(selectedService, {
       completionNote: completionNoteDraft.trim(),
     });
     setCompletionNoteDraft("");
@@ -1557,8 +1596,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         ...(next ? { date: next } : {}),
         status: "Scheduled",
         lastSkippedAt: new Date().toISOString(),
+        lastOutcome: "Didn't Get To This Week",
+        lastOutcomeAt: new Date().toISOString(),
         notesHistory: [
-          { id: uid("note"), text: noteText, createdAt: new Date().toISOString() },
+          { id: uid("note"), text: noteText, createdAt: new Date().toISOString(), outcome: "Deferred" },
           ...(selectedService.notesHistory || []),
         ],
       });
@@ -1771,7 +1812,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
     return (
       <div key={record.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "auto minmax(0,1fr)" : "auto minmax(220px,1fr) minmax(150px,.48fr) 142px auto", gap: 8, alignItems: "center", padding: isMobile ? "10px 9px" : "8px 10px", border: `1px solid ${selected ? colors.gold : colors.line}`, borderLeft: overdue ? `3px solid ${colors.red}` : selected ? `3px solid ${colors.gold}` : `3px solid transparent`, borderRadius: 10, background: selected ? "#FFF9EB" : "#FFFFFF" }}>
-        <input type="checkbox" checked={status === "Completed"} disabled={isClosedWorkStatus(status)} aria-label={`Complete ${record.title || "work"}`} onChange={() => void completeWorkOrder(record)} />
+        <input type="checkbox" checked={status === "Completed"} disabled={isClosedWorkStatus(status)} aria-label={`Complete ${record.title || "work"}`} onChange={() => void completeRecordWithUndo(record)} />
         <button type="button" onClick={openRecord} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", minWidth: 0, cursor: "pointer" }}>
           <strong style={{ display: "block", minWidth: 0, color: colors.text, fontSize: 13.5, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis" }}>{record.title || "Untitled Work"}</strong>
           <span style={{ display: "block", marginTop: 2, color: colors.muted, fontSize: 10.5, lineHeight: 1.3 }}>{[isMobile && assignee ? assignee : "", isMobile && record.date ? formatDate(String(record.date)) : "", category ? categoryDisplayLabel(category) : "", place, record.priority === "High" ? "High priority" : "", noteCount ? "Notes" : "", photoCount ? `${photoCount} photo${photoCount === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ")}</span>
@@ -2223,6 +2264,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
             
 
+            {undoCompletion ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "9px 11px", border: `1px solid ${colors.gold}`, borderRadius: 10, background: "#FFF9E8" }}>
+                <span style={{ minWidth: 0, color: colors.text, fontSize: 12.5 }}><strong>{undoCompletion.title}</strong> completed.</span>
+                <button type="button" onClick={() => void undoRecentCompletion()} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "5px 9px", whiteSpace: "nowrap" }}>Undo Complete</button>
+              </div>
+            ) : null}
+
             <div style={{ display: "grid", gap: 7 }}>
               <input
                 type="search"
@@ -2497,9 +2545,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
                           {!isClosedWorkStatus(selectedService.status) ? (
-                            <button type="button" onClick={() => handleDetailAction("complete")} style={{ ...goldButtonStyle, width: "auto", minHeight: 36, padding: "8px 13px" }}>
-                              Complete
-                            </button>
+                            <>
+                              <button type="button" onClick={() => handleDetailAction("complete")} style={{ ...goldButtonStyle, width: "auto", minHeight: 36, padding: "8px 13px" }}>
+                                Complete
+                              </button>
+                              <button type="button" onClick={() => handleDetailAction("didnt-get-to")} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 36, padding: "8px 11px" }}>
+                                {isMobile ? "Didn't Get To" : "Didn't Get To This Week"}
+                              </button>
+                            </>
                           ) : null}
                           <select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: "auto", minWidth: 128, minHeight: 36, color: colors.text, fontSize: 12, fontWeight: 700, background: "#FFFFFF" }} aria-label="Work order actions">
                             <option value="">Actions</option>
@@ -2541,6 +2594,17 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                         </div>
                       ) : null}
                     </div>
+
+                    {(selectedService.notesHistory || []).length ? (() => {
+                      const latest = selectedService.notesHistory?.[0] as any;
+                      return (
+                        <div style={{ display: "grid", gap: 4, padding: "11px 13px", borderRadius: 12, border: `1px solid ${String(latest?.outcome || "").toLowerCase() === "deferred" ? "#E7C46A" : colors.line}`, background: String(latest?.outcome || "").toLowerCase() === "deferred" ? "#FFF9E8" : "#F8FAFC" }}>
+                          <span style={{ ...fieldLabelStyle, color: colors.muted }}>LATEST UPDATE</span>
+                          <strong style={{ color: colors.text, fontSize: 13.5 }}>{latest?.text || "Update recorded"}</strong>
+                          {latest?.createdAt ? <span style={mutedSmallStyle}>{new Date(latest.createdAt).toLocaleString()}</span> : null}
+                        </div>
+                      );
+                    })() : null}
 
                     <details style={{ border: `1px solid ${colors.line}`, borderRadius: 14, padding: "11px 13px", background: "#FFFFFF" }}>
                       <summary style={{ cursor: "pointer", color: colors.text, fontSize: 13, fontWeight: 800 }}>Additional details</summary>
