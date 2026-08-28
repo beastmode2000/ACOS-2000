@@ -1038,43 +1038,21 @@ export default function AtlasApp() {
   const [dashboardReminderDraft, setDashboardReminderDraft] = useState("");
   const [dashboardReminderDate, setDashboardReminderDate] = useState("");
   const [dashboardReminders, setDashboardReminders] = useState<Array<{ id: string; text: string; done: boolean; createdAt: string; dueDate?: string }>>([]);
-  const dashboardRemindersSkipSaveRef = useRef(false);
   const dashboardPersonFocusSkipSaveRef = useRef(false);
   const dashboardLayoutSkipSaveRef = useRef(false);
   const dashboardRoutineSkipSaveRef = useRef(false);
 
   useEffect(() => {
+    // Shared Neon Notes are the only source for dashboard reminders. Clear the
+    // legacy per-browser reminder cache so old phone/desktop notes cannot reappear.
+    setDashboardReminders([]);
     if (typeof window === "undefined") return;
-    dashboardRemindersSkipSaveRef.current = true;
     try {
-      const raw = window.localStorage.getItem(`atlas-dashboard-reminders-v1:${activePropertyId}`);
-      const parsed = raw ? JSON.parse(raw) : [];
-      setDashboardReminders(
-        Array.isArray(parsed)
-          ? parsed.filter((reminder) => {
-              const reminderPropertyId = String(reminder?.propertyId || "");
-              return reminderPropertyId
-                ? reminderPropertyId === activePropertyId
-                : activePropertyId === "2000";
-            })
-          : [],
-      );
+      window.localStorage.removeItem(`atlas-dashboard-reminders-v1:${activePropertyId}`);
     } catch {
-      setDashboardReminders([]);
+      // Shared reminders continue to work when local storage is unavailable.
     }
   }, [activePropertyId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (dashboardRemindersSkipSaveRef.current) {
-      dashboardRemindersSkipSaveRef.current = false;
-      return;
-    }
-    window.localStorage.setItem(
-      `atlas-dashboard-reminders-v1:${activePropertyId}`,
-      JSON.stringify(dashboardReminders.map((reminder) => ({ ...reminder, propertyId: activePropertyId }))),
-    );
-  }, [activePropertyId, dashboardReminders]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -3848,10 +3826,23 @@ export default function AtlasApp() {
                 ]),
               ),
             }));
+            setDashboardReminders(
+              apiNotes
+                .filter((note) => Boolean(note.dashboard))
+                .map((note) => ({
+                  id: String(note.id),
+                  text: String(note.text),
+                  done: Boolean(note.done),
+                  createdAt: String(note.createdAt || new Date().toISOString()),
+                  dueDate: note.dueDate ? String(note.dueDate) : undefined,
+                }))
+                .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+            );
           } else {
             // Shared Notes are authoritative on every device. An empty shared Notes payload
-            // must clear local Notes instead of re-uploading stale browser cache.
+            // must clear local Notes and dashboard reminders instead of reviving browser cache.
             setTodayLogEntries((current) => current.filter((entry) => !(entry.propertyId === activePropertyId && entry.category === "Note")));
+            setDashboardReminders([]);
           }
         }
         setOperationsHydrated(true);
@@ -18166,6 +18157,7 @@ ${notes.trim()}` : notes.trim(),
       operationsSyncState,
       photos,
       postAtlasRecord,
+      deleteAtlasRecord,
       prepareWeeklyOwnerUpdate,
       quickCaptureNote,
       quickCreateVendor,
