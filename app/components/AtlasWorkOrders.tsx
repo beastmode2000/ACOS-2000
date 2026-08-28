@@ -1541,6 +1541,23 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       }
       return;
     }
+    if (value === "didnt-get-to") {
+      const occurrenceDate = String(selectedService.date || "");
+      const next = selectedService.recurring
+        ? recurrencePreviewDates(selectedService, 1)[0]
+        : nextWeekDate();
+      const noteText = `Didn't get to this week${occurrenceDate ? ` — was due ${formatDate(occurrenceDate)}` : ""}.`;
+      await updateWorkOrderRecord(selectedService, {
+        ...(next ? { date: next } : {}),
+        status: "Scheduled",
+        lastSkippedAt: new Date().toISOString(),
+        notesHistory: [
+          { id: uid("note"), text: noteText, createdAt: new Date().toISOString() },
+          ...(selectedService.notesHistory || []),
+        ],
+      });
+      return;
+    }
     if (value === "photo") {
       quickAddPhoto(selectedService);
       return;
@@ -1673,16 +1690,42 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     });
   }
 
-  function addHistoryNote() {
+  async function addHistoryNote() {
     const text = newHistoryNote.trim();
-    if (!text) return;
-    updateWorkOrder({
-      notesHistory: [
-        { id: uid("note"), text, createdAt: new Date().toISOString() },
-        ...(selectedService.notesHistory || []),
-      ],
-    });
+    if (!text || !selectedService) return;
+    const notesHistory = [
+      { id: uid("note"), text, createdAt: new Date().toISOString() },
+      ...(selectedService.notesHistory || []),
+    ];
+    await updateWorkOrderRecord(selectedService, { notesHistory });
     setNewHistoryNote("");
+  }
+
+  async function reopenCompletionSnapshot(entry: any) {
+    if (!selectedService) return;
+    const completionDate = String(entry?.completedAt || "").slice(0, 10);
+    const remainingHistory = (selectedService.serviceHistory || []).filter((item: any) => item.id !== entry.id);
+    const remainingCompletionHistory = (selectedService.completionHistory || []).filter((date: string) => String(date).slice(0, 10) !== completionDate);
+    const previousCompletionDates = remainingHistory
+      .map((item: any) => String(item?.completedAt || "").slice(0, 10))
+      .filter(Boolean)
+      .sort();
+    const previousCompletedDate = previousCompletionDates.length
+      ? previousCompletionDates[previousCompletionDates.length - 1]
+      : "";
+    await updateWorkOrderRecord(selectedService, {
+      status: entry?.statusBefore && entry.statusBefore !== "Completed" ? entry.statusBefore : "Open",
+      date: String(entry?.dueDate || selectedService.date || ""),
+      completedAt: "",
+      lastCompletedDate: previousCompletedDate,
+      completionHistory: remainingCompletionHistory,
+      serviceHistory: remainingHistory,
+      checklist: Array.isArray(entry?.checklist) ? entry.checklist : selectedService.checklist || [],
+      notes: typeof entry?.notes === "string" ? entry.notes : selectedService.notes || "",
+      notesHistory: Array.isArray(entry?.notesHistory) ? entry.notesHistory : selectedService.notesHistory || [],
+      photos: Array.isArray(entry?.photos) ? entry.photos : selectedService.photos || [],
+      documents: Array.isArray(entry?.documents) ? entry.documents : selectedService.documents || [],
+    });
   }
 
   function workStatusColor(status: string) {
@@ -2454,7 +2497,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                           ) : null}
                           <select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: "auto", minWidth: 128, minHeight: 36, color: colors.text, fontSize: 12, fontWeight: 700, background: "#FFFFFF" }} aria-label="Work order actions">
                             <option value="">Actions</option>
-                            {isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="reschedule">{selectedService.recurring ? "Reschedule This Time" : "Reschedule"}</option>{selectedService.recurring ? <><option value="not-needed">Not Needed This Time</option><option value="edit-series">Edit Series</option><option value="stop-series">Stop Series</option></> : null}<option value="complete">{selectedService.recurring ? "Complete & Advance" : "Complete"}</option></>}
+                            {isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="reschedule">{selectedService.recurring ? "Reschedule This Time" : "Reschedule"}</option><option value="didnt-get-to">Didn't Get To This Week</option>{selectedService.recurring ? <><option value="not-needed">Not Needed This Time</option><option value="edit-series">Edit Series</option><option value="stop-series">Stop Series</option></> : null}<option value="complete">{selectedService.recurring ? "Complete & Advance" : "Complete"}</option></>}
                             <option value="delete">Delete</option>
                           </select>
                           <button type="button" onClick={() => setWorkEditorOpen(true)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 36, padding: "8px 12px" }}>
@@ -2509,7 +2552,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <div style={{ display: "grid", gap: 11 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                       <div style={eyebrowStyle}>Edit Work</div>
-                      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={async () => { await saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Save</button><button type="button" onClick={() => void deleteWorkOrderRecord(selectedService)} style={{ ...dangerButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Delete</button><select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: "auto", minWidth: 120, minHeight: 32, color: colors.text, fontSize: 12, fontWeight: 700, background: "#FFFFFF" }} aria-label="Work order actions"><option value="">Actions</option>{isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="reschedule">{selectedService.recurring ? "Reschedule This Time" : "Reschedule"}</option>{selectedService.recurring ? <><option value="not-needed">Not Needed This Time</option><option value="edit-series">Edit Series</option><option value="stop-series">Stop Series</option></> : null}<option value="complete">{selectedService.recurring ? "Complete & Advance" : "Complete"}</option></>}<option value="delete">Delete</option></select><button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button></div>
+                      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={async () => { await saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Save</button><button type="button" onClick={() => void deleteWorkOrderRecord(selectedService)} style={{ ...dangerButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Delete</button><select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: "auto", minWidth: 120, minHeight: 32, color: colors.text, fontSize: 12, fontWeight: 700, background: "#FFFFFF" }} aria-label="Work order actions"><option value="">Actions</option>{isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="reschedule">{selectedService.recurring ? "Reschedule This Time" : "Reschedule"}</option><option value="didnt-get-to">Didn't Get To This Week</option>{selectedService.recurring ? <><option value="not-needed">Not Needed This Time</option><option value="edit-series">Edit Series</option><option value="stop-series">Stop Series</option></> : null}<option value="complete">{selectedService.recurring ? "Complete & Advance" : "Complete"}</option></>}<option value="delete">Delete</option></select><button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button></div>
                     </div>
                     <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, fontSize: 20, fontWeight: 800 }} />
                     <label style={{ display: "grid", gap: 5 }}>
@@ -2575,15 +2618,51 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 })() : null}
               </details> : null}
 
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <strong style={{ fontSize: 13 }}>Work notes</strong>
+                  <span style={mutedSmallStyle}>{(selectedService.notesHistory || []).length} saved</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, marginTop: 8 }}>
+                  <input
+                    value={newHistoryNote}
+                    onChange={(event) => setNewHistoryNote(event.currentTarget.value)}
+                    onKeyDown={(event) => { if (event.key === "Enter") void addHistoryNote(); }}
+                    placeholder="Add a note — e.g. Didn't get to this week"
+                    style={inputStyle}
+                  />
+                  <button type="button" onClick={() => void addHistoryNote()} style={{ ...secondaryButtonStyle, width: "auto" }}>Add Note</button>
+                </div>
+                {(selectedService.notesHistory || []).length ? (
+                  <div style={{ display: "grid", gap: 6, marginTop: 9 }}>
+                    {(selectedService.notesHistory || []).slice(0, 8).map((note: any) => (
+                      <div key={note.id} style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 7 }}>
+                        <div style={{ fontSize: 12.5, color: colors.text }}>{note.text}</div>
+                        <div style={{ ...mutedSmallStyle, marginTop: 2 }}>{note.createdAt ? new Date(note.createdAt).toLocaleString() : ""}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+
               {(selectedService.serviceHistory || []).length ? <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
                 <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>History ({(selectedService.serviceHistory || []).length})</summary>
                 {(selectedService.serviceHistory || []).length ? (
                   <div style={{ display: "grid", gap: 0, marginTop: 8 }}>
                     {(selectedService.serviceHistory || []).map((entry: any) => (
-                      <div key={entry.id} style={{ padding: "9px 0", borderBottom: `1px solid ${colors.line}` }}>
-                        <strong style={{ display: "block", fontSize: 13 }}>Completed {new Date(entry.completedAt).toLocaleDateString()}</strong>
-                        <span style={mutedSmallStyle}>{(entry.checklist || []).filter((item: any) => item.completed).length}/{(entry.checklist || []).length} steps · {(entry.photos || []).length} photos</span>
-                        {entry.notes ? <p style={{ margin: "5px 0 0", fontSize: 12 }}>{entry.notes}</p> : null}
+                      <div key={entry.id} style={{ padding: "9px 0", borderBottom: `1px solid ${colors.line}`, display: "grid", gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => setWorkEditorOpen(true)}
+                          style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", color: colors.text }}
+                        >
+                          <strong style={{ display: "block", fontSize: 13 }}>Completed {new Date(entry.completedAt).toLocaleDateString()}</strong>
+                          <span style={mutedSmallStyle}>{(entry.checklist || []).filter((item: any) => item.completed).length}/{(entry.checklist || []).length} steps · {(entry.photos || []).length} photos · Click to review/edit</span>
+                          {entry.notes ? <p style={{ margin: "5px 0 0", fontSize: 12 }}>{entry.notes}</p> : null}
+                        </button>
+                        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                          <button type="button" onClick={() => void reopenCompletionSnapshot(entry)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "5px 8px", fontSize: 11.5 }}>Reopen This Completion</button>
+                        </div>
                       </div>
                     ))}
                   </div>
