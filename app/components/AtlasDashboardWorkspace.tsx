@@ -197,6 +197,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     operationsSyncState,
     photos,
     postAtlasRecord,
+    deleteAtlasRecord,
     prepareWeeklyOwnerUpdate,
     quickCaptureNote,
     quickCreateVendor,
@@ -2247,12 +2248,13 @@ export default function AtlasDashboardWorkspace(props: any) {
     });
     showSaveToast(`${list?.name || "List"} removed from Dashboard.`);
   };
-  const saveDashboardNote = (text: string, dueDate?: string, existingId?: string) => {
+  const saveDashboardNote = async (text: string, dueDate?: string, existingId?: string, doneOverride?: boolean) => {
     const clean = text.trim();
     if (!clean) return "";
     const id = existingId || uid("dashboard-note");
     const existingReminder = dashboardReminders.find((item) => item.id === id);
     const createdAt = existingReminder?.createdAt || new Date().toISOString();
+    const done = doneOverride ?? Boolean(existingReminder?.done);
     const record = {
       id,
       propertyId: activePropertyId,
@@ -2267,15 +2269,21 @@ export default function AtlasDashboardWorkspace(props: any) {
       attachments: [],
       dashboard: true,
       dueDate: dueDate || existingReminder?.dueDate || "",
-      done: Boolean(existingReminder?.done),
+      done,
     };
+
+    const saved = await postAtlasRecord("notes", record);
+    if (!saved) {
+      showSaveToast("Dashboard note did not sync. Nothing was changed.", "warning");
+      return "";
+    }
 
     setDashboardReminders((current) => {
       const existing = current.find((item) => item.id === id);
       const reminder = {
         id,
         text: clean,
-        done: existing?.done || false,
+        done,
         createdAt,
         dueDate: dueDate || existing?.dueDate || undefined,
       };
@@ -2287,24 +2295,31 @@ export default function AtlasDashboardWorkspace(props: any) {
       record,
       ...current.filter((entry: any) => entry.id !== id),
     ]);
-
-    // Dashboard notes must hit shared Atlas immediately. Do not wait for the
-    // background local-state sync; that delay is what allowed desktop and
-    // phone to diverge.
-    void postAtlasRecord("notes", record);
     return id;
   };
-  const deleteDashboardNote = (noteId: string) => {
+  const deleteDashboardNote = async (noteId: string) => {
+    const deleted = await deleteAtlasRecord("notes", noteId, { suppressFailureToast: true });
+    if (!deleted) {
+      showSaveToast("Dashboard note was not deleted because shared Atlas did not confirm it.", "warning");
+      return;
+    }
     setDashboardReminders((current) => current.filter((item) => item.id !== noteId));
     setTodayLogEntries((current) => current.filter((entry: any) => entry.id !== noteId));
+    showSaveToast("Dashboard note deleted.");
   };
-  const addDashboardReminder = () => {
+  const toggleDashboardNoteDone = async (noteId: string) => {
+    const note = dashboardReminders.find((item) => item.id === noteId);
+    if (!note) return;
+    await saveDashboardNote(note.text, note.dueDate, note.id, !note.done);
+  };
+  const addDashboardReminder = async () => {
     const text = dashboardReminderDraft.trim();
     if (!text) return;
-    saveDashboardNote(text, dashboardReminderDate || undefined);
+    const savedId = await saveDashboardNote(text, dashboardReminderDate || undefined);
+    if (!savedId) return;
     setDashboardReminderDraft("");
     setDashboardReminderDate("");
-    showSaveToast("Saved to Quick Notes and Notes.");
+    showSaveToast("Saved to dashboard and Notes.");
   };
   const convertDashboardReminderToWork = async (noteId: string, person: "Nick" | "Addison") => {
     const note = dashboardReminders.find((item) => item.id === noteId);
@@ -2353,12 +2368,12 @@ export default function AtlasDashboardWorkspace(props: any) {
           <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: 320, overflowY: "auto" }}>
             {dashboardReminders.map((note) => <div key={note.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: note.done ? "#F5F7F9" : "#FFFFFF" }}>
               <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 7, alignItems: "start" }}>
-                <input type="checkbox" checked={note.done} onChange={() => setDashboardReminders((current) => current.map((item) => item.id === note.id ? { ...item, done: !item.done } : item))}/>
-                <button type="button" onClick={() => { const text = window.prompt("Edit quick note", note.text)?.trim(); if (text) saveDashboardNote(text, note.dueDate, note.id); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, color: colors.navy, fontWeight: 800, textDecoration: note.done ? "line-through" : "none", opacity: note.done ? .6 : 1 }}><span style={{ display: "block" }}>{note.text}</span>{note.dueDate ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Remind {formatDate(note.dueDate)}</small> : null}</button>
+                <input type="checkbox" checked={note.done} onChange={() => void toggleDashboardNoteDone(note.id)}/>
+                <button type="button" onClick={() => { const text = window.prompt("Edit quick note", note.text)?.trim(); if (text) void saveDashboardNote(text, note.dueDate, note.id); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, color: colors.navy, fontWeight: 800, textDecoration: note.done ? "line-through" : "none", opacity: note.done ? .6 : 1 }}><span style={{ display: "block" }}>{note.text}</span>{note.dueDate ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Remind {formatDate(note.dueDate)}</small> : null}</button>
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7, paddingLeft: 24 }}>
                 {!note.done ? <><button type="button" onClick={() => void convertDashboardReminderToWork(note.id, "Nick")} style={compactUtilityButtonStyle}>→ Nick</button><button type="button" onClick={() => void convertDashboardReminderToWork(note.id, "Addison")} style={compactUtilityButtonStyle}>→ Addison</button></> : null}
-                <button type="button" onClick={() => deleteDashboardNote(note.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
+                <button type="button" onClick={() => void deleteDashboardNote(note.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
               </div>
             </div>)}
           </div>
