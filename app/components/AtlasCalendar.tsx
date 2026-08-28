@@ -1703,18 +1703,18 @@ export default function AtlasCalendar(
 
   const calendarHeight = isMobile
     ? "calc(100dvh - 62px)"
-    : "calc(100dvh - 82px)";
+    : "calc(100dvh - 96px)";
 
   const normalControlStyle: React.CSSProperties = {
     ...secondaryButtonStyle,
-    padding: isMobile ? "5px 7px" : "9px 13px",
+    padding: isMobile ? "5px 7px" : "7px 11px",
     fontSize: isMobile ? 10 : 13,
     whiteSpace: "nowrap",
   };
 
   const activeControlStyle: React.CSSProperties = {
     ...goldButtonStyle,
-    padding: isMobile ? "5px 7px" : "9px 13px",
+    padding: isMobile ? "5px 7px" : "7px 11px",
     fontSize: isMobile ? 10 : 13,
     whiteSpace: "nowrap",
   };
@@ -1740,12 +1740,12 @@ export default function AtlasCalendar(
             width: "100%",
             height: "100%",
             minHeight: 0,
-            padding: isMobile ? 4 : 8,
+            padding: isMobile ? 4 : 6,
             boxSizing: "border-box",
             overflow: "hidden",
             display: "grid",
             gridTemplateRows: "auto auto minmax(0, 1fr)",
-            gap: isMobile ? 2 : 5,
+            gap: isMobile ? 2 : 3,
             background: "#FFFFFF",
             border: "1px solid #E5EBF0",
             borderRadius: isMobile ? 10 : 12,
@@ -1755,7 +1755,7 @@ export default function AtlasCalendar(
           <header
             style={{
               display: "grid",
-              gap: isMobile ? 3 : 5,
+              gap: isMobile ? 3 : 3,
               minWidth: 0,
             }}
           >
@@ -1764,14 +1764,14 @@ export default function AtlasCalendar(
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                gap: isMobile ? 3 : 10,
+                gap: isMobile ? 3 : 8,
                 minWidth: 0,
               }}
             >
               <div
                 style={{
                   ...calendarHeaderStyle,
-                  fontSize: isMobile ? 15 : 25,
+                  fontSize: isMobile ? 15 : 23,
                   lineHeight: 1,
                   whiteSpace: "nowrap",
                 }}
@@ -1822,7 +1822,7 @@ export default function AtlasCalendar(
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: isMobile ? 3 : 5,
+                gap: isMobile ? 3 : 4,
                 minWidth: 0,
                 flexWrap: "nowrap",
                 overflow: "visible",
@@ -1876,8 +1876,8 @@ export default function AtlasCalendar(
                   ...inputStyle,
                   width: isMobile ? 108 : 170,
                   minWidth: 0,
-                  padding: isMobile ? "5px 7px" : "8px 10px",
-                  fontSize: isMobile ? 10 : 13,
+                  padding: isMobile ? "5px 7px" : "6px 9px",
+                  fontSize: isMobile ? 10 : 12,
                 }}
               />
 
