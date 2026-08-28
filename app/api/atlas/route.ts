@@ -49,7 +49,8 @@ type AtlasTable =
   | "projects"
   | "tasks"
   | "vehicle_care"
-  | "day_sessions";
+  | "day_sessions"
+  | "notes";
 
 function getSql() {
   const connectionString =
@@ -195,6 +196,7 @@ function cleanTable(value: unknown): AtlasTable | "" {
   if (table === "tasks") return "tasks";
   if (table === "vehicle_care") return "vehicle_care";
   if (table === "day_sessions") return "day_sessions";
+  if (table === "notes") return "notes";
 
   return "";
 }
@@ -1283,6 +1285,7 @@ export async function GET(request: NextRequest) {
       vehicleCare: operationalRecords("vehicle_care"),
       vehicleCareRecords: operationalRecords("vehicle_care"),
       daySessions: operationalRecords("day_sessions"),
+      notes: operationalRecords("notes"),
     });
   } catch (error) {
     return NextResponse.json(
@@ -1563,7 +1566,7 @@ export async function POST(request: NextRequest) {
     }
 
     const access = await getAtlasAccessContext(sql, request);
-    if (access.restricted && ["assets", "vendors", "procedures", "work_orders", "parts", "documents", "asset_photos", "tasks", "vehicle_care", "day_sessions"].includes(table)) {
+    if (access.restricted && ["assets", "vendors", "procedures", "work_orders", "parts", "documents", "asset_photos", "tasks", "vehicle_care", "day_sessions", "notes"].includes(table)) {
       let allowed = profileAllowsRecord(access.accessProfiles, record);
       if (!allowed && asString(record.assetId)) {
         const assetRows = await sql`SELECT id, name, category, notes FROM atlas_assets WHERE id=${asString(record.assetId)} AND property_id=${propertyId} LIMIT 1`;
@@ -2060,9 +2063,9 @@ if (table === "assets") {
       return NextResponse.json({ ok: true, id });
     }
 
-    if (table === "tasks" || table === "vehicle_care" || table === "day_sessions") {
+    if (table === "tasks" || table === "vehicle_care" || table === "day_sessions" || table === "notes") {
       await ensureOperationalRecordsTable(sql);
-      const id = getId(record, table === "tasks" ? "task" : table === "vehicle_care" ? "vehicle" : "day-session");
+      const id = getId(record, table === "tasks" ? "task" : table === "vehicle_care" ? "vehicle" : table === "notes" ? "note" : "day-session");
       const savedRecord = { ...record, id, propertyId, updatedAt: new Date().toISOString() };
 
       await sql`
@@ -2747,7 +2750,7 @@ export async function DELETE(request: NextRequest) {
           AND property_id = ${propertyId}
         RETURNING id
       `) as unknown as JsonRecord[];
-    } else if (table === "tasks" || table === "vehicle_care" || table === "day_sessions") {
+    } else if (table === "tasks" || table === "vehicle_care" || table === "day_sessions" || table === "notes") {
       deletedRows = (await sql`
         DELETE FROM atlas_operational_records
         WHERE record_type = ${table}
