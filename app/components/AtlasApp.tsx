@@ -3821,7 +3821,33 @@ export default function AtlasApp() {
             setNotesSectionById((current) => ({ ...current, ...Object.fromEntries(apiNotes.map((note) => [String(note.id), (note.section || "General") as NoteSection])) }));
             setPinnedNoteIds((current) => Array.from(new Set([...current.filter((id) => !remoteIds.has(id)), ...apiNotes.filter((note) => note.pinned).map((note) => String(note.id))])));
             setNoteFollowUpDates((current) => ({ ...current, ...Object.fromEntries(apiNotes.filter((note) => note.followUpDate).map((note) => [String(note.id), String(note.followUpDate)])) }));
-            setNoteAttachments((current) => ({ ...current, ...Object.fromEntries(apiNotes.map((note) => [String(note.id), Array.isArray(note.attachments) ? note.attachments : []])) }));
+            setNoteAttachments((current) => ({
+              ...current,
+              ...Object.fromEntries(
+                apiNotes.map((note) => [
+                  String(note.id),
+                  (Array.isArray(note.attachments) ? note.attachments : [])
+                    .map((attachment) => ({
+                      kind: String(attachment?.kind || "") as NoteAttachmentKind,
+                      id: String(attachment?.id || ""),
+                    }))
+                    .filter(
+                      (attachment): attachment is NoteAttachment =>
+                        Boolean(attachment.id) &&
+                        ([
+                          "Asset",
+                          "Location",
+                          "Vendor",
+                          "Project",
+                          "Work Order",
+                          "Task",
+                          "Contact",
+                          "Procedure",
+                        ] as NoteAttachmentKind[]).includes(attachment.kind),
+                    ),
+                ]),
+              ),
+            }));
           } else if (isMobile) {
             // Shared Notes are authoritative on mobile. Never let an old phone cache repopulate the dashboard.
             setTodayLogEntries((current) => current.filter((entry) => !(entry.propertyId === activePropertyId && entry.category === "Note")));
