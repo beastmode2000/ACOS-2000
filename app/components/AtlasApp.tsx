@@ -3626,7 +3626,14 @@ export default function AtlasApp() {
         const apiVehicles = Array.isArray(operationsPayload.vehicleCareRecords) ? operationsPayload.vehicleCareRecords : Array.isArray(operationsPayload.vehicleCare) ? operationsPayload.vehicleCare : [];
         const apiDaySessions = Array.isArray(operationsPayload.daySessions) ? operationsPayload.daySessions : [];
         const notesPayloadPresent = Array.isArray(operationsPayload.notes);
-        const apiNotes = notesPayloadPresent ? operationsPayload.notes!.filter((note) => Boolean(note?.id && note?.text && note?.date)) : [];
+        const apiNotes = notesPayloadPresent
+          ? operationsPayload.notes!.filter((note) => Boolean(note?.id && note?.text && note?.date))
+          : [];
+        const dashboardApiNotes = apiNotes as Array<(typeof apiNotes)[number] & {
+          dashboard?: boolean;
+          dueDate?: string;
+          done?: boolean;
+        }>;
         const apiPhotos = (
           Array.isArray(payload.photos)
             ? payload.photos
@@ -3834,7 +3841,7 @@ export default function AtlasApp() {
               ),
             }));
             setDashboardReminders(
-              apiNotes
+              dashboardApiNotes
                 .filter((note) => Boolean(note.dashboard))
                 .map((note) => ({
                   id: String(note.id),
