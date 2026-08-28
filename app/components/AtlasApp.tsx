@@ -3848,19 +3848,10 @@ export default function AtlasApp() {
                 ]),
               ),
             }));
-          } else if (isMobile) {
-            // Shared Notes are authoritative on mobile. Never let an old phone cache repopulate the dashboard.
-            setTodayLogEntries((current) => current.filter((entry) => !(entry.propertyId === activePropertyId && entry.category === "Note")));
           } else {
-            // One-time desktop migration path for notes created before shared Notes existed.
-            const localNotes = todayLogEntries.filter((entry) => entry.propertyId === activePropertyId && entry.category === "Note");
-            localNotes.forEach((entry) => {
-              void postAtlasRecord("notes" as AtlasTable, {
-                ...entry, propertyId: activePropertyId, title: noteTitlesById[entry.id] || "",
-                section: notesSectionById[entry.id] || "General", pinned: pinnedNoteIds.includes(entry.id),
-                followUpDate: noteFollowUpDates[entry.id] || "", attachments: noteAttachments[entry.id] || [],
-              });
-            });
+            // Shared Notes are authoritative on every device. An empty shared Notes payload
+            // must clear local Notes instead of re-uploading stale browser cache.
+            setTodayLogEntries((current) => current.filter((entry) => !(entry.propertyId === activePropertyId && entry.category === "Note")));
           }
         }
         setOperationsHydrated(true);
@@ -8420,14 +8411,17 @@ export default function AtlasApp() {
     setOwnerUpdateOpen(true);
   }
 
-  function approveWeeklyOwnerUpdate() {
+  async function approveWeeklyOwnerUpdate() {
     const text = ownerUpdateDraft.trim();
     if (!text) return;
     const record = { id: uid("owner-update"), propertyId: activePropertyId, date: todayISO(), text, approvedAt: new Date().toISOString(), status: "Approved — ready to send" };
+    const sharedNote = { id: record.id, propertyId: activePropertyId, date: record.date, category: "Note" as const, text: "Weekly owner update approved and ready to send.", createdAt: record.approvedAt };
+    const saved = await postAtlasRecord("notes" as AtlasTable, { ...sharedNote, title: noteTitle(sharedNote.text), section: "General", pinned: false, followUpDate: "", attachments: [] });
+    if (!saved) { showSaveToast("Owner update was not approved because its shared Note did not sync.", "warning"); return; }
     const key = `atlas-owner-updates-v1-${activePropertyId}`;
     const current = readStoredArray<typeof record>([key], []);
     saveStoredArray(key, [record, ...current]);
-    setTodayLogEntries((entries) => [{ id: record.id, propertyId: activePropertyId, date: record.date, category: "Note", text: "Weekly owner update approved and ready to send.", createdAt: record.approvedAt }, ...entries]);
+    setTodayLogEntries((entries) => [sharedNote, ...entries]);
     setOwnerUpdateOpen(false);
     showSaveToast("Owner update approved and saved. Send it from the configured owner communication channel.");
   }
@@ -11154,10 +11148,13 @@ export default function AtlasApp() {
     setScreen("intake");
   }
 
-  function addRoutineNote(task: { id: string; title: string }) {
+  async function addRoutineNote(task: { id: string; title: string }) {
     const note = window.prompt(`Add a note for “${task.title}”:`)?.trim();
     if (!note) return;
-    setTodayLogEntries((current) => [{ id: uid("routine-note"), propertyId: activePropertyId, date: todayISO(), category: "Note", text: `${task.title}: ${note}`, createdAt: new Date().toISOString() }, ...current]);
+    const sharedNote = { id: uid("routine-note"), propertyId: activePropertyId, date: todayISO(), category: "Note" as const, text: `${task.title}: ${note}`, createdAt: new Date().toISOString() };
+    const saved = await postAtlasRecord("notes" as AtlasTable, { ...sharedNote, title: noteTitle(sharedNote.text), section: "General", pinned: false, followUpDate: "", attachments: [] });
+    if (!saved) { showSaveToast("Routine note did not sync. Nothing was changed.", "warning"); return; }
+    setTodayLogEntries((current) => [sharedNote, ...current]);
     showSaveToast("Routine note added to today’s log.");
   }
 
