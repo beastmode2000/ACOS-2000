@@ -5339,7 +5339,7 @@ export default function AtlasApp() {
         return;
       }
 
-      if (!item.repeat || item.repeat === "None" || item.source !== "manual") {
+      if (!item.repeat || item.repeat === "None") {
         expanded.set(String(item.instanceId || item.id), item);
         return;
       }
