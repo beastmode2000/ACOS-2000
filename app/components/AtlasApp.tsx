@@ -680,6 +680,8 @@ export default function AtlasApp() {
   const [syncState, setSyncState] = useState<
     "loading" | "synced" | "offline"
   >("loading");
+  const [sharedRefreshNonce, setSharedRefreshNonce] = useState(0);
+  const [mobileSyncRefreshing, setMobileSyncRefreshing] = useState(false);
   const [operationsSyncState, setOperationsSyncState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const [operationsSyncMessage, setOperationsSyncMessage] = useState("No pending changes");
   const [operationsHydrated, setOperationsHydrated] = useState(false);
@@ -1184,6 +1186,7 @@ export default function AtlasApp() {
   const atlasActionLocksRef = useRef<Set<string>>(new Set());
   const operationsSyncTimerRef = useRef<number | null>(null);
   const operationsSyncRunningRef = useRef(false);
+  const sharedRefreshLastRequestedRef = useRef(0);
   const operationsRemoteRefreshRef = useRef(false);
   const operationsRemoteRefreshTimerRef = useRef<number | null>(null);
   const calendarSourceSyncRunningRef = useRef(false);
@@ -3949,6 +3952,7 @@ export default function AtlasApp() {
           `Atlas loaded: ${nextAssets.length} assets, ${nextVendors.length} vendors, ${nextServices.length} work orders.`,
         );
         setSyncState("synced");
+        setMobileSyncRefreshing(false);
         setShowPropertyLoading(false);
         setLastSyncedAt(
           new Intl.DateTimeFormat(undefined, {
@@ -3959,6 +3963,7 @@ export default function AtlasApp() {
       } catch (error) {
         if (!cancelled) {
           setOperationsHydrated(true);
+          setMobileSyncRefreshing(false);
           setShowPropertyLoading(false);
 
           if (sharedAtlasLoaded) {
@@ -3992,7 +3997,48 @@ export default function AtlasApp() {
     return () => {
       cancelled = true;
     };
-  }, [activePropertyId]);
+  }, [activePropertyId, sharedRefreshNonce]);
+
+  function requestSharedAtlasRefresh() {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    if (document.visibilityState !== "visible") return;
+    if (Object.keys(dirtyRecords).length > 0) {
+      setOperationsSyncMessage("Refresh paused while an unsaved edit is open.");
+      return;
+    }
+    const now = Date.now();
+    if (now - sharedRefreshLastRequestedRef.current < 1200) return;
+    sharedRefreshLastRequestedRef.current = now;
+    setMobileSyncRefreshing(true);
+    setSharedRefreshNonce((current) => current + 1);
+  }
+
+  useEffect(() => {
+    if (!ready || typeof window === "undefined" || typeof document === "undefined") return;
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) {
+        requestSharedAtlasRefresh();
+      }
+    };
+    const refreshWhenOnline = () => requestSharedAtlasRefresh();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible" && navigator.onLine) {
+        requestSharedAtlasRefresh();
+      }
+    }, 45000);
+
+    window.addEventListener("focus", refreshWhenVisible);
+    window.addEventListener("online", refreshWhenOnline);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshWhenVisible);
+      window.removeEventListener("online", refreshWhenOnline);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [ready, activePropertyId, dirtyRecords]);
 
   useEffect(() => {
     if (!ready || screen !== "calendar") return;
@@ -8163,7 +8209,7 @@ export default function AtlasApp() {
                     const followUp = noteFollowUpDates[note.id] || "";
                     const attachments = noteAttachments[note.id] || [];
                     return (
-                      <button key={note.id} type="button" onClick={() => setSelectedNoteId(note.id)} style={{ border: 0, borderBottom: index < sectionNotes.length - 1 ? `1px solid ${colors.line}` : 0, background: pinned ? "#FFFDF7" : "#FFFFFF", padding: "12px 14px", cursor: "pointer", textAlign: "left", display: "grid", gap: 5 }}>
+                      <button key={note.id} type="button" onClick={() => setSelectedNoteId(note.id)} style={{ border: 0, borderBottom: index < sectionNotes.length - 1 ? `1px solid ${colors.line}` : 0, background: pinned ? "#FFFDF7" : "#FFFFFF", padding: "8px 10px", cursor: "pointer", textAlign: "left", display: "grid", gap: 5 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
                           <strong style={{ color: colors.navy, fontSize: 14 }}>{titleFor(note)}</strong>
                           {pinned ? <span style={{ color: "#9B742A", fontSize: 10, fontWeight: 900 }}>PINNED</span> : null}
@@ -16998,7 +17044,7 @@ ${notes.trim()}` : notes.trim(),
     return <div style={{ display: "grid", gap: 12 }}>
       <div style={noticeStyle}>Intelligence is read-only. Atlas will not create routines, tasks, work orders, projects, or schedules from suggestions.</div>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
-        {[{ label: "Blocked", value: blocked.length, detail: "Needs your decision" }, { label: "Waiting", value: waiting.length, detail: "Follow-up may be due" }, { label: "Vehicles", value: vehiclesDue.length, detail: "Onsite and becoming due" }].map((item) => <div key={item.label} style={cardStyle}><small style={fieldLabelStyle}>{item.label.toUpperCase()}</small><strong style={{ display: "block", marginTop: 4, fontSize: 24, color: colors.navy }}>{item.value}</strong><small style={mutedSmallStyle}>{item.detail}</small></div>)}
+        {[{ label: "Blocked", value: blocked.length, detail: "Needs your decision" }, { label: "Waiting", value: waiting.length, detail: "Follow-up may be due" }, { label: "Vehicles", value: vehiclesDue.length, detail: "Onsite and becoming due" }].map((item) => <div key={item.label} style={cardStyle}><small style={fieldLabelStyle}>{item.label.toUpperCase()}</small><strong style={{ display: "block", marginTop: 4, fontSize: 21, color: colors.navy }}>{item.value}</strong><small style={mutedSmallStyle}>{item.detail}</small></div>)}
       </div>
     </div>;
   }
@@ -30528,6 +30574,29 @@ ${notes.trim()}` : notes.trim(),
                         : "Syncing..."}
                   </div>
                   ) : null}
+                  {isMobile ? (
+                    <button
+                      type="button"
+                      onClick={() => { if (operationsSyncState === "failed") void syncOperationalData(); requestSharedAtlasRefresh(); }}
+                      disabled={mobileSyncRefreshing}
+                      title="Refresh shared Atlas from the server"
+                      style={{
+                        minHeight: 28,
+                        padding: "4px 9px",
+                        borderRadius: 999,
+                        border: `1px solid ${colors.line}`,
+                        background: "#FFFFFF",
+                        color: colors.navy,
+                        fontSize: 11,
+                        fontWeight: 900,
+                        cursor: mobileSyncRefreshing ? "default" : "pointer",
+                        opacity: mobileSyncRefreshing ? .65 : 1,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {mobileSyncRefreshing ? "Refreshing…" : "Refresh"}
+                    </button>
+                  ) : null}
                   {!isMobile ? (
                   <button type="button" onClick={() => { if (operationsSyncState === "failed") void syncOperationalData(); }} title={operationsSyncMessage} style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 26, padding: "4px 9px", borderRadius: 999, border: `1px solid ${operationsSyncState === "failed" ? "#E8A2A2" : operationsSyncState === "saving" ? "#E7C46A" : "#9FD6B8"}`, background: operationsSyncState === "failed" ? "#FFF2F2" : operationsSyncState === "saving" ? "#FFF8E8" : "#F0FBF5", color: operationsSyncState === "failed" ? "#A51E1E" : operationsSyncState === "saving" ? "#8A5A00" : "#176B3A", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap", cursor: operationsSyncState === "failed" ? "pointer" : "default" }}><span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: "50%", background: operationsSyncState === "failed" ? "#D83737" : operationsSyncState === "saving" ? colors.gold : "#2BA568" }} />{operationsSyncState === "saving" ? "Saving" : operationsSyncState === "failed" ? "Failed · Retry" : operationsSyncState === "saved" ? "Saved" : "Ready"}</button>
                   ) : null}
@@ -30687,12 +30756,12 @@ ${notes.trim()}` : notes.trim(),
                 },
               },
               {
-                id: "notes",
-                label: "Notes",
-                active: screen === "notes",
+                id: "calendar",
+                label: "Calendar",
+                active: screen === "calendar",
                 action: () => {
                   setMobileFieldMoreOpen(false);
-                  setScreen("notes");
+                  setScreen("calendar");
                 },
               },
             ].map((item) => (
@@ -31750,13 +31819,13 @@ const mobileHeaderShellStyle: React.CSSProperties = {
 const mobileBrandStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
-  marginBottom: 5,
+  gap: 7,
+  marginBottom: 3,
 };
 
 const mobileLogoBoxStyle: React.CSSProperties = {
-  width: 38,
-  height: 38,
+  width: 32,
+  height: 32,
   borderRadius: 12,
   background: colors.gold,
   border: `1px solid ${colors.gold}`,
@@ -31768,8 +31837,8 @@ const mobileLogoBoxStyle: React.CSSProperties = {
 
 const mobileBrandTitleStyle: React.CSSProperties = {
   fontWeight: 950,
-  fontSize: 18,
-  letterSpacing: 1.1,
+  fontSize: 16,
+  letterSpacing: .8,
   lineHeight: 1,
 };
 
@@ -31793,7 +31862,7 @@ const mobileMenuSelectStyle: React.CSSProperties = {
 
 const mobileTopbarStyle: React.CSSProperties = {
   background: "transparent",
-  padding: "14px 12px 4px",
+  padding: "8px 8px 2px",
   width: "100%",
   maxWidth: "100vw",
   overflowX: "hidden",
@@ -31809,7 +31878,7 @@ const mobilePageTitleStyle: React.CSSProperties = {
 };
 
 const mobileContentStyle: React.CSSProperties = {
-  padding: "10px 8px calc(118px + env(safe-area-inset-bottom))",
+  padding: "7px 7px calc(88px + env(safe-area-inset-bottom))",
   width: "100%",
   maxWidth: "100vw",
   overflowX: "hidden",
@@ -31818,31 +31887,31 @@ const mobileContentStyle: React.CSSProperties = {
 
 const mobileBottomNavStyle: React.CSSProperties = {
   position: "fixed",
-  left: 8,
-  right: 8,
-  bottom: "calc(8px + env(safe-area-inset-bottom))",
+  left: 6,
+  right: 6,
+  bottom: "calc(6px + env(safe-area-inset-bottom))",
   maxWidth: "calc(100vw - 16px)",
   boxSizing: "border-box",
   zIndex: 60,
   background: "rgba(255,255,255,0.96)",
   border: `1px solid ${colors.line}`,
-  borderRadius: 20,
-  boxShadow: "0 18px 45px rgba(15,23,42,0.22)",
-  padding: 8,
+  borderRadius: 17,
+  boxShadow: "0 14px 34px rgba(15,23,42,0.18)",
+  padding: 5,
   display: "grid",
   gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-  gap: 5,
+  gap: 3,
   backdropFilter: "blur(12px)",
 };
 
 const mobileBottomButtonStyle: React.CSSProperties = {
   border: "1px solid transparent",
-  borderRadius: 15,
-  padding: "10px 4px",
-  fontSize: 12,
+  borderRadius: 12,
+  padding: "7px 3px",
+  fontSize: 11,
   fontWeight: 950,
   cursor: "pointer",
-  minHeight: 44,
+  minHeight: 40,
 };
 
 const appStyle: React.CSSProperties = {
