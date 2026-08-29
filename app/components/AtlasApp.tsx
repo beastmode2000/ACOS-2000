@@ -28605,6 +28605,39 @@ ${notes.trim()}` : notes.trim(),
     );
   }
 
+  // Mobile must never render browser-cached operational data before the shared
+  // Atlas payload has hydrated. This prevents stale dashboard/work/alert state
+  // from flashing briefly at launch and then disappearing after Neon loads.
+  if (isMobile && ready && !operationsHydrated) {
+    return (
+      <main
+        className="atlas-app-shell"
+        style={{
+          ...appStyle,
+          minHeight: "100dvh",
+          display: "grid",
+          placeItems: "center",
+          background: colors.navy,
+        }}
+      >
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            display: "grid",
+            justifyItems: "center",
+            gap: 12,
+            padding: 24,
+            color: "#FFFFFF",
+          }}
+        >
+          <AtlasMiniMark size={54} />
+          <strong style={{ fontSize: 18, letterSpacing: ".01em" }}>Loading Atlas…</strong>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="atlas-app-shell" style={isMobile ? appStyle : desktopAppStyle}>
       {taskUndo ? <div style={{ position: "fixed", right: 16, bottom: 16, zIndex: 12050, display: "flex", gap: 8, alignItems: "center", background: colors.navy, color: "#FFFFFF", borderRadius: 11, padding: "8px 10px", boxShadow: "0 8px 24px rgba(15,23,42,.18)" }}><span style={{ fontSize: 12, fontWeight: 800 }}>Deleted {taskUndo.task.title}</span><button type="button" onClick={restoreDeletedTask} style={{ ...compactUtilityButtonStyle, background: "#FFFFFF" }}>Undo</button></div> : null}
