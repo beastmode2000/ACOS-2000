@@ -773,18 +773,30 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   useEffect(() => {
     if (isMobile || !detailOpen || !selectedService?.id || typeof document === "undefined") return;
 
-    const closeDetailWhenClickingOutside = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      const detailPanel = document.querySelector("[data-atlas-work-detail-panel]");
-      if (detailPanel?.contains(target)) return;
+    const closeDetail = () => {
       setDetailOpen(false);
       setSelectedServiceId("");
       setWorkEditorOpen(false);
     };
 
+    const closeDetailWhenClickingOutside = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      const detailPanel = document.querySelector("[data-atlas-work-detail-panel]");
+      if (detailPanel?.contains(target)) return;
+      closeDetail();
+    };
+
+    const closeDetailOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeDetail();
+    };
+
     document.addEventListener("pointerdown", closeDetailWhenClickingOutside, true);
-    return () => document.removeEventListener("pointerdown", closeDetailWhenClickingOutside, true);
+    window.addEventListener("keydown", closeDetailOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeDetailWhenClickingOutside, true);
+      window.removeEventListener("keydown", closeDetailOnEscape);
+    };
   }, [isMobile, detailOpen, selectedService?.id]);
 
   useEffect(() => {
@@ -2577,7 +2589,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                           ) : null}
                           <select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: "auto", minWidth: 128, minHeight: 36, color: colors.text, fontSize: 12, fontWeight: 700, background: "#FFFFFF" }} aria-label="Work order actions">
                             <option value="">Actions</option>
-                            {isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="reschedule">{selectedService.recurring ? "Reschedule This Time" : "Reschedule"}</option><option value="didnt-get-to">Didn't Get To This Week</option>{selectedService.recurring ? <><option value="not-needed">Not Needed This Time</option><option value="edit-series">Edit Series</option><option value="stop-series">Stop Series</option></> : null}<option value="complete">{selectedService.recurring ? "Complete & Advance" : "Complete"}</option></>}
+                            {isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="reschedule">{selectedService.recurring ? "Reschedule This Time" : "Reschedule"}</option>{selectedService.recurring ? <><option value="not-needed">Not Needed This Time</option><option value="edit-series">Edit Series</option><option value="stop-series">Stop Series</option></> : null}</>}
                             <option value="delete">Delete</option>
                           </select>
                           <button type="button" onClick={() => setWorkEditorOpen(true)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 36, padding: "8px 12px" }}>
@@ -2643,7 +2655,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <div style={{ display: "grid", gap: 11 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                       <div style={eyebrowStyle}>Edit Work</div>
-                      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={async () => { await saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Save</button><button type="button" onClick={() => void deleteWorkOrderRecord(selectedService)} style={{ ...dangerButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Delete</button><select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: "auto", minWidth: 120, minHeight: 32, color: colors.text, fontSize: 12, fontWeight: 700, background: "#FFFFFF" }} aria-label="Work order actions"><option value="">Actions</option>{isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="reschedule">{selectedService.recurring ? "Reschedule This Time" : "Reschedule"}</option><option value="didnt-get-to">Didn't Get To This Week</option>{selectedService.recurring ? <><option value="not-needed">Not Needed This Time</option><option value="edit-series">Edit Series</option><option value="stop-series">Stop Series</option></> : null}<option value="complete">{selectedService.recurring ? "Complete & Advance" : "Complete"}</option></>}<option value="delete">Delete</option></select><button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button></div>
+                      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={async () => { await saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Save</button><button type="button" onClick={() => void deleteWorkOrderRecord(selectedService)} style={{ ...dangerButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Delete</button><select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: "auto", minWidth: 120, minHeight: 32, color: colors.text, fontSize: 12, fontWeight: 700, background: "#FFFFFF" }} aria-label="Work order actions"><option value="">Actions</option>{isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="reschedule">{selectedService.recurring ? "Reschedule This Time" : "Reschedule"}</option>{selectedService.recurring ? <><option value="not-needed">Not Needed This Time</option><option value="edit-series">Edit Series</option><option value="stop-series">Stop Series</option></> : null}</>}<option value="delete">Delete</option></select><button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button></div>
                     </div>
                     <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, fontSize: 20, fontWeight: 800 }} />
                     <label style={{ display: "grid", gap: 5 }}>
