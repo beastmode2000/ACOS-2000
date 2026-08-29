@@ -771,6 +771,23 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }, [selectedService?.id]);
 
   useEffect(() => {
+    if (isMobile || !detailOpen || !selectedService?.id || typeof document === "undefined") return;
+
+    const closeDetailWhenClickingOutside = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      const detailPanel = document.querySelector("[data-atlas-work-detail-panel]");
+      if (detailPanel?.contains(target)) return;
+      setDetailOpen(false);
+      setSelectedServiceId("");
+      setWorkEditorOpen(false);
+    };
+
+    document.addEventListener("pointerdown", closeDetailWhenClickingOutside, true);
+    return () => document.removeEventListener("pointerdown", closeDetailWhenClickingOutside, true);
+  }, [isMobile, detailOpen, selectedService?.id]);
+
+  useEffect(() => {
     const loaded = safeReadSections();
     setSections(loaded);
     setCategoryChoices(safeReadCategories());
@@ -1996,6 +2013,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   overflowY: "auto",
                   overflowX: "hidden",
                   alignSelf: "start",
+                  padding: 8,
                 }
             : { display: "none" }
         }
@@ -2455,7 +2473,10 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         }
         drawer={
           detailOpen && selectedService.id ? (
-            <div style={{ ...stackStyle, gap: 12 }}>
+            <div
+              data-atlas-work-detail-panel
+              style={{ ...stackStyle, gap: isMobile ? 12 : 8 }}
+            >
               <div
                 style={{
                   display: "flex",
@@ -2465,7 +2486,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   position: isMobile ? "sticky" : "relative",
                   top: 0,
                   zIndex: 5,
-                  padding: isMobile ? "4px 0 12px" : "0 0 8px",
+                  padding: isMobile ? "4px 0 12px" : "0 0 5px",
                   background: "#FFFFFF",
                   borderBottom: `1px solid ${colors.line}`,
                 }}
@@ -2511,22 +2532,22 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 ) : null}
                 </span>
               </div>
-              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 16, borderRadius: 16 }}>
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 10, borderRadius: 14 }}>
                 {!workEditorOpen ? (
-                  <div style={{ display: "grid", gap: 14 }}>
+                  <div style={{ display: "grid", gap: isMobile ? 14 : 8 }}>
                     <div
                       style={{
                         display: "grid",
-                        gap: 12,
-                        padding: isMobile ? 14 : 18,
-                        borderRadius: 16,
+                        gap: isMobile ? 12 : 7,
+                        padding: isMobile ? 14 : 11,
+                        borderRadius: 14,
                         border: `1px solid ${colors.line}`,
                         background: "linear-gradient(145deg, #FFFFFF 0%, #F8FAFC 100%)",
                         boxShadow: "0 12px 30px rgba(15,42,67,.07)",
                       }}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-                        <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "grid", gap: isMobile ? 12 : 7 }}>
+                        <div style={{ minWidth: 0, width: "100%" }}>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "center" }}>
                             <span style={{ ...badgeStyle(selectedService.status || "Open"), fontWeight: 800 }}>
                               {selectedService.status || "Open"}
@@ -2536,14 +2557,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                             ) : null}
                             {selectedService.recurring ? <span style={recurringBadgeStyle}>Recurring</span> : null}
                           </div>
-                          <h2 style={{ margin: "10px 0 0", color: colors.text, fontSize: isMobile ? 23 : 29, lineHeight: 1.14, letterSpacing: "-.02em" }}>
+                          <h2 style={{ margin: isMobile ? "10px 0 0" : "6px 0 0", color: colors.text, fontSize: isMobile ? 23 : 27, lineHeight: 1.12, letterSpacing: "-.02em", maxWidth: "100%" }}>
                             {selectedService.title || "Untitled Work"}
                           </h2>
                           {selectedService.notes ? (
-                            <p style={{ margin: "9px 0 0", color: colors.muted, fontSize: 14, lineHeight: 1.55, maxWidth: 760 }}>{selectedService.notes}</p>
+                            <p style={{ margin: isMobile ? "9px 0 0" : "5px 0 0", color: colors.muted, fontSize: 14, lineHeight: 1.45, maxWidth: "100%" }}>{selectedService.notes}</p>
                           ) : null}
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end", width: "100%" }}>
                           {!isClosedWorkStatus(selectedService.status) ? (
                             <>
                               <button type="button" onClick={() => handleDetailAction("complete")} style={{ ...goldButtonStyle, width: "auto", minHeight: 36, padding: "8px 13px" }}>
@@ -2566,27 +2587,27 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       </div>
 
                       {(selectedService.date || selectedService.locationId || selectedService.assetId || selectedService.assignedTo) ? (
-                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fit, minmax(150px, 1fr))", gap: isMobile ? 10 : 7 }}>
                           {selectedService.date ? (
-                            <div style={{ padding: 11, borderRadius: 12, background: "#FFFFFF", border: `1px solid ${colors.line}` }}>
+                            <div style={{ padding: isMobile ? 11 : 8, borderRadius: 10, background: "#FFFFFF", border: `1px solid ${colors.line}` }}>
                               <span style={fieldLabelStyle}>{selectedService.recurring ? "Next due" : "Due"}</span>
                               <div style={{ marginTop: 4, fontWeight: 800, color: dayDistance(String(selectedService.date)) < 0 ? colors.red : colors.text }}>{formatDate(selectedService.date)}</div>
                             </div>
                           ) : null}
                           {selectedService.locationId ? (
-                            <div style={{ padding: 11, borderRadius: 12, background: "#FFFFFF", border: `1px solid ${colors.line}` }}>
+                            <div style={{ padding: isMobile ? 11 : 8, borderRadius: 10, background: "#FFFFFF", border: `1px solid ${colors.line}` }}>
                               <span style={fieldLabelStyle}>Location</span>
                               <div style={{ marginTop: 4, fontWeight: 800 }}>{locationRecords.find((location: any) => location.id === selectedService.locationId)?.name || selectedService.locationId}</div>
                             </div>
                           ) : null}
                           {selectedService.assetId ? (
-                            <div style={{ padding: 11, borderRadius: 12, background: "#FFFFFF", border: `1px solid ${colors.line}` }}>
+                            <div style={{ padding: isMobile ? 11 : 8, borderRadius: 10, background: "#FFFFFF", border: `1px solid ${colors.line}` }}>
                               <span style={fieldLabelStyle}>Asset</span>
                               <div style={{ marginTop: 4, fontWeight: 800 }}>{assetRecords.find((asset: any) => asset.id === selectedService.assetId)?.name || selectedService.assetId}</div>
                             </div>
                           ) : null}
                           {selectedService.assignedTo ? (
-                            <div style={{ padding: 11, borderRadius: 12, background: "#FFFFFF", border: `1px solid ${colors.line}` }}>
+                            <div style={{ padding: isMobile ? 11 : 8, borderRadius: 10, background: "#FFFFFF", border: `1px solid ${colors.line}` }}>
                               <span style={fieldLabelStyle}>Assigned</span>
                               <div style={{ marginTop: 4, fontWeight: 800 }}>{canonicalAssigneeName(selectedService.assignedTo)}</div>
                             </div>
@@ -2598,7 +2619,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     {(selectedService.notesHistory || []).length ? (() => {
                       const latest = selectedService.notesHistory?.[0] as any;
                       return (
-                        <div style={{ display: "grid", gap: 4, padding: "11px 13px", borderRadius: 12, border: `1px solid ${String(latest?.outcome || "").toLowerCase() === "deferred" ? "#E7C46A" : colors.line}`, background: String(latest?.outcome || "").toLowerCase() === "deferred" ? "#FFF9E8" : "#F8FAFC" }}>
+                        <div style={{ display: "grid", gap: 3, padding: isMobile ? "11px 13px" : "8px 10px", borderRadius: 10, border: `1px solid ${String(latest?.outcome || "").toLowerCase() === "deferred" ? "#E7C46A" : colors.line}`, background: String(latest?.outcome || "").toLowerCase() === "deferred" ? "#FFF9E8" : "#F8FAFC" }}>
                           <span style={{ ...fieldLabelStyle, color: colors.muted }}>LATEST UPDATE</span>
                           <strong style={{ color: colors.text, fontSize: 13.5 }}>{latest?.text || "Update recorded"}</strong>
                           {latest?.createdAt ? <span style={mutedSmallStyle}>{new Date(latest.createdAt).toLocaleString()}</span> : null}
@@ -2606,9 +2627,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       );
                     })() : null}
 
-                    <details style={{ border: `1px solid ${colors.line}`, borderRadius: 14, padding: "11px 13px", background: "#FFFFFF" }}>
+                    <details style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: isMobile ? "11px 13px" : "8px 10px", background: "#FFFFFF" }}>
                       <summary style={{ cursor: "pointer", color: colors.text, fontSize: 13, fontWeight: 800 }}>Additional details</summary>
-                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, minmax(0, 1fr))", gap: isMobile ? 12 : 8, marginTop: isMobile ? 12 : 8 }}>
                         <div><span style={fieldLabelStyle}>Type</span><div style={{ marginTop: 4, fontWeight: 700 }}>{itemType(selectedService) === "Preventive Maintenance" ? "Recurring" : itemType(selectedService)}</div></div>
                         {selectedService.vendorId ? <div><span style={fieldLabelStyle}>Vendor</span><div style={{ marginTop: 4, fontWeight: 700 }}>{vendorRecords.find((vendor: any) => vendor.id === selectedService.vendorId)?.name || selectedService.vendorId}</div></div> : null}
                         {categoryLabel(selectedService) ? <div><span style={fieldLabelStyle}>Category</span><div style={{ marginTop: 4, fontWeight: 700 }}>{categoryDisplayLabel(categoryLabel(selectedService))}</div></div> : null}
@@ -2656,7 +2677,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 )}
               </section>
 
-              {workEditorOpen || (selectedService.photos || []).length ? <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
+              {workEditorOpen || (selectedService.photos || []).length ? <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 9 }}>
                 <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Photos ({(selectedService.photos || []).length})</summary>
                 <input ref={photoInputRef} type="file" accept="image/*" multiple onChange={(event) => void addPhotos(event.currentTarget.files)} style={{ display: "none" }} />
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 7, flexWrap: "wrap", marginTop: 8 }}>
@@ -2688,12 +2709,12 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 })() : null}
               </details> : null}
 
-              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}>
+              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 9 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                   <strong style={{ fontSize: 13 }}>Work notes</strong>
                   <span style={mutedSmallStyle}>{(selectedService.notesHistory || []).length} saved</span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, marginTop: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, marginTop: isMobile ? 8 : 5 }}>
                   <input
                     value={newHistoryNote}
                     onChange={(event) => setNewHistoryNote(event.currentTarget.value)}
@@ -2745,7 +2766,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               </details> : null}
 
               {!isClosedWorkStatus(selectedService.status) ? (
-                <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14, background: "#FFFDF7", borderColor: "#E7D39E" }}>
+                <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 9, background: "#FFFDF7", borderColor: "#E7D39E" }}>
                   <div style={{ display: "grid", gap: 7 }}>
                     <div>
                       <div style={eyebrowStyle}>What was done</div>
@@ -2755,7 +2776,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       onChange={(event) => setCompletionNoteDraft(event.currentTarget.value)}
                       placeholder="What was done?"
                       rows={2}
-                      style={{ ...inputStyle, minHeight: 62, resize: "vertical" }}
+                      style={{ ...inputStyle, minHeight: isMobile ? 62 : 48, resize: "vertical" }}
                     />
                     <div style={{ display: "flex", justifyContent: "flex-end" }}>
                       <button type="button" onClick={() => void completeSelectedWork()} style={{ ...goldButtonStyle, width: "auto" }}>
