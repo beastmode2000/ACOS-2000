@@ -2030,13 +2030,23 @@ export default function AtlasApp() {
     navigationRestoreRef.current = false;
     const saved = readAtlasNavigationState(activePropertyId);
 
-    if (saved.screen) setScreen(saved.screen as any);
-    if (saved.selectedAssetId) setSelectedAssetId(saved.selectedAssetId);
-    if (saved.selectedLocationId) setSelectedLocationId(saved.selectedLocationId);
-    if (saved.selectedVendorId) setSelectedVendorId(saved.selectedVendorId);
-    if (saved.selectedServiceId) setSelectedServiceId(saved.selectedServiceId);
+    if (activePropertyId === "4725") {
+      setScreenState("dashboard");
+      setSelectedAssetId("");
+      setSelectedLocationId("");
+      setSelectedVendorId("");
+      setSelectedServiceId("");
+    } else {
+      if (saved.screen) setScreen(saved.screen as any);
+      if (saved.selectedAssetId) setSelectedAssetId(saved.selectedAssetId);
+      if (saved.selectedLocationId) setSelectedLocationId(saved.selectedLocationId);
+      if (saved.selectedVendorId) setSelectedVendorId(saved.selectedVendorId);
+      if (saved.selectedServiceId) setSelectedServiceId(saved.selectedServiceId);
+    }
 
-    const restoreY = Math.max(0, Number(saved.scrollY) || 0);
+    const restoreY = activePropertyId === "4725"
+      ? 0
+      : Math.max(0, Number(saved.scrollY) || 0);
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         window.scrollTo({ top: restoreY, behavior: "auto" });
@@ -30795,7 +30805,12 @@ ${notes.trim()}` : notes.trim(),
               </button>
               <nav style={sidebarNavStyle} aria-label="Atlas sections">
                 {visiblePrimaryNavigationSections.map((section) => (
-                  <div key={section.label} style={{ ...sidebarNavSectionStyle, order: section.label === "Overview" ? 10 : section.label === "Work" ? 20 : section.label === "Property" ? 30 : section.label === "People" ? 40 : section.label === "Intake" ? 50 : section.label === "Reports & Access" ? 60 : section.label === "Knowledge" ? 80 : 90 }}>
+                  <div key={section.label} style={{
+                    ...sidebarNavSectionStyle,
+                    order: activePropertyId === "4725"
+                      ? section.label === "Home" ? 10 : section.label === "Property" ? 20 : section.label === "Help" ? 30 : 90
+                      : section.label === "Overview" ? 10 : section.label === "Work" ? 20 : section.label === "Property" ? 30 : section.label === "People" ? 40 : section.label === "Intake" ? 50 : section.label === "Reports & Access" ? 60 : section.label === "Knowledge" ? 80 : 90,
+                  }}>
                     <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>{section.label}</div>
                     <div style={sidebarNavItemsStyle}>
                       {section.items.map((screenId) => {
@@ -30852,7 +30867,7 @@ ${notes.trim()}` : notes.trim(),
                   </div>
                 ))}
 
-                {!isTeamScopedUser ? (
+                {!isTeamScopedUser && activePropertyId !== "4725" ? (
                   <div style={{ ...sidebarNavSectionStyle, order: 60 }}>
                     <div className="atlas-sidebar-nav-header" style={sidebarNavHeaderStyle}>Departments</div>
                     <div style={sidebarNavItemsStyle}>
