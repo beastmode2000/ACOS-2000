@@ -5573,6 +5573,17 @@ export default function AtlasApp() {
           }
         }
 
+        const homeChoreColor =
+          activePropertyId === "4725"
+            ? ({
+                Nick: "green",
+                Chelsea: "orange",
+                Cooper: "blue",
+                Leni: "pink",
+                Family: "gray",
+              } as Record<string, string>)[String(record.assignedTo || "Family")] || "gray"
+            : "blue";
+
         return occurrenceDates.map((date, index) =>
           normalizeCalendar({
             id: index === 0
@@ -5588,7 +5599,7 @@ export default function AtlasApp() {
               : "Work Order",
             categoryLabel: activePropertyId === "4725" ? "Chore" : "Work Order",
             colorId: activePropertyId === "4725" ? "home-chore" : "work-order",
-            colorName: "blue",
+            colorName: homeChoreColor as any,
             allDay: true,
             repeat: "None",
             reminder: "None",
@@ -11635,7 +11646,9 @@ export default function AtlasApp() {
       clearRecordDirty("work_order", record.id);
       setServiceRecords((current) => byTitle([record, ...current]));
       setSelectedServiceId(record.id);
-      setScreen("history");
+      if (!(activePropertyId === "4725" && record.responsibilityArea === "Family")) {
+        setScreen("history");
+      }
       setDatabaseStatus(`Saved ${record.title || "work order"}.`);
       return record;
     } finally {
@@ -20215,6 +20228,20 @@ ${notes.trim()}` : notes.trim(),
   }
 
   function renderWorkOrders() {
+    if (activePropertyId === "4725") {
+      return (
+        <AtlasHomeWorkspace
+          isMobile={isMobile}
+          colors={colors}
+          choreRecords={serviceRecords}
+          onCreateChore={addWorkOrder}
+          onCompleteChore={completeWorkOrder}
+          initialTab="chores"
+          hideHomeHeader
+        />
+      );
+    }
+
     if (!ready || !operationsHydrated) {
       return (
         <div className="atlas-work-orders-page" style={{ minHeight: 360, display: "grid", placeItems: "center" }}>
