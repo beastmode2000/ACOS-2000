@@ -330,9 +330,13 @@ export default function AtlasHomeWorkspace({
       { id: uid("done"), completedAt: new Date().toISOString(), points: earned },
       ...(record.completionHistory || []),
     ];
-    const recurring = record.recurring || "None";
+    const recurring: Recurrence =
+      record.recurring === "Daily" || record.recurring === "Weekly" || record.recurring === "Monthly"
+        ? record.recurring
+        : "None";
     const updated: HomeRecord = {
       ...record,
+      recurring,
       completed: recurring === "None",
       date: recurring === "None" ? record.date : nextDate(record.date || today, recurring),
       completionHistory: history,
