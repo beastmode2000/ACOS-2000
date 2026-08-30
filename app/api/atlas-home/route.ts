@@ -404,6 +404,9 @@ async function syncChoreCalendar(sql: ReturnType<typeof neon>, workOrder: JsonRe
     if (key < dateKey(workOrder.date) || skipped.has(key)) continue;
     const id = `home-chore-extra-${workOrderId}-${key}`;
     const person = safePerson(workOrder.assignedTo);
+    const choreColor =
+      ({ Nick: "green", Chelsea: "orange", Cooper: "blue", Leni: "pink", Family: "gray" } as Record<FamilyPerson, string>)[person] || "gray";
+    const choreColorId = `home-chore-${person.toLowerCase()}`;
     const emoji = asString(meta.emoji || workOrder.emoji) || "⭐";
     const points = Math.max(0, Number(meta.points || 0));
     const title = `${emoji} ${asString(workOrder.title) || "Chore"}`;
@@ -413,11 +416,12 @@ async function syncChoreCalendar(sql: ReturnType<typeof neon>, workOrder: JsonRe
         id,date,item_date,time,end_time,title,area,category_label,color_id,color_name,all_day,repeat,reminder,notes,
         linked_type,linked_id,linked_name,completed,source,event_type,property_id
       ) VALUES (
-        ${id},${key}::date,${key}::date,'','',${title},${person},'Chore','home-chore','blue',true,'None','None',${notes},
+        ${id},${key}::date,${key}::date,'','',${title},${person},'Chore',${choreColorId},${choreColor},true,'None','None',${notes},
         'Work Order',${workOrderId},${asString(workOrder.title)},false,'home-chore-extra','Work Order',${HOME_PROPERTY_ID}
       )
       ON CONFLICT (id) DO UPDATE SET item_date=EXCLUDED.item_date,date=EXCLUDED.date,title=EXCLUDED.title,area=EXCLUDED.area,
-        notes=EXCLUDED.notes,linked_name=EXCLUDED.linked_name,property_id=EXCLUDED.property_id
+        category_label=EXCLUDED.category_label,color_id=EXCLUDED.color_id,color_name=EXCLUDED.color_name,notes=EXCLUDED.notes,
+        linked_name=EXCLUDED.linked_name,property_id=EXCLUDED.property_id
     `;
   }
 }
