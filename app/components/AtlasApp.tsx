@@ -5594,7 +5594,6 @@ export default function AtlasApp() {
             linkedId: record.id,
             linkedName: record.title,
             completed: index === 0 && record.status === "Completed",
-            calendarOwner: activePropertyId === "4725" ? String(record.assignedTo || "Family") : "",
             source: "work-order",
           }),
         );
@@ -20465,12 +20464,11 @@ ${notes.trim()}` : notes.trim(),
     const homeVisibleCalendarItems =
       activePropertyId === "4725" && home4725PersonFilter !== "All"
         ? expandedCalendarItems.filter((item) => {
-            const owner = String(item.calendarOwner || "");
             const area = String(item.area || "");
             const notes = String(item.notes || "");
             const title = String(item.title || "");
             const person = home4725PersonFilter.toLowerCase();
-            return [owner, area, notes, title].some((value) =>
+            return [area, notes, title].some((value) =>
               value.toLowerCase().includes(person),
             );
           })
