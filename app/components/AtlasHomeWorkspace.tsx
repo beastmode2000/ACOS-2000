@@ -2,7 +2,10 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 
-type HomeRecordType = "recipe" | "chore" | "event" | "asset" | "location";
+type HomeRecordType = "recipe" | "chore" | "goal" | "setting";
+type Recurrence = "None" | "Daily" | "Weekly" | "Monthly";
+type ChorePhoto = { id: string; name: string; dataUrl: string; createdAt: string };
+type Completion = { id: string; completedAt: string; points: number; note?: string };
 
 type HomeRecord = {
   id: string;
@@ -13,58 +16,66 @@ type HomeRecord = {
   updatedAt: string;
   category?: string;
   notes?: string;
-  date?: string;
-  time?: string;
-  person?: string;
-  eventType?: "Appointment" | "Bill" | "Activity" | "Meal" | "Reminder";
-  amount?: string;
-  recurring?: "None" | "Daily" | "Weekly" | "Monthly";
-  completed?: boolean;
+  code?: string;
+  meta?: string;
+  fullRecipe?: string;
   ingredients?: string;
   instructions?: string;
   favorite?: boolean;
-  make?: string;
-  model?: string;
-  serial?: string;
-  location?: string;
+  person?: string;
+  emoji?: string;
+  points?: number;
+  date?: string;
+  recurring?: Recurrence;
+  completed?: boolean;
+  completionHistory?: Completion[];
+  photos?: ChorePhoto[];
+  goalAmount?: number;
+  currentAmount?: number;
+  goalEmoji?: string;
+  goalColor?: string;
 };
 
-type Tab = "home" | "calendar" | "cookbook" | "chores" | "assets" | "locations";
+type Tab = "home" | "cookbook" | "chores" | "rewards";
 
 type Props = {
   isMobile: boolean;
   colors: {
-    navy: string;
-    navy2: string;
-    navy3: string;
-    gold: string;
-    bg: string;
-    card: string;
-    panel: string;
-    line: string;
-    text: string;
-    muted: string;
-    red: string;
-    green: string;
+    navy: string; navy2: string; navy3: string; gold: string; bg: string;
+    card: string; panel: string; line: string; text: string; muted: string;
+    red: string; green: string;
   };
 };
 
-const familyMembers = ["Family", "Nick", "Chelsea", "Cooper", "Leni"];
+const people = ["Family", "Nick", "Chelsea", "Cooper", "Leni"];
+const personColors: Record<string, string> = {
+  Family: "#475467", Nick: "#175CD3", Chelsea: "#C11574", Cooper: "#7F56D9", Leni: "#039855",
+};
+const choreEmojis = ["🛏️","🧸","🧹","🧺","🍽️","🐶","🗑️","🪥","📚","🎒","🌿","🚿","🧽","✨","⭐","🏆"];
+const goalEmojis = ["🎮","🧸","🚲","🎧","🎟️","⚽","🏀","🛍️","🎁","💰","⭐","🏆"];
 
 function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
-
 function todayISO() {
   const now = new Date();
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 10);
 }
-
-function formatDate(value?: string) {
-  if (!value) return "";
-  const date = new Date(`${value}T12:00:00`);
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+function nextDate(date: string, recurrence: Recurrence) {
+  const d = new Date(`${date || todayISO()}T12:00:00`);
+  if (recurrence === "Daily") d.setDate(d.getDate() + 1);
+  if (recurrence === "Weekly") d.setDate(d.getDate() + 7);
+  if (recurrence === "Monthly") d.setMonth(d.getMonth() + 1);
+  return d.toISOString().slice(0, 10);
+}
+function navigate(screen: string) {
+  if (typeof window === "undefined") return;
+  window.history.pushState({ atlasScreen: screen }, "", `${window.location.pathname}${window.location.search}#${screen}`);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+function money(value: number) {
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value || 0);
 }
 
 export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
@@ -74,6 +85,7 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
   const [message, setMessage] = useState("");
   const [editing, setEditing] = useState<HomeRecord | null>(null);
   const [search, setSearch] = useState("");
+  const [personFilter, setPersonFilter] = useState("All");
 
   const [recipeTitle, setRecipeTitle] = useState("");
   const [recipeCategory, setRecipeCategory] = useState("Dinner");
@@ -82,29 +94,17 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
   const [recipeNotes, setRecipeNotes] = useState("");
 
   const [choreTitle, setChoreTitle] = useState("");
-  const [chorePerson, setChorePerson] = useState("Family");
+  const [chorePerson, setChorePerson] = useState("Cooper");
   const [choreDate, setChoreDate] = useState(todayISO());
-  const [choreRecurring, setChoreRecurring] = useState<HomeRecord["recurring"]>("Weekly");
+  const [choreRecurring, setChoreRecurring] = useState<Recurrence>("Weekly");
+  const [choreEmoji, setChoreEmoji] = useState("⭐");
+  const [chorePoints, setChorePoints] = useState(5);
+  const [choreNotes, setChoreNotes] = useState("");
 
-  const [eventTitle, setEventTitle] = useState("");
-  const [eventType, setEventType] = useState<HomeRecord["eventType"]>("Appointment");
-  const [eventDate, setEventDate] = useState(todayISO());
-  const [eventTime, setEventTime] = useState("");
-  const [eventPerson, setEventPerson] = useState("Family");
-  const [eventAmount, setEventAmount] = useState("");
-  const [eventNotes, setEventNotes] = useState("");
-
-  const [assetTitle, setAssetTitle] = useState("");
-  const [assetCategory, setAssetCategory] = useState("Appliance");
-  const [assetMake, setAssetMake] = useState("");
-  const [assetModel, setAssetModel] = useState("");
-  const [assetSerial, setAssetSerial] = useState("");
-  const [assetLocation, setAssetLocation] = useState("");
-  const [assetNotes, setAssetNotes] = useState("");
-
-  const [locationTitle, setLocationTitle] = useState("");
-  const [locationCategory, setLocationCategory] = useState("Room");
-  const [locationNotes, setLocationNotes] = useState("");
+  const [goalPerson, setGoalPerson] = useState("Cooper");
+  const [goalTitle, setGoalTitle] = useState("");
+  const [goalAmount, setGoalAmount] = useState(50);
+  const [goalEmoji, setGoalEmoji] = useState("🎁");
 
   useEffect(() => {
     let cancelled = false;
@@ -115,44 +115,34 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
         if (!response.ok) throw new Error(payload?.error || "Could not load 4725.");
         if (!cancelled) setRecords(Array.isArray(payload?.records) ? payload.records : []);
       })
-      .catch((error) => {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : "Could not load 4725.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .catch((error) => !cancelled && setMessage(error instanceof Error ? error.message : "Could not load 4725."))
+      .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
   }, []);
 
   async function saveRecord(record: HomeRecord) {
+    const next = { ...record, propertyId: "4725" as const, updatedAt: new Date().toISOString() };
     setMessage("Saving…");
     const response = await fetch("/api/atlas-home", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(record),
+      method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+      body: JSON.stringify(next),
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setMessage(payload?.error || "Could not save.");
-      return false;
-    }
-    setRecords((current) => {
-      const next = current.some((item) => item.id === record.id)
-        ? current.map((item) => item.id === record.id ? record : item)
-        : [record, ...current];
-      return next;
-    });
+    if (!response.ok) { setMessage(payload?.error || "Could not save."); return false; }
+    const saved = payload.record || next;
+    setRecords((current) => current.some((item) => item.id === saved.id)
+      ? current.map((item) => item.id === saved.id ? saved : item)
+      : [saved, ...current]);
+    setEditing(null);
     setMessage("Saved");
-    window.setTimeout(() => setMessage(""), 1400);
+    window.setTimeout(() => setMessage(""), 1200);
     return true;
   }
 
   async function deleteRecord(record: HomeRecord) {
     if (!window.confirm(`Delete ${record.title}?`)) return;
     const response = await fetch(`/api/atlas-home?propertyId=4725&id=${encodeURIComponent(record.id)}`, {
-      method: "DELETE",
-      credentials: "include",
+      method: "DELETE", credentials: "include",
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
@@ -165,215 +155,329 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
 
   const recipes = useMemo(() => records.filter((item) => item.recordType === "recipe"), [records]);
   const chores = useMemo(() => records.filter((item) => item.recordType === "chore"), [records]);
-  const events = useMemo(() => records.filter((item) => item.recordType === "event").sort((a, b) => `${a.date || ""}${a.time || ""}`.localeCompare(`${b.date || ""}${b.time || ""}`)), [records]);
-  const assets = useMemo(() => records.filter((item) => item.recordType === "asset"), [records]);
-  const locations = useMemo(() => records.filter((item) => item.recordType === "location"), [records]);
+  const goals = useMemo(() => records.filter((item) => item.recordType === "goal"), [records]);
   const today = todayISO();
-  const todayEvents = events.filter((item) => item.date === today);
-  const dueChores = chores.filter((item) => !item.completed && (!item.date || item.date <= today));
-  const upcomingBills = events.filter((item) => item.eventType === "Bill" && (item.date || "") >= today).slice(0, 5);
-  const dinner = events.find((item) => item.eventType === "Meal" && item.date === today);
+  const visibleChores = chores.filter((item) => personFilter === "All" || item.person === personFilter);
+  const dueChores = visibleChores.filter((item) => !item.completed && (!item.date || item.date <= today));
+  const filteredRecipes = recipes
+    .filter((item) => `${item.code || ""} ${item.title} ${item.category || ""} ${item.fullRecipe || ""}`.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => String(a.code || a.title).localeCompare(String(b.code || b.title)));
 
   const inputStyle: React.CSSProperties = {
-    width: "100%", minHeight: 40, borderRadius: 10, border: `1px solid ${colors.line}`,
-    padding: "8px 10px", background: "#FFFFFF", color: colors.text, font: "inherit", boxSizing: "border-box",
+    width: "100%", minHeight: 42, borderRadius: 11, border: `1px solid ${colors.line}`,
+    padding: "9px 10px", background: "#FFFFFF", color: colors.text, font: "inherit", boxSizing: "border-box",
   };
   const buttonStyle: React.CSSProperties = {
-    minHeight: 38, borderRadius: 10, border: `1px solid ${colors.line}`, background: "#FFFFFF",
-    color: colors.navy, fontWeight: 800, padding: "7px 11px", cursor: "pointer",
+    minHeight: 40, borderRadius: 11, border: `1px solid ${colors.line}`, background: "#FFFFFF",
+    color: colors.navy, fontWeight: 850, padding: "8px 11px", cursor: "pointer",
   };
   const primaryButtonStyle: React.CSSProperties = { ...buttonStyle, background: colors.gold, borderColor: colors.gold, color: colors.navy };
-  const cardStyle: React.CSSProperties = { background: "#FFFFFF", border: `1px solid ${colors.line}`, borderRadius: 14, padding: 14 };
-  const fieldStyle: React.CSSProperties = { display: "grid", gap: 5, fontSize: 12, fontWeight: 800, color: colors.navy };
-  const grid2: React.CSSProperties = { display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 };
+  const cardStyle: React.CSSProperties = { background: "#FFFFFF", border: `1px solid ${colors.line}`, borderRadius: 16, padding: isMobile ? 12 : 15 };
+  const fieldStyle: React.CSSProperties = { display: "grid", gap: 5, fontSize: 12, fontWeight: 850, color: colors.navy };
+  const grid2: React.CSSProperties = { display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 };
 
   function baseRecord(recordType: HomeRecordType, title: string): HomeRecord {
     const now = new Date().toISOString();
     return { id: uid(recordType), propertyId: "4725", recordType, title: title.trim(), createdAt: now, updatedAt: now };
   }
-
   async function addRecipe() {
     if (!recipeTitle.trim()) return;
-    const record = { ...baseRecord("recipe", recipeTitle), category: recipeCategory, ingredients: recipeIngredients, instructions: recipeInstructions, notes: recipeNotes };
-    if (await saveRecord(record)) {
+    if (await saveRecord({
+      ...baseRecord("recipe", recipeTitle), category: recipeCategory,
+      ingredients: recipeIngredients, instructions: recipeInstructions, notes: recipeNotes,
+    })) {
       setRecipeTitle(""); setRecipeIngredients(""); setRecipeInstructions(""); setRecipeNotes("");
     }
   }
-
   async function addChore() {
     if (!choreTitle.trim()) return;
-    const record = { ...baseRecord("chore", choreTitle), person: chorePerson, date: choreDate, recurring: choreRecurring, completed: false };
-    if (await saveRecord(record)) setChoreTitle("");
+    if (await saveRecord({
+      ...baseRecord("chore", choreTitle), person: chorePerson, date: choreDate,
+      recurring: choreRecurring, completed: false, emoji: choreEmoji, points: chorePoints,
+      notes: choreNotes, completionHistory: [], photos: [],
+    })) {
+      setChoreTitle(""); setChoreNotes("");
+    }
+  }
+  async function addGoal() {
+    if (!goalTitle.trim()) return;
+    if (await saveRecord({
+      ...baseRecord("goal", goalTitle), person: goalPerson, goalAmount, currentAmount: 0,
+      goalEmoji, goalColor: personColors[goalPerson] || colors.gold,
+    })) setGoalTitle("");
+  }
+  async function completeChore(record: HomeRecord) {
+    const earned = Number(record.points || 0);
+    const history = [
+      { id: uid("done"), completedAt: new Date().toISOString(), points: earned },
+      ...(record.completionHistory || []),
+    ];
+    const recurring = record.recurring || "None";
+    const updated: HomeRecord = {
+      ...record,
+      completed: recurring === "None",
+      date: recurring === "None" ? record.date : nextDate(record.date || today, recurring),
+      completionHistory: history,
+    };
+    await saveRecord(updated);
+    const goal = goals.find((item) => item.person === record.person);
+    if (goal && earned) await saveRecord({ ...goal, currentAmount: Number(goal.currentAmount || 0) + earned });
+  }
+  async function addPhoto(record: HomeRecord, file?: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setMessage("Choose an image file."); return; }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Could not read photo."));
+      reader.readAsDataURL(file);
+    });
+    await saveRecord({
+      ...record,
+      photos: [{ id: uid("photo"), name: file.name, dataUrl, createdAt: new Date().toISOString() }, ...(record.photos || [])],
+    });
   }
 
-  async function addEvent() {
-    if (!eventTitle.trim() || !eventDate) return;
-    const record = { ...baseRecord("event", eventTitle), eventType, date: eventDate, time: eventTime, person: eventPerson, amount: eventType === "Bill" ? eventAmount : "", notes: eventNotes };
-    if (await saveRecord(record)) { setEventTitle(""); setEventTime(""); setEventAmount(""); setEventNotes(""); }
-  }
+  function openRecipe(recipe: HomeRecord) { setEditing({ ...recipe }); }
+  function openChore(chore: HomeRecord) { setEditing({ ...chore }); }
 
-  async function addAsset() {
-    if (!assetTitle.trim()) return;
-    const record = { ...baseRecord("asset", assetTitle), category: assetCategory, make: assetMake, model: assetModel, serial: assetSerial, location: assetLocation, notes: assetNotes };
-    if (await saveRecord(record)) { setAssetTitle(""); setAssetMake(""); setAssetModel(""); setAssetSerial(""); setAssetLocation(""); setAssetNotes(""); }
-  }
-
-  async function addLocation() {
-    if (!locationTitle.trim()) return;
-    const record = { ...baseRecord("location", locationTitle), category: locationCategory, notes: locationNotes };
-    if (await saveRecord(record)) { setLocationTitle(""); setLocationNotes(""); }
-  }
-
-  async function toggleChore(record: HomeRecord) {
-    await saveRecord({ ...record, completed: !record.completed, updatedAt: new Date().toISOString() });
-  }
-
-  async function toggleFavorite(record: HomeRecord) {
-    await saveRecord({ ...record, favorite: !record.favorite, updatedAt: new Date().toISOString() });
-  }
-
-  const filteredRecipes = recipes.filter((item) => `${item.title} ${item.category || ""} ${item.ingredients || ""}`.toLowerCase().includes(search.toLowerCase()));
+  const todayCards = [
+    { label: "Family Calendar", value: "Open month view", action: () => navigate("calendar"), icon: "📅" },
+    { label: "Chores Due", value: String(dueChores.length), action: () => setTab("chores"), icon: "⭐" },
+    { label: "Cookbook", value: `${recipes.length} recipes`, action: () => setTab("cookbook"), icon: "🍝" },
+    { label: "Home Assets", value: "Open assets", action: () => navigate("assets"), icon: "🏠" },
+  ];
 
   return (
-    <div style={{ display: "grid", gap: 12, maxWidth: 1480, margin: "0 auto", paddingBottom: 24 }}>
-      <section style={{ ...cardStyle, background: colors.navy, color: "#FFFFFF", padding: isMobile ? 12 : 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+    <div style={{ display: "grid", gap: 12, maxWidth: 1500, margin: "0 auto", paddingBottom: isMobile ? 92 : 24 }}>
+      <section style={{ ...cardStyle, background: colors.navy, color: "#FFFFFF" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: ".12em", textTransform: "uppercase", color: "#E5C06B" }}>4725</div>
-            <h2 style={{ margin: "3px 0 0", fontSize: isMobile ? 22 : 27 }}>Home</h2>
+            <div style={{ color: "#E5C06B", fontSize: 11, fontWeight: 900, letterSpacing: ".12em" }}>4725 FAMILY HOME</div>
+            <h2 style={{ margin: "3px 0 0", fontSize: isMobile ? 23 : 29 }}>Home</h2>
           </div>
-          {message ? <span style={{ fontSize: 12, fontWeight: 800 }}>{message}</span> : null}
+          {message ? <span style={{ fontSize: 12, fontWeight: 850 }}>{message}</span> : null}
         </div>
-        <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 12, paddingBottom: 2 }}>
-          {(["home", "calendar", "cookbook", "chores", "assets", "locations"] as Tab[]).map((item) => (
-            <button key={item} type="button" onClick={() => setTab(item)} style={{ ...buttonStyle, flex: "0 0 auto", background: tab === item ? colors.gold : "rgba(255,255,255,.10)", color: tab === item ? colors.navy : "#FFFFFF", borderColor: tab === item ? colors.gold : "rgba(255,255,255,.22)" }}>
-              {item === "home" ? "Today" : item.charAt(0).toUpperCase() + item.slice(1)}
-            </button>
+        <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 12 }}>
+          {(["home","cookbook","chores","rewards"] as Tab[]).map((item) => (
+            <button key={item} type="button" onClick={() => setTab(item)} style={{
+              ...buttonStyle, flex: "0 0 auto",
+              background: tab === item ? colors.gold : "rgba(255,255,255,.10)",
+              color: tab === item ? colors.navy : "#FFFFFF",
+              borderColor: tab === item ? colors.gold : "rgba(255,255,255,.22)",
+            }}>{item === "home" ? "Today" : item === "rewards" ? "Goals & Rewards" : item[0].toUpperCase()+item.slice(1)}</button>
           ))}
+          <button type="button" onClick={() => navigate("calendar")} style={{ ...buttonStyle, flex:"0 0 auto" }}>Calendar</button>
+          <button type="button" onClick={() => navigate("assets")} style={{ ...buttonStyle, flex:"0 0 auto" }}>Assets</button>
+          <button type="button" onClick={() => navigate("locations")} style={{ ...buttonStyle, flex:"0 0 auto" }}>Locations</button>
+          <button type="button" onClick={() => navigate("assistant")} style={{ ...buttonStyle, flex:"0 0 auto" }}>Ask Atlas</button>
         </div>
       </section>
 
       {loading ? <section style={cardStyle}>Loading 4725…</section> : null}
 
       {!loading && tab === "home" ? (
-        <div style={{ display: "grid", gap: 12 }}>
+        <>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 10 }}>
-            {[{ label: "Today", value: todayEvents.length }, { label: "Chores Due", value: dueChores.length }, { label: "Recipes", value: recipes.length }, { label: "Home Assets", value: assets.length }].map((item) => (
-              <div key={item.label} style={cardStyle}><span style={{ fontSize: 11, color: colors.muted, fontWeight: 800 }}>{item.label}</span><strong style={{ display: "block", color: colors.navy, fontSize: 27, marginTop: 2 }}>{item.value}</strong></div>
+            {todayCards.map((card) => (
+              <button key={card.label} type="button" onClick={card.action} style={{ ...cardStyle, textAlign:"left", cursor:"pointer", minHeight: 105 }}>
+                <span style={{ fontSize: 25 }}>{card.icon}</span>
+                <strong style={{ display:"block", marginTop: 7, color: colors.navy }}>{card.label}</strong>
+                <span style={{ color: colors.muted, fontSize: 12 }}>{card.value}</span>
+              </button>
             ))}
           </div>
-          <div style={grid2}>
-            <section style={cardStyle}>
-              <strong style={{ color: colors.navy }}>Today</strong>
-              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                {todayEvents.map((item) => <div key={item.id} style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 8 }}><strong>{item.title}</strong><div style={{ fontSize: 12, color: colors.muted }}>{item.time || "All day"} · {item.eventType} · {item.person}</div></div>)}
-                {!todayEvents.length ? <span style={{ color: colors.muted, fontSize: 13 }}>Nothing scheduled today.</span> : null}
-              </div>
-            </section>
-            <section style={cardStyle}>
-              <strong style={{ color: colors.navy }}>Dinner</strong>
-              <div style={{ marginTop: 10, color: dinner ? colors.text : colors.muted }}>{dinner ? dinner.title : "No meal planned yet."}</div>
-              <button type="button" onClick={() => { setEventType("Meal"); setEventDate(today); setTab("calendar"); }} style={{ ...buttonStyle, marginTop: 12 }}>Plan Dinner</button>
-            </section>
-            <section style={cardStyle}>
-              <strong style={{ color: colors.navy }}>Chores Due</strong>
-              <div style={{ display: "grid", gap: 7, marginTop: 10 }}>
-                {dueChores.slice(0, 5).map((item) => <label key={item.id} style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="checkbox" checked={Boolean(item.completed)} onChange={() => void toggleChore(item)} /><span>{item.title} <small style={{ color: colors.muted }}>· {item.person}</small></span></label>)}
-                {!dueChores.length ? <span style={{ color: colors.muted, fontSize: 13 }}>No chores due.</span> : null}
-              </div>
-            </section>
-            <section style={cardStyle}>
-              <strong style={{ color: colors.navy }}>Upcoming Bills</strong>
-              <div style={{ display: "grid", gap: 7, marginTop: 10 }}>
-                {upcomingBills.map((item) => <div key={item.id}><strong>{item.title}</strong><div style={{ fontSize: 12, color: colors.muted }}>{formatDate(item.date)}{item.amount ? ` · $${item.amount}` : ""}</div></div>)}
-                {!upcomingBills.length ? <span style={{ color: colors.muted, fontSize: 13 }}>No bills entered.</span> : null}
-              </div>
-            </section>
-          </div>
-        </div>
-      ) : null}
-
-      {!loading && tab === "calendar" ? (
-        <div style={grid2}>
           <section style={cardStyle}>
-            <strong style={{ color: colors.navy, fontSize: 18 }}>Add to Family Calendar</strong>
-            <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
-              <label style={fieldStyle}>Title<input value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} style={inputStyle} /></label>
-              <div style={grid2}>
-                <label style={fieldStyle}>Type<select value={eventType} onChange={(e) => setEventType(e.target.value as HomeRecord["eventType"])} style={inputStyle}>{["Appointment","Bill","Activity","Meal","Reminder"].map((v) => <option key={v}>{v}</option>)}</select></label>
-                <label style={fieldStyle}>Person<select value={eventPerson} onChange={(e) => setEventPerson(e.target.value)} style={inputStyle}>{familyMembers.map((v) => <option key={v}>{v}</option>)}</select></label>
-              </div>
-              <div style={grid2}>
-                <label style={fieldStyle}>Date<input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} style={inputStyle} /></label>
-                <label style={fieldStyle}>Time<input type="time" value={eventTime} onChange={(e) => setEventTime(e.target.value)} style={inputStyle} /></label>
-              </div>
-              {eventType === "Bill" ? <label style={fieldStyle}>Amount<input inputMode="decimal" value={eventAmount} onChange={(e) => setEventAmount(e.target.value)} style={inputStyle} /></label> : null}
-              <label style={fieldStyle}>Notes<textarea value={eventNotes} onChange={(e) => setEventNotes(e.target.value)} style={{ ...inputStyle, minHeight: 80, resize: "vertical" }} /></label>
-              <button type="button" onClick={() => void addEvent()} style={primaryButtonStyle}>Add to Calendar</button>
+            <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+              <strong style={{ color: colors.navy, fontSize: 18 }}>Today’s Chores</strong>
+              <button type="button" onClick={() => setTab("chores")} style={buttonStyle}>Open Chore Board</button>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(5,minmax(0,1fr))", gap:9, marginTop:12 }}>
+              {dueChores.slice(0,10).map((chore) => (
+                <button key={chore.id} type="button" onClick={() => openChore(chore)} style={{
+                  border:`2px solid ${personColors[chore.person || "Family"] || colors.line}`, borderRadius:16, padding:12,
+                  background:"#FFFFFF", textAlign:"center", cursor:"pointer", color:colors.text,
+                }}>
+                  <span style={{ fontSize:34 }}>{chore.emoji || "⭐"}</span>
+                  <strong style={{ display:"block", marginTop:6 }}>{chore.title}</strong>
+                  <span style={{ display:"block", fontSize:11, color:personColors[chore.person || "Family"] }}>{chore.person || "Family"} · {chore.points || 0} pts</span>
+                </button>
+              ))}
+              {!dueChores.length ? <span style={{ color: colors.muted }}>Nothing due today.</span> : null}
             </div>
           </section>
-          <section style={cardStyle}>
-            <strong style={{ color: colors.navy, fontSize: 18 }}>Family Schedule</strong>
-            <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-              {events.map((item) => <div key={item.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 10, display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}><div><strong>{item.title}</strong><div style={{ fontSize: 12, color: colors.muted }}>{formatDate(item.date)}{item.time ? ` · ${item.time}` : ""} · {item.eventType} · {item.person}{item.amount ? ` · $${item.amount}` : ""}</div>{item.notes ? <div style={{ fontSize: 12, marginTop: 4 }}>{item.notes}</div> : null}</div><button type="button" onClick={() => void deleteRecord(item)} style={{ ...buttonStyle, color: colors.red }}>Delete</button></div>)}
-              {!events.length ? <span style={{ color: colors.muted }}>No family calendar entries yet.</span> : null}
-            </div>
-          </section>
-        </div>
+        </>
       ) : null}
 
       {!loading && tab === "cookbook" ? (
         <div style={grid2}>
           <section style={cardStyle}>
             <strong style={{ color: colors.navy, fontSize: 18 }}>Add Recipe</strong>
-            <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
-              <label style={fieldStyle}>Recipe<input value={recipeTitle} onChange={(e) => setRecipeTitle(e.target.value)} style={inputStyle} /></label>
-              <label style={fieldStyle}>Category<select value={recipeCategory} onChange={(e) => setRecipeCategory(e.target.value)} style={inputStyle}>{["Dinner","Meat","Pasta","Seahawks Sunday","Sides & Fries","Dessert","Cookies","Breakfast","Other"].map((v) => <option key={v}>{v}</option>)}</select></label>
-              <label style={fieldStyle}>Ingredients<textarea value={recipeIngredients} onChange={(e) => setRecipeIngredients(e.target.value)} placeholder="One ingredient per line" style={{ ...inputStyle, minHeight: 120, resize: "vertical" }} /></label>
-              <label style={fieldStyle}>Instructions<textarea value={recipeInstructions} onChange={(e) => setRecipeInstructions(e.target.value)} style={{ ...inputStyle, minHeight: 140, resize: "vertical" }} /></label>
-              <label style={fieldStyle}>Notes<textarea value={recipeNotes} onChange={(e) => setRecipeNotes(e.target.value)} style={{ ...inputStyle, minHeight: 70, resize: "vertical" }} /></label>
-              <button type="button" onClick={() => void addRecipe()} style={primaryButtonStyle}>Save Recipe</button>
+            <div style={{ display:"grid", gap:9, marginTop:12 }}>
+              <label style={fieldStyle}>Recipe<input value={recipeTitle} onChange={(e)=>setRecipeTitle(e.target.value)} style={inputStyle}/></label>
+              <label style={fieldStyle}>Category<select value={recipeCategory} onChange={(e)=>setRecipeCategory(e.target.value)} style={inputStyle}>{["Dinner","Meat","Pasta","Seahawks Sunday","Sides & Fries","Dessert","Cookies","Breakfast","Family Favorite","Other"].map(v=><option key={v}>{v}</option>)}</select></label>
+              <label style={fieldStyle}>Ingredients<textarea value={recipeIngredients} onChange={(e)=>setRecipeIngredients(e.target.value)} style={{...inputStyle,minHeight:110}}/></label>
+              <label style={fieldStyle}>Directions<textarea value={recipeInstructions} onChange={(e)=>setRecipeInstructions(e.target.value)} style={{...inputStyle,minHeight:140}}/></label>
+              <label style={fieldStyle}>Notes<textarea value={recipeNotes} onChange={(e)=>setRecipeNotes(e.target.value)} style={{...inputStyle,minHeight:70}}/></label>
+              <button type="button" onClick={()=>void addRecipe()} style={primaryButtonStyle}>Save Recipe</button>
             </div>
           </section>
           <section style={cardStyle}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><strong style={{ color: colors.navy, fontSize: 18 }}>Cookbook</strong><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search recipes" style={{ ...inputStyle, width: isMobile ? "100%" : 220 }} /></div>
-            <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
-              {filteredRecipes.map((item) => <article key={item.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 11 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><div><strong style={{ color: colors.navy }}>{item.title}</strong><div style={{ color: colors.muted, fontSize: 12 }}>{item.category || "Recipe"}</div></div><div style={{ display: "flex", gap: 6 }}><button type="button" onClick={() => void toggleFavorite(item)} style={buttonStyle}>{item.favorite ? "Favorite" : "Save Favorite"}</button><button type="button" onClick={() => void deleteRecord(item)} style={{ ...buttonStyle, color: colors.red }}>Delete</button></div></div>{item.ingredients ? <div style={{ whiteSpace: "pre-wrap", marginTop: 9, fontSize: 13 }}><strong>Ingredients</strong>{"\n"}{item.ingredients}</div> : null}{item.instructions ? <div style={{ whiteSpace: "pre-wrap", marginTop: 9, fontSize: 13 }}><strong>Instructions</strong>{"\n"}{item.instructions}</div> : null}{item.notes ? <div style={{ marginTop: 9, fontSize: 12, color: colors.muted }}>{item.notes}</div> : null}<button type="button" onClick={() => { setEventTitle(item.title); setEventType("Meal"); setEventDate(today); setTab("calendar"); }} style={{ ...buttonStyle, marginTop: 10 }}>Plan This Meal</button></article>)}
-              {!filteredRecipes.length ? <span style={{ color: colors.muted }}>No recipes yet.</span> : null}
+            <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+              <strong style={{ color: colors.navy, fontSize:18 }}>Cookbook</strong>
+              <input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search recipes" style={{...inputStyle,width:isMobile?"100%":240}}/>
+            </div>
+            <div style={{ display:"grid", gap:8, marginTop:12 }}>
+              {filteredRecipes.map((recipe)=>(
+                <button key={recipe.id} type="button" onClick={()=>openRecipe(recipe)} style={{
+                  ...buttonStyle, textAlign:"left", display:"grid", gridTemplateColumns:"auto minmax(0,1fr) auto", alignItems:"center", gap:10, minHeight:58
+                }}>
+                  <strong style={{ color:colors.gold }}>{recipe.code || "NEW"}</strong>
+                  <span><strong style={{ display:"block" }}>{recipe.title}</strong><small style={{ color:colors.muted }}>{recipe.category}{recipe.meta ? ` · ${recipe.meta}` : ""}</small></span>
+                  <span>{recipe.favorite ? "★" : "›"}</span>
+                </button>
+              ))}
             </div>
           </section>
         </div>
       ) : null}
 
       {!loading && tab === "chores" ? (
-        <div style={grid2}>
+        <div style={{ display:"grid", gap:12 }}>
           <section style={cardStyle}>
-            <strong style={{ color: colors.navy, fontSize: 18 }}>Add Chore</strong>
-            <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
-              <label style={fieldStyle}>Chore<input value={choreTitle} onChange={(e) => setChoreTitle(e.target.value)} style={inputStyle} /></label>
-              <div style={grid2}><label style={fieldStyle}>Assigned to<select value={chorePerson} onChange={(e) => setChorePerson(e.target.value)} style={inputStyle}>{familyMembers.map((v) => <option key={v}>{v}</option>)}</select></label><label style={fieldStyle}>Repeat<select value={choreRecurring} onChange={(e) => setChoreRecurring(e.target.value as HomeRecord["recurring"])} style={inputStyle}>{["None","Daily","Weekly","Monthly"].map((v) => <option key={v}>{v}</option>)}</select></label></div>
-              <label style={fieldStyle}>Due<input type="date" value={choreDate} onChange={(e) => setChoreDate(e.target.value)} style={inputStyle} /></label>
-              <button type="button" onClick={() => void addChore()} style={primaryButtonStyle}>Add Chore</button>
+            <div style={{ display:"flex", justifyContent:"space-between", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+              <div><strong style={{ color:colors.navy,fontSize:20 }}>Family Chore Board</strong><div style={{ color:colors.muted,fontSize:12 }}>Tap any card to edit it. Completing a recurring chore moves it to its next date.</div></div>
+              <select value={personFilter} onChange={(e)=>setPersonFilter(e.target.value)} style={{...inputStyle,width:isMobile?"100%":180}}><option>All</option>{people.map(p=><option key={p}>{p}</option>)}</select>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(5,minmax(0,1fr))", gap:10, marginTop:14 }}>
+              {visibleChores.map((chore)=>(
+                <article key={chore.id} style={{
+                  border:`3px solid ${personColors[chore.person || "Family"] || colors.line}`, borderRadius:18, background:"#FFFFFF",
+                  padding:12, minHeight:170, display:"grid", alignContent:"space-between", boxShadow:"0 4px 14px rgba(7,27,47,.08)"
+                }}>
+                  <button type="button" onClick={()=>openChore(chore)} style={{border:0,background:"transparent",cursor:"pointer",textAlign:"center",color:colors.text}}>
+                    <span style={{fontSize:46}}>{chore.emoji || "⭐"}</span>
+                    <strong style={{display:"block",fontSize:15,marginTop:5}}>{chore.title}</strong>
+                    <span style={{display:"block",fontSize:11,fontWeight:900,color:personColors[chore.person || "Family"]}}>{chore.person || "Family"}</span>
+                    <span style={{display:"block",fontSize:11,color:colors.muted,marginTop:3}}>{chore.points || 0} pts · {chore.recurring || "None"}{chore.date?` · ${chore.date}`:""}</span>
+                  </button>
+                  <button type="button" onClick={()=>void completeChore(chore)} style={{...primaryButtonStyle,marginTop:10}}>✓ Done</button>
+                </article>
+              ))}
             </div>
           </section>
           <section style={cardStyle}>
-            <strong style={{ color: colors.navy, fontSize: 18 }}>Family Chore Chart</strong>
-            <div style={{ display: "grid", gap: 8, marginTop: 12 }}>{chores.map((item) => <div key={item.id} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 9, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 10, padding: 10 }}><input type="checkbox" checked={Boolean(item.completed)} onChange={() => void toggleChore(item)} /><div><strong style={{ textDecoration: item.completed ? "line-through" : "none" }}>{item.title}</strong><div style={{ color: colors.muted, fontSize: 12 }}>{item.person} · {item.recurring} · {formatDate(item.date)}</div></div><button type="button" onClick={() => void deleteRecord(item)} style={{ ...buttonStyle, color: colors.red }}>Delete</button></div>)}{!chores.length ? <span style={{ color: colors.muted }}>No chores yet.</span> : null}</div>
+            <strong style={{ color:colors.navy,fontSize:18 }}>Add Chore</strong>
+            <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1.2fr .7fr .7fr .7fr", gap:9, marginTop:12 }}>
+              <label style={fieldStyle}>Chore<input value={choreTitle} onChange={(e)=>setChoreTitle(e.target.value)} style={inputStyle}/></label>
+              <label style={fieldStyle}>Person<select value={chorePerson} onChange={(e)=>setChorePerson(e.target.value)} style={inputStyle}>{people.map(p=><option key={p}>{p}</option>)}</select></label>
+              <label style={fieldStyle}>Date<input type="date" value={choreDate} onChange={(e)=>setChoreDate(e.target.value)} style={inputStyle}/></label>
+              <label style={fieldStyle}>Repeat<select value={choreRecurring} onChange={(e)=>setChoreRecurring(e.target.value as Recurrence)} style={inputStyle}>{["None","Daily","Weekly","Monthly"].map(v=><option key={v}>{v}</option>)}</select></label>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:9,marginTop:9}}>
+              <label style={fieldStyle}>Emoji<div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{choreEmojis.map(e=><button key={e} type="button" onClick={()=>setChoreEmoji(e)} style={{...buttonStyle,minWidth:42,padding:5,background:choreEmoji===e?"#FFF4CC":"#FFF"}}>{e}</button>)}</div></label>
+              <label style={fieldStyle}>Points<input type="number" min={0} step={1} value={chorePoints} onChange={(e)=>setChorePoints(Number(e.target.value||0))} style={inputStyle}/></label>
+            </div>
+            <label style={{...fieldStyle,marginTop:9}}>Notes<textarea value={choreNotes} onChange={(e)=>setChoreNotes(e.target.value)} style={{...inputStyle,minHeight:70}}/></label>
+            <button type="button" onClick={()=>void addChore()} style={{...primaryButtonStyle,marginTop:10}}>Add Chore</button>
           </section>
         </div>
       ) : null}
 
-      {!loading && tab === "assets" ? (
+      {!loading && tab === "rewards" ? (
         <div style={grid2}>
-          <section style={cardStyle}><strong style={{ color: colors.navy, fontSize: 18 }}>Add Home Asset</strong><div style={{ display: "grid", gap: 9, marginTop: 12 }}><label style={fieldStyle}>Name<input value={assetTitle} onChange={(e) => setAssetTitle(e.target.value)} style={inputStyle} /></label><div style={grid2}><label style={fieldStyle}>Category<input value={assetCategory} onChange={(e) => setAssetCategory(e.target.value)} style={inputStyle} /></label><label style={fieldStyle}>Location<input value={assetLocation} onChange={(e) => setAssetLocation(e.target.value)} style={inputStyle} /></label></div><div style={grid2}><label style={fieldStyle}>Make<input value={assetMake} onChange={(e) => setAssetMake(e.target.value)} style={inputStyle} /></label><label style={fieldStyle}>Model<input value={assetModel} onChange={(e) => setAssetModel(e.target.value)} style={inputStyle} /></label></div><label style={fieldStyle}>Serial<input value={assetSerial} onChange={(e) => setAssetSerial(e.target.value)} style={inputStyle} /></label><label style={fieldStyle}>Notes<textarea value={assetNotes} onChange={(e) => setAssetNotes(e.target.value)} style={{ ...inputStyle, minHeight: 80 }} /></label><button type="button" onClick={() => void addAsset()} style={primaryButtonStyle}>Save Asset</button></div></section>
-          <section style={cardStyle}><strong style={{ color: colors.navy, fontSize: 18 }}>Home Assets</strong><div style={{ display: "grid", gap: 8, marginTop: 12 }}>{assets.map((item) => <div key={item.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 10, display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}><div><strong>{item.title}</strong><div style={{ color: colors.muted, fontSize: 12 }}>{[item.category,item.make,item.model,item.location].filter(Boolean).join(" · ")}</div>{item.serial ? <div style={{ fontSize: 12 }}>Serial: {item.serial}</div> : null}{item.notes ? <div style={{ fontSize: 12, marginTop: 4 }}>{item.notes}</div> : null}</div><button type="button" onClick={() => void deleteRecord(item)} style={{ ...buttonStyle, color: colors.red }}>Delete</button></div>)}{!assets.length ? <span style={{ color: colors.muted }}>No home assets yet.</span> : null}</div></section>
+          <section style={cardStyle}>
+            <strong style={{color:colors.navy,fontSize:18}}>Saving Goals</strong>
+            <div style={{display:"grid",gap:10,marginTop:12}}>
+              {goals.map((goal)=>{
+                const current=Number(goal.currentAmount||0), target=Math.max(1,Number(goal.goalAmount||1));
+                const pct=Math.min(100,Math.round(current/target*100));
+                return <button key={goal.id} type="button" onClick={()=>setEditing({...goal})} style={{...buttonStyle,textAlign:"left",padding:12}}>
+                  <div style={{display:"flex",gap:10,alignItems:"center"}}><span style={{fontSize:30}}>{goal.goalEmoji||"🎁"}</span><div style={{minWidth:0,flex:1}}><strong>{goal.person}: {goal.title}</strong><div style={{fontSize:12,color:colors.muted}}>{current} / {target} points · {pct}%</div><div style={{height:10,borderRadius:999,background:"#EEF2F6",overflow:"hidden",marginTop:6}}><div style={{height:"100%",width:`${pct}%`,background:goal.goalColor||personColors[goal.person||"Family"]||colors.gold}}/></div></div></div>
+                </button>;
+              })}
+            </div>
+          </section>
+          <section style={cardStyle}>
+            <strong style={{color:colors.navy,fontSize:18}}>Add Goal</strong>
+            <div style={{display:"grid",gap:9,marginTop:12}}>
+              <label style={fieldStyle}>Person<select value={goalPerson} onChange={(e)=>setGoalPerson(e.target.value)} style={inputStyle}>{people.filter(p=>p!=="Family").map(p=><option key={p}>{p}</option>)}</select></label>
+              <label style={fieldStyle}>Saving for<input value={goalTitle} onChange={(e)=>setGoalTitle(e.target.value)} style={inputStyle}/></label>
+              <label style={fieldStyle}>Point goal<input type="number" min={1} value={goalAmount} onChange={(e)=>setGoalAmount(Number(e.target.value||1))} style={inputStyle}/></label>
+              <label style={fieldStyle}>Emoji<div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{goalEmojis.map(e=><button key={e} type="button" onClick={()=>setGoalEmoji(e)} style={{...buttonStyle,minWidth:42,padding:5,background:goalEmoji===e?"#FFF4CC":"#FFF"}}>{e}</button>)}</div></label>
+              <button type="button" onClick={()=>void addGoal()} style={primaryButtonStyle}>Save Goal</button>
+            </div>
+          </section>
+          <section style={{...cardStyle,gridColumn:"1 / -1"}}>
+            <strong style={{color:colors.navy,fontSize:18}}>Cooper iPad</strong>
+            <p style={{color:colors.muted,fontSize:13}}>Create a private family-board link. It shows the 4725 calendar plus the chore/reward board without exposing the estate properties.</p>
+            <button type="button" onClick={async()=>{
+              const response=await fetch("/api/atlas-home",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({action:"createShare",propertyId:"4725",person:"Cooper"})});
+              const payload=await response.json().catch(()=>({}));
+              if(!response.ok){setMessage(payload?.error||"Could not create link.");return;}
+              const url=`${window.location.origin}/family?token=${encodeURIComponent(payload.token)}`;
+              await navigator.clipboard.writeText(url);
+              setMessage("Cooper iPad link copied.");
+            }} style={primaryButtonStyle}>Create / Copy Cooper Link</button>
+          </section>
         </div>
       ) : null}
 
-      {!loading && tab === "locations" ? (
-        <div style={grid2}>
-          <section style={cardStyle}><strong style={{ color: colors.navy, fontSize: 18 }}>Add Location</strong><div style={{ display: "grid", gap: 9, marginTop: 12 }}><label style={fieldStyle}>Location<input value={locationTitle} onChange={(e) => setLocationTitle(e.target.value)} style={inputStyle} /></label><label style={fieldStyle}>Type<select value={locationCategory} onChange={(e) => setLocationCategory(e.target.value)} style={inputStyle}>{["Room","Garage","Outdoor","Storage","Utility","Other"].map((v) => <option key={v}>{v}</option>)}</select></label><label style={fieldStyle}>Notes<textarea value={locationNotes} onChange={(e) => setLocationNotes(e.target.value)} style={{ ...inputStyle, minHeight: 80 }} /></label><button type="button" onClick={() => void addLocation()} style={primaryButtonStyle}>Save Location</button></div></section>
-          <section style={cardStyle}><strong style={{ color: colors.navy, fontSize: 18 }}>Locations</strong><div style={{ display: "grid", gap: 8, marginTop: 12 }}>{locations.map((item) => <div key={item.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 10, display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}><div><strong>{item.title}</strong><div style={{ color: colors.muted, fontSize: 12 }}>{item.category}</div>{item.notes ? <div style={{ fontSize: 12, marginTop: 4 }}>{item.notes}</div> : null}</div><button type="button" onClick={() => void deleteRecord(item)} style={{ ...buttonStyle, color: colors.red }}>Delete</button></div>)}{!locations.length ? <span style={{ color: colors.muted }}>No locations yet.</span> : null}</div></section>
+      {editing ? (
+        <div role="dialog" aria-modal="true" onMouseDown={(e)=>{if(e.currentTarget===e.target)setEditing(null);}} style={{position:"fixed",inset:0,zIndex:13000,background:"rgba(7,27,47,.48)",display:"grid",placeItems:isMobile?"end center":"center",padding:isMobile?0:16}}>
+          <section onMouseDown={(e)=>e.stopPropagation()} style={{width:"100%",maxWidth:760,maxHeight:isMobile?"88dvh":"90vh",overflowY:"auto",background:"#FFF",borderRadius:isMobile?"20px 20px 0 0":20,padding:16,boxShadow:"0 24px 80px rgba(7,27,47,.28)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",marginBottom:12}}>
+              <strong style={{fontSize:20,color:colors.navy}}>{editing.recordType==="recipe"?(editing.code?`${editing.code} · `:"")+editing.title:editing.title}</strong>
+              <button type="button" onClick={()=>setEditing(null)} style={buttonStyle}>×</button>
+            </div>
+
+            {editing.recordType==="recipe" ? <div style={{display:"grid",gap:9}}>
+              <label style={fieldStyle}>Recipe<input value={editing.title} onChange={(e)=>setEditing({...editing,title:e.target.value})} style={inputStyle}/></label>
+              <label style={fieldStyle}>Category<input value={editing.category||""} onChange={(e)=>setEditing({...editing,category:e.target.value})} style={inputStyle}/></label>
+              {editing.meta?<div style={{fontSize:12,color:colors.muted}}>{editing.meta}</div>:null}
+              <label style={fieldStyle}>Ingredients<textarea value={editing.ingredients||""} onChange={(e)=>setEditing({...editing,ingredients:e.target.value})} style={{...inputStyle,minHeight:120}} placeholder="You can clean up or replace the imported recipe text here."/></label>
+              <label style={fieldStyle}>Directions<textarea value={editing.instructions||editing.fullRecipe||""} onChange={(e)=>setEditing({...editing,instructions:e.target.value,fullRecipe:""})} style={{...inputStyle,minHeight:280}}/></label>
+              <label style={fieldStyle}>Notes<textarea value={editing.notes||""} onChange={(e)=>setEditing({...editing,notes:e.target.value})} style={{...inputStyle,minHeight:80}}/></label>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <button type="button" onClick={()=>void saveRecord(editing)} style={primaryButtonStyle}>Save Changes</button>
+                <button type="button" onClick={()=>void saveRecord({...editing,favorite:!editing.favorite})} style={buttonStyle}>{editing.favorite?"★ Favorite":"☆ Favorite"}</button>
+                <button type="button" onClick={()=>{navigate("calendar");setEditing(null);}} style={buttonStyle}>Plan on Calendar</button>
+                <button type="button" onClick={()=>void deleteRecord(editing)} style={{...buttonStyle,color:colors.red}}>Delete</button>
+              </div>
+            </div>:null}
+
+            {editing.recordType==="chore" ? <div style={{display:"grid",gap:9}}>
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.3fr .7fr",gap:9}}>
+                <label style={fieldStyle}>Chore<input value={editing.title} onChange={(e)=>setEditing({...editing,title:e.target.value})} style={inputStyle}/></label>
+                <label style={fieldStyle}>Person<select value={editing.person||"Family"} onChange={(e)=>setEditing({...editing,person:e.target.value})} style={inputStyle}>{people.map(p=><option key={p}>{p}</option>)}</select></label>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3,1fr)",gap:9}}>
+                <label style={fieldStyle}>Due<input type="date" value={editing.date||""} onChange={(e)=>setEditing({...editing,date:e.target.value})} style={inputStyle}/></label>
+                <label style={fieldStyle}>Repeat<select value={editing.recurring||"None"} onChange={(e)=>setEditing({...editing,recurring:e.target.value as Recurrence})} style={inputStyle}>{["None","Daily","Weekly","Monthly"].map(v=><option key={v}>{v}</option>)}</select></label>
+                <label style={fieldStyle}>Points<input type="number" min={0} value={editing.points||0} onChange={(e)=>setEditing({...editing,points:Number(e.target.value||0)})} style={inputStyle}/></label>
+              </div>
+              <label style={fieldStyle}>Emoji<div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{choreEmojis.map(e=><button key={e} type="button" onClick={()=>setEditing({...editing,emoji:e})} style={{...buttonStyle,minWidth:42,padding:5,background:editing.emoji===e?"#FFF4CC":"#FFF"}}>{e}</button>)}</div></label>
+              <label style={fieldStyle}>Notes<textarea value={editing.notes||""} onChange={(e)=>setEditing({...editing,notes:e.target.value})} style={{...inputStyle,minHeight:80}}/></label>
+              <label style={fieldStyle}>Add Photo<input type="file" accept="image/*" onChange={(e)=>void addPhoto(editing,e.target.files?.[0])} style={inputStyle}/></label>
+              {(editing.photos||[]).length?<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>{(editing.photos||[]).map(photo=><img key={photo.id} src={photo.dataUrl} alt={photo.name} style={{width:"100%",aspectRatio:"1",objectFit:"cover",borderRadius:12,border:`1px solid ${colors.line}`}}/>)}</div>:null}
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <button type="button" onClick={()=>void saveRecord(editing)} style={primaryButtonStyle}>Save Changes</button>
+                <button type="button" onClick={()=>void completeChore(editing)} style={buttonStyle}>✓ Complete</button>
+                <button type="button" onClick={()=>void deleteRecord(editing)} style={{...buttonStyle,color:colors.red}}>Delete</button>
+              </div>
+              {(editing.completionHistory||[]).length?<div><strong style={{color:colors.navy}}>Completion History</strong>{(editing.completionHistory||[]).slice(0,12).map(h=><div key={h.id} style={{fontSize:12,padding:"6px 0",borderBottom:`1px solid ${colors.line}`}}>{new Date(h.completedAt).toLocaleString()} · +{h.points} pts</div>)}</div>:null}
+            </div>:null}
+
+            {editing.recordType==="goal" ? <div style={{display:"grid",gap:9}}>
+              <label style={fieldStyle}>Saving for<input value={editing.title} onChange={(e)=>setEditing({...editing,title:e.target.value})} style={inputStyle}/></label>
+              <label style={fieldStyle}>Person<select value={editing.person||"Cooper"} onChange={(e)=>setEditing({...editing,person:e.target.value,goalColor:personColors[e.target.value]})} style={inputStyle}>{people.filter(p=>p!=="Family").map(p=><option key={p}>{p}</option>)}</select></label>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
+                <label style={fieldStyle}>Current points<input type="number" value={editing.currentAmount||0} onChange={(e)=>setEditing({...editing,currentAmount:Number(e.target.value||0)})} style={inputStyle}/></label>
+                <label style={fieldStyle}>Goal points<input type="number" value={editing.goalAmount||0} onChange={(e)=>setEditing({...editing,goalAmount:Number(e.target.value||0)})} style={inputStyle}/></label>
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button type="button" onClick={()=>void saveRecord(editing)} style={primaryButtonStyle}>Save Changes</button><button type="button" onClick={()=>void deleteRecord(editing)} style={{...buttonStyle,color:colors.red}}>Delete</button></div>
+            </div>:null}
+          </section>
         </div>
       ) : null}
     </div>
