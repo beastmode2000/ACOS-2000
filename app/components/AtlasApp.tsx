@@ -5591,20 +5591,73 @@ export default function AtlasApp() {
         const occurrenceDates = [baseDate];
         if (record.recurring) {
           const schedule = recurringWorkOrderSchedule(record);
-          let nextDate = baseDate;
-          let occurrenceCount = 0;
+          const homeRecurrenceDays = Array.isArray(record.recurrenceDays)
+            ? Array.from(
+                new Set(
+                  record.recurrenceDays
+                    .map((day) => Math.floor(Number(day)))
+                    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
+                ),
+              )
+            : [];
 
-          while (occurrenceCount < 60) {
-            nextDate = nextRecurrenceDate(
-              nextDate,
-              schedule.interval,
-              schedule.unit,
-              record.recurrenceDays,
-            );
-            if (!nextDate || nextDate > horizon) break;
-            if (record.recurrenceEndDate && nextDate > record.recurrenceEndDate) break;
-            occurrenceDates.push(nextDate);
-            occurrenceCount += 1;
+          if (
+            activePropertyId === "4725" &&
+            schedule.unit === "Weeks" &&
+            homeRecurrenceDays.length > 0
+          ) {
+            const interval = Math.max(1, Math.floor(Number(schedule.interval || 1)));
+            const startDate = new Date(`${baseDate}T12:00:00`);
+            const anchorWeek = new Date(startDate);
+            const anchorDay = anchorWeek.getDay();
+            anchorWeek.setDate(anchorWeek.getDate() + (anchorDay === 0 ? -6 : 1 - anchorDay));
+            anchorWeek.setHours(12, 0, 0, 0);
+            const weekMs = 7 * 24 * 60 * 60 * 1000;
+            const cursor = new Date(startDate);
+            cursor.setDate(cursor.getDate() + 1);
+            let occurrenceCount = 0;
+
+            while (occurrenceCount < 550) {
+              const date = localISODate(cursor);
+              if (date > horizon) break;
+              if (record.recurrenceEndDate && date > record.recurrenceEndDate) break;
+
+              if (homeRecurrenceDays.includes(cursor.getDay())) {
+                const candidateWeek = new Date(cursor);
+                const candidateDay = candidateWeek.getDay();
+                candidateWeek.setDate(
+                  candidateWeek.getDate() + (candidateDay === 0 ? -6 : 1 - candidateDay),
+                );
+                candidateWeek.setHours(12, 0, 0, 0);
+                const weekDiff = Math.round(
+                  (candidateWeek.getTime() - anchorWeek.getTime()) / weekMs,
+                );
+
+                if (weekDiff >= 0 && weekDiff % interval === 0) {
+                  occurrenceDates.push(date);
+                  occurrenceCount += 1;
+                }
+              }
+
+              cursor.setDate(cursor.getDate() + 1);
+            }
+          } else {
+            let nextDate = baseDate;
+            let occurrenceCount = 0;
+            const maxOccurrences = activePropertyId === "4725" ? 400 : 60;
+
+            while (occurrenceCount < maxOccurrences) {
+              nextDate = nextRecurrenceDate(
+                nextDate,
+                schedule.interval,
+                schedule.unit,
+                record.recurrenceDays,
+              );
+              if (!nextDate || nextDate > horizon) break;
+              if (record.recurrenceEndDate && nextDate > record.recurrenceEndDate) break;
+              occurrenceDates.push(nextDate);
+              occurrenceCount += 1;
+            }
           }
         }
 
@@ -5685,19 +5738,17 @@ export default function AtlasApp() {
     const personalItems = calendarItems.filter((item) => {
       const source = String(item.source || "").toLowerCase();
       const linkedType = String(item.linkedType || "").toLowerCase();
-      const is4725HomeChoreOccurrence =
+      const is4725GeneratedHomeChore =
         activePropertyId === "4725" &&
         (source === "home-chore-extra" || source === "home-chore");
+      if (is4725GeneratedHomeChore) return false;
       if (
-        !is4725HomeChoreOccurrence &&
-        (
-          source === "task" ||
-          source === "work-order" ||
-          source === "workorder" ||
-          source === "service" ||
-          linkedType === "task" ||
-          linkedType === "work order"
-        )
+        source === "task" ||
+        source === "work-order" ||
+        source === "workorder" ||
+        source === "service" ||
+        linkedType === "task" ||
+        linkedType === "work order"
       ) return false;
       const owner = String(item.calendarOwner || "").toLowerCase();
       if (isSeanMarineUser) return owner === "sean";
