@@ -498,7 +498,22 @@ export async function GET(request: NextRequest) {
     if (!(await canAccessHome(sql, request))) return privateResponse();
     await seedCookbookOnce(sql);
     const records = await loadHomeRecords(sql);
-    return NextResponse.json({ ok: true, records });
+    const workOrders = (await loadWorkOrders(sql)).filter((record) => asString(record.responsibilityArea) === "Family");
+    const metaById = new Map(records.filter((record) => record.recordType === "chore_meta").map((record) => [asString(record.workOrderId), record]));
+    const chores = workOrders.map((record) => {
+      const meta = metaById.get(record.id);
+      return {
+        ...record,
+        assignedTo: safePerson(record.assignedTo),
+        person: safePerson(record.assignedTo),
+        points: Number(meta?.points || 0),
+        emoji: asString(meta?.emoji || record.emoji) || "⭐",
+        recurrenceDays: normalizedDays(meta?.recurrenceDays),
+        recurrenceAnchorDate: asString(meta?.recurrenceAnchorDate),
+        skippedDates: asArray(meta?.skippedDates),
+      };
+    });
+    return NextResponse.json({ ok: true, records, chores });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not load 4725." }, { status: 500 });
   }
@@ -531,10 +546,40 @@ export async function POST(request: NextRequest) {
     if (body.action === "syncChore") {
       if (asString(body.propertyId) !== HOME_PROPERTY_ID) return NextResponse.json({ ok: false, error: "Invalid property." }, { status: 400 });
       const workOrder = body.workOrder && typeof body.workOrder === "object" ? body.workOrder as JsonRecord : {};
-      const meta = body.meta && typeof body.meta === "object" ? body.meta as HomeRecord : null;
-      if (!asString(workOrder.id) || !meta) return NextResponse.json({ ok: false, error: "Chore sync requires a work order and metadata." }, { status: 400 });
-      await syncChoreCalendar(sql, workOrder, meta);
-      return NextResponse.json({ ok: true });
+      const metaInput = body.meta && typeof body.meta === "object" ? body.meta as HomeRecord : null;
+      const workOrderId = asString(workOrder.id);
+      if (!workOrderId || !metaInput) return NextResponse.json({ ok: false, error: "Chore sync requires a work order and metadata." }, { status: 400 });
+
+      const saved = await upsertFamilyWorkOrder(sql, workOrderId, {
+        ...workOrder,
+        id: workOrderId,
+        propertyId: HOME_PROPERTY_ID,
+        assignedTo: safePerson(workOrder.assignedTo),
+        responsibilityArea: "Family",
+        workType: "Work Order",
+        workCategory: asString(workOrder.workCategory) || `${asString(workOrder.emoji) || "⭐"} Chore`,
+      });
+      const existingMeta = await getChoreMeta(sql, workOrderId);
+      const now = new Date().toISOString();
+      const meta: HomeRecord = {
+        ...(existingMeta || {}),
+        ...metaInput,
+        id: existingMeta?.id || asString(metaInput.id) || `chore-meta-${workOrderId}`,
+        propertyId: HOME_PROPERTY_ID,
+        recordType: "chore_meta",
+        title: saved.title,
+        workOrderId,
+        emoji: asString(metaInput.emoji || saved.emoji) || "⭐",
+        points: Math.max(0, Number(metaInput.points || existingMeta?.points || 0)),
+        recurrenceDays: normalizedDays(metaInput.recurrenceDays || existingMeta?.recurrenceDays),
+        recurrenceAnchorDate: dateKey(metaInput.recurrenceAnchorDate || existingMeta?.recurrenceAnchorDate || saved.date),
+        skippedDates: asArray(metaInput.skippedDates || existingMeta?.skippedDates).map(dateKey).filter(Boolean),
+        createdAt: asString(existingMeta?.createdAt || metaInput.createdAt) || now,
+        updatedAt: now,
+      };
+      await saveHomeRecord(sql, meta);
+      await syncChoreCalendar(sql, saved, meta);
+      return NextResponse.json({ ok: true, record: { ...saved, points: meta.points, recurrenceDays: meta.recurrenceDays }, meta });
     }
 
     const id = asString(body.id);
