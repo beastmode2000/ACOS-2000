@@ -58,7 +58,11 @@ const COOKBOOK_PDF = "/4725/Nick_Meal_Picker_Cookbook(1).pdf";
 const people: FamilyPerson[] = ["Family", "Nick", "Chelsea", "Cooper", "Leni"];
 const kidPeople: FamilyPerson[] = ["Cooper", "Leni"];
 const personColors: Record<string, string> = {
-  Family: "#475467", Nick: "#175CD3", Chelsea: "#C11574", Cooper: "#7F56D9", Leni: "#039855",
+  Family: "#667085",
+  Nick: "#12B76A",
+  Chelsea: "#F79009",
+  Cooper: "#2E90FA",
+  Leni: "#EE46BC",
 };
 const weekdayOptions = [
   { value: 1, label: "Mon" }, { value: 2, label: "Tue" }, { value: 3, label: "Wed" },
