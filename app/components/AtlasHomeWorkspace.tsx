@@ -45,13 +45,57 @@ type Props = {
     card: string; panel: string; line: string; text: string; muted: string;
     red: string; green: string;
   };
+  choreRecords?: any[];
+  onCreateChore?: (initial: Record<string, unknown>) => Promise<any> | any;
+  onOpenChore?: (id: string) => void;
+  onCompleteChore?: (record: any) => Promise<void> | void;
+  initialTab?: Tab;
+  hideHomeHeader?: boolean;
 };
 
 const people = ["Family", "Nick", "Chelsea", "Cooper", "Leni"];
 const personColors: Record<string, string> = {
   Family: "#475467", Nick: "#175CD3", Chelsea: "#C11574", Cooper: "#7F56D9", Leni: "#039855",
 };
-const choreEmojis = ["🛏️","🧸","🧹","🧺","🍽️","🐶","🗑️","🪥","📚","🎒","🌿","🚿","🧽","✨","⭐","🏆"];
+const choreEmojiGroups = [
+  {
+    label: "Morning & Bathroom",
+    items: ["🪥","😁","🦷","🚿","🛁","🧼","🧴","🧻","🚽","🪮","👕","👖","🧦","👟","🎒","⏰"],
+  },
+  {
+    label: "School & Homework",
+    items: ["📚","📖","📝","✏️","🖍️","📓","📒","📔","📕","🧠","💻","🎒","🏫","🚌","🧮","🔤","🎨"],
+  },
+  {
+    label: "Bedroom & Cleaning",
+    items: ["🛏️","🧸","🧹","🧺","🧽","🪣","🧼","🧴","🧻","🛋️","🪑","🧥","👚","👕","👖","🧦"],
+  },
+  {
+    label: "Kitchen",
+    items: ["🍽️","🥣","🥄","🍴","🥛","🧃","🍎","🥪","🍳","🧊","🧽","🧼","🗑️","♻️"],
+  },
+  {
+    label: "Pets",
+    items: ["🐶","🐕","🐈","🐾","🦴","🥣","💧","💩","🧻","🧹","🚶","❤️"],
+  },
+  {
+    label: "Trash & Recycling",
+    items: ["🗑️","♻️","📦","🧴","🥫","📰","🧻","🧹","🧤","🚮"],
+  },
+  {
+    label: "Outside & Yard",
+    items: ["🌿","🌱","🪴","💧","🌳","🍂","🧹","🪣","🧤","☀️","🌧️","🚲","🚗"],
+  },
+  {
+    label: "Activities",
+    items: ["⚽","🏀","🏈","⚾","🎾","🏊","🚲","🎹","🎸","🎨","🎮","🧩","📱","💻"],
+  },
+  {
+    label: "Rewards & Motivation",
+    items: ["⭐","🌟","✨","✅","🏆","🎯","💪","👍","😊","😁","❤️","🎉","🎁","💰","💵"],
+  },
+];
+const choreEmojis = choreEmojiGroups.flatMap((group) => group.items);
 const goalEmojis = ["🎮","🧸","🚲","🎧","🎟️","⚽","🏀","🛍️","🎁","💰","⭐","🏆"];
 
 function uid(prefix: string) {
@@ -78,8 +122,17 @@ function money(value: number) {
   return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value || 0);
 }
 
-export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
-  const [tab, setTab] = useState<Tab>("home");
+export default function AtlasHomeWorkspace({
+  isMobile,
+  colors,
+  choreRecords,
+  onCreateChore,
+  onOpenChore,
+  onCompleteChore,
+  initialTab = "home",
+  hideHomeHeader = false,
+}: Props) {
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [records, setRecords] = useState<HomeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -97,6 +150,8 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
   const [chorePerson, setChorePerson] = useState("Cooper");
   const [choreDate, setChoreDate] = useState(todayISO());
   const [choreRecurring, setChoreRecurring] = useState<Recurrence>("Weekly");
+  const [choreRecurrenceInterval, setChoreRecurrenceInterval] = useState(1);
+  const [choreRecurrenceDays, setChoreRecurrenceDays] = useState<number[]>([]);
   const [choreEmoji, setChoreEmoji] = useState("⭐");
   const [chorePoints, setChorePoints] = useState(5);
   const [choreNotes, setChoreNotes] = useState("");
@@ -154,11 +209,21 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
   }
 
   const recipes = useMemo(() => records.filter((item) => item.recordType === "recipe"), [records]);
-  const chores = useMemo(() => records.filter((item) => item.recordType === "chore"), [records]);
+  const legacyChores = useMemo(() => records.filter((item) => item.recordType === "chore"), [records]);
+  const chores = useMemo(
+    () => (choreRecords !== undefined ? choreRecords : legacyChores),
+    [choreRecords, legacyChores],
+  );
   const goals = useMemo(() => records.filter((item) => item.recordType === "goal"), [records]);
   const today = todayISO();
-  const visibleChores = chores.filter((item) => personFilter === "All" || item.person === personFilter);
-  const dueChores = visibleChores.filter((item) => !item.completed && (!item.date || item.date <= today));
+  const visibleChores = chores.filter((item: any) => {
+    const person = String(item?.person || item?.assignedTo || "Family");
+    return personFilter === "All" || person === personFilter;
+  });
+  const dueChores = visibleChores.filter((item: any) => {
+    const closed = item?.completed || item?.status === "Completed" || item?.status === "Cancelled";
+    return !closed && (!item?.date || String(item.date).slice(0, 10) <= today);
+  });
   const filteredRecipes = recipes
     .filter((item) => `${item.code || ""} ${item.title} ${item.category || ""} ${item.fullRecipe || ""}`.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => String(a.code || a.title).localeCompare(String(b.code || b.title)));
@@ -191,6 +256,38 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
   }
   async function addChore() {
     if (!choreTitle.trim()) return;
+
+    if (onCreateChore) {
+      const rewardLine = chorePoints > 0 ? `Reward: ${chorePoints} points` : "";
+      const notes = [choreNotes.trim(), rewardLine].filter(Boolean).join("\n");
+      const created = await onCreateChore({
+        title: choreTitle.trim(),
+        date: choreDate,
+        status: "Open",
+        priority: "Medium",
+        notes,
+        assignedTo: chorePerson === "Family" ? "" : chorePerson,
+        recurring: choreRecurring !== "None",
+        recurrenceInterval: Math.max(1, choreRecurrenceInterval),
+        recurrenceUnit:
+          choreRecurring === "Daily"
+            ? "Days"
+            : choreRecurring === "Monthly"
+              ? "Months"
+              : "Weeks",
+        recurrenceDays: choreRecurrenceDays,
+        workType: "Work Order",
+        workCategory: `${choreEmoji} Chore`,
+        emoji: choreEmoji,
+        responsibilityArea: "Family",
+      });
+      if (created) {
+        setChoreTitle("");
+        setChoreNotes("");
+      }
+      return;
+    }
+
     if (await saveRecord({
       ...baseRecord("chore", choreTitle), person: chorePerson, date: choreDate,
       recurring: choreRecurring, completed: false, emoji: choreEmoji, points: chorePoints,
@@ -206,8 +303,29 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
       goalEmoji, goalColor: personColors[goalPerson] || colors.gold,
     })) setGoalTitle("");
   }
-  async function completeChore(record: HomeRecord) {
-    const earned = Number(record.points || 0);
+  function choreRewardPoints(record: any) {
+    const direct = Number(record?.points || 0);
+    if (direct > 0) return direct;
+    const match = String(record?.notes || "").match(/Reward:\s*(\d+)\s*points?/i);
+    return match ? Number(match[1]) : 0;
+  }
+  function choreEmojiFor(record: any) {
+    return String(record?.emoji || record?.workCategory || "").match(/^\S+/)?.[0] || "⭐";
+  }
+  function chorePersonFor(record: any) {
+    return String(record?.person || record?.assignedTo || "Family");
+  }
+
+  async function completeChore(record: any) {
+    const earned = choreRewardPoints(record);
+    if (onCompleteChore) {
+      await onCompleteChore(record);
+      const goal = goals.find((item) => item.person === chorePersonFor(record));
+      if (goal && earned) {
+        await saveRecord({ ...goal, currentAmount: Number(goal.currentAmount || 0) + earned });
+      }
+      return;
+    }
     const history = [
       { id: uid("done"), completedAt: new Date().toISOString(), points: earned },
       ...(record.completionHistory || []),
@@ -239,7 +357,13 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
   }
 
   function openRecipe(recipe: HomeRecord) { setEditing({ ...recipe }); }
-  function openChore(chore: HomeRecord) { setEditing({ ...chore }); }
+  function openChore(chore: any) {
+    if (onOpenChore && chore?.id) {
+      onOpenChore(String(chore.id));
+      return;
+    }
+    setEditing({ ...chore });
+  }
 
   const todayCards = [
     { label: "Family Calendar", value: "Open month view", action: () => navigate("calendar"), icon: "📅" },
@@ -250,7 +374,7 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
 
   return (
     <div style={{ display: "grid", gap: 12, maxWidth: 1500, margin: "0 auto", paddingBottom: isMobile ? 92 : 24 }}>
-      <section style={{ ...cardStyle, background: colors.navy, color: "#FFFFFF" }}>
+      {!hideHomeHeader ? <section style={{ ...cardStyle, background: colors.navy, color: "#FFFFFF" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           <div>
             <div style={{ color: "#E5C06B", fontSize: 11, fontWeight: 900, letterSpacing: ".12em" }}>4725 FAMILY HOME</div>
@@ -272,7 +396,7 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
           <button type="button" onClick={() => navigate("locations")} style={{ ...buttonStyle, flex:"0 0 auto" }}>Locations</button>
           <button type="button" onClick={() => navigate("assistant")} style={{ ...buttonStyle, flex:"0 0 auto" }}>Ask Atlas</button>
         </div>
-      </section>
+      </section> : null}
 
       {loading ? <section style={cardStyle}>Loading 4725…</section> : null}
 
@@ -295,12 +419,12 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
             <div style={{ display:"grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(5,minmax(0,1fr))", gap:9, marginTop:12 }}>
               {dueChores.slice(0,10).map((chore) => (
                 <button key={chore.id} type="button" onClick={() => openChore(chore)} style={{
-                  border:`2px solid ${personColors[chore.person || "Family"] || colors.line}`, borderRadius:16, padding:12,
+                  border:`2px solid ${personColors[chorePersonFor(chore)] || colors.line}`, borderRadius:16, padding:12,
                   background:"#FFFFFF", textAlign:"center", cursor:"pointer", color:colors.text,
                 }}>
-                  <span style={{ fontSize:34 }}>{chore.emoji || "⭐"}</span>
+                  <span style={{ fontSize:34 }}>{choreEmojiFor(chore)}</span>
                   <strong style={{ display:"block", marginTop:6 }}>{chore.title}</strong>
-                  <span style={{ display:"block", fontSize:11, color:personColors[chore.person || "Family"] }}>{chore.person || "Family"} · {chore.points || 0} pts</span>
+                  <span style={{ display:"block", fontSize:11, color:personColors[chorePersonFor(chore)] }}>{chorePersonFor(chore)} · {choreRewardPoints(chore)} pts</span>
                 </button>
               ))}
               {!dueChores.length ? <span style={{ color: colors.muted }}>Nothing due today.</span> : null}
@@ -324,7 +448,12 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
           </section>
           <section style={cardStyle}>
             <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-              <strong style={{ color: colors.navy, fontSize:18 }}>Cookbook</strong>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <strong style={{ color: colors.navy, fontSize:18 }}>Cookbook</strong>
+                <a href="/4725/Nick_Meal_Picker_Cookbook.pdf" target="_blank" rel="noreferrer" style={{ ...buttonStyle, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+                  Original PDF Cards
+                </a>
+              </div>
               <input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search recipes" style={{...inputStyle,width:isMobile?"100%":240}}/>
             </div>
             <div style={{ display:"grid", gap:8, marginTop:12 }}>
@@ -352,14 +481,14 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
             <div style={{ display:"grid", gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(5,minmax(0,1fr))", gap:10, marginTop:14 }}>
               {visibleChores.map((chore)=>(
                 <article key={chore.id} style={{
-                  border:`3px solid ${personColors[chore.person || "Family"] || colors.line}`, borderRadius:18, background:"#FFFFFF",
+                  border:`3px solid ${personColors[chorePersonFor(chore)] || colors.line}`, borderRadius:18, background:"#FFFFFF",
                   padding:12, minHeight:170, display:"grid", alignContent:"space-between", boxShadow:"0 4px 14px rgba(7,27,47,.08)"
                 }}>
                   <button type="button" onClick={()=>openChore(chore)} style={{border:0,background:"transparent",cursor:"pointer",textAlign:"center",color:colors.text}}>
-                    <span style={{fontSize:46}}>{chore.emoji || "⭐"}</span>
+                    <span style={{fontSize:46}}>{choreEmojiFor(chore)}</span>
                     <strong style={{display:"block",fontSize:15,marginTop:5}}>{chore.title}</strong>
-                    <span style={{display:"block",fontSize:11,fontWeight:900,color:personColors[chore.person || "Family"]}}>{chore.person || "Family"}</span>
-                    <span style={{display:"block",fontSize:11,color:colors.muted,marginTop:3}}>{chore.points || 0} pts · {chore.recurring || "None"}{chore.date?` · ${chore.date}`:""}</span>
+                    <span style={{display:"block",fontSize:11,fontWeight:900,color:personColors[chorePersonFor(chore)]}}>{chorePersonFor(chore)}</span>
+                    <span style={{display:"block",fontSize:11,color:colors.muted,marginTop:3}}>{choreRewardPoints(chore)} pts · {chore.recurring ? (chore.recurrenceUnit === "Days" ? "Daily" : chore.recurrenceUnit === "Months" ? "Monthly" : "Weekly") : "None"}{chore.date?` · ${chore.date}`:""}</span>
                   </button>
                   <button type="button" onClick={()=>void completeChore(chore)} style={{...primaryButtonStyle,marginTop:10}}>✓ Done</button>
                 </article>
@@ -374,8 +503,76 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
               <label style={fieldStyle}>Date<input type="date" value={choreDate} onChange={(e)=>setChoreDate(e.target.value)} style={inputStyle}/></label>
               <label style={fieldStyle}>Repeat<select value={choreRecurring} onChange={(e)=>setChoreRecurring(e.target.value as Recurrence)} style={inputStyle}>{["None","Daily","Weekly","Monthly"].map(v=><option key={v}>{v}</option>)}</select></label>
             </div>
+            {choreRecurring !== "None" ? (
+              <div style={{ display:"grid", gap:9, marginTop:9 }}>
+                <label style={fieldStyle}>
+                  Every
+                  <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", gap:8 }}>
+                    <input type="number" min={1} value={choreRecurrenceInterval} onChange={(e)=>setChoreRecurrenceInterval(Math.max(1, Number(e.target.value||1)))} style={inputStyle}/>
+                    <div style={{ ...inputStyle, display:"flex", alignItems:"center" }}>
+                      {choreRecurring === "Daily" ? "day(s)" : choreRecurring === "Monthly" ? "month(s)" : "week(s)"}
+                    </div>
+                  </div>
+                </label>
+                {choreRecurring === "Weekly" ? (
+                  <label style={fieldStyle}>
+                    Days of week
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                      {[
+                        { value:1, label:"Mon" }, { value:2, label:"Tue" }, { value:3, label:"Wed" },
+                        { value:4, label:"Thu" }, { value:5, label:"Fri" }, { value:6, label:"Sat" },
+                        { value:0, label:"Sun" },
+                      ].map((day) => {
+                        const active = choreRecurrenceDays.includes(day.value);
+                        return (
+                          <button
+                            key={day.value}
+                            type="button"
+                            onClick={() => setChoreRecurrenceDays((current) =>
+                              active ? current.filter((value) => value !== day.value) : [...current, day.value]
+                            )}
+                            style={{ ...buttonStyle, minHeight:34, padding:"5px 9px", background:active ? "#FFF4CC" : "#FFF", borderColor:active ? colors.gold : colors.line }}
+                          >
+                            {day.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </label>
+                ) : null}
+              </div>
+            ) : null}
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:9,marginTop:9}}>
-              <label style={fieldStyle}>Emoji<div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{choreEmojis.map(e=><button key={e} type="button" onClick={()=>setChoreEmoji(e)} style={{...buttonStyle,minWidth:42,padding:5,background:choreEmoji===e?"#FFF4CC":"#FFF"}}>{e}</button>)}</div></label>
+              <label style={fieldStyle}>
+                Icon
+                <div style={{ display:"grid", gap:8 }}>
+                  {choreEmojiGroups.map((group) => (
+                    <div key={group.label}>
+                      <div style={{ fontSize:11, color:colors.muted, marginBottom:4 }}>{group.label}</div>
+                      <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                        {group.items.map((emoji, index) => (
+                          <button
+                            key={`${group.label}-${emoji}-${index}`}
+                            type="button"
+                            onClick={() => setChoreEmoji(emoji)}
+                            style={{
+                              ...buttonStyle,
+                              minWidth:42,
+                              minHeight:42,
+                              padding:5,
+                              fontSize:22,
+                              background:choreEmoji===emoji?"#FFF4CC":"#FFF",
+                              borderColor:choreEmoji===emoji?colors.gold:colors.line,
+                            }}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </label>
               <label style={fieldStyle}>Points<input type="number" min={0} step={1} value={chorePoints} onChange={(e)=>setChorePoints(Number(e.target.value||0))} style={inputStyle}/></label>
             </div>
             <label style={{...fieldStyle,marginTop:9}}>Notes<textarea value={choreNotes} onChange={(e)=>setChoreNotes(e.target.value)} style={{...inputStyle,minHeight:70}}/></label>
@@ -456,7 +653,36 @@ export default function AtlasHomeWorkspace({ isMobile, colors }: Props) {
                 <label style={fieldStyle}>Repeat<select value={editing.recurring||"None"} onChange={(e)=>setEditing({...editing,recurring:e.target.value as Recurrence})} style={inputStyle}>{["None","Daily","Weekly","Monthly"].map(v=><option key={v}>{v}</option>)}</select></label>
                 <label style={fieldStyle}>Points<input type="number" min={0} value={editing.points||0} onChange={(e)=>setEditing({...editing,points:Number(e.target.value||0)})} style={inputStyle}/></label>
               </div>
-              <label style={fieldStyle}>Emoji<div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{choreEmojis.map(e=><button key={e} type="button" onClick={()=>setEditing({...editing,emoji:e})} style={{...buttonStyle,minWidth:42,padding:5,background:editing.emoji===e?"#FFF4CC":"#FFF"}}>{e}</button>)}</div></label>
+              <label style={fieldStyle}>
+                Icon
+                <div style={{ display:"grid", gap:8 }}>
+                  {choreEmojiGroups.map((group) => (
+                    <div key={group.label}>
+                      <div style={{ fontSize:11, color:colors.muted, marginBottom:4 }}>{group.label}</div>
+                      <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                        {group.items.map((emoji, index) => (
+                          <button
+                            key={`${group.label}-${emoji}-${index}`}
+                            type="button"
+                            onClick={() => setEditing({...editing,emoji})}
+                            style={{
+                              ...buttonStyle,
+                              minWidth:42,
+                              minHeight:42,
+                              padding:5,
+                              fontSize:22,
+                              background:editing.emoji===emoji?"#FFF4CC":"#FFF",
+                              borderColor:editing.emoji===emoji?colors.gold:colors.line,
+                            }}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </label>
               <label style={fieldStyle}>Notes<textarea value={editing.notes||""} onChange={(e)=>setEditing({...editing,notes:e.target.value})} style={{...inputStyle,minHeight:80}}/></label>
               <label style={fieldStyle}>Add Photo<input type="file" accept="image/*" onChange={(e)=>void addPhoto(editing,e.target.files?.[0])} style={inputStyle}/></label>
               {(editing.photos||[]).length?<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>{(editing.photos||[]).map(photo=><img key={photo.id} src={photo.dataUrl} alt={photo.name} style={{width:"100%",aspectRatio:"1",objectFit:"cover",borderRadius:12,border:`1px solid ${colors.line}`}}/>)}</div>:null}
