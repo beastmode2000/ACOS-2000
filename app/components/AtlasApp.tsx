@@ -5004,6 +5004,41 @@ export default function AtlasApp() {
   }
 
   function colorForEvent(event: CalendarItem) {
+    if (activePropertyId === "4725") {
+      const linkedChore = serviceRecords.find(
+        (record) =>
+          String(record.id || "") === String(event.linkedId || "") &&
+          String(record.responsibilityArea || "") === "Family",
+      );
+      const isFamilyChore =
+        String(event.categoryLabel || "") === "Chore" ||
+        String(event.colorId || "").startsWith("home-chore") ||
+        String(event.source || "").startsWith("home-chore") ||
+        Boolean(linkedChore);
+
+      if (isFamilyChore) {
+        const assignedPerson = String(
+          linkedChore?.assignedTo || event.area || "Family",
+        ).trim();
+        const familyColor =
+          ({
+            Nick: { id: "green", hex: "#12B76A" },
+            Chelsea: { id: "orange", hex: "#F79009" },
+            Cooper: { id: "blue", hex: "#2E90FA" },
+            Leni: { id: "pink", hex: "#EE46BC" },
+            Family: { id: "gray", hex: "#667085" },
+          } as Record<string, { id: string; hex: string }>)[assignedPerson] ||
+          { id: "gray", hex: "#667085" };
+
+        return {
+          id: familyColor.id,
+          label: "Chore",
+          hex: familyColor.hex,
+          colorName: familyColor.id as CalendarColorName,
+        };
+      }
+    }
+
     const labelRecord = calendarColors.find(
       (color) => color.id === event.colorId,
     );
