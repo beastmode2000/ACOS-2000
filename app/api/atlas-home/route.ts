@@ -337,7 +337,7 @@ async function upsertFamilyWorkOrder(sql: ReturnType<typeof neon>, existingId: s
   const followUpDate = dateKey(merged.followUpDate) || null;
   const recurrenceEndDate = dateKey(merged.recurrenceEndDate) || null;
   const lastCompletedDate = dateKey(merged.lastCompletedDate) || null;
-  const existingCheck = await sql`SELECT id FROM atlas_work_orders WHERE property_id=${HOME_PROPERTY_ID} AND id=${id} LIMIT 1`;
+  const existingCheck = (await sql`SELECT id FROM atlas_work_orders WHERE property_id=${HOME_PROPERTY_ID} AND id=${id} LIMIT 1`) as unknown as JsonRecord[];
   if (existingCheck.length) {
     await sql`
       UPDATE atlas_work_orders SET
