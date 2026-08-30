@@ -53,6 +53,9 @@ function safePerson(value: unknown): FamilyPerson {
   const person = asString(value) as FamilyPerson;
   return FAMILY_MEMBERS.includes(person) ? person : "Family";
 }
+function familyColor(person: FamilyPerson) {
+  return ({ Nick: "green", Chelsea: "orange", Cooper: "blue", Leni: "pink", Family: "gray" } as Record<FamilyPerson, string>)[person] || "gray";
+}
 function dateKey(value: unknown) {
   if (!value) return "";
   const text = String(value);
@@ -436,20 +439,49 @@ async function scheduleMeal(sql: ReturnType<typeof neon>, body: JsonRecord) {
   const recipeId = asString(body.recipeId);
   const title = asString(body.title);
   const date = dateKey(body.date);
-  if (!recipeId || !title || !date) throw new Error("Recipe, title, and date are required.");
+  if (!title || !date) throw new Error("Meal and date are required.");
   const person = safePerson(body.person);
   const time = asString(body.time);
-  const id = `home-meal-${recipeId}-${date}-${Date.now()}-${randomBytes(3).toString("hex")}`;
+  const colorName = familyColor(person);
+  const id = `home-meal-${recipeId || "custom"}-${date}-${Date.now()}-${randomBytes(3).toString("hex")}`;
   await sql`
     INSERT INTO atlas_calendar_items (
       id,date,item_date,time,end_time,title,area,category_label,color_id,color_name,all_day,repeat,reminder,notes,
       linked_type,linked_id,linked_name,completed,source,event_type,property_id
     ) VALUES (
-      ${id},${date}::date,${date}::date,${time},'',${`🍽️ ${title}`},${person},'Meal','home-meal','orange',${!time},'None','None',
-      ${`Meal for ${person}`},'None',${recipeId},${title},false,'manual','Calendar Event',${HOME_PROPERTY_ID}
+      ${id},${date}::date,${date}::date,${time},'',${`🍽️ ${title}`},${person},'Meal',${`family-${person.toLowerCase()}`},${colorName},${!time},'None','None',
+      ${`Meal for ${person}`},'None',${recipeId || null},${title},false,'manual','Calendar Event',${HOME_PROPERTY_ID}
     )
   `;
   return { id, date, title, person, time };
+}
+
+async function saveFamilyCalendar(sql: ReturnType<typeof neon>, body: JsonRecord) {
+  await ensureCalendarColumns(sql);
+  const item = body.item && typeof body.item === "object" ? body.item as JsonRecord : body;
+  const id = asString(item.id) || `family-event-${Date.now()}-${randomBytes(4).toString("hex")}`;
+  const title = asString(item.title);
+  const date = dateKey(item.date);
+  if (!title || !date) throw new Error("Title and date are required.");
+  const person = safePerson(item.person || item.area);
+  const category = asString(item.categoryLabel) || "Other";
+  const time = asString(item.time);
+  const notes = asString(item.notes);
+  const linkedId = asString(item.linkedId);
+  const colorName = familyColor(person);
+  await sql`
+    INSERT INTO atlas_calendar_items (
+      id,date,item_date,time,end_time,title,area,category_label,color_id,color_name,all_day,repeat,reminder,notes,
+      linked_type,linked_id,linked_name,completed,source,event_type,property_id
+    ) VALUES (
+      ${id},${date}::date,${date}::date,${time},'',${category === "Meal" ? `🍽️ ${title}` : title},${person},${category},
+      ${`family-${person.toLowerCase()}`},${colorName},${!time},'None','None',${notes},'None',${linkedId || null},${title},false,'manual','Calendar Event',${HOME_PROPERTY_ID}
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      date=EXCLUDED.date,item_date=EXCLUDED.item_date,time=EXCLUDED.time,title=EXCLUDED.title,area=EXCLUDED.area,category_label=EXCLUDED.category_label,
+      color_id=EXCLUDED.color_id,color_name=EXCLUDED.color_name,all_day=EXCLUDED.all_day,notes=EXCLUDED.notes,linked_id=EXCLUDED.linked_id,linked_name=EXCLUDED.linked_name,property_id=EXCLUDED.property_id
+  `;
+  return { id, date, title, person, categoryLabel: category, time, notes, linkedId };
 }
 
 function calendarRow(row: JsonRecord) {
@@ -537,10 +569,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, token, person, role });
     }
 
+    if (body.action === "saveFamilyCalendar") {
+      if (asString(body.propertyId) !== HOME_PROPERTY_ID) return NextResponse.json({ ok: false, error: "Invalid property." }, { status: 400 });
+      const item = await saveFamilyCalendar(sql, body);
+      return NextResponse.json({ ok: true, item });
+    }
+
     if (body.action === "scheduleMeal") {
       if (asString(body.propertyId) !== HOME_PROPERTY_ID) return NextResponse.json({ ok: false, error: "Invalid property." }, { status: 400 });
       const calendarItem = await scheduleMeal(sql, body);
       return NextResponse.json({ ok: true, calendarItem });
+    }
+
+    if (body.action === "deleteChore") {
+      if (asString(body.propertyId) !== HOME_PROPERTY_ID) return NextResponse.json({ ok: false, error: "Invalid property." }, { status: 400 });
+      const choreId = asString(body.choreId);
+      if (!choreId) return NextResponse.json({ ok: false, error: "Chore id is required." }, { status: 400 });
+      await ensureWorkOrderColumns(sql);
+      await ensureCalendarColumns(sql);
+      await sql`DELETE FROM atlas_work_orders WHERE property_id=${HOME_PROPERTY_ID} AND id=${choreId}`;
+      await sql`DELETE FROM atlas_home_records WHERE property_id=${HOME_PROPERTY_ID} AND record_type='chore_meta' AND record->>'workOrderId'=${choreId}`;
+      await deleteChoreExtras(sql, choreId);
+      return NextResponse.json({ ok: true });
     }
 
     if (body.action === "syncChore") {
@@ -698,9 +748,10 @@ export async function PATCH(request: NextRequest) {
       if (!date || !title) return NextResponse.json({ ok: false, error: "Event title and date are required." }, { status: 400 });
       const area = safePerson(item.area || item.person);
       const category = asString(item.categoryLabel) || "Family";
+      const colorName = familyColor(area);
       await sql`
         INSERT INTO atlas_calendar_items (id,date,item_date,time,end_time,title,area,category_label,color_id,color_name,all_day,repeat,reminder,notes,linked_type,linked_id,linked_name,completed,source,event_type,property_id)
-        VALUES (${id},${date}::date,${date}::date,${asString(item.time)},${asString(item.endTime)},${title},${area},${category},'family','blue',${!asString(item.time)},'None','None',${asString(item.notes)},'None',NULL,NULL,false,'manual','Calendar Event',${HOME_PROPERTY_ID})
+        VALUES (${id},${date}::date,${date}::date,${asString(item.time)},${asString(item.endTime)},${title},${area},${category},${`family-${area.toLowerCase()}`},${colorName},${!asString(item.time)},'None','None',${asString(item.notes)},'None',NULL,NULL,false,'manual','Calendar Event',${HOME_PROPERTY_ID})
         ON CONFLICT (id) DO UPDATE SET date=EXCLUDED.date,item_date=EXCLUDED.item_date,time=EXCLUDED.time,end_time=EXCLUDED.end_time,title=EXCLUDED.title,area=EXCLUDED.area,category_label=EXCLUDED.category_label,notes=EXCLUDED.notes,property_id=EXCLUDED.property_id
       `;
       return NextResponse.json({ ok: true, item: { id, date, title, area, categoryLabel: category, time: asString(item.time), endTime: asString(item.endTime), notes: asString(item.notes) } });
