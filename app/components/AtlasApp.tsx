@@ -5302,53 +5302,72 @@ export default function AtlasApp() {
           ? ["dashboard", "history", "calendar", "requests", "assets", "documents", "procedures"]
           : ["dashboard", "history", "calendar", "assets", "documents", "procedures"],
   );
-  const visibleAtlasScreens = isTeamScopedUser
-    ? screens.filter((item) => restrictedTeamScreenIds.has(item.id))
-    : screens;
-  const visiblePrimaryNavigationSections = isTeamScopedUser
+  const home4725Screens = new Set<AtlasScreen>([
+    "dashboard",
+    "notes",
+    "calendar",
+    "assets",
+    "locations",
+    "manuals",
+    "assistant",
+  ]);
+  const visibleAtlasScreens = activePropertyId === "4725"
+    ? screens.filter((item) => home4725Screens.has(item.id))
+    : isTeamScopedUser
+      ? screens.filter((item) => restrictedTeamScreenIds.has(item.id))
+      : screens;
+  const visiblePrimaryNavigationSections = activePropertyId === "4725"
     ? [
-        {
-          label: isAddisonUser
-            ? "My Day"
-            : isRequestCoordinatorUser
-              ? "Request Coordination"
-              : isSeanMarineUser
-                ? "Marine Operations"
-                : "My Atlas",
-          items: isAddisonUser
-            ? (["history"] as AtlasScreen[])
-            : isRequestCoordinatorUser
-              ? (["dashboard", "requests", "locations", "assets", "history"] as AtlasScreen[])
-              : isSeanMarineUser
-                ? (["dashboard", "history", "calendar", "requests", "assets", "documents", "procedures"] as AtlasScreen[])
-                : (["dashboard", "history", "calendar", "assets", "documents", "procedures"] as AtlasScreen[]),
-        },
+        { label: "Home", items: ["dashboard", "calendar"] as AtlasScreen[] },
+        { label: "Property", items: ["assets", "locations", "notes"] as AtlasScreen[] },
+        { label: "Help", items: ["manuals", "assistant"] as AtlasScreen[] },
       ]
-    : (() => {
-        return [
-          { label: "Overview", items: ["dashboard", "notes"] as AtlasScreen[] },
-          { label: "Work", items: ["history", "ownerReport", "reports"] as AtlasScreen[] },
-          { label: "Property", items: ["assets", "locations", "calendar"] as AtlasScreen[] },
-          { label: "People", items: ["contacts", "vendors", "team"] as AtlasScreen[] },
-          { label: "Intake", items: ["intake"] as AtlasScreen[] },
-          { label: "Knowledge", items: ["manuals"] as AtlasScreen[] },
-        ];
-      })();
+    : isTeamScopedUser
+      ? [
+          {
+            label: isAddisonUser
+              ? "My Day"
+              : isRequestCoordinatorUser
+                ? "Request Coordination"
+                : isSeanMarineUser
+                  ? "Marine Operations"
+                  : "My Atlas",
+            items: isAddisonUser
+              ? (["history"] as AtlasScreen[])
+              : isRequestCoordinatorUser
+                ? (["dashboard", "requests", "locations", "assets", "history"] as AtlasScreen[])
+                : isSeanMarineUser
+                  ? (["dashboard", "history", "calendar", "requests", "assets", "documents", "procedures"] as AtlasScreen[])
+                  : (["dashboard", "history", "calendar", "assets", "documents", "procedures"] as AtlasScreen[]),
+          },
+        ]
+      : (() => {
+          return [
+            { label: "Overview", items: ["dashboard", "notes"] as AtlasScreen[] },
+            { label: "Work", items: ["history", "ownerReport", "reports"] as AtlasScreen[] },
+            { label: "Property", items: ["assets", "locations", "calendar"] as AtlasScreen[] },
+            { label: "People", items: ["contacts", "vendors", "team"] as AtlasScreen[] },
+            { label: "Intake", items: ["intake"] as AtlasScreen[] },
+            { label: "Knowledge", items: ["manuals"] as AtlasScreen[] },
+          ];
+        })();
 
-  const visibleMoreToolsScreens = isTeamScopedUser
+  const visibleMoreToolsScreens = activePropertyId === "4725"
     ? ([] as AtlasScreen[])
-    : (() => {
-        const primaryIds = new Set<AtlasScreen>([
-          "dashboard", "notes", "history", "assets",
-          "locations", "calendar", "contacts", "vendors", "team", "intake", "ownerReport", "reports",
-        ]);
-        const remaining = screens
-          .map((item) => item.id)
-          .filter((screenId) => !primaryIds.has(screenId) && screenId !== "insights");
-        return remaining.filter(
-          (screenId) => screenId !== "manuals" && screenId !== "planner" && screenId !== "routines",
-        ) as AtlasScreen[];
-      })();
+    : isTeamScopedUser
+      ? ([] as AtlasScreen[])
+      : (() => {
+          const primaryIds = new Set<AtlasScreen>([
+            "dashboard", "notes", "history", "assets",
+            "locations", "calendar", "contacts", "vendors", "team", "intake", "ownerReport", "reports",
+          ]);
+          const remaining = screens
+            .map((item) => item.id)
+            .filter((screenId) => !primaryIds.has(screenId) && screenId !== "insights");
+          return remaining.filter(
+            (screenId) => screenId !== "manuals" && screenId !== "planner" && screenId !== "routines",
+          ) as AtlasScreen[];
+        })();
 
   useEffect(() => {
     if (isAddisonUser) {
@@ -31078,46 +31097,85 @@ ${notes.trim()}` : notes.trim(),
               backdropFilter: "blur(14px)",
             }}
           >
-            {[
-              {
-                id: "today",
-                label: "Today",
-                active: screen === "dashboard",
-                action: () => {
-                  setMobileFieldMoreOpen(false);
-                  setScreen("dashboard");
-                },
-              },
-              {
-                id: "work",
-                label: "Work",
-                active: screen === "history",
-                action: () => {
-                  setMobileFieldMoreOpen(false);
-                  setSelectedServiceId("");
-                  setWorkOrdersOpenKey((current) => current + 1);
-                  setScreen("history");
-                },
-              },
-              {
-                id: "assets",
-                label: "Assets",
-                active: screen === "assets",
-                action: () => {
-                  setMobileFieldMoreOpen(false);
-                  setScreen("assets");
-                },
-              },
-              {
-                id: "calendar",
-                label: "Calendar",
-                active: screen === "calendar",
-                action: () => {
-                  setMobileFieldMoreOpen(false);
-                  setScreen("calendar");
-                },
-              },
-            ].map((item) => (
+            {(activePropertyId === "4725"
+              ? [
+                  {
+                    id: "today",
+                    label: "Home",
+                    active: screen === "dashboard",
+                    action: () => {
+                      setMobileFieldMoreOpen(false);
+                      setScreen("dashboard");
+                    },
+                  },
+                  {
+                    id: "calendar",
+                    label: "Calendar",
+                    active: screen === "calendar",
+                    action: () => {
+                      setMobileFieldMoreOpen(false);
+                      setScreen("calendar");
+                    },
+                  },
+                  {
+                    id: "assets",
+                    label: "Assets",
+                    active: screen === "assets",
+                    action: () => {
+                      setMobileFieldMoreOpen(false);
+                      setScreen("assets");
+                    },
+                  },
+                  {
+                    id: "assistant",
+                    label: "Ask Atlas",
+                    active: screen === "assistant",
+                    action: () => {
+                      setMobileFieldMoreOpen(false);
+                      setScreen("assistant");
+                    },
+                  },
+                ]
+              : [
+                  {
+                    id: "today",
+                    label: "Today",
+                    active: screen === "dashboard",
+                    action: () => {
+                      setMobileFieldMoreOpen(false);
+                      setScreen("dashboard");
+                    },
+                  },
+                  {
+                    id: "work",
+                    label: "Work",
+                    active: screen === "history",
+                    action: () => {
+                      setMobileFieldMoreOpen(false);
+                      setSelectedServiceId("");
+                      setWorkOrdersOpenKey((current) => current + 1);
+                      setScreen("history");
+                    },
+                  },
+                  {
+                    id: "assets",
+                    label: "Assets",
+                    active: screen === "assets",
+                    action: () => {
+                      setMobileFieldMoreOpen(false);
+                      setScreen("assets");
+                    },
+                  },
+                  {
+                    id: "calendar",
+                    label: "Calendar",
+                    active: screen === "calendar",
+                    action: () => {
+                      setMobileFieldMoreOpen(false);
+                      setScreen("calendar");
+                    },
+                  },
+                ]).map((item) => (
               <button
                 key={item.id}
                 type="button"
