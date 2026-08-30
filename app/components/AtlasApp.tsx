@@ -2296,6 +2296,8 @@ export default function AtlasApp() {
   );
   const [calendarDirty, setCalendarDirty] = useState(false);
   const [calendarView, setCalendarView] = useState<"month" | "week">("month");
+  const [home4725CalendarMode, setHome4725CalendarMode] = useState<"family" | "chores">("family");
+  const [home4725PersonFilter, setHome4725PersonFilter] = useState("All");
   const [showUsHolidays, setShowUsHolidays] = useState(true);
   const [showJewishHolidays, setShowJewishHolidays] = useState(true);
   const [calendarCategoryFilters, setCalendarCategoryFilters] = useState<
@@ -5304,10 +5306,11 @@ export default function AtlasApp() {
   );
   const home4725Screens = new Set<AtlasScreen>([
     "dashboard",
-    "notes",
     "calendar",
+    "history",
     "assets",
     "locations",
+    "notes",
     "manuals",
     "assistant",
   ]);
@@ -5318,7 +5321,7 @@ export default function AtlasApp() {
       : screens;
   const visiblePrimaryNavigationSections = activePropertyId === "4725"
     ? [
-        { label: "Home", items: ["dashboard", "calendar"] as AtlasScreen[] },
+        { label: "Home", items: ["dashboard", "calendar", "history"] as AtlasScreen[] },
         { label: "Property", items: ["assets", "locations", "notes"] as AtlasScreen[] },
         { label: "Help", items: ["manuals", "assistant"] as AtlasScreen[] },
       ]
@@ -5567,15 +5570,20 @@ export default function AtlasApp() {
               : `work-order-${record.id}-occurrence-${date}`,
             date,
             time: "",
-            title: `WO: ${record.title}`,
-            area: "Work Order",
-            categoryLabel: "Work Order",
-            colorId: "work-order",
+            title: activePropertyId === "4725"
+              ? `${String(record.emoji || record.workCategory || "").match(/^\S+/)?.[0] || "⭐"} ${record.title}`
+              : `WO: ${record.title}`,
+            area: activePropertyId === "4725"
+              ? String(record.assignedTo || "Family")
+              : "Work Order",
+            categoryLabel: activePropertyId === "4725" ? "Chore" : "Work Order",
+            colorId: activePropertyId === "4725" ? "home-chore" : "work-order",
             colorName: "blue",
             allDay: true,
             repeat: "None",
             reminder: "None",
             notes: [
+              activePropertyId === "4725" && record.assignedTo ? `Assigned to: ${record.assignedTo}` : "",
               record.notes,
               record.season ? `Season: ${record.season}` : "",
               record.recurring ? `Repeats ${recurrenceLabel(record)}` : "",
@@ -5586,11 +5594,12 @@ export default function AtlasApp() {
             linkedId: record.id,
             linkedName: record.title,
             completed: index === 0 && record.status === "Completed",
+            calendarOwner: activePropertyId === "4725" ? String(record.assignedTo || "Family") : "",
             source: "work-order",
           }),
         );
       });
-  }, [serviceRecords, staffVisibleServiceRecords, isSeanMarineUser]);
+  }, [serviceRecords, staffVisibleServiceRecords, isSeanMarineUser, activePropertyId]);
 
   const contactBirthdayItems = useMemo<CalendarItem[]>(() => {
     const year = calendarCursor.getFullYear();
@@ -12160,7 +12169,9 @@ export default function AtlasApp() {
   function addCalendarItem(date?: string) {
     startNewCalendarDraft(date);
     const currentName = String(currentAtlasUser?.name || "Nick").trim().toLowerCase();
-    const defaultOwner = isSeanMarineUser
+    const defaultOwner = activePropertyId === "4725" && home4725PersonFilter !== "All"
+      ? home4725PersonFilter
+      : isSeanMarineUser
       ? "Sean Powell"
       : currentName.startsWith("addison")
         ? "Addison"
@@ -20384,7 +20395,7 @@ ${notes.trim()}` : notes.trim(),
         serviceRecords={isTeamScopedUser ? staffVisibleServiceRecords : serviceRecords}
         colors={colors}
         filteredServices={
-          dashboardWorkFilter
+          (dashboardWorkFilter
             ? staffVisibleServiceRecords.filter((record) => {
                 const item = record as AtlasServiceRecord;
                 if (dashboardWorkFilter === "__overdue__") return item.status !== "Completed" && Boolean(item.date) && String(item.date).slice(0, 10) < todayISO();
@@ -20395,6 +20406,10 @@ ${notes.trim()}` : notes.trim(),
                 return text.includes(dashboardWorkFilter.toLowerCase());
               })
             : staffVisibleServiceRecords
+          ).filter((record) => {
+            if (activePropertyId !== "4725" || home4725PersonFilter === "All") return true;
+            return String((record as AtlasServiceRecord).assignedTo || "Family") === home4725PersonFilter;
+          })
         }
         listStyle={listStyle}
         setSelectedServiceId={setSelectedServiceId}
@@ -20446,6 +20461,20 @@ ${notes.trim()}` : notes.trim(),
 
   function renderCalendar() {
     const seanProperty = String(selectedCalendar.propertyId || (seanCalendarPropertyFilter === "all" ? "2000" : seanCalendarPropertyFilter));
+    const homeFamilyMembers = ["All", "Nick", "Chelsea", "Cooper", "Leni"];
+    const homeVisibleCalendarItems =
+      activePropertyId === "4725" && home4725PersonFilter !== "All"
+        ? expandedCalendarItems.filter((item) => {
+            const owner = String(item.calendarOwner || "");
+            const area = String(item.area || "");
+            const notes = String(item.notes || "");
+            const title = String(item.title || "");
+            const person = home4725PersonFilter.toLowerCase();
+            return [owner, area, notes, title].some((value) =>
+              value.toLowerCase().includes(person),
+            );
+          })
+        : expandedCalendarItems;
     const propertyPalette: Record<string, string> = {
       "2000": "#175CD3",
       "6855": "#7C3AED",
@@ -20455,6 +20484,75 @@ ${notes.trim()}` : notes.trim(),
 
     return (
       <div style={{ display: "grid", gap: 14 }}>
+        {activePropertyId === "4725" ? (
+          <section style={{ ...sectionStyle, padding: isMobile ? 12 : 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => setHome4725CalendarMode("family")}
+                  style={{
+                    ...secondaryButtonStyle,
+                    background: home4725CalendarMode === "family" ? colors.gold : "#FFFFFF",
+                    borderColor: home4725CalendarMode === "family" ? colors.gold : colors.line,
+                  }}
+                >
+                  Family Calendar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHome4725CalendarMode("chores")}
+                  style={{
+                    ...secondaryButtonStyle,
+                    background: home4725CalendarMode === "chores" ? colors.gold : "#FFFFFF",
+                    borderColor: home4725CalendarMode === "chores" ? colors.gold : colors.line,
+                  }}
+                >
+                  Chore Board
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {homeFamilyMembers.map((person) => {
+                  const active = home4725PersonFilter === person;
+                  return (
+                    <button
+                      key={person}
+                      type="button"
+                      onClick={() => setHome4725PersonFilter(person)}
+                      style={{
+                        ...secondaryButtonStyle,
+                        minHeight: 34,
+                        padding: "5px 9px",
+                        background: active ? "#FFF4CC" : "#FFFFFF",
+                        borderColor: active ? colors.gold : colors.line,
+                      }}
+                    >
+                      {person === "All" ? "All Family" : person}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {activePropertyId === "4725" && home4725CalendarMode === "chores" ? (
+          <AtlasHomeWorkspace
+            isMobile={isMobile}
+            colors={colors}
+            choreRecords={serviceRecords}
+            onCreateChore={addWorkOrder}
+            onOpenChore={(id) => {
+              setSelectedServiceId(id);
+              setWorkOrdersOpenKey((current) => current + 1);
+              setScreen("history");
+            }}
+            onCompleteChore={completeWorkOrder}
+            initialTab="chores"
+            hideHomeHeader
+          />
+        ) : (
+          <>
         {isSeanMarineUser ? (
           <section style={{ ...sectionStyle, padding: isMobile ? 14 : 18 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -20563,7 +20661,7 @@ ${notes.trim()}` : notes.trim(),
         dangerButtonStyle={dangerButtonStyle}
         deleteCalendarItem={deleteCalendarItem}
         editorHeaderStyle={editorHeaderStyle}
-        expandedCalendarItems={isSeanMarineUser ? seanVisibleCalendarItems : expandedCalendarItems}
+        expandedCalendarItems={isSeanMarineUser ? seanVisibleCalendarItems : homeVisibleCalendarItems}
         eyebrowStyle={eyebrowStyle}
         fieldLabelStyle={fieldLabelStyle}
         formGridStyle={formGridStyle}
@@ -20608,7 +20706,23 @@ ${notes.trim()}` : notes.trim(),
         showJewishHolidays={showJewishHolidays}
         showUsHolidays={showUsHolidays}
         stackStyle={stackStyle}
-        standardCalendarCategoryLabels={standardCalendarCategoryLabels}
+        standardCalendarCategoryLabels={
+          activePropertyId === "4725"
+            ? Array.from(new Set([
+                ...standardCalendarCategoryLabels,
+                "Meal",
+                "Chore",
+                "School",
+                "No School",
+                "Appointment",
+                "Payday",
+                "Grocery",
+                "Bill",
+                "Activity",
+                "Reminder",
+              ]))
+            : standardCalendarCategoryLabels
+        }
         todayISO={todayISO}
         updateCalendarItem={updateCalendarItem}
         vendorRecords={vendorRecords}
@@ -20617,6 +20731,8 @@ ${notes.trim()}` : notes.trim(),
         weatherText={weatherText}
         weekCells={weekCells}
       />
+          </>
+        )}
       </div>
     );
   }
@@ -28566,8 +28682,21 @@ ${notes.trim()}` : notes.trim(),
 
     if (isAddisonUser) {
       content = renderAddisonToday();
-    } else if (activePropertyId === "4725") {
-      content = <AtlasHomeWorkspace isMobile={isMobile} colors={colors} />;
+    } else if (activePropertyId === "4725" && screen === "dashboard") {
+      content = (
+        <AtlasHomeWorkspace
+          isMobile={isMobile}
+          colors={colors}
+          choreRecords={serviceRecords}
+          onCreateChore={addWorkOrder}
+          onOpenChore={(id) => {
+            setSelectedServiceId(id);
+            setWorkOrdersOpenKey((current) => current + 1);
+            setScreen("history");
+          }}
+          onCompleteChore={completeWorkOrder}
+        />
+      );
     } else if (departmentCenter) content = renderDepartmentCenter(departmentCenter);
     else if (screen === "dashboard") content = renderDashboard();
     else if (screen === "portfolio") content = renderPortfolio();
@@ -30706,13 +30835,17 @@ ${notes.trim()}` : notes.trim(),
                             }}
                           >
                             <span className="atlas-sidebar-nav-label">
-                              {isAddisonUser && item.id === "routines"
-                                ? "My Routine"
-                                : item.id === "timeline"
-                                  ? "Property Timeline"
-                                  : item.id === "portfolio"
-                                    ? "Properties"
-                                    : item.label}
+                              {activePropertyId === "4725" && item.id === "history"
+                                ? "Chores"
+                                : activePropertyId === "4725" && item.id === "calendar"
+                                  ? "Family Calendar"
+                                  : isAddisonUser && item.id === "routines"
+                                    ? "My Routine"
+                                    : item.id === "timeline"
+                                      ? "Property Timeline"
+                                      : item.id === "portfolio"
+                                        ? "Properties"
+                                        : item.label}
                             </span>
                           </button>
                         );
@@ -30860,7 +30993,23 @@ ${notes.trim()}` : notes.trim(),
                   {screen === "dashboard" ? <AtlasMiniMark size={34} /> : null}
                   <h1 style={isMobile ? mobilePageTitleStyle : pageTitleStyle}>
                     {activePropertyId === "4725"
-                      ? "Atlas / 4725"
+                      ? screen === "dashboard"
+                        ? "Atlas / 4725"
+                        : screen === "history"
+                          ? "Chores"
+                          : screen === "calendar"
+                            ? "Family Calendar"
+                            : screen === "assets"
+                              ? "Assets"
+                              : screen === "locations"
+                                ? "Locations"
+                                : screen === "notes"
+                                  ? "Notes"
+                                  : screen === "manuals"
+                                    ? "Manuals"
+                                    : screen === "assistant"
+                                      ? "Ask Atlas"
+                                      : "Atlas / 4725"
                       : departmentCenter
                       ? departmentCenter === "house" ? "House & Maintenance" : departmentCenter === "garage" ? "Garage" : departmentCenter === "pool" ? "Pool & Spa" : departmentCenter === "landscaping" ? "Landscaping & Irrigation" : "Dock & Waterfront"
                       : screen === "dashboard"
@@ -31118,21 +31267,23 @@ ${notes.trim()}` : notes.trim(),
                     },
                   },
                   {
+                    id: "chores",
+                    label: "Chores",
+                    active: screen === "history",
+                    action: () => {
+                      setMobileFieldMoreOpen(false);
+                      setSelectedServiceId("");
+                      setWorkOrdersOpenKey((current) => current + 1);
+                      setScreen("history");
+                    },
+                  },
+                  {
                     id: "assets",
                     label: "Assets",
                     active: screen === "assets",
                     action: () => {
                       setMobileFieldMoreOpen(false);
                       setScreen("assets");
-                    },
-                  },
-                  {
-                    id: "assistant",
-                    label: "Ask Atlas",
-                    active: screen === "assistant",
-                    action: () => {
-                      setMobileFieldMoreOpen(false);
-                      setScreen("assistant");
                     },
                   },
                 ]
@@ -31264,11 +31415,15 @@ ${notes.trim()}` : notes.trim(),
                         {section.items.map((screenId) => {
                           const item = screens.find((candidate) => candidate.id === screenId);
                           if (!item) return null;
-                          const label = screenId === "planner"
-                            ? (isAddisonUser ? "My Tasks" : "Tasks")
-                            : screenId === "timeline"
-                              ? "Projects"
-                              : item.label;
+                          const label = activePropertyId === "4725" && screenId === "history"
+                            ? "Chores"
+                            : activePropertyId === "4725" && screenId === "calendar"
+                              ? "Family Calendar"
+                              : screenId === "planner"
+                                ? (isAddisonUser ? "My Tasks" : "Tasks")
+                                : screenId === "timeline"
+                                  ? "Projects"
+                                  : item.label;
                           return (
                             <button
                               key={screenId}
