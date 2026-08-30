@@ -5685,13 +5685,19 @@ export default function AtlasApp() {
     const personalItems = calendarItems.filter((item) => {
       const source = String(item.source || "").toLowerCase();
       const linkedType = String(item.linkedType || "").toLowerCase();
+      const is4725HomeChoreOccurrence =
+        activePropertyId === "4725" &&
+        (source === "home-chore-extra" || source === "home-chore");
       if (
-        source === "task" ||
-        source === "work-order" ||
-        source === "workorder" ||
-        source === "service" ||
-        linkedType === "task" ||
-        linkedType === "work order"
+        !is4725HomeChoreOccurrence &&
+        (
+          source === "task" ||
+          source === "work-order" ||
+          source === "workorder" ||
+          source === "service" ||
+          linkedType === "task" ||
+          linkedType === "work order"
+        )
       ) return false;
       const owner = String(item.calendarOwner || "").toLowerCase();
       if (isSeanMarineUser) return owner === "sean";
