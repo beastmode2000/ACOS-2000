@@ -46,6 +46,7 @@ import AtlasVendorsWorkspace from "./AtlasVendorsWorkspace";
 import AtlasDocumentsWorkspace from "./AtlasDocumentsWorkspace";
 import AtlasProceduresWorkspace from "./AtlasProceduresWorkspace";
 import AtlasTimelineWorkspace from "./AtlasTimelineWorkspace";
+import AtlasHomeWorkspace from "./AtlasHomeWorkspace";
 import { findRelatedRecords } from "../lib/ai/relationship-engine";
 import {
   planAssistantAction,
@@ -102,7 +103,7 @@ type OwnerRequestRecord = BaseOwnerRequestRecord & {
   assignedTo?: string;
 };
 import {
-  closeSymbol, atlasProperties, makeDailyForemanWidgets,
+  closeSymbol, atlasProperties as baseAtlasProperties, makeDailyForemanWidgets,
   normalizeDashboardWidgets, loadDashboardRoutineItems, todayLogStorageKeys, dashboardRoutineStorageKeys, atlasMoreToolsScreens, atlasPrimaryNavigationSections, localISODate,
   todayISO, addDays, uid, normalizeMapDetailBoxes, slugify, blankCalendarItem, clampPercent, formatDate,
   monthName, isServiceStatus, isPriority, isWorkOrderRecurrenceUnit, seasonForDate, recurrenceLabel, nextRecurrenceDate, readStoredArray,
@@ -117,6 +118,11 @@ import {
   manualCategories, seaDooManualUrl, cleanManualOpenUrl, defaultManuals, inferManualCategory, blankManual, normalizeManualRecord, ListDrawerLayout,
   CreatableRelationshipField,
 } from "./AtlasAppFoundation";
+
+const atlasProperties = [
+  ...baseAtlasProperties,
+  { id: "4725", name: "4725", detail: "Private home" },
+];
 
 type VendorDepartmentKey = "house" | "garage" | "pool" | "landscaping" | "marine";
 type VendorContactEntry = {
@@ -1801,11 +1807,14 @@ export default function AtlasApp() {
           ? memberPropertyIds
           : sessionPropertyIds;
         const isFullAccess = role === "master" || role === "administrator";
+        const hasExplicitHomeAccess =
+          currentEmail === "nthornton87@yahoo.com" || returnedPropertyIds.includes("4725");
         const allowed: string[] = isFullAccess
           ? [...allPropertyIds]
           : returnedPropertyIds.length > 0
             ? [...new Set<string>(returnedPropertyIds)]
             : ["2000"];
+        if (hasExplicitHomeAccess && !allowed.includes("4725")) allowed.push("4725");
 
         const memberPermissions =
           matchedMember?.permissions && typeof matchedMember.permissions === "object"
@@ -3163,6 +3172,10 @@ export default function AtlasApp() {
     setOperationsHydrated(false);
     setOperationsSyncState("idle");
     setActivePropertyId(propertyId);
+    if (propertyId === "4725") {
+      setDepartmentCenter("");
+      setScreenState("dashboard");
+    }
 
     const storedScopedTasks = readStoredArray<WorkPlanTask>([`atlas-tasks-v1-${propertyId}`], propertyId === "2000" ? readStoredArray<WorkPlanTask>(["atlas-tasks-v1"], []) : []);
     const scopedTasks = propertyId === "2000"
@@ -28534,6 +28547,8 @@ ${notes.trim()}` : notes.trim(),
 
     if (isAddisonUser) {
       content = renderAddisonToday();
+    } else if (activePropertyId === "4725") {
+      content = <AtlasHomeWorkspace isMobile={isMobile} colors={colors} />;
     } else if (departmentCenter) content = renderDepartmentCenter(departmentCenter);
     else if (screen === "dashboard") content = renderDashboard();
     else if (screen === "portfolio") content = renderPortfolio();
@@ -30825,7 +30840,9 @@ ${notes.trim()}` : notes.trim(),
                 >
                   {screen === "dashboard" ? <AtlasMiniMark size={34} /> : null}
                   <h1 style={isMobile ? mobilePageTitleStyle : pageTitleStyle}>
-                    {departmentCenter
+                    {activePropertyId === "4725"
+                      ? "Atlas / 4725"
+                      : departmentCenter
                       ? departmentCenter === "house" ? "House & Maintenance" : departmentCenter === "garage" ? "Garage" : departmentCenter === "pool" ? "Pool & Spa" : departmentCenter === "landscaping" ? "Landscaping & Irrigation" : "Dock & Waterfront"
                       : screen === "dashboard"
                         ? `Atlas / ${atlasProperties.find((item) => item.id === activePropertyId)?.name || "2000"}`
