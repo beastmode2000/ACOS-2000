@@ -6,6 +6,7 @@ type HomeRecordType = "recipe" | "goal" | "setting" | "chore_meta" | "chore";
 type RecurrenceUnit = "Days" | "Weeks" | "Months";
 type HomeTab = "home" | "cookbook" | "chores" | "rewards";
 type FamilyPerson = "Family" | "Nick" | "Chelsea" | "Cooper" | "Leni";
+type FamilyCalendarKind = "Meal" | "Appointment" | "Activity" | "School" | "No School" | "Reminder" | "Bill" | "Grocery" | "Other";
 type ChorePhoto = { id: string; name: string; dataUrl?: string; url?: string; createdAt?: string };
 type ChecklistItem = { id: string; text: string; completed: boolean };
 type CompletionEntry = string | { id?: string; completedAt?: string; points?: number; note?: string };
@@ -83,6 +84,7 @@ const choreEmojiGroups = [
 ];
 const goalEmojis = ["🎮","🧸","🚲","🎧","🎟️","⚽","🏀","🛍️","🎁","💰","⭐","🏆","🎨","📱"];
 const recipeCategories = ["Dinner","Meat","Pasta","Seahawks Sunday","Sides & Fries","Dessert","Cookies","Breakfast","Lunch","Family Favorite","Other"];
+const familyCalendarKinds: FamilyCalendarKind[] = ["Meal","Appointment","Activity","School","No School","Reminder","Bill","Grocery","Other"];
 
 function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -224,6 +226,14 @@ export default function AtlasHomeWorkspace({
   const [mealDate, setMealDate] = useState(todayISO());
   const [mealPerson, setMealPerson] = useState<FamilyPerson>("Family");
   const [mealTime, setMealTime] = useState("");
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddKind, setQuickAddKind] = useState<FamilyCalendarKind>("Meal");
+  const [quickAddTitle, setQuickAddTitle] = useState("");
+  const [quickAddDate, setQuickAddDate] = useState(todayISO());
+  const [quickAddTime, setQuickAddTime] = useState("");
+  const [quickAddPerson, setQuickAddPerson] = useState<FamilyPerson>("Family");
+  const [quickAddNotes, setQuickAddNotes] = useState("");
+  const [quickAddRecipeId, setQuickAddRecipeId] = useState("");
 
   const [recipeTitle, setRecipeTitle] = useState("");
   const [recipeCategory, setRecipeCategory] = useState("Dinner");
@@ -336,13 +346,14 @@ export default function AtlasHomeWorkspace({
     return next;
   }
   async function deleteCoreChore(id: string) {
-    const response = await fetch("/api/atlas", {
-      method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "include",
-      body: JSON.stringify({ table: "work_orders", propertyId: HOME_PROPERTY_ID, id }),
+    const response = await fetch("/api/atlas-home", {
+      method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+      body: JSON.stringify({ action: "deleteChore", propertyId: HOME_PROPERTY_ID, choreId: id }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload?.error || "Could not delete chore.");
     setLocalChores((current) => current.filter((item) => String(item.id) !== id));
+    setRecords((current) => current.filter((item) => !(item.recordType === "chore_meta" && String(item.workOrderId || "") === id)));
   }
   async function syncChore(workOrder: any, meta: HomeRecord) {
     const response = await fetch("/api/atlas-home", {
@@ -392,15 +403,24 @@ export default function AtlasHomeWorkspace({
   }
 
   async function addChore() {
-    if (!choreTitle.trim()) return;
+    if (!choreTitle.trim()) {
+      setMessage("Enter a chore name.");
+      return;
+    }
     setBusy(true);
     try {
+      const effectiveDays = choreRecurring && choreRecurrenceUnit === "Weeks"
+        ? normalizedDays(choreRecurrenceDays)
+        : [];
       const effectiveChoreDate = choreRecurring && choreRecurrenceUnit === "Weeks"
-        ? alignedRecurrenceStart(choreDate, choreRecurrenceDays)
+        ? alignedRecurrenceStart(choreDate, effectiveDays)
         : choreDate;
-      const coreInput = {
+      const choreId = uid("chore");
+      const workOrder = {
+        id: choreId,
+        propertyId: HOME_PROPERTY_ID,
         title: choreTitle.trim(),
-        date: effectiveChoreDate,
+        date: effectiveChoreDate || todayISO(),
         status: "Open",
         priority: "Medium",
         notes: notesWithReward(choreNotes, chorePoints),
@@ -416,27 +436,32 @@ export default function AtlasHomeWorkspace({
         photos: [],
         completionHistory: [],
       };
-      let created = onCreateChore ? await onCreateChore(coreInput) : null;
-      if (!created?.id) {
-        created = await saveCoreChore({ id: uid("chore"), propertyId: HOME_PROPERTY_ID, ...coreInput });
-      } else {
-        setLocalChores((current) => current.some((item) => item.id === created.id) ? current : [created, ...current]);
-      }
-      const meta = await saveHomeRecord({
-        ...baseHomeRecord("chore_meta", choreTitle),
-        id: `chore-meta-${created.id}`,
-        workOrderId: String(created.id),
+      const now = new Date().toISOString();
+      const meta: HomeRecord = {
+        id: `chore-meta-${choreId}`,
+        propertyId: "4725",
+        recordType: "chore_meta",
+        title: choreTitle.trim(),
+        workOrderId: choreId,
         emoji: choreEmojiValue,
         points: Math.max(0, Math.round(chorePoints)),
-        recurrenceDays: choreRecurring && choreRecurrenceUnit === "Weeks" ? normalizedDays(choreRecurrenceDays) : [],
+        recurrenceDays: effectiveDays,
         recurrenceAnchorDate: effectiveChoreDate || todayISO(),
         skippedDates: [],
-      });
-      await syncChore({ ...created, ...coreInput }, meta);
-      setChoreTitle(""); setChoreNotes(""); setChoreChecklist([]); setChoreChecklistText("");
+        createdAt: now,
+        updatedAt: now,
+      };
+      await syncChore(workOrder, meta);
+      setChoreTitle("");
+      setChoreNotes("");
+      setChoreChecklist([]);
+      setChoreChecklistText("");
       flash("Chore added.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not add chore."); }
-    finally { setBusy(false); }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not add chore.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function addGoal() {
@@ -468,12 +493,19 @@ export default function AtlasHomeWorkspace({
 
   async function saveEditedChore() {
     if (!editingChore?.id || !editingMeta) return;
+    if (!String(editingChore.title || "").trim()) {
+      setMessage("Enter a chore name.");
+      return;
+    }
     setBusy(true);
     try {
       const recurring = Boolean(editingChore.recurring);
       const recurrenceUnit = String(editingChore.recurrenceUnit || "Weeks") as RecurrenceUnit;
+      const recurrenceDays = recurring && recurrenceUnit === "Weeks"
+        ? normalizedDays(editingChore.recurrenceDays)
+        : [];
       const effectiveDate = recurring && recurrenceUnit === "Weeks"
-        ? alignedRecurrenceStart(dateKey(editingChore.date) || todayISO(), normalizedDays(editingChore.recurrenceDays))
+        ? alignedRecurrenceStart(dateKey(editingChore.date) || todayISO(), recurrenceDays)
         : dateKey(editingChore.date) || todayISO();
       const core = {
         ...editingChore,
@@ -492,22 +524,27 @@ export default function AtlasHomeWorkspace({
         checklist: Array.isArray(editingChore.checklist) ? editingChore.checklist : [],
         photos: Array.isArray(editingChore.photos) ? editingChore.photos : [],
       };
-      const savedCore = await saveCoreChore(core);
-      const savedMeta = await saveHomeRecord({
+      const meta: HomeRecord = {
         ...editingMeta,
+        propertyId: "4725",
+        recordType: "chore_meta",
         title: core.title,
         workOrderId: String(core.id),
         emoji: core.emoji,
         points: Math.max(0, Math.round(Number(editingChore.points || 0))),
-        recurrenceDays: recurring && recurrenceUnit === "Weeks" ? normalizedDays(editingChore.recurrenceDays) : [],
+        recurrenceDays,
         recurrenceAnchorDate: editingMeta.recurrenceAnchorDate || dateKey(core.date) || todayISO(),
-      });
-      const synced = await syncChore(savedCore, savedMeta);
+        updatedAt: new Date().toISOString(),
+      };
+      const synced = await syncChore(core, meta);
       setEditingChore({ ...synced.record, notes: stripRewardLine(synced.record.notes), points: synced.meta.points, recurrenceDays: synced.meta.recurrenceDays, emoji: synced.meta.emoji });
       setEditingMeta(synced.meta);
       flash("Chore saved.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save chore."); }
-    finally { setBusy(false); }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not save chore.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function awardPoints(person: FamilyPerson, points: number) {
@@ -541,9 +578,9 @@ export default function AtlasHomeWorkspace({
       } else {
         next = { ...next, status: "Completed" };
       }
-      const saved = await saveCoreChore(next);
+      const synced = await syncChore(next, meta);
       await awardPoints(chorePerson(chore), points);
-      await syncChore(saved, meta);
+      const saved = synced.record;
       if (onCompleteChore && !metaOverride) {
         // The work-order callback remains available to the parent, but this home
         // editor owns completion so advanced 4725 recurrence metadata is preserved.
@@ -566,9 +603,8 @@ export default function AtlasHomeWorkspace({
         normalizedDays(editingMeta.recurrenceDays),
         editingMeta.recurrenceAnchorDate || skippedDate,
       );
-      const meta = await saveHomeRecord({ ...editingMeta, skippedDates: Array.from(new Set([...(editingMeta.skippedDates || []), skippedDate])) });
-      const core = await saveCoreChore({ ...editingChore, notes: notesWithReward(editingChore.notes, Number(editingChore.points || 0)), date: nextDate, status: "Open" });
-      await syncChore(core, meta);
+      const meta = { ...editingMeta, skippedDates: Array.from(new Set([...(editingMeta.skippedDates || []), skippedDate])), updatedAt: new Date().toISOString() } as HomeRecord;
+      await syncChore({ ...editingChore, notes: notesWithReward(editingChore.notes, Number(editingChore.points || 0)), date: nextDate, status: "Open" }, meta);
       setEditingChore(null); setEditingMeta(null);
       flash("Occurrence skipped.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not skip chore."); }
@@ -582,10 +618,11 @@ export default function AtlasHomeWorkspace({
       const effectiveDate = editingChore.recurring && String(editingChore.recurrenceUnit || "Weeks") === "Weeks"
         ? alignedRecurrenceStart(rescheduleDate, normalizedDays(editingMeta.recurrenceDays))
         : rescheduleDate;
-      const core = await saveCoreChore({ ...editingChore, notes: notesWithReward(editingChore.notes, Number(editingChore.points || 0)), date: effectiveDate, status: editingChore.status === "Completed" ? "Open" : editingChore.status });
-      const meta = await saveHomeRecord({ ...editingMeta, recurrenceAnchorDate: editingMeta.recurrenceAnchorDate || rescheduleDate });
-      await syncChore(core, meta);
-      setEditingChore({ ...core, notes: stripRewardLine(core.notes), points: meta.points, recurrenceDays: meta.recurrenceDays, emoji: meta.emoji });
+      const meta = { ...editingMeta, recurrenceAnchorDate: editingMeta.recurrenceAnchorDate || rescheduleDate, updatedAt: new Date().toISOString() } as HomeRecord;
+      const synced = await syncChore({ ...editingChore, notes: notesWithReward(editingChore.notes, Number(editingChore.points || 0)), date: effectiveDate, status: editingChore.status === "Completed" ? "Open" : editingChore.status }, meta);
+      const core = synced.record;
+      setEditingChore({ ...core, notes: stripRewardLine(core.notes), points: synced.meta.points, recurrenceDays: synced.meta.recurrenceDays, emoji: synced.meta.emoji });
+      setEditingMeta(synced.meta);
       flash("Chore rescheduled.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not reschedule chore."); }
     finally { setBusy(false); }
@@ -597,7 +634,6 @@ export default function AtlasHomeWorkspace({
     setBusy(true);
     try {
       await deleteCoreChore(String(editingChore.id));
-      await deleteHomeRecord(editingMeta);
       setEditingChore(null); setEditingMeta(null);
       flash("Chore deleted.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not delete chore."); }
@@ -634,6 +670,44 @@ export default function AtlasHomeWorkspace({
     finally { setBusy(false); }
   }
 
+  function resetQuickAdd() {
+    setQuickAddTitle("");
+    setQuickAddDate(todayISO());
+    setQuickAddTime("");
+    setQuickAddPerson("Family");
+    setQuickAddNotes("");
+    setQuickAddRecipeId("");
+  }
+
+  function chooseQuickAddRecipe(recipeId: string) {
+    setQuickAddRecipeId(recipeId);
+    const recipe = recipes.find((item) => item.id === recipeId);
+    if (recipe) setQuickAddTitle(recipe.title);
+  }
+
+  async function saveQuickCalendarItem(openCalendar = false) {
+    const title = quickAddTitle.trim();
+    if (!title) { setMessage(quickAddKind === "Meal" ? "Enter a meal or choose a recipe." : "Enter a title."); return; }
+    if (!quickAddDate) { setMessage("Choose a date."); return; }
+    setBusy(true);
+    try {
+      const response = await fetch("/api/atlas-home", {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({
+          action: "saveFamilyCalendar", propertyId: HOME_PROPERTY_ID,
+          item: { title, date: quickAddDate, time: quickAddTime, person: quickAddPerson, area: quickAddPerson, categoryLabel: quickAddKind, notes: quickAddNotes, linkedId: quickAddKind === "Meal" ? quickAddRecipeId : "" },
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "Could not add to the family calendar.");
+      flash(`${quickAddKind} added.`);
+      resetQuickAdd();
+      setQuickAddOpen(false);
+      if (openCalendar) { navigate("calendar"); window.setTimeout(() => window.location.reload(), 60); }
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not add to the family calendar."); }
+    finally { setBusy(false); }
+  }
+
   async function createFamilyLink(person: FamilyPerson) {
     setBusy(true);
     try {
@@ -666,6 +740,7 @@ export default function AtlasHomeWorkspace({
         </div>
         <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 12 }}>
           {(["home","cookbook","chores","rewards"] as HomeTab[]).map((item) => <button key={item} type="button" onClick={() => setTab(item)} style={{ ...buttonStyle, flex: "0 0 auto", background: tab === item ? colors.gold : "rgba(255,255,255,.10)", color: tab === item ? colors.navy : "#FFFFFF", borderColor: tab === item ? colors.gold : "rgba(255,255,255,.22)" }}>{item === "home" ? "Today" : item === "rewards" ? "Goals & Rewards" : item[0].toUpperCase()+item.slice(1)}</button>)}
+          <button type="button" onClick={() => setQuickAddOpen(true)} style={{ ...primaryButtonStyle, flex:"0 0 auto" }}>+ Add</button>
           <button type="button" onClick={() => navigate("calendar")} style={{ ...buttonStyle, flex:"0 0 auto" }}>Calendar</button>
           <button type="button" onClick={() => navigate("assets")} style={{ ...buttonStyle, flex:"0 0 auto" }}>Assets</button>
           <button type="button" onClick={() => navigate("locations")} style={{ ...buttonStyle, flex:"0 0 auto" }}>Locations</button>
@@ -677,6 +752,10 @@ export default function AtlasHomeWorkspace({
       {loading ? <section style={cardStyle}>Loading 4725…</section> : null}
 
       {!loading && tab === "home" ? <>
+        <section style={{...cardStyle,display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+          <div><strong style={{color:colors.navy,fontSize:18}}>Add to Family Calendar</strong><div style={{fontSize:12,color:colors.muted}}>Meal, appointment, activity, school, reminder, bill, grocery or anything else.</div></div>
+          <button type="button" onClick={()=>setQuickAddOpen(true)} style={primaryButtonStyle}>+ Add</button>
+        </section>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 10 }}>
           {todayCards.map((card) => <button key={card.label} type="button" onClick={card.action} style={{ ...cardStyle, textAlign:"left", cursor:"pointer", minHeight: 105 }}><span style={{ fontSize: 25 }}>{card.icon}</span><strong style={{ display:"block", marginTop: 7, color: colors.navy }}>{card.label}</strong><span style={{ color: colors.muted, fontSize: 12 }}>{card.value}</span></button>)}
         </div>
@@ -717,7 +796,7 @@ export default function AtlasHomeWorkspace({
 
       {!loading && tab === "chores" ? <div style={{ display:"grid", gap:12 }}>
         <section style={cardStyle}>
-          <div style={{ display:"flex", justifyContent:"space-between", gap:8, flexWrap:"wrap", alignItems:"center" }}><div><strong style={{ color:colors.navy,fontSize:20 }}>Family Chore Board</strong><div style={{ color:colors.muted,fontSize:12 }}>All chores use the real 4725 Work Order records underneath.</div></div><select value={personFilter} onChange={(e)=>setPersonFilter(e.target.value)} style={{...inputStyle,width:isMobile?"100%":180}}><option>All</option>{people.map(p=><option key={p}>{p}</option>)}</select></div>
+          <div style={{ display:"flex", justifyContent:"space-between", gap:8, flexWrap:"wrap", alignItems:"center" }}><div><strong style={{ color:colors.navy,fontSize:20 }}>Family Chore Board</strong><div style={{ color:colors.muted,fontSize:12 }}>Tap any chore to edit, reschedule, complete, skip or delete it.</div></div><select value={personFilter} onChange={(e)=>setPersonFilter(e.target.value)} style={{...inputStyle,width:isMobile?"100%":180}}><option>All</option>{people.map(p=><option key={p}>{p}</option>)}</select></div>
           <div style={{ display:"grid", gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(5,minmax(0,1fr))", gap:10, marginTop:14 }}>
             {visibleChores.map((chore)=>{ const meta=metaByWorkOrder.get(String(chore.id)); const closed=chore.status==="Completed"||chore.status==="Cancelled"; return <article key={chore.id} style={{ border:`3px solid ${personColors[chorePerson(chore)] || colors.line}`, borderRadius:18, background:"#FFFFFF", padding:12, minHeight:185, display:"grid", alignContent:"space-between", boxShadow:"0 4px 14px rgba(7,27,47,.08)", opacity: closed ? .72 : 1 }}><button type="button" onClick={()=>openChoreEditor(chore)} style={{border:0,background:"transparent",cursor:"pointer",textAlign:"center",color:colors.text}}><span style={{fontSize:46}}>{choreEmoji(chore,meta)}</span><strong style={{display:"block",fontSize:15,marginTop:5}}>{chore.title}</strong><span style={{display:"block",fontSize:11,color:colors.muted,marginTop:4}}>{chorePerson(chore)} · {rewardPoints(chore,meta)} pts</span><span style={{display:"block",fontSize:10,color:colors.muted,marginTop:3}}>{dateKey(chore.date)||"Anytime"} · {recurrenceLabel(chore,meta)}</span></button>{!closed?<button disabled={busy} type="button" onClick={()=>void completeChore(chore,meta||null)} style={{...primaryButtonStyle,marginTop:10}}>✓ Done</button>:<button type="button" onClick={()=>openChoreEditor(chore)} style={{...buttonStyle,marginTop:10}}>View History</button>}</article>;})}
           </div>
@@ -730,17 +809,10 @@ export default function AtlasHomeWorkspace({
             <label style={fieldStyle}>Assigned to<select value={choreAssignee} onChange={(e)=>setChoreAssignee(e.target.value as FamilyPerson)} style={inputStyle}>{people.map(p=><option key={p}>{p}</option>)}</select></label>
             <label style={fieldStyle}>Due / Start<input type="date" value={choreDate} onChange={(e)=>setChoreDate(e.target.value)} style={inputStyle}/></label>
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":".7fr .6fr .7fr", gap:9, marginTop:9 }}>
-            <label style={{...fieldStyle,alignContent:"end"}}>Repeat<label style={{display:"flex",alignItems:"center",gap:8,minHeight:42}}><input type="checkbox" checked={choreRecurring} onChange={(e)=>setChoreRecurring(e.target.checked)}/> Recurring</label></label>
-            {choreRecurring?<label style={fieldStyle}>Every<input type="number" min={1} value={choreRecurrenceInterval} onChange={(e)=>setChoreRecurrenceInterval(Math.max(1,Number(e.target.value||1)))} style={inputStyle}/></label>:null}
-            {choreRecurring?<label style={fieldStyle}>Unit<select value={choreRecurrenceUnit} onChange={(e)=>setChoreRecurrenceUnit(e.target.value as RecurrenceUnit)} style={inputStyle}><option value="Days">Days</option><option value="Weeks">Weeks</option><option value="Months">Months</option></select></label>:null}
-          </div>
-          {choreRecurring ? <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:9}}>
-            <button type="button" onClick={()=>{setChoreRecurring(true);setChoreRecurrenceInterval(1);setChoreRecurrenceUnit("Weeks");setChoreRecurrenceDays([0,1,2,3,4,5,6]);}} style={{...buttonStyle,minHeight:34,padding:"5px 10px",background:choreRecurrenceUnit==="Weeks"&&choreRecurrenceInterval===1&&choreRecurrenceDays.length===7?"#FFF4CC":"#FFF",borderColor:choreRecurrenceUnit==="Weeks"&&choreRecurrenceInterval===1&&choreRecurrenceDays.length===7?colors.gold:colors.line}}>Every day</button>
-            <button type="button" onClick={()=>{setChoreRecurring(true);setChoreRecurrenceInterval(1);setChoreRecurrenceUnit("Weeks");setChoreRecurrenceDays([1,2,3,4,5]);}} style={{...buttonStyle,minHeight:34,padding:"5px 10px"}}>Weekdays</button>
-            <button type="button" onClick={()=>{setChoreRecurring(true);setChoreRecurrenceInterval(1);setChoreRecurrenceUnit("Weeks");setChoreRecurrenceDays([0,6]);}} style={{...buttonStyle,minHeight:34,padding:"5px 10px"}}>Weekends</button>
-          </div> : null}
-          {choreRecurring && choreRecurrenceUnit === "Weeks" ? <label style={{...fieldStyle,marginTop:9}}>Days<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{weekdayOptions.map((day)=>{const active=choreRecurrenceDays.includes(day.value);return <button key={day.value} type="button" onClick={()=>setChoreRecurrenceDays((current)=>active?current.filter((value)=>value!==day.value):[...current,day.value])} style={{...buttonStyle,minHeight:34,padding:"5px 9px",background:active?"#FFF4CC":"#FFF",borderColor:active?colors.gold:colors.line}}>{day.label}</button>;})}</div></label>:null}
+          <label style={{...fieldStyle,marginTop:9}}>Repeat
+            <select value={!choreRecurring?"Once":choreRecurrenceUnit==="Weeks"&&choreRecurrenceInterval===1&&normalizedDays(choreRecurrenceDays).length===7?"Every day":choreRecurrenceUnit==="Weeks"&&choreRecurrenceInterval===1&&[1,2,3,4,5].every((day)=>normalizedDays(choreRecurrenceDays).includes(day))&&normalizedDays(choreRecurrenceDays).length===5?"Weekdays":choreRecurrenceUnit==="Weeks"&&choreRecurrenceInterval===1&&[0,6].every((day)=>normalizedDays(choreRecurrenceDays).includes(day))&&normalizedDays(choreRecurrenceDays).length===2?"Weekends":choreRecurrenceUnit==="Weeks"&&choreRecurrenceInterval===1&&normalizedDays(choreRecurrenceDays).length===0?"Weekly":"Custom"} onChange={(e)=>{const value=e.target.value;if(value==="Once"){setChoreRecurring(false);setChoreRecurrenceDays([]);}else if(value==="Every day"){setChoreRecurring(true);setChoreRecurrenceInterval(1);setChoreRecurrenceUnit("Weeks");setChoreRecurrenceDays([0,1,2,3,4,5,6]);}else if(value==="Weekdays"){setChoreRecurring(true);setChoreRecurrenceInterval(1);setChoreRecurrenceUnit("Weeks");setChoreRecurrenceDays([1,2,3,4,5]);}else if(value==="Weekends"){setChoreRecurring(true);setChoreRecurrenceInterval(1);setChoreRecurrenceUnit("Weeks");setChoreRecurrenceDays([0,6]);}else if(value==="Weekly"){setChoreRecurring(true);setChoreRecurrenceInterval(1);setChoreRecurrenceUnit("Weeks");setChoreRecurrenceDays([]);}else{setChoreRecurring(true);}}} style={inputStyle}><option>Once</option><option>Every day</option><option>Weekdays</option><option>Weekends</option><option>Weekly</option><option>Custom</option></select>
+          </label>
+          {choreRecurring?<details style={{marginTop:9}}><summary style={{cursor:"pointer",fontSize:12,fontWeight:850,color:colors.navy}}>Custom repeat options</summary><div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":".6fr .7fr",gap:9,marginTop:9}}><label style={fieldStyle}>Every<input type="number" min={1} value={choreRecurrenceInterval} onChange={(e)=>setChoreRecurrenceInterval(Math.max(1,Number(e.target.value||1)))} style={inputStyle}/></label><label style={fieldStyle}>Unit<select value={choreRecurrenceUnit} onChange={(e)=>setChoreRecurrenceUnit(e.target.value as RecurrenceUnit)} style={inputStyle}><option value="Days">Days</option><option value="Weeks">Weeks</option><option value="Months">Months</option></select></label></div>{choreRecurrenceUnit === "Weeks" ? <label style={{...fieldStyle,marginTop:9}}>Days<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{weekdayOptions.map((day)=>{const active=choreRecurrenceDays.includes(day.value);return <button key={day.value} type="button" onClick={()=>setChoreRecurrenceDays((current)=>active?current.filter((value)=>value!==day.value):[...current,day.value])} style={{...buttonStyle,minHeight:34,padding:"5px 9px",background:active?"#FFF4CC":"#FFF",borderColor:active?colors.gold:colors.line}}>{day.label}</button>;})}</div></label>:null}</details>:null}
           <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr .35fr",gap:10,marginTop:10}}>
             <label style={fieldStyle}>Icon<div style={{display:"grid",gap:8,maxHeight:280,overflowY:"auto",paddingRight:4}}>{choreEmojiGroups.map((group)=><div key={group.label}><div style={{fontSize:11,color:colors.muted,marginBottom:4}}>{group.label}</div><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{group.items.map((emoji,index)=><button key={`${group.label}-${emoji}-${index}`} type="button" onClick={()=>setChoreEmojiValue(emoji)} style={{...buttonStyle,minWidth:42,minHeight:42,padding:5,fontSize:22,background:choreEmojiValue===emoji?"#FFF4CC":"#FFF",borderColor:choreEmojiValue===emoji?colors.gold:colors.line}}>{emoji}</button>)}</div></div>)}</div></label>
             <label style={fieldStyle}>Points<input type="number" min={0} value={chorePoints} onChange={(e)=>setChorePoints(Number(e.target.value||0))} style={inputStyle}/></label>
@@ -757,6 +829,18 @@ export default function AtlasHomeWorkspace({
         <section style={cardStyle}><strong style={{color:colors.navy,fontSize:18}}>Add Goal</strong><div style={{display:"grid",gap:9,marginTop:12}}><label style={fieldStyle}>Person<select value={goalPerson} onChange={(e)=>setGoalPerson(e.target.value as FamilyPerson)} style={inputStyle}>{kidPeople.map(p=><option key={p}>{p}</option>)}</select></label><label style={fieldStyle}>Saving for<input value={goalTitle} onChange={(e)=>setGoalTitle(e.target.value)} style={inputStyle}/></label><label style={fieldStyle}>Point goal<input type="number" min={1} value={goalAmount} onChange={(e)=>setGoalAmount(Number(e.target.value||1))} style={inputStyle}/></label><label style={fieldStyle}>Emoji<div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{goalEmojis.map(e=><button key={e} type="button" onClick={()=>setGoalEmoji(e)} style={{...buttonStyle,minWidth:42,padding:5,background:goalEmoji===e?"#FFF4CC":"#FFF"}}>{e}</button>)}</div></label><button disabled={busy} type="button" onClick={()=>void addGoal()} style={primaryButtonStyle}>Save Goal</button></div></section>
         <section style={{...cardStyle,gridColumn:"1 / -1"}}><strong style={{color:colors.navy,fontSize:18}}>Private Family Links</strong><div style={{color:colors.muted,fontSize:12,marginTop:4}}>Chelsea gets family-management controls. Cooper and Leni get simplified chore, calendar, and reward views. Every link is locked to 4725.</div><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>{(["Chelsea","Cooper","Leni"] as FamilyPerson[]).map((person)=><button disabled={busy} key={person} type="button" onClick={()=>void createFamilyLink(person)} style={person==="Chelsea"?primaryButtonStyle:buttonStyle}>Create / Copy {person} Link</button>)}</div></section>
       </div> : null}
+
+      {quickAddOpen ? <div role="dialog" aria-modal="true" onMouseDown={(e)=>{if(e.currentTarget===e.target)setQuickAddOpen(false);}} style={{position:"fixed",inset:0,zIndex:13000,background:"rgba(7,27,47,.48)",display:"grid",placeItems:isMobile?"end center":"center",padding:isMobile?0:16}}><section onMouseDown={(e)=>e.stopPropagation()} style={{width:"100%",maxWidth:620,maxHeight:isMobile?"92dvh":"92vh",overflowY:"auto",background:"#FFF",borderRadius:isMobile?"20px 20px 0 0":20,padding:16,boxShadow:"0 24px 80px rgba(7,27,47,.28)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",marginBottom:12}}><strong style={{fontSize:20,color:colors.navy}}>Add to Family Calendar</strong><button type="button" onClick={()=>setQuickAddOpen(false)} style={buttonStyle}>×</button></div>
+        <div style={{display:"grid",gap:10}}>
+          <label style={fieldStyle}>Type<select value={quickAddKind} onChange={(e)=>{setQuickAddKind(e.target.value as FamilyCalendarKind);setQuickAddRecipeId("");setQuickAddTitle("");}} style={inputStyle}>{familyCalendarKinds.map((kind)=><option key={kind}>{kind}</option>)}</select></label>
+          {quickAddKind==="Meal"&&recipes.length?<label style={fieldStyle}>Cookbook recipe optional<select value={quickAddRecipeId} onChange={(e)=>chooseQuickAddRecipe(e.target.value)} style={inputStyle}><option value="">Type a meal instead</option>{recipes.map((recipe)=><option key={recipe.id} value={recipe.id}>{recipe.title}</option>)}</select></label>:null}
+          <label style={fieldStyle}>{quickAddKind==="Meal"?"Meal":"Title"}<input value={quickAddTitle} onChange={(e)=>setQuickAddTitle(e.target.value)} placeholder={quickAddKind==="Meal"?"Tacos, spaghetti, steak…":""} style={inputStyle}/></label>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr",gap:9}}><label style={fieldStyle}>Date<input type="date" value={quickAddDate} onChange={(e)=>setQuickAddDate(e.target.value)} style={inputStyle}/></label><label style={fieldStyle}>Time optional<input type="time" value={quickAddTime} onChange={(e)=>setQuickAddTime(e.target.value)} style={inputStyle}/></label><label style={fieldStyle}>For<select value={quickAddPerson} onChange={(e)=>setQuickAddPerson(e.target.value as FamilyPerson)} style={inputStyle}>{people.map((person)=><option key={person}>{person}</option>)}</select></label></div>
+          <label style={fieldStyle}>Notes optional<textarea value={quickAddNotes} onChange={(e)=>setQuickAddNotes(e.target.value)} style={{...inputStyle,minHeight:72}}/></label>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button disabled={busy} type="button" onClick={()=>void saveQuickCalendarItem(false)} style={primaryButtonStyle}>Save</button><button disabled={busy} type="button" onClick={()=>void saveQuickCalendarItem(true)} style={buttonStyle}>Save & Open Calendar</button></div>
+        </div>
+      </section></div> : null}
 
       {editingRecipe ? <div role="dialog" aria-modal="true" onMouseDown={(e)=>{if(e.currentTarget===e.target)setEditingRecipe(null);}} style={{position:"fixed",inset:0,zIndex:13000,background:"rgba(7,27,47,.48)",display:"grid",placeItems:isMobile?"end center":"center",padding:isMobile?0:16}}><section onMouseDown={(e)=>e.stopPropagation()} style={{width:"100%",maxWidth:800,maxHeight:isMobile?"90dvh":"92vh",overflowY:"auto",background:"#FFF",borderRadius:isMobile?"20px 20px 0 0":20,padding:16,boxShadow:"0 24px 80px rgba(7,27,47,.28)"}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",marginBottom:12}}><strong style={{fontSize:20,color:colors.navy}}>{editingRecipe.code?`${editingRecipe.code} · `:""}{editingRecipe.title}</strong><button type="button" onClick={()=>setEditingRecipe(null)} style={buttonStyle}>×</button></div>
