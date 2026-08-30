@@ -5655,8 +5655,17 @@ export default function AtlasApp() {
     return [
       ...personalItems,
       ...workOrderCalendarItems,
+      ...usHolidayItems,
+      ...(activePropertyId === "4725" ? [] : jewishHolidayItems),
     ];
-  }, [calendarItems, workOrderCalendarItems, isSeanMarineUser]);
+  }, [
+    calendarItems,
+    workOrderCalendarItems,
+    isSeanMarineUser,
+    usHolidayItems,
+    jewishHolidayItems,
+    activePropertyId,
+  ]);
 
   const visibleCalendarItems = useMemo(
     () =>
