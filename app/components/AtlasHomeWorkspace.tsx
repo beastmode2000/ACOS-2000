@@ -454,7 +454,7 @@ export default function AtlasHomeWorkspace({
             <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", flexWrap:"wrap" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <strong style={{ color: colors.navy, fontSize:18 }}>Cookbook</strong>
-                <a href="/4725/Nick_Meal_Picker_Cookbook.pdf" target="_blank" rel="noreferrer" style={{ ...buttonStyle, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+                <a href="/4725/Nick_Meal_Picker_Cookbook(1).pdf" target="_blank" rel="noreferrer" style={{ ...buttonStyle, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
                   Original PDF Cards
                 </a>
               </div>
