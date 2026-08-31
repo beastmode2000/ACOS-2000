@@ -306,7 +306,18 @@ export default function AtlasHomeWorkspace({
   const choreMeta = useMemo(() => records.filter((item) => item.recordType === "chore_meta"), [records]);
   const metaByWorkOrder = useMemo(() => new Map(choreMeta.map((item) => [String(item.workOrderId || ""), item])), [choreMeta]);
   const chores = useMemo(() => localChores.filter((item) => String(item?.propertyId || HOME_PROPERTY_ID) === HOME_PROPERTY_ID), [localChores]);
-  const visibleChores = useMemo(() => chores.filter((item) => personFilter === "All" || chorePerson(item) === personFilter), [chores, personFilter]);
+  const visibleChores = useMemo(() => {
+    const personOrder: Record<string, number> = { Cooper: 0, Leni: 1, Nick: 2, Chelsea: 3, Family: 4 };
+    return chores
+      .filter((item) => personFilter === "All" || chorePerson(item) === personFilter)
+      .sort((a, b) => {
+        const personCompare = (personOrder[chorePerson(a)] ?? 99) - (personOrder[chorePerson(b)] ?? 99);
+        if (personCompare !== 0) return personCompare;
+        const dateCompare = String(dateKey(a?.date) || "").localeCompare(String(dateKey(b?.date) || ""));
+        if (dateCompare !== 0) return dateCompare;
+        return String(a?.title || "").localeCompare(String(b?.title || ""));
+      });
+  }, [chores, personFilter]);
   const dueChores = useMemo(() => visibleChores.filter((item) => {
     const closed = item?.status === "Completed" || item?.status === "Cancelled";
     return !closed && (!dateKey(item?.date) || dateKey(item.date) <= todayISO());
