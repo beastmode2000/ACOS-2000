@@ -280,6 +280,21 @@ export default function AtlasHomeWorkspace({
           setRecords(Array.isArray(payload?.records) ? payload.records : []);
           if (Array.isArray(payload?.chores)) setLocalChores(payload.chores);
         }
+        if (!cancelled && payload?.choreCalendarNeedsRepair) {
+          const repairResponse = await fetch("/api/atlas-home", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ action: "syncAllChores", propertyId: HOME_PROPERTY_ID }),
+          });
+          const repairPayload = await repairResponse.json().catch(() => ({}));
+          if (!repairResponse.ok || repairPayload?.ok !== true) {
+            throw new Error(repairPayload?.error || "Could not repair the 4725 chore calendar.");
+          }
+          if (!cancelled && typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("atlas:home-chore-changed", { detail: { repaired: true } }));
+          }
+        }
       })
       .catch((error) => !cancelled && setMessage(error instanceof Error ? error.message : "Could not load 4725."))
       .finally(() => !cancelled && setLoading(false));
@@ -354,6 +369,9 @@ export default function AtlasHomeWorkspace({
     if (!response.ok) throw new Error(payload?.error || "Could not delete chore.");
     setLocalChores((current) => current.filter((item) => String(item.id) !== id));
     setRecords((current) => current.filter((item) => !(item.recordType === "chore_meta" && String(item.workOrderId || "") === id)));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("atlas:home-chore-changed", { detail: { choreId: id, deleted: true } }));
+    }
   }
   async function syncChore(workOrder: any, meta: HomeRecord) {
     const response = await fetch("/api/atlas-home", {
@@ -370,6 +388,9 @@ export default function AtlasHomeWorkspace({
     setRecords((current) => current.some((item) => item.id === savedMeta.id)
       ? current.map((item) => item.id === savedMeta.id ? savedMeta : item)
       : [savedMeta, ...current]);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("atlas:home-chore-changed", { detail: { choreId: String(savedCore?.id || "") } }));
+    }
     return { record: savedCore, meta: savedMeta };
   }
   function metaFor(record: any): HomeRecord {
