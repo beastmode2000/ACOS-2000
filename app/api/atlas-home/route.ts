@@ -382,49 +382,104 @@ async function syncChoreCalendar(sql: ReturnType<typeof neon>, workOrder: JsonRe
   await ensureCalendarColumns(sql);
   const workOrderId = asString(workOrder.id || meta.workOrderId);
   if (!workOrderId) return;
+
   await sql`
     DELETE FROM atlas_calendar_items
     WHERE property_id=${HOME_PROPERTY_ID} AND linked_id=${workOrderId}
       AND source IN ('home-chore-extra','home-chore')
   `;
-  if (!asBoolean(workOrder.recurring) || asString(workOrder.recurrenceUnit) !== "Weeks") return;
-  const selectedDays = normalizedDays(meta.recurrenceDays);
-  if (selectedDays.length <= 1) return;
-  const start = parseDate(workOrder.date);
+
+  const startKey = dateKey(meta.recurrenceAnchorDate || workOrder.date);
+  const start = parseDate(startKey);
   if (!start) return;
+
+  const recurring = asBoolean(workOrder.recurring);
   const interval = asPositiveInteger(workOrder.recurrenceInterval, 1);
-  const anchor = parseDate(meta.recurrenceAnchorDate) || start;
-  const anchorWeek = mondayStart(anchor).getTime();
-  const weekMs = 7 * 24 * 60 * 60 * 1000;
-  const skipped = new Set((meta.skippedDates || []).map(dateKey));
-  const coreWeekday = start.getDay();
-  const until = new Date(start); until.setMonth(until.getMonth() + 18);
-  for (let cursor = new Date(start); cursor <= until; cursor.setDate(cursor.getDate() + 1)) {
-    if (!selectedDays.includes(cursor.getDay()) || cursor.getDay() === coreWeekday) continue;
-    const weekDiff = Math.round((mondayStart(cursor).getTime() - anchorWeek) / weekMs);
-    if (weekDiff < 0 || weekDiff % interval !== 0) continue;
-    const key = dateToISO(cursor);
-    if (key < dateKey(workOrder.date) || skipped.has(key)) continue;
-    const id = `home-chore-extra-${workOrderId}-${key}`;
-    const person = safePerson(workOrder.assignedTo);
-    const choreColor =
-      ({ Nick: "green", Chelsea: "orange", Cooper: "blue", Leni: "pink", Family: "gray" } as Record<FamilyPerson, string>)[person] || "gray";
-    const choreColorId = `home-chore-${person.toLowerCase()}`;
-    const emoji = asString(meta.emoji || workOrder.emoji) || "⭐";
-    const points = Math.max(0, Number(meta.points || 0));
-    const title = `${emoji} ${asString(workOrder.title) || "Chore"}`;
-    const notes = [`Assigned to: ${person}`, points ? `Reward: ${points} points` : "", asString(workOrder.notes)].filter(Boolean).join(" · ");
+  const unit = asString(workOrder.recurrenceUnit) || "Weeks";
+  const selectedDays = normalizedDays(meta.recurrenceDays);
+  const skipped = new Set((meta.skippedDates || []).map(dateKey).filter(Boolean));
+  const completionDates = new Set(
+    asArray(workOrder.completionHistory)
+      .map((entry) => {
+        if (typeof entry === "string") return dateKey(entry);
+        if (entry && typeof entry === "object") {
+          return dateKey((entry as JsonRecord).completedAt || (entry as JsonRecord).date);
+        }
+        return "";
+      })
+      .filter(Boolean),
+  );
+  const endKey = dateKey(workOrder.recurrenceEndDate);
+  const person = safePerson(workOrder.assignedTo);
+  const choreColor = familyColor(person);
+  const choreColorId = `home-chore-${person.toLowerCase()}`;
+  const emoji = asString(meta.emoji || workOrder.emoji) || "⭐";
+  const points = Math.max(0, Number(meta.points || 0));
+  const title = `${emoji} ${asString(workOrder.title) || "Chore"}`;
+  const notes = [`Assigned to: ${person}`, points ? `Reward: ${points} points` : "", asString(workOrder.notes)]
+    .filter(Boolean)
+    .join(" · ");
+
+  const today = parseDate(new Date()) || new Date();
+  today.setHours(12, 0, 0, 0);
+  const until = new Date(start > today ? start : today);
+  until.setMonth(until.getMonth() + 18);
+
+  const occurrenceKeys: string[] = [];
+  const addOccurrence = (candidate: Date) => {
+    const key = dateToISO(candidate);
+    if (key < startKey) return;
+    if (endKey && key > endKey) return;
+    if (skipped.has(key)) return;
+    occurrenceKeys.push(key);
+  };
+
+  if (!recurring) {
+    addOccurrence(start);
+  } else if (unit === "Days") {
+    for (let cursor = new Date(start), count = 0; cursor <= until && count < 1000; cursor.setDate(cursor.getDate() + interval), count += 1) {
+      addOccurrence(cursor);
+      if (endKey && dateToISO(cursor) >= endKey) break;
+    }
+  } else if (unit === "Months") {
+    for (let cursor = new Date(start), count = 0; cursor <= until && count < 240; cursor.setMonth(cursor.getMonth() + interval), count += 1) {
+      addOccurrence(cursor);
+      if (endKey && dateToISO(cursor) >= endKey) break;
+    }
+  } else {
+    const days = selectedDays.length ? selectedDays : [start.getDay()];
+    const anchorWeek = mondayStart(start).getTime();
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    for (let cursor = new Date(start), count = 0; cursor <= until && count < 700; cursor.setDate(cursor.getDate() + 1), count += 1) {
+      if (!days.includes(cursor.getDay())) continue;
+      const weekDiff = Math.round((mondayStart(cursor).getTime() - anchorWeek) / weekMs);
+      if (weekDiff < 0 || weekDiff % interval !== 0) continue;
+      addOccurrence(cursor);
+      if (endKey && dateToISO(cursor) >= endKey) break;
+    }
+  }
+
+  const calendarRows = Array.from(new Set(occurrenceKeys)).map((key) => ({
+    id: `home-chore-${workOrderId}-${key}`,
+    item_date: key,
+    completed: completionDates.has(key),
+  }));
+
+  if (calendarRows.length) {
     await sql`
       INSERT INTO atlas_calendar_items (
         id,date,item_date,time,end_time,title,area,category_label,color_id,color_name,all_day,repeat,reminder,notes,
         linked_type,linked_id,linked_name,completed,source,event_type,property_id
-      ) VALUES (
-        ${id},${key}::date,${key}::date,'','',${title},${person},'Chore',${choreColorId},${choreColor},true,'None','None',${notes},
-        'Work Order',${workOrderId},${asString(workOrder.title)},false,'home-chore-extra','Work Order',${HOME_PROPERTY_ID}
       )
-      ON CONFLICT (id) DO UPDATE SET item_date=EXCLUDED.item_date,date=EXCLUDED.date,title=EXCLUDED.title,area=EXCLUDED.area,
-        category_label=EXCLUDED.category_label,color_id=EXCLUDED.color_id,color_name=EXCLUDED.color_name,notes=EXCLUDED.notes,
-        linked_name=EXCLUDED.linked_name,property_id=EXCLUDED.property_id
+      SELECT
+        row.id,row.item_date::date,row.item_date::date,'','',${title},${person},'Chore',${choreColorId},${choreColor},true,'None','None',${notes},
+        'Chore',${workOrderId},${asString(workOrder.title)},row.completed,'home-chore','Calendar Event',${HOME_PROPERTY_ID}
+      FROM jsonb_to_recordset(${JSON.stringify(calendarRows)}::jsonb) AS row(id text,item_date text,completed boolean)
+      ON CONFLICT (id) DO UPDATE SET
+        item_date=EXCLUDED.item_date,date=EXCLUDED.date,title=EXCLUDED.title,area=EXCLUDED.area,
+        category_label=EXCLUDED.category_label,color_id=EXCLUDED.color_id,color_name=EXCLUDED.color_name,
+        notes=EXCLUDED.notes,linked_type=EXCLUDED.linked_type,linked_name=EXCLUDED.linked_name,
+        completed=EXCLUDED.completed,source=EXCLUDED.source,event_type=EXCLUDED.event_type,property_id=EXCLUDED.property_id
     `;
   }
 }
@@ -531,6 +586,13 @@ export async function GET(request: NextRequest) {
     await seedCookbookOnce(sql);
     const records = await loadHomeRecords(sql);
     const workOrders = (await loadWorkOrders(sql)).filter((record) => asString(record.responsibilityArea) === "Family");
+    const canonicalCalendarRows = (await sql`
+      SELECT DISTINCT linked_id
+      FROM atlas_calendar_items
+      WHERE property_id=${HOME_PROPERTY_ID} AND source='home-chore' AND linked_id IS NOT NULL
+    `) as unknown as Array<{ linked_id?: string }>;
+    const canonicalChoreIds = new Set(canonicalCalendarRows.map((row) => asString(row.linked_id)).filter(Boolean));
+    const choreCalendarNeedsRepair = workOrders.some((record) => !canonicalChoreIds.has(record.id));
     const metaById = new Map(records.filter((record) => record.recordType === "chore_meta").map((record) => [asString(record.workOrderId), record]));
     const chores = workOrders.map((record) => {
       const meta = metaById.get(record.id);
@@ -545,7 +607,7 @@ export async function GET(request: NextRequest) {
         skippedDates: asArray(meta?.skippedDates),
       };
     });
-    return NextResponse.json({ ok: true, records, chores });
+    return NextResponse.json({ ok: true, records, chores, choreCalendarNeedsRepair });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not load 4725." }, { status: 500 });
   }
@@ -591,6 +653,34 @@ export async function POST(request: NextRequest) {
       await sql`DELETE FROM atlas_home_records WHERE property_id=${HOME_PROPERTY_ID} AND record_type='chore_meta' AND record->>'workOrderId'=${choreId}`;
       await deleteChoreExtras(sql, choreId);
       return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === "syncAllChores") {
+      if (asString(body.propertyId) !== HOME_PROPERTY_ID) return NextResponse.json({ ok: false, error: "Invalid property." }, { status: 400 });
+      const records = await loadHomeRecords(sql, ["chore_meta"]);
+      const metaById = new Map(
+        records
+          .filter((record) => record.recordType === "chore_meta")
+          .map((record) => [asString(record.workOrderId), record]),
+      );
+      const workOrders = (await loadWorkOrders(sql)).filter((record) => asString(record.responsibilityArea) === "Family");
+      for (const workOrder of workOrders) {
+        const existingMeta = metaById.get(workOrder.id);
+        const meta: HomeRecord = existingMeta || {
+          id: `chore-meta-${workOrder.id}`,
+          propertyId: HOME_PROPERTY_ID,
+          recordType: "chore_meta",
+          title: asString(workOrder.title) || "Chore",
+          workOrderId: workOrder.id,
+          emoji: asString(workOrder.emoji) || "⭐",
+          points: 0,
+          recurrenceDays: [],
+          recurrenceAnchorDate: dateKey(workOrder.date),
+          skippedDates: [],
+        };
+        await syncChoreCalendar(sql, workOrder, meta);
+      }
+      return NextResponse.json({ ok: true, synced: workOrders.length });
     }
 
     if (body.action === "syncChore") {
