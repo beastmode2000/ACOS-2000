@@ -5407,7 +5407,6 @@ export default function AtlasApp() {
     "assets",
     "locations",
     "notes",
-    "manuals",
     "assistant",
   ]);
   const visibleAtlasScreens = activePropertyId === "4725"
@@ -5419,7 +5418,7 @@ export default function AtlasApp() {
     ? [
         { label: "Home", items: ["dashboard", "calendar", "history"] as AtlasScreen[] },
         { label: "Property", items: ["assets", "locations", "notes"] as AtlasScreen[] },
-        { label: "Help", items: ["manuals", "assistant"] as AtlasScreen[] },
+        { label: "Help", items: ["assistant"] as AtlasScreen[] },
       ]
     : isTeamScopedUser
       ? [
@@ -5469,6 +5468,10 @@ export default function AtlasApp() {
         })();
 
   useEffect(() => {
+    if (activePropertyId === "4725" && !home4725Screens.has(screen)) {
+      setScreen("dashboard");
+      return;
+    }
     if (isAddisonUser) {
       if (tasksView !== "tasks") setTasksView("tasks");
       if (!restrictedTeamScreenIds.has(screen)) setScreen("history");
@@ -5477,7 +5480,7 @@ export default function AtlasApp() {
     if (isTeamScopedUser && !restrictedTeamScreenIds.has(screen)) {
       setScreen("dashboard");
     }
-  }, [isAddisonUser, isTeamScopedUser, screen, tasksView]);
+  }, [activePropertyId, isAddisonUser, isTeamScopedUser, screen, tasksView]);
 
   const selectedService =
     serviceRecords.find((service) => service.id === selectedServiceId) ??
@@ -20702,30 +20705,50 @@ ${notes.trim()}` : notes.trim(),
   function renderCalendar() {
     const seanProperty = String(selectedCalendar.propertyId || (seanCalendarPropertyFilter === "all" ? "2000" : seanCalendarPropertyFilter));
     const homeFamilyMembers = ["All", "Nick", "Chelsea", "Cooper", "Leni"];
-    const homeVisibleCalendarItems =
-      activePropertyId === "4725" && home4725PersonFilter !== "All"
-        ? expandedCalendarItems.filter((item) => {
-            const area = String(item.area || "");
-            const notes = String(item.notes || "");
-            const title = String(item.title || "");
-            const person = home4725PersonFilter.toLowerCase();
-            return [area, notes, title].some((value) =>
-              value.toLowerCase().includes(person),
-            );
-          })
-        : expandedCalendarItems;
-    const homeVisibleSelectedDayEvents =
-      activePropertyId === "4725" && home4725PersonFilter !== "All"
-        ? selectedDayEvents.filter((item) => {
-            const area = String(item.area || "");
-            const notes = String(item.notes || "");
-            const title = String(item.title || "");
-            const person = home4725PersonFilter.toLowerCase();
-            return [area, notes, title].some((value) =>
-              value.toLowerCase().includes(person),
-            );
-          })
-        : selectedDayEvents;
+    const matchesHomePersonFilter = (item: CalendarItem) => {
+      if (home4725PersonFilter === "All") return true;
+      const area = String(item.area || "");
+      const notes = String(item.notes || "");
+      const title = String(item.title || "");
+      const person = home4725PersonFilter.toLowerCase();
+      return [area, notes, title].some((value) =>
+        value.toLowerCase().includes(person),
+      );
+    };
+    const homeChoreSortTime = (item: CalendarItem) => {
+      if (!item.allDay) return item.time || "";
+      const source = String(item.source || "").toLowerCase();
+      const isHomeChore =
+        String(item.categoryLabel || "").toLowerCase() === "chore" ||
+        source.startsWith("home-chore");
+      if (!isHomeChore) return item.time || "";
+      const linkedChore = serviceRecords.find(
+        (record) => String(record.id || "") === String(item.linkedId || ""),
+      );
+      const person = String(linkedChore?.assignedTo || item.area || "Family").trim();
+      if (person === "Leni") return "00:01";
+      if (person === "Nick") return "08:00";
+      if (person === "Family") return "12:00";
+      if (person === "Chelsea") return "16:00";
+      if (person === "Cooper") return "23:58";
+      return item.time || "";
+    };
+    const orderHomeCalendarChores = (items: CalendarItem[]) =>
+      items.map((item) => {
+        if (activePropertyId !== "4725" || !item.allDay) return item;
+        const sortTime = homeChoreSortTime(item);
+        return sortTime === String(item.time || "") ? item : { ...item, time: sortTime };
+      });
+    const homeVisibleCalendarItems = orderHomeCalendarChores(
+      activePropertyId === "4725"
+        ? expandedCalendarItems.filter(matchesHomePersonFilter)
+        : expandedCalendarItems,
+    );
+    const homeVisibleSelectedDayEvents = orderHomeCalendarChores(
+      activePropertyId === "4725"
+        ? selectedDayEvents.filter(matchesHomePersonFilter)
+        : selectedDayEvents,
+    );
     const propertyPalette: Record<string, string> = {
       "2000": "#175CD3",
       "6855": "#7C3AED",
