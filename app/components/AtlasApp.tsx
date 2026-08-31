@@ -1024,6 +1024,30 @@ export default function AtlasApp() {
   }, [moreToolsOpen]);
   const [activePropertyId, setActivePropertyId] = useState("2000");
 
+  function calendarItemsByIdentity<T extends CalendarItem>(items: T[]): T[] {
+    if (activePropertyId !== "4725") return byTitle(items);
+    const seen = new Set<string>();
+    return items.filter((item) => {
+      const id = String(item.id || "");
+      if (!id) return true;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }
+
+  function workOrdersByIdentity<T extends { id?: string }>(items: T[]): T[] {
+    if (activePropertyId !== "4725") return byTitle(items);
+    const seen = new Set<string>();
+    return items.filter((item) => {
+      const id = String(item.id || "");
+      if (!id) return true;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }
+
   const [allowedPropertyIds, setAllowedPropertyIds] = useState<string[]>([
     "2000",
     "6855",
@@ -2583,7 +2607,7 @@ export default function AtlasApp() {
 
         const targetIds = new Set(targetRecords.map((record) => record.id));
         setServiceRecords((current) =>
-          byTitle([
+          workOrdersByIdentity([
             ...targetRecords,
             ...current.filter(
               (record) =>
@@ -3032,7 +3056,7 @@ export default function AtlasApp() {
         return;
       }
 
-      if (workOrderUpdates.length) setServiceRecords(byTitle(updatedServiceRecords));
+      if (workOrderUpdates.length) setServiceRecords(workOrdersByIdentity(updatedServiceRecords));
       if (duplicateAssets.length) {
         const ids = new Set(duplicateAssets.map((asset) => String(asset.id)));
         setAssetRecords((current) => current.filter((asset) => !ids.has(String(asset.id))));
@@ -3751,7 +3775,7 @@ export default function AtlasApp() {
         );
         // Shared Work Order records are authoritative. Do not silently merge,
         // rewrite, or delete user work during hydration.
-        const nextServices = byTitle(visibleApiServices);
+        const nextServices = workOrdersByIdentity(visibleApiServices);
 
         tombstonedApiServices.forEach((record) => {
           void deleteAtlasRecord("work_orders", record.id, {
@@ -3966,6 +3990,10 @@ export default function AtlasApp() {
         const legacySourceMirrors = normalizedCalendarRecords.filter((item) => {
           const source = String(item.source || "").toLowerCase();
           const linkedType = String(item.linkedType || "").toLowerCase();
+          const is4725HomeChoreOccurrence =
+            activePropertyId === "4725" &&
+            (source === "home-chore-extra" || source === "home-chore");
+          if (is4725HomeChoreOccurrence) return false;
           return (
             source === "task" ||
             source === "work-order" ||
@@ -3981,12 +4009,16 @@ export default function AtlasApp() {
           });
         });
 
-        const sharedItems = byTitle(
+        const sharedItems = calendarItemsByIdentity(
           normalizedCalendarRecords
             .filter((item) => {
               if (!item.id || !item.date || !item.title) return false;
               const source = String(item.source || "").toLowerCase();
               const linkedType = String(item.linkedType || "").toLowerCase();
+              const is4725HomeChoreOccurrence =
+                activePropertyId === "4725" &&
+                (source === "home-chore-extra" || source === "home-chore");
+              if (is4725HomeChoreOccurrence) return true;
               return (
                 source !== "task" &&
                 source !== "work-order" &&
@@ -4289,6 +4321,15 @@ export default function AtlasApp() {
   }, [ready, activePropertyId, screen]);
 
   useEffect(() => {
+    if (!ready || activePropertyId !== "4725" || typeof window === "undefined") return;
+    const refreshHomeChores = () => {
+      setSharedRefreshNonce((current) => current + 1);
+    };
+    window.addEventListener("atlas:home-chore-changed", refreshHomeChores);
+    return () => window.removeEventListener("atlas:home-chore-changed", refreshHomeChores);
+  }, [ready, activePropertyId]);
+
+  useEffect(() => {
     if (!ready || typeof window === "undefined" || typeof document === "undefined") return;
 
     const refreshWhenVisible = () => {
@@ -4355,6 +4396,10 @@ export default function AtlasApp() {
             if (!item.id || !item.date || !item.title) return false;
             const source = String(item.source || "").toLowerCase();
             const linkedType = String(item.linkedType || "").toLowerCase();
+            const is4725HomeChoreOccurrence =
+              activePropertyId === "4725" &&
+              (source === "home-chore-extra" || source === "home-chore");
+            if (is4725HomeChoreOccurrence) return true;
             return (
               source !== "task" &&
               source !== "work-order" &&
@@ -4365,7 +4410,7 @@ export default function AtlasApp() {
             );
           });
 
-        const next = byTitle(sharedCalendar);
+        const next = calendarItemsByIdentity(sharedCalendar);
 
         setCalendarItems((current) => {
           const signature = (items: CalendarItem[]) =>
@@ -5585,6 +5630,20 @@ export default function AtlasApp() {
     return records
       .filter((record) => record.date)
       .flatMap((record) => {
+        const hasCanonical4725ChoreCalendar =
+          activePropertyId === "4725" &&
+          calendarItems.some(
+            (item) =>
+              String(item.source || "").toLowerCase() === "home-chore" &&
+              String(item.linkedId || "") === String(record.id || ""),
+          );
+        if (
+          activePropertyId === "4725" &&
+          String(record.responsibilityArea || "").trim().toLowerCase() === "family" &&
+          hasCanonical4725ChoreCalendar
+        ) {
+          return [];
+        }
         const baseDate = workOrderDateKey(record.date);
         if (!baseDate) return [];
 
@@ -5655,7 +5714,7 @@ export default function AtlasApp() {
           }),
         );
       });
-  }, [serviceRecords, staffVisibleServiceRecords, isSeanMarineUser, activePropertyId]);
+  }, [serviceRecords, staffVisibleServiceRecords, isSeanMarineUser, activePropertyId, calendarItems]);
 
   const contactBirthdayItems = useMemo<CalendarItem[]>(() => {
     const year = calendarCursor.getFullYear();
@@ -5808,13 +5867,13 @@ export default function AtlasApp() {
 
   const todayEvents = useMemo(
     () =>
-      byTitle(expandedCalendarItems.filter((item) => item.date === todayISO())),
+      calendarItemsByIdentity(expandedCalendarItems.filter((item) => item.date === todayISO())),
     [expandedCalendarItems],
   );
 
   const selectedDayEvents = useMemo(
     () =>
-      byTitle(
+      calendarItemsByIdentity(
         (isSeanMarineUser ? seanVisibleCalendarItems : expandedCalendarItems).filter(
           (item) => item.date === selectedCalendarDate,
         ),
@@ -5945,7 +6004,7 @@ export default function AtlasApp() {
         workOrderSeasonFilter === "All" ||
         item.season === workOrderSeasonFilter,
     );
-    const sorted = byTitle(seasonFiltered);
+    const sorted = workOrdersByIdentity(seasonFiltered);
     if (!q) return sorted;
     return sorted.filter((item) =>
       [
@@ -5992,7 +6051,7 @@ export default function AtlasApp() {
   }, [q, procedureRecords]);
 
   const filteredCalendar = useMemo(() => {
-    const sorted = byTitle(calendarItems);
+    const sorted = calendarItemsByIdentity(calendarItems);
     if (!q) return sorted;
     return sorted.filter((item) =>
       [
@@ -6126,7 +6185,7 @@ export default function AtlasApp() {
         detail: vendor.category,
       }));
     if (kind === "Work Order")
-      return byTitle(serviceRecords).map((record) => ({
+      return workOrdersByIdentity(serviceRecords).map((record) => ({
         id: record.id,
         name: record.title,
         detail: `${formatDate(record.date)} · ${record.status}`,
@@ -9959,7 +10018,7 @@ export default function AtlasApp() {
         });
         const saved = await postAtlasRecord("work_orders", workOrder);
         if (!saved) throw new Error("Work order did not save.");
-        setServiceRecords((current) => byTitle([...current, workOrder]));
+        setServiceRecords((current) => workOrdersByIdentity([...current, workOrder]));
         finalTargetKind = "Work Order";
         finalTargetId = workOrder.id;
         finalTargetName = workOrder.title;
@@ -11686,7 +11745,7 @@ export default function AtlasApp() {
       }
 
       clearRecordDirty("work_order", record.id);
-      setServiceRecords((current) => byTitle([record, ...current]));
+      setServiceRecords((current) => workOrdersByIdentity([record, ...current]));
       setSelectedServiceId(record.id);
       if (!(activePropertyId === "4725" && record.responsibilityArea === "Family")) {
         setScreen("history");
@@ -11807,7 +11866,7 @@ export default function AtlasApp() {
       }
       clearRecordDirty("work_order", updated.id);
       setServiceRecords((current) =>
-        byTitle(current.map((item) => (item.id === updated.id ? updated : item))),
+        workOrdersByIdentity(current.map((item) => (item.id === updated.id ? updated : item))),
       );
       setDatabaseStatus(`Saved ${updated.title || "work order"}.`);
       showSaveToast(`${updated.title || "Work"} saved.`, "success");
@@ -11874,7 +11933,7 @@ export default function AtlasApp() {
     }
 
     setServiceRecords((current) =>
-      byTitle(
+      workOrdersByIdentity(
         current.map((item) => (item.id === prepared.id ? prepared : item)),
       ),
     );
@@ -12033,7 +12092,7 @@ export default function AtlasApp() {
       }
       clearRecordDirty("work_order", completed.id);
       setServiceRecords((current) =>
-        byTitle(
+        workOrdersByIdentity(
           current.map((item) => (item.id === completed.id ? completed : item)),
         ),
       );
@@ -12089,7 +12148,7 @@ export default function AtlasApp() {
     }
     clearRecordDirty("work_order", advanced.id);
     setServiceRecords((current) =>
-      byTitle(
+      workOrdersByIdentity(
         current.map((item) => (item.id === advanced.id ? advanced : item)),
       ),
     );
@@ -12177,7 +12236,7 @@ export default function AtlasApp() {
     }
     clearRecordDirty("work_order", reopened.id);
     setServiceRecords((current) =>
-      byTitle(current.map((item) => (item.id === reopened.id ? reopened : item))),
+      workOrdersByIdentity(current.map((item) => (item.id === reopened.id ? reopened : item))),
     );
     setDatabaseStatus(`Reopened ${reopened.title || "work order"}.`);
     showSaveToast(`${reopened.title || "Work order"} reopened.`);
@@ -12427,14 +12486,14 @@ export default function AtlasApp() {
       let next: CalendarItem[];
 
       if (!exists) {
-        next = byTitle([record, ...current]);
+        next = calendarItemsByIdentity([record, ...current]);
       } else {
         const originalRepeats =
           original?.repeat && original.repeat !== "None";
         const titleChanged =
           String(original?.title || "") !== String(record.title || "");
 
-        next = byTitle(
+        next = calendarItemsByIdentity(
           current.map((item) => {
             if (item.id === record.id) return record;
 
@@ -12529,7 +12588,7 @@ export default function AtlasApp() {
       setDatabaseStatus("This occurrence was not saved.");
       return;
     }
-    setCalendarItems((current) => byTitle([override, ...current.filter((item) => item.id !== instanceId)]));
+    setCalendarItems((current) => calendarItemsByIdentity([override, ...current.filter((item) => item.id !== instanceId)]));
     setDatabaseStatus("This occurrence was saved without changing the series.");
     resetCalendarEntryForm(override.date || selectedCalendarOccurrenceDate);
   }
@@ -12559,7 +12618,7 @@ export default function AtlasApp() {
       setDatabaseStatus("This occurrence was not deleted.");
       return;
     }
-    setCalendarItems((current) => byTitle([cancelled, ...current.filter((item) => item.id !== instanceId)]));
+    setCalendarItems((current) => calendarItemsByIdentity([cancelled, ...current.filter((item) => item.id !== instanceId)]));
     setDatabaseStatus("Only this occurrence was deleted. The series is unchanged.");
     resetCalendarEntryForm(selectedCalendarOccurrenceDate);
   }
@@ -12625,7 +12684,7 @@ export default function AtlasApp() {
     }
 
     setCalendarItems((current) => {
-      const next = byTitle(
+      const next = calendarItemsByIdentity(
         current.map((item) => (item.id === updated.id ? updated : item)),
       );
       saveStoredArray(storageKeys.calendar[0], next);
@@ -12734,7 +12793,7 @@ export default function AtlasApp() {
       return false;
     }
 
-    setServiceRecords((current) => byTitle([workOrder, ...current]));
+    setServiceRecords((current) => workOrdersByIdentity([workOrder, ...current]));
     setCalendarItems((current) => {
       const next = current.filter((item) => item.id !== calendarRecord.id);
       saveStoredArray(storageKeys.calendar[0], next);
@@ -12794,7 +12853,7 @@ export default function AtlasApp() {
       return;
     }
 
-    const remaining = byTitle(
+    const remaining = calendarItemsByIdentity(
       calendarItems.filter((item) => item.id !== recordId),
     );
     saveStoredArray(storageKeys.calendar[0], remaining);
@@ -13811,7 +13870,7 @@ export default function AtlasApp() {
         });
         const saved = await postAtlasRecord("work_orders", record);
         if (!saved) throw new Error("The work order did not save.");
-        setServiceRecords((current) => byTitle([record, ...current]));
+        setServiceRecords((current) => workOrdersByIdentity([record, ...current]));
         setSelectedServiceId(record.id);
         finishAssistantAnswer(`Created work order: ${record.title}`);
       }
@@ -13832,7 +13891,7 @@ export default function AtlasApp() {
         });
         const saved = await postAtlasRecord("calendar", record);
         if (!saved) throw new Error("The calendar event did not save.");
-        setCalendarItems((current) => byTitle([record, ...current]));
+        setCalendarItems((current) => calendarItemsByIdentity([record, ...current]));
         finishAssistantAnswer(
           `Scheduled ${record.title} for ${formatDate(record.date)}${
             record.time ? ` at ${record.time}` : ""
@@ -14063,7 +14122,7 @@ export default function AtlasApp() {
         if (!saved) {
           throw new Error("The recurring maintenance record did not save.");
         }
-        setServiceRecords((current) => byTitle([record, ...current]));
+        setServiceRecords((current) => workOrdersByIdentity([record, ...current]));
         setSelectedServiceId(record.id);
         finishAssistantAnswer(
           `Created recurring maintenance: ${record.title}, every ${record.recurrenceInterval} ${record.recurrenceUnit.toLowerCase()}.`,
@@ -14129,7 +14188,7 @@ export default function AtlasApp() {
           );
         }
         const updatedRequest = payload.request as OwnerRequestRecord;
-        setServiceRecords((current) => byTitle([record, ...current]));
+        setServiceRecords((current) => workOrdersByIdentity([record, ...current]));
         setRequestRecords((current) =>
           current.map((item) =>
             item.id === updatedRequest.id ? updatedRequest : item,
@@ -15320,7 +15379,7 @@ export default function AtlasApp() {
       const records = prepared.map((item) => item.record);
       const approvedTaskIds = new Set(prepared.map((item) => item.taskId));
       const firstRecord = records[0];
-      const nextCalendar = byTitle([...records, ...calendarItems]);
+      const nextCalendar = calendarItemsByIdentity([...records, ...calendarItems]);
 
       // Save and verify browser persistence before removing imported tasks.
       const savedLocally = saveStoredArray(
@@ -16270,7 +16329,7 @@ export default function AtlasApp() {
       season: meta.season || "Year-Round",
       projectId: meta.projectId || "",
     });
-    setServiceRecords((current) => byTitle([record, ...current]));
+    setServiceRecords((current) => workOrdersByIdentity([record, ...current]));
     setSelectedServiceId(record.id);
     updateTaskDetails(task.id, { status: "Completed", completedAt: new Date().toISOString() });
     setScreen("history");
@@ -18274,7 +18333,7 @@ ${notes.trim()}` : notes.trim(),
     }
 
     clearRecordDirty("work_order", workOrder.id);
-    setServiceRecords((current) => byTitle([workOrder, ...current]));
+    setServiceRecords((current) => workOrdersByIdentity([workOrder, ...current]));
     setSelectedServiceId(workOrder.id);
     setScreen("history");
     setDatabaseStatus(`Saved ${title}.`);
@@ -20202,7 +20261,7 @@ ${notes.trim()}` : notes.trim(),
       workType: "Work Order",
       notes: "",
     });
-    setServiceRecords((current) => byTitle([record, ...current]));
+    setServiceRecords((current) => workOrdersByIdentity([record, ...current]));
     setSelectedServiceId(record.id);
     markRecordDirty("work_order", record.id);
     setScreen("history");
@@ -24226,7 +24285,7 @@ ${notes.trim()}` : notes.trim(),
       return;
     }
 
-    setServiceRecords((current) => byTitle([...current, record]));
+    setServiceRecords((current) => workOrdersByIdentity([...current, record]));
     await updateOwnerRequest(request.id, {
       status: "Converted to Work Order",
       convertedWorkOrderId: record.id,
