@@ -1036,7 +1036,7 @@ export default function AtlasApp() {
     });
   }
 
-  function workOrdersByIdentity<T extends { id?: string }>(items: T[]): T[] {
+  function workOrdersByIdentity<T extends { id?: string; title: string }>(items: T[]): T[] {
     if (activePropertyId !== "4725") return byTitle(items);
     const seen = new Set<string>();
     return items.filter((item) => {
