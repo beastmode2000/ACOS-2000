@@ -2332,6 +2332,12 @@ export default function AtlasApp() {
   const [calendarView, setCalendarView] = useState<"month" | "week">("month");
   const [home4725CalendarMode, setHome4725CalendarMode] = useState<"family" | "chores">("family");
   const [home4725PersonFilter, setHome4725PersonFilter] = useState("All");
+  const [home4725ChoreMovePrompt, setHome4725ChoreMovePrompt] = useState<{
+    title: string;
+    fromDate: string;
+    toDate: string;
+    resolve: (scope: "one" | "all" | null) => void;
+  } | null>(null);
   const [showUsHolidays, setShowUsHolidays] = useState(true);
   const [showJewishHolidays, setShowJewishHolidays] = useState(true);
   const [calendarCategoryFilters, setCalendarCategoryFilters] = useState<
@@ -12385,6 +12391,18 @@ export default function AtlasApp() {
     setCalendarIntakeMessage("");
   }
 
+  function requestHome4725ChoreMoveScope(title: string, fromDate: string, toDate: string) {
+    return new Promise<"one" | "all" | null>((resolve) => {
+      setHome4725ChoreMovePrompt({ title, fromDate, toDate, resolve });
+    });
+  }
+
+  function resolveHome4725ChoreMoveScope(scope: "one" | "all" | null) {
+    const prompt = home4725ChoreMovePrompt;
+    setHome4725ChoreMovePrompt(null);
+    prompt?.resolve(scope);
+  }
+
   async function saveCalendarItem() {
     const selectedSourceRecord = selectedCalendarId
       ? expandedCalendarItems.find(
@@ -12394,6 +12412,82 @@ export default function AtlasApp() {
             item.originalId === selectedCalendarId,
         )
       : undefined;
+
+    const selectedHomeChoreId =
+      activePropertyId === "4725" &&
+      String(selectedSourceRecord?.source || "").toLowerCase() === "home-chore"
+        ? String(selectedSourceRecord?.linkedId || "")
+        : "";
+    const selectedHomeChore = selectedHomeChoreId
+      ? serviceRecords.find((record) => String(record.id || "") === selectedHomeChoreId)
+      : undefined;
+    const selectedHomeChoreOccurrenceDate = workOrderDateKey(selectedSourceRecord?.date);
+    const selectedHomeChoreTargetDate = workOrderDateKey(calendarDraft.date);
+
+    if (
+      selectedHomeChore &&
+      selectedHomeChoreOccurrenceDate &&
+      selectedHomeChoreTargetDate &&
+      selectedHomeChoreOccurrenceDate !== selectedHomeChoreTargetDate
+    ) {
+      const scope = selectedHomeChore.recurring
+        ? await requestHome4725ChoreMoveScope(
+            selectedHomeChore.title || selectedSourceRecord?.title || "Chore",
+            selectedHomeChoreOccurrenceDate,
+            selectedHomeChoreTargetDate,
+          )
+        : "all";
+
+      if (!scope) return;
+
+      setDatabaseStatus(
+        scope === "all"
+          ? "Moving the recurring chore series..."
+          : "Moving only this chore occurrence...",
+      );
+
+      const response = await fetch("/api/atlas-home", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: scope === "all" ? "moveChoreSeries" : "moveChoreOccurrence",
+          propertyId: "4725",
+          choreId: selectedHomeChoreId,
+          occurrenceDate: selectedHomeChoreOccurrenceDate,
+          newDate: selectedHomeChoreTargetDate,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setDatabaseStatus(payload?.error || "The chore date was not changed.");
+        return;
+      }
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("atlas:home-chore-changed", {
+            detail: {
+              choreId: selectedHomeChoreId,
+              occurrenceDate: selectedHomeChoreOccurrenceDate,
+              newDate: selectedHomeChoreTargetDate,
+              scope,
+            },
+          }),
+        );
+      }
+
+      setSelectedCalendarDate(selectedHomeChoreTargetDate);
+      setCalendarCursor(calendarDateValue(selectedHomeChoreTargetDate));
+      resetCalendarEntryForm(selectedHomeChoreTargetDate);
+      setDatabaseStatus(
+        scope === "all"
+          ? "Recurring chore series moved."
+          : "This chore occurrence moved.",
+      );
+      return;
+    }
 
     const originalSeriesRecord = selectedCalendarId
       ? calendarItems.find((item) => item.id === selectedCalendarId)
@@ -20620,6 +20714,18 @@ ${notes.trim()}` : notes.trim(),
             );
           })
         : expandedCalendarItems;
+    const homeVisibleSelectedDayEvents =
+      activePropertyId === "4725" && home4725PersonFilter !== "All"
+        ? selectedDayEvents.filter((item) => {
+            const area = String(item.area || "");
+            const notes = String(item.notes || "");
+            const title = String(item.title || "");
+            const person = home4725PersonFilter.toLowerCase();
+            return [area, notes, title].some((value) =>
+              value.toLowerCase().includes(person),
+            );
+          })
+        : selectedDayEvents;
     const propertyPalette: Record<string, string> = {
       "2000": "#175CD3",
       "6855": "#7C3AED",
@@ -20629,6 +20735,72 @@ ${notes.trim()}` : notes.trim(),
 
     return (
       <div style={{ display: "grid", gap: 14 }}>
+        {home4725ChoreMovePrompt ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Move recurring chore"
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 2200,
+              background: "rgba(7, 27, 47, 0.48)",
+              display: "grid",
+              placeItems: "center",
+              padding: 16,
+            }}
+            onMouseDown={(event) => {
+              if (event.currentTarget === event.target) {
+                resolveHome4725ChoreMoveScope(null);
+              }
+            }}
+          >
+            <section
+              style={{
+                width: "min(470px, 100%)",
+                background: "#FFFFFF",
+                border: `1px solid ${colors.line}`,
+                borderRadius: 18,
+                boxShadow: "0 24px 70px rgba(7,27,47,.24)",
+                padding: isMobile ? 16 : 20,
+                display: "grid",
+                gap: 14,
+              }}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                <strong style={{ color: colors.navy3, fontSize: 18 }}>Move recurring chore</strong>
+                <button
+                  type="button"
+                  onClick={() => resolveHome4725ChoreMoveScope(null)}
+                  style={{ ...secondaryButtonStyle, minWidth: 38, padding: "6px 10px" }}
+                  aria-label="Close"
+                >
+                  {closeSymbol}
+                </button>
+              </div>
+              <div style={{ color: colors.text, lineHeight: 1.45 }}>
+                Move <strong>{home4725ChoreMovePrompt.title}</strong> from {formatDate(home4725ChoreMovePrompt.fromDate)} to {formatDate(home4725ChoreMovePrompt.toDate)}?
+              </div>
+              <div style={{ display: "grid", gap: 8, gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr" }}>
+                <button
+                  type="button"
+                  onClick={() => resolveHome4725ChoreMoveScope("one")}
+                  style={secondaryButtonStyle}
+                >
+                  Just this event
+                </button>
+                <button
+                  type="button"
+                  onClick={() => resolveHome4725ChoreMoveScope("all")}
+                  style={goldButtonStyle}
+                >
+                  All of these events
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
         {activePropertyId === "4725" ? (
           <section style={{ ...sectionStyle, padding: isMobile ? 12 : 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -20835,7 +21007,7 @@ ${notes.trim()}` : notes.trim(),
         selectedCalendarOccurrenceDate={selectedCalendarOccurrenceDate}
         onSaveOccurrence={saveCalendarOccurrenceOnly}
         onDeleteOccurrence={deleteCalendarOccurrenceOnly}
-        selectedDayEvents={selectedDayEvents}
+        selectedDayEvents={homeVisibleSelectedDayEvents}
         serviceRecords={serviceRecords}
         setCalendarCategoryFilters={setCalendarCategoryFilters}
         setCalendarCursor={setCalendarCursor}
