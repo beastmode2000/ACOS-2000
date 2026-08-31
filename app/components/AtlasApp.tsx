@@ -2683,7 +2683,7 @@ export default function AtlasApp() {
 
   useEffect(() => {
     if (!ready || !operationsHydrated || syncState !== "synced" || activePropertyId !== "2000" || typeof window === "undefined") return;
-    const purgeKey = "atlas-ai-generated-record-purge-v5-2000";
+    const purgeKey = "atlas-ai-generated-record-purge-v6-2000";
     if (window.localStorage.getItem(purgeKey) === "done" || aiGeneratedPurgeRunningRef.current) return;
 
     const generatedTaskTitles = new Set([
@@ -2738,6 +2738,7 @@ export default function AtlasApp() {
       // Delete only records with legacy generator provenance. The approved
       // 25 appliance annual services are intentionally preserved above.
       return generatedWorkOrderIds(id) ||
+        normalizedWorkOrderText(record.title) === "test intake" ||
         notes.startsWith("weekly garage cleaning for ") ||
         notes.startsWith("recurring garage service for ");
     });
@@ -12251,6 +12252,73 @@ export default function AtlasApp() {
     showSaveToast(`${reopened.title || "Work order"} reopened.`);
   }
 
+
+  async function deleteWorkOrderHistoryEntry(
+    record: AtlasServiceRecord,
+    historyEntryId: string,
+    historyEntryIndex?: number,
+  ) {
+    if (!record?.id) return;
+    const history = Array.isArray(record.serviceHistory) ? record.serviceHistory : [];
+    const entryIndex = historyEntryId
+      ? history.findIndex((entry) => String(entry.id || "") === historyEntryId)
+      : Number.isInteger(historyEntryIndex)
+        ? Number(historyEntryIndex)
+        : -1;
+    if (entryIndex < 0 || entryIndex >= history.length) return;
+    const entry = history[entryIndex];
+    const completionDate = workOrderDateKey(entry.completedAt);
+    if (
+      !window.confirm(
+        `Delete this history entry${completionDate ? ` from ${formatDate(completionDate)}` : ""}? The work order itself will stay.`,
+      )
+    ) {
+      return;
+    }
+
+    const remainingServiceHistory = history.filter((_, index) => index !== entryIndex);
+    const remainingCompletionHistory = [...(record.completionHistory || [])];
+    if (completionDate) {
+      const completionIndex = remainingCompletionHistory.lastIndexOf(completionDate);
+      if (completionIndex >= 0) remainingCompletionHistory.splice(completionIndex, 1);
+    }
+    const nextLastCompletedDate =
+      workOrderDateKey(remainingServiceHistory[0]?.completedAt) ||
+      remainingCompletionHistory
+        .map(workOrderDateKey)
+        .filter(Boolean)
+        .sort()
+        .at(-1) ||
+      "";
+
+    const updated = normalizeService({
+      ...record,
+      serviceHistory: remainingServiceHistory,
+      completionHistory: remainingCompletionHistory,
+      lastCompletedDate:
+        workOrderDateKey(record.lastCompletedDate) === completionDate
+          ? nextLastCompletedDate
+          : record.lastCompletedDate,
+    });
+
+    setDatabaseStatus(`Deleting history from ${record.title || "work order"}...`);
+    const saved = await postAtlasRecord("work_orders", updated);
+    if (!saved) {
+      markRecordDirty("work_order", updated.id);
+      showSaveToast("History was not deleted because shared saving failed.", "warning");
+      return;
+    }
+
+    clearRecordDirty("work_order", updated.id);
+    setServiceRecords((current) =>
+      workOrdersByIdentity(
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      ),
+    );
+    setDatabaseStatus(`Deleted history from ${updated.title || "work order"}.`);
+    showSaveToast("History entry deleted.");
+  }
+
   function startNewCalendarDraft(date?: string) {
     const targetDate = date || selectedCalendarDate || todayISO();
     setSelectedCalendarDate(targetDate);
@@ -17885,7 +17953,7 @@ ${notes.trim()}` : notes.trim(),
       const text = value.toLowerCase();
       if (/garage|vehicle|driveway/.test(text)) return "Garage";
       if (/mechanical|boiler|hvac|furnace|water heater|pump room/.test(text)) return "Mechanical Room";
-      if (/pool|spa|hot tub|fountain/.test(text)) return "Pool & Spa";
+      if (/pool|spa|hot tub/.test(text)) return "Pool & Spa";
       if (/dock|boat|cobalt|sea.?doo|marine|waterside/.test(text)) return "Dock";
       if (/east lawn|lawn|irrigation|garden|grounds|landscap|veggie/.test(text)) return "East Lawn";
       if (/courtyard|walkway|entrance|patio/.test(text)) return "Courtyard";
@@ -20332,7 +20400,7 @@ ${notes.trim()}` : notes.trim(),
       if (/\b(oryan marine|i[\s-]?90 motorsports?|190 motorsports?|seaborn|seaborne|dock|marine|boat|watercraft|lift box|liftbox)\b/i.test(text)) departments.add("marine");
       if (/\b(cascade spray|lanken|advanced irrigation|landscap|irrigation|sprinkler|lawn|garden|grounds|tree|shrub)\b/i.test(text)) departments.add("landscaping");
       if (/\b(north sound boilers?|psf mechanical|best plumbing|maple valley electric|appliance service station|precision garage door|high tech living|hvac|boiler|plumb|electric|appliance|house maintenance|cleaning)\b/i.test(text)) departments.add("house");
-      if (/\b(aqua quip|krisco|pool|spa|hot tub|sundance|fountain|desert aire)\b/i.test(text)) departments.add("pool");
+      if (/\b(aqua quip|krisco|pool|spa|hot tub|sundance|desert aire)\b/i.test(text)) departments.add("pool");
       if (/\b(autonation|les schwab|rivian service|mercedes|porsche|lucid|vehicle|automotive|car service|garage vehicle)\b/i.test(text)) departments.add("garage");
     };
 
@@ -27834,7 +27902,7 @@ ${notes.trim()}` : notes.trim(),
     const departmentConfig: Record<DepartmentKind, { title: string; short: string; icon: string; matcher: RegExp; detail: string; people: string[] }> = {
       house: { title: "House & Maintenance", short: "House", icon: "⌂", matcher: /house|interior|exterior|room|appliance|boiler|hvac|mechanical|pump|electrical|plumbing|lighting|door|gate|alarm/i, detail: "House systems, mechanical equipment, inspections, repairs, procedures, service history, and current work.", people: ["Nick", "Vendors"] },
       garage: { title: "Garage", short: "Garage", icon: "", matcher: /vehicle|car|mercedes|rivian|porsche|lucid|ford|f-?150|kia|honda|subaru|charging|tire|fuel/i, detail: "Cars and their work orders and tasks.", people: ["Nick", "Addison"] },
-      pool: { title: "Pool & Spa", short: "Pool & Spa", icon: "💧", matcher: /pool|spa|hot tub|sundance|fountain|filter|backwash|oxy|phosphate|vacuum/i, detail: "Pool, Spa, Fountain, water treatment, cleaning rotation, filter readings, equipment, procedures, and service history.", people: ["Nick", "Addison", "Vendors"] },
+      pool: { title: "Pool & Spa", short: "Pool & Spa", icon: "💧", matcher: /pool|spa|hot tub|sundance|backwash|oxy|phosphate|vacuum|chlorine|alkalinity|pool juice|triton|clearray/i, detail: "Pool, Spa, water treatment, cleaning rotation, pool equipment, procedures, and service history.", people: ["Nick", "Addison", "Vendors"] },
       landscaping: { title: "Landscaping & Irrigation", short: "Landscaping", icon: "🌿", matcher: /landscap|garden|lawn|weed|irrigation|tree|grounds|bed|courtyard|waterside|veggie/i, detail: "Landscaping, irrigation, crew visits, areas, progress photos, tasks, work orders, and follow-up.", people: ["Pat", "Lanken Landscaping", "Addison"] },
       marine: { title: "Dock & Waterfront", short: "Dock", icon: "⚓", matcher: /marine|dock|boat|cobalt|sea.?doo|lift|water trampoline|pwc|shoreline|waterfront/i, detail: "Dock, waterfront, boats, lifts, recreation equipment, service, procedures, documents, and photos.", people: ["Nick", "Vendors"] },
     };
@@ -27917,8 +27985,13 @@ ${notes.trim()}` : notes.trim(),
         strictDockPattern.test(identityText)
       );
     };
+    const poolExcludedPattern =
+      /\b(fountain|tap water filter|drinking water|potable water|whole house filter|whole-house filter|water filtration)\b/i;
     const matchesDepartmentRecord = (value: unknown) =>
-      matches(value) && (kind !== "pool" || !isConventionalApplianceRecord(value));
+      matches(value) &&
+      (kind !== "pool" ||
+        (!isConventionalApplianceRecord(value) &&
+          !poolExcludedPattern.test(recordSearchText(value))));
     const garageCarAssetPattern =
       /\b(vehicle|car|automobile|mercedes|rivian|porsche|lucid|ford|f-?150|raptor|kia|honda|subaru)\b/i;
     const garageSpecificCarPattern =
@@ -28114,8 +28187,8 @@ ${notes.trim()}` : notes.trim(),
       minWidth: 0,
     };
 
-    if (kind === "house" || kind === "pool" || kind === "landscaping") {
-      const categorySets: Record<"house" | "pool" | "landscaping", Array<{ label: string; pattern: RegExp }>> = {
+    if (kind === "house" || kind === "pool" || kind === "landscaping" || kind === "marine") {
+      const categorySets: Record<"house" | "pool" | "landscaping" | "marine", Array<{ label: string; pattern: RegExp }>> = {
         house: [
           { label: "HVAC", pattern: /\b(hvac|heating|cooling|furnace|air handler|heat pump|thermostat|boiler|radiant|dehumidif)/i },
           { label: "Plumbing", pattern: /\b(plumb|water heater|hot water|pump|recirc|drain|toilet|faucet|sink|leak|flologic|backflow)/i },
@@ -28128,9 +28201,8 @@ ${notes.trim()}` : notes.trim(),
         pool: [
           { label: "Pool", pattern: /\b(pool|swim)/i },
           { label: "Spa & Hot Tub", pattern: /\b(spa|hot tub|sundance)/i },
-          { label: "Fountain", pattern: /\bfountain\b/i },
-          { label: "Water Care", pattern: /\b(chemical|chlorine|ph|alkalinity|oxy|phosphate|water test|water care)/i },
-          { label: "Equipment", pattern: /\b(filter|pump|heater|uv|ozone|backwash|vacuum|dehumidif|equipment)/i },
+          { label: "Water Care", pattern: /\b(chemical|chlorine|ph|alkalinity|oxy|phosphate|water test|water care|pool juice)/i },
+          { label: "Equipment", pattern: /\b(pool filter|pool pump|pool heater|triton|clearray|uv|ozone|backwash|vacuum|desert aire|dehumidif)/i },
           { label: "Cleaning", pattern: /\b(clean|brush|vacuum|skim)/i },
           { label: "General", pattern: /[\s\S]*/i },
         ],
@@ -28141,6 +28213,13 @@ ${notes.trim()}` : notes.trim(),
           { label: "Trees & Shrubs", pattern: /\b(tree|shrub|hedge|yew|prune|trim)/i },
           { label: "Grounds", pattern: /\b(grounds|courtyard|walkway|driveway|waterside|patio|cleanup|geese)/i },
           { label: "Seasonal", pattern: /\b(season|spring|summer|fall|winter|fertiliz|mulch)/i },
+          { label: "General", pattern: /[\s\S]*/i },
+        ],
+        marine: [
+          { label: "Boats & Watercraft", pattern: /\b(boat|cobalt|sea[\s-]?doo|jet[\s-]?ski|pwc|watercraft)/i },
+          { label: "Lifts & Dock Equipment", pattern: /\b(lift|liftbox|lift box|dock box|sunstream|roller)/i },
+          { label: "Dock & Waterfront", pattern: /\b(dock|waterfront|shoreline|marine)/i },
+          { label: "Cleaning & Service", pattern: /\b(clean|wash|service|maintenance|inspect|winteriz|opening)/i },
           { label: "General", pattern: /[\s\S]*/i },
         ],
       };
@@ -28185,9 +28264,52 @@ ${notes.trim()}` : notes.trim(),
             </div>
           </section>
           <section style={{ ...centerCardStyle, padding: 0, overflow: "hidden", position: isMobile ? "static" : "sticky", top: 88, maxHeight: isMobile ? "none" : "calc(100vh - 110px)" }}>
-            {selectedTitle ? <><div style={{ padding:16,display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start" }}><span><span style={eyebrowStyle}>{selectedCategory}</span><strong style={{display:"block",fontSize:18,color:colors.navy}}>{selectedTitle}</strong><small style={mutedSmallStyle}>{selectedAsset?"Asset":selectedWork?"Work Order":"Vendor"}</small></span><button type="button" onClick={()=>selectedAsset?openAssetById(selectedAsset.id):selectedWork?(setDepartmentCenter(""),openWorkOrderById(selectedWork.id)):(setSelectedVendorId(selectedDepartmentVendor!.id),openCenter("vendors"))} style={goldButtonStyle}>Open</button></div><div style={{padding:16,borderTop:`1px solid ${colors.line}`,overflowY:"auto"}}>
+            {selectedTitle ? <><div style={{ padding:16,display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start" }}><span><span style={eyebrowStyle}>{selectedCategory}</span><strong style={{display:"block",fontSize:18,color:colors.navy}}>{selectedTitle}</strong><small style={mutedSmallStyle}>{selectedAsset?"Asset":selectedWork?"Work Order":"Vendor"}</small></span><span style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}><button type="button" onClick={()=>selectedAsset?openAssetById(selectedAsset.id):selectedWork?(setDepartmentCenter(""),openWorkOrderById(selectedWork.id)):(setSelectedVendorId(selectedDepartmentVendor!.id),openCenter("vendors"))} style={goldButtonStyle}>Open</button><button type="button" aria-label="Close details" onClick={()=>{setDepartmentWorkspaceSelectedKind("");setDepartmentWorkspaceSelectedId("");}} style={smallSubtleButtonStyle}>×</button></span></div><div style={{padding:16,borderTop:`1px solid ${colors.line}`,overflowY:"auto"}}>
               {selectedAsset?<div style={{display:"grid",gap:12}}><div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(2,minmax(0,1fr))",gap:8}}>{[["Make / model",[selectedAsset.make,selectedAsset.model].filter(Boolean).join(" · ")||"Not recorded"],["Location",locationName(selectedAsset.locationId)||"Not linked"],["Status",selectedAsset.status||"Active"],["Open work",selectedAssetWork.filter((record)=>record.status!=="Completed").length]].map(([label,value])=><div key={String(label)} style={recordInfoItemStyle}><small style={fieldLabelStyle}>{label}</small><strong style={{display:"block",marginTop:5}}>{value}</strong></div>)}</div>{selectedAssetPhotos.length?<div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:7}}>{selectedAssetPhotos.slice(0,6).map((photo)=><button key={photo.id} type="button" onClick={()=>openPhotoPreview(photo)} style={{border:`1px solid ${colors.line}`,borderRadius:9,padding:0,overflow:"hidden"}}><img src={photoSource(photo)} alt={photo.name} style={{width:"100%",aspectRatio:"4 / 3",objectFit:"cover",display:"block"}}/></button>)}</div>:null}<button type="button" onClick={()=>addDashboardWorkOrder(config.title)} style={secondaryButtonStyle}>New Work Order</button></div>:null}
-              {selectedWork?<div style={{display:"grid",gap:8}}>{[["Status",selectedWork.status||"Open"],["Due date",selectedWork.date?formatDate(selectedWork.date):"Not scheduled"],["Assigned",selectedWork.assignedTo||"Unassigned"],["Location",locationName(selectedWork.locationId)||"Not linked"]].map(([label,value])=><div key={String(label)} style={recordInfoItemStyle}><small style={fieldLabelStyle}>{label}</small><strong style={{display:"block",marginTop:5}}>{value}</strong></div>)}</div>:null}
+              {selectedWork ? (() => {
+                const description = String((selectedWork as AtlasServiceRecord & { description?: string }).description || "").trim();
+                const historyEntries = Array.isArray(selectedWork.serviceHistory) ? selectedWork.serviceHistory : [];
+                const nextDue = selectedWork.recurring && selectedWork.date ? formatDate(selectedWork.date) : "";
+                return (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    {description ? <p style={{ ...mutedSmallStyle, margin: 0, lineHeight: 1.5 }}>{description}</p> : null}
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8 }}>
+                      <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>Assigned</small><strong style={{display:"block",marginTop:5}}>{selectedWork.assignedTo || "Unassigned"}</strong></div>
+                      <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>{selectedWork.recurring ? "Next due" : "Due date"}</small><strong style={{display:"block",marginTop:5}}>{selectedWork.date ? formatDate(selectedWork.date) : "Not scheduled"}</strong></div>
+                      <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>Category</small><strong style={{display:"block",marginTop:5}}>{selectedWork.workCategory || selectedCategory || "General"}</strong></div>
+                      <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>Status</small><strong style={{display:"block",marginTop:5}}>{selectedWork.status || "Open"}</strong></div>
+                    </div>
+                    <section style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 10 }}>
+                      <small style={fieldLabelStyle}>Notes</small>
+                      <div style={{ ...recordInfoItemStyle, marginTop: 6, whiteSpace: "pre-wrap" }}>{selectedWork.notes || "No notes yet."}</div>
+                    </section>
+                    <details style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 10 }}>
+                      <summary style={{ color: colors.navy, fontWeight: 900, cursor: "pointer" }}>More Info</summary>
+                      <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                        {selectedWork.locationId ? <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>Location</small><strong style={{display:"block",marginTop:5}}>{locationName(selectedWork.locationId) || selectedWork.locationId}</strong></div> : null}
+                        {selectedWork.assetId ? <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>Asset</small><strong style={{display:"block",marginTop:5}}>{assetName(selectedWork.assetId) || selectedWork.assetId}</strong></div> : null}
+                        {selectedWork.vendorId ? <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>Vendor</small><strong style={{display:"block",marginTop:5}}>{vendorRecords.find((vendor)=>vendor.id===selectedWork.vendorId)?.name || selectedWork.vendorId}</strong></div> : null}
+                        {selectedWork.recurring ? <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>Recurring</small><strong style={{display:"block",marginTop:5}}>{nextDue || "Scheduled"}</strong></div> : null}
+                        {historyEntries.length ? (
+                          <div style={{ display: "grid", gap: 7 }}>
+                            <small style={fieldLabelStyle}>History</small>
+                            {historyEntries.map((entry, historyIndex) => (
+                              <div key={String(entry.id || `${entry.completedAt || "history"}-${historyIndex}`)} style={{ ...recordInfoItemStyle, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+                                <span>
+                                  <strong style={{display:"block"}}>{entry.completedAt ? formatDate(String(entry.completedAt).slice(0,10)) : "Completed"}</strong>
+                                  {entry.notes ? <small style={mutedSmallStyle}>{entry.notes}</small> : null}
+                                </span>
+                                <button type="button" onClick={() => void deleteWorkOrderHistoryEntry(selectedWork, String(entry.id || ""), historyIndex)} style={{ ...smallSubtleButtonStyle, color: colors.red }}>Delete</button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        {selectedWork.status === "Completed" ? <button type="button" onClick={() => void deleteWorkOrderRecord(selectedWork)} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete Work History</button> : null}
+                      </div>
+                    </details>
+                  </div>
+                );
+              })() : null}
               
               {selectedDepartmentVendor?<div style={{display:"grid",gap:8}}>{[["Category",selectedDepartmentVendor.category||selectedCategory],["Phone",selectedDepartmentVendor.phone||"Not recorded"],["Email",selectedDepartmentVendor.email||"Not recorded"],["Website",selectedDepartmentVendor.website||"Not recorded"]].map(([label,value])=><div key={String(label)} style={recordInfoItemStyle}><small style={fieldLabelStyle}>{label}</small><strong style={{display:"block",marginTop:5,overflowWrap:"anywhere"}}>{value}</strong></div>)}</div>:null}
             </div></>:<div style={noticeStyle}>Select an asset, work order, task, or vendor.</div>}
