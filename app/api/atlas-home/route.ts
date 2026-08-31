@@ -486,7 +486,7 @@ async function syncChoreCalendar(sql: ReturnType<typeof neon>, workOrder: JsonRe
 
 async function deleteChoreExtras(sql: ReturnType<typeof neon>, workOrderId: string) {
   await ensureCalendarColumns(sql);
-  await sql`DELETE FROM atlas_calendar_items WHERE property_id=${HOME_PROPERTY_ID} AND linked_id=${workOrderId} AND source IN ('home-chore-extra','home-chore')`;
+  await sql`DELETE FROM atlas_calendar_items WHERE property_id=${HOME_PROPERTY_ID} AND linked_id=${workOrderId} AND source IN ('home-chore-extra','home-chore','home-chore-override')`;
 }
 
 async function scheduleMeal(sql: ReturnType<typeof neon>, body: JsonRecord) {
@@ -653,6 +653,176 @@ export async function POST(request: NextRequest) {
       await sql`DELETE FROM atlas_home_records WHERE property_id=${HOME_PROPERTY_ID} AND record_type='chore_meta' AND record->>'workOrderId'=${choreId}`;
       await deleteChoreExtras(sql, choreId);
       return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === "moveChoreOccurrence" || body.action === "moveChoreSeries") {
+      if (asString(body.propertyId) !== HOME_PROPERTY_ID) {
+        return NextResponse.json({ ok: false, error: "Invalid property." }, { status: 400 });
+      }
+
+      const choreId = asString(body.choreId);
+      const occurrenceDate = dateKey(body.occurrenceDate);
+      const newDate = dateKey(body.newDate);
+      if (!choreId || !occurrenceDate || !newDate) {
+        return NextResponse.json(
+          { ok: false, error: "Chore, current date, and new date are required." },
+          { status: 400 },
+        );
+      }
+      if (occurrenceDate === newDate) {
+        return NextResponse.json({ ok: true, unchanged: true });
+      }
+
+      const workOrders = await loadWorkOrders(sql);
+      const chore = workOrders.find(
+        (record) =>
+          record.id === choreId &&
+          asString(record.responsibilityArea) === "Family",
+      );
+      if (!chore) {
+        return NextResponse.json({ ok: false, error: "Chore not found." }, { status: 404 });
+      }
+
+      const existingMeta = await getChoreMeta(sql, choreId);
+      const now = new Date().toISOString();
+      const meta: HomeRecord = existingMeta || {
+        id: `chore-meta-${choreId}`,
+        propertyId: HOME_PROPERTY_ID,
+        recordType: "chore_meta",
+        title: asString(chore.title) || "Chore",
+        workOrderId: choreId,
+        points: 0,
+        emoji: asString(chore.emoji) || "⭐",
+        recurrenceDays: [],
+        recurrenceAnchorDate: dateKey(chore.date) || occurrenceDate,
+        skippedDates: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const from = parseDate(occurrenceDate);
+      const to = parseDate(newDate);
+      if (!from || !to) {
+        return NextResponse.json({ ok: false, error: "Invalid chore date." }, { status: 400 });
+      }
+      const deltaDays = Math.round((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000));
+
+      if (body.action === "moveChoreSeries") {
+        const nextMeta: HomeRecord = { ...meta, updatedAt: now };
+        let nextChore: JsonRecord = { ...chore, status: asString(chore.status) || "Open" };
+
+        if (!asBoolean(chore.recurring)) {
+          nextMeta.recurrenceAnchorDate = newDate;
+          nextChore = { ...nextChore, date: newDate };
+        } else if (asString(chore.recurrenceUnit) === "Weeks") {
+          const oldWeekday = from.getDay();
+          const newWeekday = to.getDay();
+          const existingDays = normalizedDays(meta.recurrenceDays);
+          const sourceDays = existingDays.length ? existingDays : [oldWeekday];
+          const movedDays = sourceDays
+            .filter((day) => day !== oldWeekday)
+            .concat(newWeekday);
+          nextMeta.recurrenceDays = normalizedDays(movedDays);
+
+          const anchorKey = dateKey(meta.recurrenceAnchorDate || chore.date) || occurrenceDate;
+          const anchorDate = parseDate(anchorKey);
+          if (sourceDays.length === 1 && anchorDate) {
+            const shiftedAnchor = new Date(anchorDate);
+            shiftedAnchor.setDate(shiftedAnchor.getDate() + deltaDays);
+            nextMeta.recurrenceAnchorDate = dateToISO(shiftedAnchor);
+          } else if (occurrenceDate === anchorKey || newDate < anchorKey) {
+            nextMeta.recurrenceAnchorDate = newDate;
+          } else {
+            nextMeta.recurrenceAnchorDate = anchorKey;
+          }
+
+          const currentChoreDate = dateKey(chore.date);
+          const currentChoreDateValue = parseDate(currentChoreDate);
+          if (currentChoreDateValue && currentChoreDateValue.getDay() === oldWeekday) {
+            const shifted = new Date(currentChoreDateValue);
+            shifted.setDate(shifted.getDate() + deltaDays);
+            nextChore = { ...nextChore, date: dateToISO(shifted) };
+          }
+        } else {
+          const anchor = parseDate(meta.recurrenceAnchorDate || chore.date || occurrenceDate);
+          if (anchor) {
+            const shiftedAnchor = new Date(anchor);
+            shiftedAnchor.setDate(shiftedAnchor.getDate() + deltaDays);
+            nextMeta.recurrenceAnchorDate = dateToISO(shiftedAnchor);
+          }
+          const currentChoreDate = parseDate(chore.date || occurrenceDate);
+          if (currentChoreDate) {
+            const shiftedDate = new Date(currentChoreDate);
+            shiftedDate.setDate(shiftedDate.getDate() + deltaDays);
+            nextChore = { ...nextChore, date: dateToISO(shiftedDate) };
+          }
+        }
+
+        await saveHomeRecord(sql, nextMeta);
+        const saved = await upsertFamilyWorkOrder(sql, choreId, nextChore);
+        await syncChoreCalendar(sql, saved, nextMeta);
+        return NextResponse.json({
+          ok: true,
+          scope: "all",
+          record: {
+            ...saved,
+            points: Number(nextMeta.points || 0),
+            recurrenceDays: normalizedDays(nextMeta.recurrenceDays),
+            recurrenceAnchorDate: dateKey(nextMeta.recurrenceAnchorDate),
+          },
+          meta: nextMeta,
+        });
+      }
+
+      const nextMeta: HomeRecord = {
+        ...meta,
+        skippedDates: Array.from(
+          new Set([...(meta.skippedDates || []).map(dateKey), occurrenceDate]),
+        ).filter(Boolean),
+        updatedAt: now,
+      };
+      await saveHomeRecord(sql, nextMeta);
+      await syncChoreCalendar(sql, chore, nextMeta);
+
+      const person = safePerson(chore.assignedTo);
+      const colorName = familyColor(person);
+      const emoji = asString(meta.emoji || chore.emoji) || "⭐";
+      const points = Math.max(0, Number(meta.points || 0));
+      const title = `${emoji} ${asString(chore.title) || "Chore"}`;
+      const notes = [
+        `Assigned to: ${person}`,
+        points ? `Reward: ${points} points` : "",
+        `Moved from ${occurrenceDate}`,
+        asString(chore.notes),
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const overrideId = `home-chore-override-${choreId}-${occurrenceDate}`;
+
+      await ensureCalendarColumns(sql);
+      await sql`
+        INSERT INTO atlas_calendar_items (
+          id,date,item_date,time,end_time,title,area,category_label,color_id,color_name,all_day,repeat,reminder,notes,
+          linked_type,linked_id,linked_name,completed,source,original_id,instance_id,event_type,property_id
+        ) VALUES (
+          ${overrideId},${newDate}::date,${newDate}::date,'','',${title},${person},'Chore',${`home-chore-${person.toLowerCase()}`},${colorName},true,'None','None',${notes},
+          'Chore',${choreId},${asString(chore.title)},false,'home-chore-override',${`home-chore-${choreId}-${occurrenceDate}`},${overrideId},'Calendar Event',${HOME_PROPERTY_ID}
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          date=EXCLUDED.date,item_date=EXCLUDED.item_date,title=EXCLUDED.title,area=EXCLUDED.area,
+          category_label=EXCLUDED.category_label,color_id=EXCLUDED.color_id,color_name=EXCLUDED.color_name,
+          notes=EXCLUDED.notes,linked_type=EXCLUDED.linked_type,linked_id=EXCLUDED.linked_id,linked_name=EXCLUDED.linked_name,
+          completed=false,source=EXCLUDED.source,original_id=EXCLUDED.original_id,instance_id=EXCLUDED.instance_id,
+          event_type=EXCLUDED.event_type,property_id=EXCLUDED.property_id
+      `;
+
+      return NextResponse.json({
+        ok: true,
+        scope: "one",
+        occurrenceDate,
+        newDate,
+        id: overrideId,
+      });
     }
 
     if (body.action === "syncAllChores") {
