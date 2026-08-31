@@ -1946,11 +1946,11 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 14 }}>
               <label style={{ ...goldButtonStyle, display: "inline-flex", justifyContent: "center", alignItems: "center", cursor: "pointer", minHeight: 46 }}>
                 Take Photo
-                <input type="file" accept="image/*" capture="environment" onChange={async (event) => { await addPhotos(event.currentTarget.files); event.currentTarget.value = ""; setPhotoChooserOpen(false); }} style={{ display: "none" }} />
+                <input type="file" accept="image/*" capture="environment" onChange={async (event) => { const input = event.currentTarget; const files = input.files; await addPhotos(files); input.value = ""; setPhotoChooserOpen(false); }} style={{ display: "none" }} />
               </label>
               <label style={{ ...secondaryButtonStyle, display: "inline-flex", justifyContent: "center", alignItems: "center", cursor: "pointer", minHeight: 46 }}>
                 Choose from Library
-                <input type="file" accept="image/*" multiple onChange={async (event) => { await addPhotos(event.currentTarget.files); event.currentTarget.value = ""; setPhotoChooserOpen(false); }} style={{ display: "none" }} />
+                <input type="file" accept="image/*" multiple onChange={async (event) => { const input = event.currentTarget; const files = input.files; await addPhotos(files); input.value = ""; setPhotoChooserOpen(false); }} style={{ display: "none" }} />
               </label>
             </div>
           </div>
@@ -2099,18 +2099,19 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   />
                   <select
                     value={newWorkDraft.workType}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const workType = event.currentTarget.value as WorkItemType;
                       setNewWorkDraft((current) => ({
                         ...current,
-                        workType: event.currentTarget.value as WorkItemType,
+                        workType,
                         recurrenceDays:
-                          event.currentTarget.value === "Preventive Maintenance"
+                          workType === "Preventive Maintenance"
                             ? current.recurrenceDays.length
                               ? current.recurrenceDays
                               : [...DEFAULT_WORK_WEEK]
                             : current.recurrenceDays,
-                      }))
-                    }
+                      }));
+                    }}
                     style={controlStyle}
                   >
                     <option value="Quick Task">Task</option>
@@ -2126,7 +2127,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                           const checked = newWorkDraft.recurrenceDays.includes(day.value);
                           return (
                             <label key={day.value} style={{ display: "grid", justifyItems: "center", gap: 3, padding: "6px 2px", border: `1px solid ${checked ? colors.gold : colors.line}`, borderRadius: 8, background: checked ? "#FFF8E6" : "#FFFFFF", cursor: "pointer", fontSize: 11, fontWeight: 800 }}>
-                              <input type="checkbox" checked={checked} onChange={(event) => setNewWorkDraft((current) => { const nextDays = event.currentTarget.checked ? Array.from(new Set([...current.recurrenceDays, day.value])) : current.recurrenceDays.filter((value) => value !== day.value); return { ...current, recurrenceDays: nextDays.length ? nextDays : current.recurrenceDays }; })} />
+                              <input type="checkbox" checked={checked} onChange={(event) => { const isChecked = event.currentTarget.checked; setNewWorkDraft((current) => { const nextDays = isChecked ? Array.from(new Set([...current.recurrenceDays, day.value])) : current.recurrenceDays.filter((value) => value !== day.value); return { ...current, recurrenceDays: nextDays.length ? nextDays : current.recurrenceDays }; }); }} />
                               {day.label}
                             </label>
                           );
@@ -2136,12 +2137,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   ) : null}
                   <select
                     value={newWorkDraft.workCategory}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const workCategory = event.currentTarget.value;
                       setNewWorkDraft((current) => ({
                         ...current,
-                        workCategory: event.currentTarget.value,
-                      }))
-                    }
+                        workCategory,
+                      }));
+                    }}
                     style={controlStyle}
                   >
                     {categories
@@ -2154,15 +2156,16 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   </select>
                   <select
                     value={newWorkDraft.priority}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const priority = event.currentTarget.value as
+                        | "Low"
+                        | "Medium"
+                        | "High";
                       setNewWorkDraft((current) => ({
                         ...current,
-                        priority: event.currentTarget.value as
-                          | "Low"
-                          | "Medium"
-                          | "High",
-                      }))
-                    }
+                        priority,
+                      }));
+                    }}
                     style={controlStyle}
                   >
                     <option value="Low">Low Priority</option>
@@ -2172,18 +2175,19 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <input
                     type="date" onClick={(event) => event.currentTarget.showPicker?.()} onFocus={(event) => event.currentTarget.showPicker?.()} onKeyDown={(event) => event.preventDefault()} onPaste={(event) => event.preventDefault()}
                     value={newWorkDraft.date}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const date = event.currentTarget.value;
                       setNewWorkDraft((current) => ({
                         ...current,
                         date:
                           current.workType === "Preventive Maintenance"
                             ? alignDateToSelectedDay(
-                                event.currentTarget.value,
+                                date,
                                 current.recurrenceDays,
                               )
-                            : event.currentTarget.value,
-                      }))
-                    }
+                            : date,
+                      }));
+                    }}
                     style={controlStyle}
                   />
                   <button
@@ -2341,7 +2345,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   </summary>
                   <div style={{ position: "absolute", zIndex: 30, top: "calc(100% + 5px)", left: 0, width: 220, maxHeight: 300, overflowY: "auto", display: "grid", gap: 6, padding: 10, border: `1px solid ${colors.line}`, borderRadius: 11, background: "#FFFFFF", boxShadow: "0 14px 34px rgba(15,42,67,.18)" }}>
                     <button type="button" onClick={() => setAssignedFilters([])} style={{ ...miniButtonStyle, width: "100%" }}>Everyone</button>
-                    {[{ value: "__none__", label: "Unassigned" }, ...assignmentChoices.map((name) => ({ value: name, label: name }))].map((option) => <label key={option.value} style={{ display: "flex", alignItems: "center", gap: 8, color: colors.text, fontSize: 12, fontWeight: 750 }}><input type="checkbox" checked={assignedFilters.includes(option.value)} onChange={(event) => setAssignedFilters((current) => event.currentTarget.checked ? [...current, option.value] : current.filter((value) => value !== option.value))}/>{option.label}</label>)}
+                    {[{ value: "__none__", label: "Unassigned" }, ...assignmentChoices.map((name) => ({ value: name, label: name }))].map((option) => <label key={option.value} style={{ display: "flex", alignItems: "center", gap: 8, color: colors.text, fontSize: 12, fontWeight: 750 }}><input type="checkbox" checked={assignedFilters.includes(option.value)} onChange={(event) => { const isChecked = event.currentTarget.checked; setAssignedFilters((current) => isChecked ? [...current, option.value] : current.filter((value) => value !== option.value)); }}/>{option.label}</label>)}
                   </div>
                 </details>
 
@@ -2693,7 +2697,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 <summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Photos ({(selectedService.photos || []).length})</summary>
                 <input ref={photoInputRef} type="file" accept="image/*" multiple onChange={(event) => void addPhotos(event.currentTarget.files)} style={{ display: "none" }} />
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 7, flexWrap: "wrap", marginTop: 8 }}>
-                  <label style={{ ...secondaryButtonStyle, width: "auto", cursor: "pointer" }}>Take Photo<input type="file" accept="image/*" capture="environment" onChange={async (event) => { await addPhotos(event.currentTarget.files); event.currentTarget.value = ""; }} style={{ display: "none" }} /></label>
+                  <label style={{ ...secondaryButtonStyle, width: "auto", cursor: "pointer" }}>Take Photo<input type="file" accept="image/*" capture="environment" onChange={async (event) => { const input = event.currentTarget; const files = input.files; await addPhotos(files); input.value = ""; }} style={{ display: "none" }} /></label>
                   <button type="button" onClick={() => photoInputRef.current?.click()} style={{ ...secondaryButtonStyle, width: "auto" }}>Choose from Library</button>
                 </div>
                 {photoMessage ? <p style={mutedSmallStyle}>{photoMessage}</p> : null}
