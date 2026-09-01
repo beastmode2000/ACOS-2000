@@ -208,7 +208,6 @@ function completedWorkOrderItems(workOrders: Row[]) {
         notes: String(
           historyEntry?.notes ||
             row.completionNotes ||
-            row.notes ||
             "Completed",
         ),
       });
@@ -324,8 +323,6 @@ function completedTaskItems(tasks: Row[]) {
             : "") ||
             meta.lastCompletionNote ||
             meta.addisonNote ||
-            meta.notes ||
-            row.notes ||
             "",
         ),
       });
