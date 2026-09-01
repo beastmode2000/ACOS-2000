@@ -402,6 +402,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   const [teamHistory, setTeamHistory] = useState<Row[]>([]);
   const [items, setItems] = useState<ReportItem[]>([]);
   const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
+  const [excludedSourceKeys, setExcludedSourceKeys] = useState<string[]>([]);
   const [activeReportId, setActiveReportId] = useState("");
   const [status, setStatus] = useState<"Draft" | "Final">("Draft");
   const [message, setMessage] = useState("");
@@ -423,20 +424,31 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     () =>
       sourceItems.filter(
         (item) =>
+          !excludedSourceKeys.includes(item.sourceKey) &&
           (!periodStart || item.date >= periodStart) &&
           (!periodEnd || item.date <= periodEnd),
       ),
-    [sourceItems, periodStart, periodEnd],
+    [sourceItems, excludedSourceKeys, periodStart, periodEnd],
   );
 
-  async function loadSavedReports() {
+  async function loadSavedReports(openCurrentReport = false) {
     const response = await fetch(
       `/api/atlas-owner-reports?propertyId=${encodeURIComponent(propertyId)}`,
       { cache: "no-store" },
     );
     const payload = await response.json().catch(() => ({}));
     if (response.ok && payload.ok && Array.isArray(payload.reports)) {
-      setSavedReports(payload.reports);
+      const reports = payload.reports as SavedReport[];
+      setSavedReports(reports);
+      setExcludedSourceKeys(Array.isArray(payload.excludedSourceKeys) ? payload.excludedSourceKeys.map(String) : []);
+      if (openCurrentReport) {
+        const currentReport = reports.find((report) => report.periodStart === periodStart && report.periodEnd === periodEnd);
+        if (currentReport) {
+          setActiveReportId(currentReport.id);
+          setStatus(currentReport.status);
+          setItems(Array.isArray(currentReport.items) ? currentReport.items : []);
+        }
+      }
     }
   }
 
@@ -444,7 +456,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     setActiveReportId("");
     setStatus("Draft");
     setItems([]);
-    void loadSavedReports().catch(() => setMessage("Saved owner reports could not be loaded."));
+    void loadSavedReports(true).catch(() => setMessage("Saved owner reports could not be loaded."));
   }, [propertyId]);
 
   useEffect(() => {
@@ -545,13 +557,32 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     }
   }
 
-  function deleteReportItem(itemId: string) {
+  async function deleteReportItem(itemId: string) {
+    const deletedItem = items.find((item) => item.id === itemId);
+    if (!deletedItem) return;
     const nextItems = items.filter((item) => item.id !== itemId);
     setItems(nextItems);
-    void saveReport(
+    if (deletedItem.sourceType !== "Manual" && deletedItem.sourceKey) {
+      setExcludedSourceKeys((current) => current.includes(deletedItem.sourceKey) ? current : [...current, deletedItem.sourceKey]);
+      try {
+        const response = await fetch("/api/atlas-owner-reports", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "exclude-item", propertyId, sourceKey: deletedItem.sourceKey }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) throw new Error(String(payload.error || "Report item could not be deleted."));
+      } catch (error) {
+        setItems((current) => current.some((item) => item.id === deletedItem.id) ? current : [...current, deletedItem]);
+        setExcludedSourceKeys((current) => current.filter((sourceKey) => sourceKey !== deletedItem.sourceKey));
+        setMessage(error instanceof Error ? error.message : "Report item could not be deleted.");
+        return;
+      }
+    }
+    await saveReport(
       activeReportId ? status : "Draft",
       nextItems,
-      "Item deleted from the owner report.",
+      "Item deleted permanently from the owner report.",
     );
   }
 
@@ -685,7 +716,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
             <select value={item.department} onChange={(event) => updateItem(item.id, { department: event.currentTarget.value })} style={controlStyle}>{departments.map((department) => <option key={department}>{department}</option>)}</select>
             <input value={item.title} onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })} placeholder="Work activity" style={controlStyle} />
             <textarea value={item.notes} onChange={(event) => updateItem(item.id, { notes: event.currentTarget.value })} placeholder="Outcome / notes" rows={isMobile ? 2 : 1} style={{ ...controlStyle, resize: "vertical", minHeight: 38 }} />
-            <button type="button" onClick={() => deleteReportItem(item.id)} disabled={saving} style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}>Delete</button>
+            <button type="button" onClick={() => void deleteReportItem(item.id)} disabled={saving} style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}>Delete</button>
           </div>
         )) : <div style={{ padding: 16, border: `1px dashed ${colors.line}`, borderRadius: 11, color: colors.muted, fontSize: 12 }}>No work activity found for this date range.</div>}
       </div>
