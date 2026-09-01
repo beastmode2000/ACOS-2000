@@ -117,13 +117,64 @@ function inferDepartment(row: Row) {
 
 function displayPerson(row: Row) {
   return String(
-    row.assignedTo ||
+    row.actionBy ||
+      row.action_by ||
+      row.actor ||
+      row.performedBy ||
+      row.performed_by ||
+      row.assignedTo ||
       row.assignee ||
       row.employeeName ||
       row.employee_name ||
       row.completedBy ||
       "",
   ).trim();
+}
+
+function normalizedOutcome(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function reportableOutcomeFromEntry(entry: Row) {
+  const explicit = normalizedOutcome(entry.outcome || entry.action || entry.status);
+  const text = String(entry.text || entry.note || entry.notes || "").trim();
+  const normalizedText = text.toLowerCase();
+
+  if (explicit.includes("not needed") || normalizedText.startsWith("not needed")) {
+    return { label: "Not Needed This Time", detail: text };
+  }
+  if (
+    explicit.includes("deferred") ||
+    explicit.includes("didn't get to") ||
+    explicit.includes("didnt get to") ||
+    normalizedText.includes("didn't get to this week") ||
+    normalizedText.includes("didnt get to this week")
+  ) {
+    return { label: "Didn't Get To This Week", detail: text };
+  }
+  if (explicit.includes("resched") || normalizedText.startsWith("rescheduled")) {
+    return { label: "Rescheduled", detail: text };
+  }
+  if (explicit.includes("started") || explicit.includes("in progress") || normalizedText.startsWith("started")) {
+    return { label: "Started / In Progress", detail: text };
+  }
+  if (explicit.includes("reopen") || normalizedText.startsWith("reopened")) {
+    return { label: "Reopened", detail: text };
+  }
+  if (explicit.includes("cancel") || normalizedText.startsWith("cancelled") || normalizedText.startsWith("canceled")) {
+    return { label: "Cancelled", detail: text };
+  }
+  if (explicit.includes("stop") || normalizedText.startsWith("stopped recurring")) {
+    return { label: "Recurring Series Stopped", detail: text };
+  }
+  if (explicit.includes("waiting") || normalizedText.startsWith("waiting")) {
+    return { label: "Waiting", detail: text };
+  }
+  if (explicit.includes("monitor") || normalizedText.startsWith("monitor")) {
+    return { label: "Monitor", detail: text };
+  }
+
+  return null;
 }
 
 function completedWorkOrderItems(workOrders: Row[]) {
@@ -147,15 +198,94 @@ function completedWorkOrderItems(workOrders: Row[]) {
       const historyEntry = serviceHistory.find((entry) => dateOnly(entry.completedAt) === date);
       items.push({
         id: `wo-${id}-${date}`,
-        sourceKey: `work-order:${id}:${date}`,
+        sourceKey: `work-order:${id}:${date}:completed`,
         sourceType: "Work Order",
         sourceId: id,
         date,
-        person: displayPerson(row),
+        person: displayPerson(historyEntry ? { ...row, ...historyEntry } : row),
         department: inferDepartment(row),
         title: String(row.title || row.name || "Work order completed"),
-        notes: String(historyEntry?.notes || row.completionNotes || row.notes || ""),
+        notes: String(
+          historyEntry?.notes ||
+            row.completionNotes ||
+            row.notes ||
+            "Completed",
+        ),
       });
+    }
+  }
+
+  return items;
+}
+
+function workOrderActionItems(workOrders: Row[]) {
+  const items: ReportItem[] = [];
+
+  for (const row of workOrders) {
+    const id = String(row.id || "");
+    if (!id) continue;
+
+    const notesHistory = Array.isArray(row.notesHistory)
+      ? (row.notesHistory as Row[])
+      : [];
+
+    for (const entry of notesHistory) {
+      const outcome = reportableOutcomeFromEntry(entry);
+      if (!outcome) continue;
+
+      const date = dateOnly(
+        entry.createdAt ||
+          entry.created_at ||
+          entry.actionAt ||
+          entry.action_at ||
+          entry.updatedAt,
+      );
+      if (!date) continue;
+
+      const entryId = String(
+        entry.id ||
+          `${outcome.label}-${date}-${String(entry.text || entry.note || "").slice(0, 40)}`,
+      );
+
+      items.push({
+        id: `wo-action-${id}-${entryId}`,
+        sourceKey: `work-order-action:${id}:${entryId}`,
+        sourceType: "Work Order",
+        sourceId: id,
+        date,
+        person: displayPerson({ ...row, ...entry }),
+        department: inferDepartment(row),
+        title: String(row.title || row.name || "Work order"),
+        notes:
+          outcome.detail &&
+          normalizedOutcome(outcome.detail) !== normalizedOutcome(outcome.label)
+            ? `${outcome.label} — ${outcome.detail}`
+            : outcome.label,
+      });
+    }
+
+    const lastOutcome = String(row.lastOutcome || row.last_outcome || "").trim();
+    const lastOutcomeAt = dateOnly(row.lastOutcomeAt || row.last_outcome_at || row.lastSkippedAt || row.last_skipped_at);
+    if (lastOutcome && lastOutcomeAt) {
+      const alreadyRepresented = items.some(
+        (item) =>
+          item.sourceId === id &&
+          item.date === lastOutcomeAt &&
+          normalizedOutcome(item.notes).includes(normalizedOutcome(lastOutcome)),
+      );
+      if (!alreadyRepresented) {
+        items.push({
+          id: `wo-outcome-${id}-${lastOutcomeAt}`,
+          sourceKey: `work-order-outcome:${id}:${lastOutcomeAt}:${normalizedOutcome(lastOutcome)}`,
+          sourceType: "Work Order",
+          sourceId: id,
+          date: lastOutcomeAt,
+          person: displayPerson(row),
+          department: inferDepartment(row),
+          title: String(row.title || row.name || "Work order"),
+          notes: lastOutcome,
+        });
+      }
     }
   }
 
@@ -210,16 +340,29 @@ function completedTeamItems(rows: Row[], propertyId: string) {
     .filter((row) => String(row.propertyId || row.property_id || "2000") === propertyId)
     .map((row): ReportItem => {
       const id = String(row.id || row.eventKey || row.event_key || "");
+      const outcome = String(row.outcome || row.action || row.status || "").trim();
+      const baseNote = String(row.note || row.notes || "").trim();
       return {
         id: `team-${id}`,
         sourceKey: `team-work:${id}`,
         sourceType: "Team Work",
         sourceId: String(row.taskId || row.task_id || id),
-        date: dateOnly(row.completedAt || row.completed_at),
+        date: dateOnly(
+          row.completedAt ||
+            row.completed_at ||
+            row.actionAt ||
+            row.action_at ||
+            row.updatedAt ||
+            row.updated_at,
+        ),
         person: displayPerson(row),
         department: inferDepartment(row),
-        title: String(row.taskTitle || row.task_title || row.title || "Team work completed"),
-        notes: String(row.note || row.notes || ""),
+        title: String(row.taskTitle || row.task_title || row.title || "Team work"),
+        notes: outcome
+          ? baseNote
+            ? `${outcome} — ${baseNote}`
+            : outcome
+          : baseNote,
       };
     })
     .filter((item) => Boolean(item.id && item.date));
@@ -231,7 +374,8 @@ function dedupeItems(items: ReportItem[]) {
 
   return items.filter((item) => {
     const title = item.title.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
-    const displayKey = `${item.date}|${item.person.trim().toLowerCase()}|${title}`;
+    const notes = item.notes.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
+    const displayKey = `${item.date}|${item.person.trim().toLowerCase()}|${title}|${notes}`;
     if (seenSource.has(item.sourceKey) || seenDisplay.has(displayKey)) return false;
     seenSource.add(item.sourceKey);
     seenDisplay.add(displayKey);
@@ -271,6 +415,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     () =>
       dedupeItems([
         ...completedWorkOrderItems(workOrders),
+        ...workOrderActionItems(workOrders),
         ...completedTaskItems(tasks),
         ...completedTeamItems(teamHistory, propertyId),
       ]),
@@ -336,7 +481,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     setActiveReportId("");
     setStatus("Draft");
     setItems(filteredSourceItems);
-    setMessage("Report refreshed from completed Atlas work.");
+    setMessage("Report refreshed from Atlas work activity.");
   }
 
   function updateItem(id: string, patch: Partial<ReportItem>) {
@@ -436,13 +581,13 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
 
     popup.document.write(`<!doctype html><html><head><title>${escapeHtml(reportTitle(periodStart, periodEnd))}</title><style>
       @page{size:letter;margin:.55in}body{font-family:Arial,sans-serif;color:#071b2f;margin:0}.head{border-bottom:3px solid #c99a3d;padding-bottom:10px;margin-bottom:16px}h1{font-size:22px;margin:0}.meta,.when{color:#667788;font-size:10px}.dept{font-size:15px;border-bottom:1px solid #d8e0e8;padding-bottom:5px;margin:17px 0 5px}.item{padding:6px 0;border-bottom:1px solid #edf0f3;break-inside:avoid}.line{display:flex;justify-content:space-between;gap:10px}.title{font-size:11px;font-weight:700}.notes{font-size:10px;color:#405164;margin-top:3px;white-space:pre-wrap}
-    </style></head><body><div class="head"><h1>${escapeHtml(reportTitle(periodStart, periodEnd))}</h1><div class="meta">Property ${escapeHtml(propertyId)} · ${items.length} completed item${items.length === 1 ? "" : "s"}</div></div>${groups
+    </style></head><body><div class="head"><h1>${escapeHtml(reportTitle(periodStart, periodEnd))}</h1><div class="meta">Property ${escapeHtml(propertyId)} · ${items.length} activity item${items.length === 1 ? "" : "s"}</div></div>${groups
       .map(
         (group) =>
           `<section><h2 class="dept">${escapeHtml(group.department)}</h2>${group.rows
             .map(
               (item) =>
-                `<div class="item"><div class="line"><div class="title">${escapeHtml(item.title || "Completed work")}${item.person ? ` · ${escapeHtml(item.person)}` : ""}</div><div class="when">${escapeHtml(new Date(`${item.date}T12:00:00`).toLocaleDateString())}</div></div>${item.notes ? `<div class="notes">${escapeHtml(item.notes)}</div>` : ""}</div>`,
+                `<div class="item"><div class="line"><div class="title">${escapeHtml(item.title || "Work activity")}${item.person ? ` · ${escapeHtml(item.person)}` : ""}</div><div class="when">${escapeHtml(new Date(`${item.date}T12:00:00`).toLocaleDateString())}</div></div>${item.notes ? `<div class="notes">${escapeHtml(item.notes)}</div>` : ""}</div>`,
             )
             .join("")}</section>`,
       )
@@ -527,11 +672,11 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
             <input type="date" value={item.date} onChange={(event) => updateItem(item.id, { date: event.currentTarget.value })} style={controlStyle} />
             <input value={item.person} onChange={(event) => updateItem(item.id, { person: event.currentTarget.value })} placeholder="Person" style={controlStyle} />
             <select value={item.department} onChange={(event) => updateItem(item.id, { department: event.currentTarget.value })} style={controlStyle}>{departments.map((department) => <option key={department}>{department}</option>)}</select>
-            <input value={item.title} onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })} placeholder="Completed work" style={controlStyle} />
-            <textarea value={item.notes} onChange={(event) => updateItem(item.id, { notes: event.currentTarget.value })} placeholder="Notes" rows={isMobile ? 2 : 1} style={{ ...controlStyle, resize: "vertical", minHeight: 38 }} />
+            <input value={item.title} onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })} placeholder="Work activity" style={controlStyle} />
+            <textarea value={item.notes} onChange={(event) => updateItem(item.id, { notes: event.currentTarget.value })} placeholder="Outcome / notes" rows={isMobile ? 2 : 1} style={{ ...controlStyle, resize: "vertical", minHeight: 38 }} />
             <button type="button" onClick={() => setItems((current) => current.filter((row) => row.id !== item.id))} style={{ ...quietButtonStyle, padding: "9px 10px" }}>Delete</button>
           </div>
-        )) : <div style={{ padding: 16, border: `1px dashed ${colors.line}`, borderRadius: 11, color: colors.muted, fontSize: 12 }}>No completed work found for this date range.</div>}
+        )) : <div style={{ padding: 16, border: `1px dashed ${colors.line}`, borderRadius: 11, color: colors.muted, fontSize: 12 }}>No work activity found for this date range.</div>}
       </div>
 
       {message ? <div style={{ marginTop: 10, color: colors.navy, fontSize: 12, fontWeight: 800 }}>{message}</div> : null}
