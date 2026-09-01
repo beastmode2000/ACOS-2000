@@ -2443,63 +2443,33 @@ export default function AtlasApp() {
       applianceAnnualServiceSetupRunningRef.current
     ) return;
 
-    const setupKey = "atlas-user-approved-annual-appliance-service-v2-2000";
-    if (window.localStorage.getItem(setupKey) === "done") return;
+    // One-time recovery of the 25 annual appliance-service work orders that
+    // were accidentally removed during the legacy generated-work cleanup.
+    // The date gate prevents this from becoming a future regeneration path.
+    const recoveryKey = "atlas-approved-annual-appliance-service-recovery-v4-2000";
+    const recoveryDate = new Date().toISOString().slice(0, 10);
+    if (recoveryDate !== "2026-09-01" || window.localStorage.getItem(recoveryKey) === "done") return;
+
+    const existingApprovedAnnualServices = serviceRecords.filter((record) =>
+      String(record.id || "").startsWith("wo-appliance-annual-service-"),
+    );
+    if (existingApprovedAnnualServices.length > 0) {
+      window.localStorage.setItem(recoveryKey, "done");
+      return;
+    }
 
     const appliances = byName(
       assetRecords.filter((asset) =>
         String(asset.category || "").trim().toLowerCase() === "appliance",
       ),
     );
-    if (appliances.length !== 25) return;
-
-    const applianceIds = new Set(appliances.map((asset) => String(asset.id || "")));
-    const applianceNames = new Set(
-      appliances.map((asset) => normalizedWorkOrderText(asset.name || "")),
-    );
-
-    const isPriorApplianceServiceRecord = (record: AtlasServiceRecord) => {
-      const id = String(record.id || "");
-      const title = normalizedWorkOrderText(record.title || "");
-      const notes = normalizedWorkOrderText(record.notes || "");
-      const assetId = String(record.assetId || "");
-      const linkedAppliance = Boolean(assetId && applianceIds.has(assetId));
-      const titleMatchesApprovedFormat = Array.from(applianceNames).some(
-        (name) => title === `annual service ${name}`,
+    if (appliances.length !== 25) {
+      showSaveToast(
+        `Annual Service recovery expected 25 appliance assets but found ${appliances.length}. Nothing was changed.`,
+        "warning",
       );
-
-      return (
-        id.startsWith("annual-appliance-") ||
-        id.startsWith("wo-approved-appliance-service-") ||
-        id.startsWith("wo-appliance-annual-service-") ||
-        notes.includes("cold season appliance maintenance") ||
-        notes.includes("cold season appliance work scheduled") ||
-        notes.includes("annual appliance preventive service") ||
-        titleMatchesApprovedFormat ||
-        (linkedAppliance &&
-          Boolean(record.recurring) &&
-          record.recurrenceUnit === "Years" &&
-          /annual service|appliance service/.test(
-            normalizedWorkOrderText(`${record.title || ""} ${record.notes || ""}`),
-          ))
-      );
-    };
-
-    const staleWorkOrders = serviceRecords.filter(isPriorApplianceServiceRecord);
-    const staleWorkOrderIds = new Set(
-      staleWorkOrders.map((record) => String(record.id || "")).filter(Boolean),
-    );
-    const staleCalendar = calendarItems.filter((item) => {
-      const id = String(item.id || "");
-      const linkedId = String(item.linkedId || "");
-      const notes = normalizedWorkOrderText(item.notes || "");
-      return (
-        id.startsWith("calendar-annual-appliance-") ||
-        staleWorkOrderIds.has(linkedId) ||
-        notes.includes("cold season appliance maintenance") ||
-        notes.includes("cold season appliance work scheduled")
-      );
-    });
+      return;
+    }
 
     const locationDate = (asset: AtlasAssetRecord, index: number) => {
       const location = normalizeLocationName(locationName(asset.locationId));
@@ -2554,8 +2524,9 @@ export default function AtlasApp() {
         lastCompletedDate: "",
         completionHistory: [],
         workType: "Preventive Maintenance",
-        workCategory: "Maintenance",
+        workCategory: "Annual Service",
         responsibilityArea: "House & Maintenance",
+        assignedTo: "Nick",
         photos: [],
         documents: [],
         checklist: [],
@@ -2568,31 +2539,9 @@ export default function AtlasApp() {
 
     void (async () => {
       try {
-        const deleteWorkResults = await Promise.all(
-          staleWorkOrders.map((record) =>
-            deleteAtlasRecord("work_orders", record.id, {
-              suppressFailureToast: true,
-            }),
-          ),
-        );
-        const deleteCalendarResults = await Promise.all(
-          staleCalendar.map((item) =>
-            deleteAtlasRecord("calendar", item.id, {
-              suppressFailureToast: true,
-            }),
-          ),
-        );
-
-        if (
-          deleteWorkResults.some((result) => !result) ||
-          deleteCalendarResults.some((result) => !result)
-        ) {
-          showSaveToast(
-            "Appliance service cleanup did not finish. No replacement set was created.",
-            "warning",
-          );
-          return;
-        }
+        // Clear only the tombstones created for these exact approved records.
+        // This happens once during recovery, before the records are recreated.
+        targetRecords.forEach((record) => clearWorkOrderTombstone(record.id));
 
         const saveResults = await Promise.all(
           targetRecords.map((record) =>
@@ -2605,7 +2554,7 @@ export default function AtlasApp() {
 
         if (saveResults.some((result) => !result)) {
           showSaveToast(
-            "Some annual appliance services did not save. Atlas will retry the correction.",
+            "Some annual appliance services did not restore. No recovery-complete flag was saved.",
             "warning",
           );
           return;
@@ -2615,22 +2564,13 @@ export default function AtlasApp() {
         setServiceRecords((current) =>
           workOrdersByIdentity([
             ...targetRecords,
-            ...current.filter(
-              (record) =>
-                !staleWorkOrderIds.has(String(record.id || "")) &&
-                !targetIds.has(String(record.id || "")),
-            ),
+            ...current.filter((record) => !targetIds.has(String(record.id || ""))),
           ]),
         );
-        if (staleCalendar.length) {
-          const staleCalendarIds = new Set(staleCalendar.map((item) => item.id));
-          setCalendarItems((current) =>
-            current.filter((item) => !staleCalendarIds.has(item.id)),
-          );
-        }
 
-        window.localStorage.setItem(setupKey, "done");
-        showSaveToast("25 annual appliance services scheduled for December.");
+        window.localStorage.setItem(recoveryKey, "done");
+        window.localStorage.setItem("atlas-user-approved-annual-appliance-service-v2-2000", "done");
+        showSaveToast("25 annual appliance services restored for December.");
       } finally {
         applianceAnnualServiceSetupRunningRef.current = false;
       }
@@ -2642,7 +2582,6 @@ export default function AtlasApp() {
     activePropertyId,
     assetRecords,
     serviceRecords,
-    calendarItems,
   ]);
 
   useEffect(() => { saveStoredArray("atlas-backlog-v1", backlogItems); }, [backlogItems]);
@@ -2701,7 +2640,6 @@ export default function AtlasApp() {
     ]);
     const generatedWorkOrderIds = (id: string) =>
       id.startsWith("fleet-wo-") || id.startsWith("annual-appliance-") || id.startsWith("wo-approved-appliance-service-") || id === "wo-pool-weekly" || id === "wo-landscape-weeding" || id === "wo-annual-winter-truck-sandbags" ||
-      id === "wo-annual-cobalt-registration-tabs" || id === "wo-annual-2024-seadoo-registration-tabs" ||
       id.startsWith("wo-holiday-tree-") || id === "wo-weekly-courtyard-gutters-flat-roof" ||
       id.startsWith("wo-daily-leaf-season-roof-") || id === "wo-weekly-ipe-deck-skylights" ||
       id === "wo-monthly-addition-exterior-windows" || id === "wo-monthly-original-home-exterior-windows" ||
@@ -2718,7 +2656,6 @@ export default function AtlasApp() {
       id === "calendar-weekly-ipe-deck-skylights" || id === "calendar-monthly-addition-exterior-windows" ||
       id === "calendar-monthly-original-home-exterior-windows" || id.startsWith("calendar-seasonal-pressure-wash-") ||
       id.startsWith("maintenance-") || id === "calendar-annual-winter-truck-sandbags" ||
-      id === "calendar-annual-cobalt-registration-tabs" || id === "calendar-annual-2024-seadoo-registration-tabs" ||
       id === "weekly-property-meeting" || id === "lanken-tuesday-crew" || id === "nick-steve-friday-meeting" ||
       id === "weekly-owner-update";
 
@@ -28190,11 +28127,11 @@ ${notes.trim()}` : notes.trim(),
     if (kind === "house" || kind === "pool" || kind === "landscaping" || kind === "marine") {
       const categorySets: Record<"house" | "pool" | "landscaping" | "marine", Array<{ label: string; pattern: RegExp }>> = {
         house: [
+          { label: "Annual Service", pattern: /\b(annual|yearly|seasonal service|preventive service)/i },
           { label: "HVAC", pattern: /\b(hvac|heating|cooling|furnace|air handler|heat pump|thermostat|boiler|radiant|dehumidif)/i },
           { label: "Plumbing", pattern: /\b(plumb|water heater|hot water|pump|recirc|drain|toilet|faucet|sink|leak|flologic|backflow)/i },
           { label: "Electrical", pattern: /\b(electric|lighting|light|generator|panel|outlet|switch|battery)/i },
           { label: "Cleaning", pattern: /\b(clean|housekeep|laundry|wash|window|glass|carpet|floor)/i },
-          { label: "Annual Service", pattern: /\b(annual|yearly|seasonal service|preventive service)/i },
           { label: "Appliances", pattern: /\b(appliance|refrigerator|freezer|dishwasher|washer|dryer|range|oven|microwave|ice maker)/i },
           { label: "General Maintenance", pattern: /[\s\S]*/i },
         ],
