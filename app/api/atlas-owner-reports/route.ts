@@ -61,6 +61,14 @@ async function ensureTable(sql: ReturnType<typeof neon>) {
     CREATE INDEX IF NOT EXISTS atlas_owner_reports_property_period_idx
     ON atlas_owner_reports(property_id, period_end DESC, period_start DESC)
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS atlas_owner_report_exclusions (
+      property_id text NOT NULL,
+      source_key text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (property_id, source_key)
+    )
+  `;
 }
 
 function mapReport(row: Row) {
@@ -89,8 +97,18 @@ export async function GET(request: NextRequest) {
       ORDER BY period_end DESC, updated_at DESC
       LIMIT 104
     `;
+    const exclusionRows = await sql`
+      SELECT source_key
+      FROM atlas_owner_report_exclusions
+      WHERE property_id = ${propertyId}
+    `;
     return NextResponse.json(
-      { ok: true, propertyId, reports: (rows as unknown as Row[]).map(mapReport) },
+      {
+        ok: true,
+        propertyId,
+        reports: (rows as unknown as Row[]).map(mapReport),
+        excludedSourceKeys: (exclusionRows as unknown as Row[]).map((row) => String(row.source_key || "")).filter(Boolean),
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
@@ -107,6 +125,18 @@ export async function POST(request: NextRequest) {
     await ensureTable(sql);
     const body = await request.json().catch(() => ({})) as Row;
     const propertyId = cleanPropertyId(body.propertyId);
+    if (String(body.action || "") === "exclude-item") {
+      const sourceKey = String(body.sourceKey || "").trim().slice(0, 1000);
+      if (!sourceKey) {
+        return NextResponse.json({ ok: false, error: "Report item source is required." }, { status: 400 });
+      }
+      await sql`
+        INSERT INTO atlas_owner_report_exclusions (property_id, source_key, created_at)
+        VALUES (${propertyId}, ${sourceKey}, NOW())
+        ON CONFLICT (property_id, source_key) DO NOTHING
+      `;
+      return NextResponse.json({ ok: true, propertyId, sourceKey });
+    }
     const periodStart = cleanDate(body.periodStart);
     const periodEnd = cleanDate(body.periodEnd);
 
