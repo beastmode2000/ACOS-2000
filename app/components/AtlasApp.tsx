@@ -2443,33 +2443,15 @@ export default function AtlasApp() {
       applianceAnnualServiceSetupRunningRef.current
     ) return;
 
-    // One-time recovery of the 25 annual appliance-service work orders that
-    // were accidentally removed during the legacy generated-work cleanup.
-    // The date gate prevents this from becoming a future regeneration path.
-    const recoveryKey = "atlas-approved-annual-appliance-service-recovery-v4-2000";
-    const recoveryDate = new Date().toISOString().slice(0, 10);
-    if (recoveryDate !== "2026-09-01" || window.localStorage.getItem(recoveryKey) === "done") return;
-
-    const existingApprovedAnnualServices = serviceRecords.filter((record) =>
-      String(record.id || "").startsWith("wo-appliance-annual-service-"),
-    );
-    if (existingApprovedAnnualServices.length > 0) {
-      window.localStorage.setItem(recoveryKey, "done");
-      return;
-    }
+    const repairKey = "atlas-annual-appliance-service-repair-v5-2000";
+    if (window.localStorage.getItem(repairKey) === "done") return;
 
     const appliances = byName(
-      assetRecords.filter((asset) =>
-        String(asset.category || "").trim().toLowerCase() === "appliance",
+      assetRecords.filter(
+        (asset) => String(asset.category || "").trim().toLowerCase() === "appliance",
       ),
     );
-    if (appliances.length !== 25) {
-      showSaveToast(
-        `Annual Service recovery expected 25 appliance assets but found ${appliances.length}. Nothing was changed.`,
-        "warning",
-      );
-      return;
-    }
+    if (!appliances.length) return;
 
     const locationDate = (asset: AtlasAssetRecord, index: number) => {
       const location = normalizeLocationName(locationName(asset.locationId));
@@ -2483,17 +2465,9 @@ export default function AtlasApp() {
       if (location.includes("mechanical room")) return "2026-12-22";
       if (location.includes("pantry")) return "2026-12-23";
       const fallbackDates = [
-        "2026-12-02",
-        "2026-12-04",
-        "2026-12-07",
-        "2026-12-09",
-        "2026-12-11",
-        "2026-12-14",
-        "2026-12-16",
-        "2026-12-18",
-        "2026-12-28",
-        "2026-12-29",
-        "2026-12-30",
+        "2026-12-02", "2026-12-04", "2026-12-07", "2026-12-09",
+        "2026-12-11", "2026-12-14", "2026-12-16", "2026-12-18",
+        "2026-12-28", "2026-12-29", "2026-12-30",
       ];
       return fallbackDates[index % fallbackDates.length];
     };
@@ -2535,42 +2509,33 @@ export default function AtlasApp() {
       });
     });
 
-    applianceAnnualServiceSetupRunningRef.current = true;
+    const existingIds = new Set(serviceRecords.map((record) => String(record.id || "")));
+    const missingRecords = targetRecords.filter((record) => !existingIds.has(String(record.id)));
+    if (!missingRecords.length) {
+      window.localStorage.setItem(repairKey, "done");
+      return;
+    }
 
+    applianceAnnualServiceSetupRunningRef.current = true;
     void (async () => {
       try {
-        // Clear only the tombstones created for these exact approved records.
-        // This happens once during recovery, before the records are recreated.
-        targetRecords.forEach((record) => clearWorkOrderTombstone(record.id));
-
+        missingRecords.forEach((record) => clearWorkOrderTombstone(record.id));
         const saveResults = await Promise.all(
-          targetRecords.map((record) =>
-            postAtlasRecord("work_orders", {
-              ...record,
-              propertyId: activePropertyId,
-            }),
+          missingRecords.map((record) =>
+            postAtlasRecord("work_orders", { ...record, propertyId: activePropertyId }),
           ),
         );
+        if (saveResults.some((result) => !result)) return;
 
-        if (saveResults.some((result) => !result)) {
-          showSaveToast(
-            "Some annual appliance services did not restore. No recovery-complete flag was saved.",
-            "warning",
-          );
-          return;
-        }
-
-        const targetIds = new Set(targetRecords.map((record) => record.id));
+        const repairedIds = new Set(missingRecords.map((record) => String(record.id)));
         setServiceRecords((current) =>
           workOrdersByIdentity([
-            ...targetRecords,
-            ...current.filter((record) => !targetIds.has(String(record.id || ""))),
+            ...missingRecords,
+            ...current.filter((record) => !repairedIds.has(String(record.id || ""))),
           ]),
         );
-
-        window.localStorage.setItem(recoveryKey, "done");
-        window.localStorage.setItem("atlas-user-approved-annual-appliance-service-v2-2000", "done");
-        showSaveToast("25 annual appliance services restored for December.");
+        window.localStorage.setItem(repairKey, "done");
+        showSaveToast(`${missingRecords.length} missing Annual Service work orders restored.`);
       } finally {
         applianceAnnualServiceSetupRunningRef.current = false;
       }
