@@ -503,7 +503,11 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     ]);
   }
 
-  async function saveReport(nextStatus: "Draft" | "Final") {
+  async function saveReport(
+    nextStatus: "Draft" | "Final",
+    nextItems: ReportItem[] = items,
+    successMessage?: string,
+  ) {
     if (!periodStart || !periodEnd) {
       setMessage("Choose the report start and end dates.");
       return;
@@ -524,7 +528,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
           periodEnd,
           title: reportTitle(periodStart, periodEnd),
           status: nextStatus,
-          items,
+          items: nextItems,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -532,13 +536,23 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
 
       setActiveReportId(id);
       setStatus(nextStatus);
-      setMessage(nextStatus === "Final" ? "Owner report finalized and saved." : "Owner report saved.");
+      setMessage(successMessage || (nextStatus === "Final" ? "Owner report finalized and saved." : "Owner report saved."));
       await loadSavedReports();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Owner report could not be saved.");
     } finally {
       setSaving(false);
     }
+  }
+
+  function deleteReportItem(itemId: string) {
+    const nextItems = items.filter((item) => item.id !== itemId);
+    setItems(nextItems);
+    void saveReport(
+      activeReportId ? status : "Draft",
+      nextItems,
+      "Item deleted from the owner report.",
+    );
   }
 
   function openSavedReport(report: SavedReport) {
@@ -671,7 +685,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
             <select value={item.department} onChange={(event) => updateItem(item.id, { department: event.currentTarget.value })} style={controlStyle}>{departments.map((department) => <option key={department}>{department}</option>)}</select>
             <input value={item.title} onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })} placeholder="Work activity" style={controlStyle} />
             <textarea value={item.notes} onChange={(event) => updateItem(item.id, { notes: event.currentTarget.value })} placeholder="Outcome / notes" rows={isMobile ? 2 : 1} style={{ ...controlStyle, resize: "vertical", minHeight: 38 }} />
-            <button type="button" onClick={() => setItems((current) => current.filter((row) => row.id !== item.id))} style={{ ...quietButtonStyle, padding: "9px 10px" }}>Delete</button>
+            <button type="button" onClick={() => deleteReportItem(item.id)} disabled={saving} style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}>Delete</button>
           </div>
         )) : <div style={{ padding: 16, border: `1px dashed ${colors.line}`, borderRadius: 11, color: colors.muted, fontSize: 12 }}>No work activity found for this date range.</div>}
       </div>
