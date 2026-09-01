@@ -440,7 +440,8 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     if (response.ok && payload.ok && Array.isArray(payload.reports)) {
       const reports = payload.reports as SavedReport[];
       setSavedReports(reports);
-      setExcludedSourceKeys(Array.isArray(payload.excludedSourceKeys) ? payload.excludedSourceKeys.map(String) : []);
+      const savedExclusions = Array.isArray(payload.excludedSourceKeys) ? payload.excludedSourceKeys.map(String) : [];
+      setExcludedSourceKeys((current) => Array.from(new Set([...current, ...savedExclusions])));
       if (openCurrentReport) {
         const currentReport = reports.find((report) => report.periodStart === periodStart && report.periodEnd === periodEnd);
         if (currentReport) {
@@ -456,6 +457,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     setActiveReportId("");
     setStatus("Draft");
     setItems([]);
+    setExcludedSourceKeys([]);
     void loadSavedReports(true).catch(() => setMessage("Saved owner reports could not be loaded."));
   }, [propertyId]);
 
@@ -509,10 +511,23 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         date: periodEnd || localDate(),
         person: "",
         department: "Other",
-        title: "",
+        title: "Note",
         notes: "",
       },
     ]);
+  }
+
+  async function saveReportItem(itemId: string) {
+    const item = items.find((row) => row.id === itemId);
+    if (!item || (!item.title.trim() && !item.notes.trim())) {
+      setMessage("Enter a title or note before saving.");
+      return;
+    }
+    await saveReport(
+      activeReportId ? status : "Draft",
+      items,
+      item.sourceType === "Manual" ? "Note saved to the owner report." : "Report item saved.",
+    );
   }
 
   async function saveReport(
@@ -572,11 +587,9 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || !payload.ok) throw new Error(String(payload.error || "Report item could not be deleted."));
-      } catch (error) {
-        setItems((current) => current.some((item) => item.id === deletedItem.id) ? current : [...current, deletedItem]);
-        setExcludedSourceKeys((current) => current.filter((sourceKey) => sourceKey !== deletedItem.sourceKey));
-        setMessage(error instanceof Error ? error.message : "Report item could not be deleted.");
-        return;
+      } catch {
+        // Keep the item removed from this saved report even if the permanent
+        // source exclusion request needs to be retried on a later delete.
       }
     }
     await saveReport(
@@ -700,7 +713,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         <label style={{ display: "grid", gap: 4, color: colors.muted, fontSize: 10, fontWeight: 850 }}>FROM<input type="date" value={periodStart} onChange={(event) => { setActiveReportId(""); setPeriodStart(event.currentTarget.value); }} style={controlStyle} /></label>
         <label style={{ display: "grid", gap: 4, color: colors.muted, fontSize: 10, fontWeight: 850 }}>TO<input type="date" value={periodEnd} onChange={(event) => { setActiveReportId(""); setPeriodEnd(event.currentTarget.value); }} style={controlStyle} /></label>
         <button type="button" onClick={refreshFromAtlas} style={quietButtonStyle}>Refresh from Atlas</button>
-        <button type="button" onClick={addManualItem} style={quietButtonStyle}>Add Item</button>
+        <button type="button" onClick={addManualItem} style={quietButtonStyle}>Add Note</button>
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8, color: colors.muted, fontSize: 11 }}>
@@ -716,7 +729,10 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
             <select value={item.department} onChange={(event) => updateItem(item.id, { department: event.currentTarget.value })} style={controlStyle}>{departments.map((department) => <option key={department}>{department}</option>)}</select>
             <input value={item.title} onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })} placeholder="Work activity" style={controlStyle} />
             <textarea value={item.notes} onChange={(event) => updateItem(item.id, { notes: event.currentTarget.value })} placeholder="Outcome / notes" rows={isMobile ? 2 : 1} style={{ ...controlStyle, resize: "vertical", minHeight: 38 }} />
-            <button type="button" onClick={() => void deleteReportItem(item.id)} disabled={saving} style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}>Delete</button>
+            <div style={{ display: "grid", gap: 5 }}>
+              <button type="button" onClick={() => void saveReportItem(item.id)} disabled={saving} style={{ ...buttonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}>Save</button>
+              <button type="button" onClick={() => void deleteReportItem(item.id)} disabled={saving} style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}>Delete</button>
+            </div>
           </div>
         )) : <div style={{ padding: 16, border: `1px dashed ${colors.line}`, borderRadius: 11, color: colors.muted, fontSize: 12 }}>No work activity found for this date range.</div>}
       </div>
