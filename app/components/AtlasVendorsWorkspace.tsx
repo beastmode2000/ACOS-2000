@@ -138,10 +138,11 @@ type VendorContactCard = {
   officePhone: string;
   cellPhone: string;
   email: string;
-  contactType: "Office" | "Owner" | "Manager" | "Sales" | "Service" | "Installation" | "Technician" | "Billing" | "Emergency";
+  contactType: "Office" | "Owner" | "Manager" | "Sales" | "Service" | "Installation" | "Technician" | "Billing" | "Emergency" | "Other";
   primary: boolean;
   preferredMethod: "Office" | "Cell" | "Email";
   notes: string;
+  inactive?: boolean;
 };
 
 const vendorContactTypes: VendorContactCard["contactType"][] = [
@@ -154,6 +155,7 @@ const vendorContactTypes: VendorContactCard["contactType"][] = [
   "Technician",
   "Billing",
   "Emergency",
+  "Other",
 ];
 
 
@@ -161,6 +163,7 @@ const vendorContactTypes: VendorContactCard["contactType"][] = [
 export default function AtlasVendorsWorkspace(props: any) {
   const [mobileFieldDetailsOpen, setMobileFieldDetailsOpen] = React.useState(false);
   const [vendorSearch, setVendorSearch] = React.useState("");
+  const [showInactiveContacts, setShowInactiveContacts] = React.useState(false);
   const {
     addLinkedPhotoFiles,
     addVendor,
@@ -220,6 +223,7 @@ export default function AtlasVendorsWorkspace(props: any) {
     : undefined;
   React.useEffect(() => {
     setMobileFieldDetailsOpen(false);
+    setShowInactiveContacts(false);
   }, [selectedVendorId]);
 
   const selectedVendorPhotos = selectedVendor.id
@@ -228,9 +232,14 @@ export default function AtlasVendorsWorkspace(props: any) {
   const vendorContacts: VendorContactCard[] = Array.isArray(selectedVendor.contacts)
     ? selectedVendor.contacts
     : [];
+  const activeVendorContacts = vendorContacts.filter((contact) => !contact.inactive);
+  const inactiveVendorContacts = vendorContacts.filter((contact) => contact.inactive);
+  const visibleVendorContacts = showInactiveContacts
+    ? [...activeVendorContacts, ...inactiveVendorContacts]
+    : activeVendorContacts;
 
   const updateVendorContacts = (contacts: VendorContactCard[]) => {
-    updateVendor({ contacts } as any);
+    updateVendor({ contacts });
   };
 
   const addVendorContact = () => {
@@ -246,6 +255,7 @@ export default function AtlasVendorsWorkspace(props: any) {
       primary: vendorContacts.length === 0,
       preferredMethod: "Cell",
       notes: "",
+      inactive: false,
     };
     updateVendorContacts([...vendorContacts, contact]);
   };
@@ -254,20 +264,45 @@ export default function AtlasVendorsWorkspace(props: any) {
     contactId: string,
     patch: Partial<VendorContactCard>,
   ) => {
-    updateVendorContacts(
-      vendorContacts.map((contact) => ({
-        ...contact,
-        ...(patch.primary ? { primary: false } : {}),
-        ...(contact.id === contactId ? patch : {}),
-      })),
-    );
+    let next = vendorContacts.map((contact) => ({
+      ...contact,
+      ...(patch.primary ? { primary: false } : {}),
+      ...(contact.id === contactId ? patch : {}),
+    }));
+
+    const updated = next.find((contact) => contact.id === contactId);
+    if (updated?.inactive && updated.primary) {
+      next = next.map((contact) =>
+        contact.id === contactId ? { ...contact, primary: false } : contact,
+      );
+    }
+
+    const activeContacts = next.filter((contact) => !contact.inactive);
+    if (
+      activeContacts.length &&
+      !activeContacts.some((contact) => contact.primary)
+    ) {
+      const firstActiveId = activeContacts[0].id;
+      next = next.map((contact) =>
+        contact.id === firstActiveId ? { ...contact, primary: true } : contact,
+      );
+    }
+
+    updateVendorContacts(next);
   };
 
   const deleteVendorContact = (contactId: string) => {
     if (!window.confirm("Delete this vendor contact?")) return;
-    const next = vendorContacts.filter((contact) => contact.id !== contactId);
-    if (next.length && !next.some((contact) => contact.primary)) {
-      next[0] = { ...next[0], primary: true };
+    let next = vendorContacts.filter((contact) => contact.id !== contactId);
+    const activeContacts = next.filter((contact) => !contact.inactive);
+    if (
+      activeContacts.length &&
+      !activeContacts.some((contact) => contact.primary)
+    ) {
+      const firstActiveId = activeContacts[0].id;
+      next = next.map((contact) =>
+        contact.id === firstActiveId ? { ...contact, primary: true } : contact,
+      );
     }
     updateVendorContacts(next);
   };
@@ -633,21 +668,41 @@ export default function AtlasVendorsWorkspace(props: any) {
                   <div>
                     <div style={eyebrowStyle}>Contacts</div>
                     <strong style={{ color: colors.navy }}>
-                      {vendorContacts.length} saved
+                      {activeVendorContacts.length} active
                     </strong>
                   </div>
-                  <button type="button" onClick={addVendorContact} style={secondaryButtonStyle}>
-                    Add Contact
-                  </button>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {inactiveVendorContacts.length ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowInactiveContacts((current) => !current)}
+                        style={secondaryButtonStyle}
+                      >
+                        {showInactiveContacts
+                          ? "Hide inactive"
+                          : `Show inactive (${inactiveVendorContacts.length})`}
+                      </button>
+                    ) : null}
+                    <button type="button" onClick={addVendorContact} style={secondaryButtonStyle}>
+                      Add Contact
+                    </button>
+                  </div>
                 </div>
 
                 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                  {vendorContacts.map((contact) => {
+                  {visibleVendorContacts.map((contact) => {
                     const cell = contact.cellPhone || contact.phone;
                     return (
                       <section
                         key={contact.id}
-                        style={{ border: `1px solid ${contact.primary ? colors.gold : colors.line}`, borderRadius: 12, background: contact.primary ? "#FFF9EC" : "#FFFFFF", padding: isMobile ? 10 : 12, minWidth: 0 }}
+                        style={{
+                          border: `1px solid ${contact.primary ? colors.gold : colors.line}`,
+                          borderRadius: 12,
+                          background: contact.primary ? "#FFF9EC" : "#FFFFFF",
+                          padding: isMobile ? 10 : 12,
+                          minWidth: 0,
+                          opacity: contact.inactive ? 0.68 : 1,
+                        }}
                       >
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
                           <div style={{ minWidth: 0 }}>
@@ -658,15 +713,20 @@ export default function AtlasVendorsWorkspace(props: any) {
                               {[contact.contactType, contact.role].filter(Boolean).join(" · ")}
                             </span>
                           </div>
-                          {contact.primary ? <span style={badgeStyle("Preferred")}>Primary</span> : null}
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {contact.primary ? <span style={badgeStyle("Preferred")}>Primary</span> : null}
+                            {contact.inactive ? <span style={badgeStyle("Monitor")}>Inactive</span> : null}
+                          </div>
                         </div>
 
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
-                          {cell ? <a href={`tel:${cell.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Call Cell</a> : null}
-                          {cell ? <a href={`sms:${cell.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Text</a> : null}
-                          {contact.officePhone ? <a href={`tel:${contact.officePhone.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Call Office</a> : null}
-                          {contact.email ? <a href={`mailto:${contact.email.trim()}`} style={secondaryButtonStyle}>Email</a> : null}
-                        </div>
+                        {!contact.inactive ? (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
+                            {cell ? <a href={`tel:${cell.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Call Cell</a> : null}
+                            {cell ? <a href={`sms:${cell.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Text</a> : null}
+                            {contact.officePhone ? <a href={`tel:${contact.officePhone.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Call Office</a> : null}
+                            {contact.email ? <a href={`mailto:${contact.email.trim()}`} style={secondaryButtonStyle}>Email</a> : null}
+                          </div>
+                        ) : null}
 
                         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}>
                           <Field label="Name" value={contact.name} onChange={(name) => updateVendorContact(contact.id, { name })} />
@@ -692,16 +752,36 @@ export default function AtlasVendorsWorkspace(props: any) {
                         </div>
 
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                          <label style={{ display: "inline-flex", alignItems: "center", gap: 7, color: colors.navy, fontWeight: 800, cursor: "pointer" }}>
-                            <input type="checkbox" checked={contact.primary} onChange={(event) => updateVendorContact(contact.id, { primary: event.currentTarget.checked })} />
+                          <label style={{ display: "inline-flex", alignItems: "center", gap: 7, color: colors.navy, fontWeight: 800, cursor: contact.inactive ? "default" : "pointer", opacity: contact.inactive ? 0.55 : 1 }}>
+                            <input
+                              type="checkbox"
+                              checked={contact.primary}
+                              disabled={Boolean(contact.inactive)}
+                              onChange={(event) => updateVendorContact(contact.id, { primary: event.currentTarget.checked })}
+                            />
                             Primary contact
                           </label>
-                          <button type="button" onClick={() => deleteVendorContact(contact.id)} style={dangerButtonStyle}>Delete Contact</button>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => updateVendorContact(contact.id, { inactive: !contact.inactive })}
+                              style={secondaryButtonStyle}
+                            >
+                              {contact.inactive ? "Restore" : "Archive"}
+                            </button>
+                            <button type="button" onClick={() => deleteVendorContact(contact.id)} style={dangerButtonStyle}>Delete Contact</button>
+                          </div>
                         </div>
                       </section>
                     );
                   })}
-                  {!vendorContacts.length ? <div style={noticeStyle}>No individual contacts saved.</div> : null}
+                  {!activeVendorContacts.length && !showInactiveContacts ? (
+                    <div style={noticeStyle}>
+                      {inactiveVendorContacts.length
+                        ? "No active contacts."
+                        : "No individual contacts saved."}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
