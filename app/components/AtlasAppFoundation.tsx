@@ -1648,10 +1648,9 @@ export function normalizeVendor(record: Partial<VendorRecord>): VendorRecord {
           contact?.contactType === "Installation" ||
           contact?.contactType === "Technician" ||
           contact?.contactType === "Billing" ||
-          contact?.contactType === "Emergency" ||
-          contact?.contactType === "Other"
+          contact?.contactType === "Emergency"
             ? contact.contactType
-            : "Other",
+            : "Technician",
         primary: Boolean(contact?.primary),
         preferredMethod:
           contact?.preferredMethod === "Office" ||
