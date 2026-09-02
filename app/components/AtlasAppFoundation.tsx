@@ -1630,8 +1630,8 @@ export function normalizeLocationName(value: string) {
 
 export function normalizeVendor(record: Partial<VendorRecord>): VendorRecord {
   const name = String(record.name ?? "Unnamed Vendor");
-  const contacts = Array.isArray(record.contacts)
-    ? record.contacts.map((contact) => ({
+  const contacts: NonNullable<VendorRecord["contacts"]> = Array.isArray(record.contacts)
+    ? record.contacts.map((contact): NonNullable<VendorRecord["contacts"]>[number] => ({
         id: String(contact?.id || ""),
         name: String(contact?.name || ""),
         role: String(contact?.role || ""),
