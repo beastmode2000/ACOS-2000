@@ -93,6 +93,33 @@ export type MapLabelRecord = {
   maintenanceNotes?: string;
 };
 
+export type VendorContactType =
+  | "Office"
+  | "Owner"
+  | "Manager"
+  | "Sales"
+  | "Service"
+  | "Installation"
+  | "Technician"
+  | "Billing"
+  | "Emergency"
+  | "Other";
+
+export type VendorContactRecord = {
+  id: string;
+  name: string;
+  role: string;
+  phone: string;
+  officePhone: string;
+  cellPhone: string;
+  email: string;
+  contactType: VendorContactType;
+  primary: boolean;
+  preferredMethod: "Office" | "Cell" | "Email";
+  notes: string;
+  inactive?: boolean;
+};
+
 export type VendorRecord = {
   id: string;
   name: string;
@@ -101,6 +128,7 @@ export type VendorRecord = {
   email?: string;
   website?: string;
   notes: string;
+  contacts?: VendorContactRecord[];
 };
 
 export type ContactRecord = {
