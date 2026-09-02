@@ -1630,6 +1630,39 @@ export function normalizeLocationName(value: string) {
 
 export function normalizeVendor(record: Partial<VendorRecord>): VendorRecord {
   const name = String(record.name ?? "Unnamed Vendor");
+  const contacts = Array.isArray(record.contacts)
+    ? record.contacts.map((contact) => ({
+        id: String(contact?.id || ""),
+        name: String(contact?.name || ""),
+        role: String(contact?.role || ""),
+        phone: String(contact?.phone || ""),
+        officePhone: String(contact?.officePhone || ""),
+        cellPhone: String(contact?.cellPhone || contact?.phone || ""),
+        email: String(contact?.email || ""),
+        contactType:
+          contact?.contactType === "Office" ||
+          contact?.contactType === "Owner" ||
+          contact?.contactType === "Manager" ||
+          contact?.contactType === "Sales" ||
+          contact?.contactType === "Service" ||
+          contact?.contactType === "Installation" ||
+          contact?.contactType === "Technician" ||
+          contact?.contactType === "Billing" ||
+          contact?.contactType === "Emergency" ||
+          contact?.contactType === "Other"
+            ? contact.contactType
+            : "Other",
+        primary: Boolean(contact?.primary),
+        preferredMethod:
+          contact?.preferredMethod === "Office" ||
+          contact?.preferredMethod === "Email"
+            ? contact.preferredMethod
+            : "Cell",
+        notes: String(contact?.notes || ""),
+        inactive: Boolean(contact?.inactive),
+      }))
+    : [];
+
   return {
     id: String(record.id || slugify(name)),
     name,
@@ -1638,6 +1671,7 @@ export function normalizeVendor(record: Partial<VendorRecord>): VendorRecord {
     email: record.email || "",
     website: record.website || "",
     notes: String(record.notes || ""),
+    contacts,
   };
 }
 
