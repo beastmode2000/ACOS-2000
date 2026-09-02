@@ -296,6 +296,8 @@ export default function AtlasDashboardWorkspace(props: any) {
   const [dashboardWorkPersonFilter, setDashboardWorkPersonFilter] = useState<"Everyone" | "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell">("Everyone");
   const [dashboardWorkView, setDashboardWorkView] = useState<"Daily" | "Sean Powell" | "Patrick Tanner" | "Everyone">("Daily");
   const [dashboardQuickDrafts, setDashboardQuickDrafts] = useState<Record<string, string>>({ Nick: "", Addison: "", "Sean Powell": "", "Patrick Tanner": "" });
+  const [dashboardQuickSaving, setDashboardQuickSaving] = useState<Record<string, boolean>>({});
+  const dashboardQuickInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const dashboardAssigneeName = (value: unknown) => {
     const name = String(value || "").trim();
     const normalized = name.toLowerCase();
@@ -303,6 +305,10 @@ export default function AtlasDashboardWorkspace(props: any) {
     if (/^sean(?:[^a-z]|$)/.test(normalized)) return "Sean Powell";
     return name;
   };
+  const dashboardWasUnscheduledAfterMiss = (record: ServiceRecord) =>
+    !record.date && ((record as AtlasServiceRecord).notesHistory || []).some((entry) =>
+      String(entry.text || "").startsWith("DIDN'T GET TO IT:")
+    );
   const dashboardWorkForPerson = (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") => serviceRecords
     .filter((record) => record.status !== "Completed")
     .filter((record) => dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) === person)
@@ -311,6 +317,7 @@ export default function AtlasDashboardWorkspace(props: any) {
       if (dashboardWorkListFilter === "All") return true;
       if (dashboardWorkListFilter === "Upcoming") return Boolean(date && date > todayISO());
       if (dashboardWorkListFilter === "Overdue") return Boolean(date && date < todayISO());
+      if (dashboardWasUnscheduledAfterMiss(record)) return false;
       return !date || date <= todayISO();
     })
     .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || (a.priority === "High" ? 0 : a.priority === "Medium" ? 1 : 2) - (b.priority === "High" ? 0 : b.priority === "Medium" ? 1 : 2) || a.title.localeCompare(b.title));
@@ -323,16 +330,22 @@ export default function AtlasDashboardWorkspace(props: any) {
 
   const createDashboardWorkForPerson = async (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") => {
     const title = String(dashboardQuickDrafts[person] || "").trim();
-    if (!title) return;
+    if (!title || dashboardQuickSaving[person]) return;
 
-    const created = await addDashboardWorkOrder("Maintenance", {
-      title,
-      assignedTo: person,
-      date: todayISO(),
-      status: "Open",
-    });
-    if (!created) return;
-    setDashboardQuickDrafts((current) => ({ ...current, [person]: "" }));
+    setDashboardQuickSaving((current) => ({ ...current, [person]: true }));
+    try {
+      const created = await addDashboardWorkOrder("Maintenance", {
+        title,
+        assignedTo: person,
+        date: todayISO(),
+        status: "Open",
+      });
+      if (!created) return;
+      setDashboardQuickDrafts((current) => ({ ...current, [person]: "" }));
+      window.requestAnimationFrame(() => dashboardQuickInputRefs.current[person]?.focus());
+    } finally {
+      setDashboardQuickSaving((current) => ({ ...current, [person]: false }));
+    }
   };
 
   const dashboardCalendarOwner = (event: AtlasCalendarItem) => {
@@ -1715,6 +1728,7 @@ export default function AtlasDashboardWorkspace(props: any) {
       const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo);
       return dashboardWorkPeople.some((person) => assigned === person);
     })
+    .filter((record) => !dashboardWasUnscheduledAfterMiss(record))
     .filter((record) => !record.date || String(record.date) <= today)
     .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || priorityRank(a) - priorityRank(b) || a.title.localeCompare(b.title));
 
@@ -1730,6 +1744,7 @@ export default function AtlasDashboardWorkspace(props: any) {
       if (dashboardWorkListFilter === "All") return true;
       if (dashboardWorkListFilter === "Upcoming") return Boolean(date && date > today);
       if (dashboardWorkListFilter === "Overdue") return Boolean(date && date < today);
+      if (dashboardWasUnscheduledAfterMiss(record)) return false;
       return !date || date <= today;
     })
     .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || priorityRank(a) - priorityRank(b) || a.title.localeCompare(b.title));
@@ -2401,22 +2416,27 @@ export default function AtlasDashboardWorkspace(props: any) {
                 <span style={badgeStyle(records.length ? "Scheduled" : completedToday.length ? "Completed" : "Monitor")}>{records.length}</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "minmax(0,1fr) auto" : "minmax(0,1fr) auto", gap: 6, marginTop: 9 }}>
-                <input value={dashboardQuickDrafts[person] || ""} onChange={(event) => { const value = event.currentTarget.value; setDashboardQuickDrafts((current) => ({ ...current, [person]: value })); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createDashboardWorkForPerson(person); } }} placeholder="Add work title…" style={{ ...inputStyle, minHeight: 34 }}/>
-                <button type="button" onClick={() => void createDashboardWorkForPerson(person)} disabled={!String(dashboardQuickDrafts[person] || "").trim()} style={{ ...goldButtonStyle, minHeight: 34, padding: "6px 10px", opacity: String(dashboardQuickDrafts[person] || "").trim() ? 1 : .55 }}>Save & Edit</button>
+                <input ref={(element) => { dashboardQuickInputRefs.current[person] = element; }} value={dashboardQuickDrafts[person] || ""} onChange={(event) => { const value = event.currentTarget.value; setDashboardQuickDrafts((current) => ({ ...current, [person]: value })); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createDashboardWorkForPerson(person); } }} placeholder="Add work title…" disabled={Boolean(dashboardQuickSaving[person])} style={{ ...inputStyle, minHeight: 34 }}/>
+                <button type="button" onClick={() => void createDashboardWorkForPerson(person)} disabled={!String(dashboardQuickDrafts[person] || "").trim() || Boolean(dashboardQuickSaving[person])} style={{ ...goldButtonStyle, minHeight: 34, padding: "6px 10px", opacity: String(dashboardQuickDrafts[person] || "").trim() && !dashboardQuickSaving[person] ? 1 : .55 }}>{dashboardQuickSaving[person] ? "Adding…" : "Add"}</button>
               </div>
               <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: isMobile ? 340 : 470, overflowY: "auto", paddingRight: 2 }}>
                 {records.map((record) => {
                   const completionNote = dashboardCompletionNotes[String(record.id)] || "";
                   const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) || person;
                   return <div key={record.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 8, alignItems: "center" }}>
-                      <input type="checkbox" checked={false} aria-label={`Complete ${record.title}`} onChange={async () => { await completeWorkOrder(record as AtlasServiceRecord, { completionNote }); setDashboardCompletionNotes((current) => { const next = { ...current }; delete next[String(record.id)]; return next; }); }}/>
+                    <div style={{ display: "grid", gap: 7 }}>
                       <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: "pointer" }}>
                         <strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14, lineHeight: 1.3, fontWeight: 700 }}>{record.title}</strong>
                         <small style={{ color: colors.muted, display: "block", marginTop: 2, fontSize: 12, lineHeight: 1.3, fontWeight: 500 }}>{record.date ? `${String(record.date).slice(0,10) < todayISO() ? "Overdue · " : ""}${formatDate(String(record.date).slice(0,10))}` : "No due date"} · {record.recurring ? `Recurring ${recurrenceLabel(record as AtlasServiceRecord)}` : "One time"}</small>
                       </button>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                        <button type="button" onClick={async () => { await completeWorkOrder(record as AtlasServiceRecord, { completionNote }); setDashboardCompletionNotes((current) => { const next = { ...current }; delete next[String(record.id)]; return next; }); }} style={{ ...goldButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Done</button>
+                        <button type="button" onClick={() => void didntGetToDashboardWork(record)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Didn’t Get To It</button>
+                        <button type="button" onClick={() => void rescheduleDashboardWork(record)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Reschedule</button>
+                        <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Edit</button>
+                      </div>
                     </div>
-                    <details style={{ marginTop: 6, marginLeft: 24 }}>
+                    <details style={{ marginTop: 6 }}>
                       <summary style={{ cursor: "pointer", color: colors.navy, fontSize: 11, fontWeight: 800 }}>Update</summary>
                       <div style={{ display: "grid", gap: 6, marginTop: 7 }}>
                         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 6 }}>
@@ -2714,6 +2734,33 @@ export default function AtlasDashboardWorkspace(props: any) {
   };
   const moveWorkOccurrence = async (record: ServiceRecord, days: number) => {
     await syncWorkOrderPatch(record, { date: addDays(record.date || today, days), status: "Scheduled" });
+  };
+  const didntGetToDashboardWork = async (record: ServiceRecord) => {
+    const atlasRecord = record as AtlasServiceRecord;
+    const scheduledDate = String(record.date || todayISO()).slice(0, 10);
+    const missedNote = {
+      id: uid("note"),
+      text: `DIDN'T GET TO IT: ${scheduledDate}`,
+      createdAt: new Date().toISOString(),
+    };
+    const notesHistory = [missedNote, ...(atlasRecord.notesHistory || [])];
+    if (record.recurring) {
+      const unit = isWorkOrderRecurrenceUnit(record.recurrenceUnit) ? record.recurrenceUnit : "Weeks";
+      const nextDate = nextRecurrenceDate(scheduledDate, record.recurrenceInterval || 1, unit);
+      await syncWorkOrderPatch(record, { date: nextDate, status: "Scheduled", notesHistory });
+      return;
+    }
+    await syncWorkOrderPatch(record, { date: "", status: "Open", notesHistory });
+  };
+  const rescheduleDashboardWork = async (record: ServiceRecord) => {
+    const currentDate = String(record.date || todayISO()).slice(0, 10);
+    const nextDate = window.prompt("Reschedule work to (YYYY-MM-DD):", currentDate)?.trim();
+    if (!nextDate || nextDate === currentDate) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
+      showSaveToast("Use a date in YYYY-MM-DD format.", "warning");
+      return;
+    }
+    await syncWorkOrderPatch(record, { date: nextDate, status: "Scheduled" });
   };
 
   const compactWorkList = (title: string, records: ServiceRecord[], emptyText: string) => (
