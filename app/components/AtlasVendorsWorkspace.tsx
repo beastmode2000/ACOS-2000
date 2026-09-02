@@ -138,7 +138,7 @@ type VendorContactCard = {
   officePhone: string;
   cellPhone: string;
   email: string;
-  contactType: "Office" | "Owner" | "Manager" | "Sales" | "Service" | "Installation" | "Technician" | "Billing" | "Emergency" | "Other";
+  contactType: "Office" | "Owner" | "Manager" | "Sales" | "Service" | "Installation" | "Technician" | "Billing" | "Emergency";
   primary: boolean;
   preferredMethod: "Office" | "Cell" | "Email";
   notes: string;
@@ -155,7 +155,6 @@ const vendorContactTypes: VendorContactCard["contactType"][] = [
   "Technician",
   "Billing",
   "Emergency",
-  "Other",
 ];
 
 
