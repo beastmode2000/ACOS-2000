@@ -102,8 +102,7 @@ export type VendorContactType =
   | "Installation"
   | "Technician"
   | "Billing"
-  | "Emergency"
-  | "Other";
+  | "Emergency";
 
 export type VendorContactRecord = {
   id: string;
