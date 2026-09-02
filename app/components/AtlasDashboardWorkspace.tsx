@@ -296,7 +296,6 @@ export default function AtlasDashboardWorkspace(props: any) {
   const [dashboardWorkPersonFilter, setDashboardWorkPersonFilter] = useState<"Everyone" | "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell">("Everyone");
   const [dashboardWorkView, setDashboardWorkView] = useState<"Daily" | "Sean Powell" | "Patrick Tanner" | "Everyone">("Daily");
   const [dashboardQuickDrafts, setDashboardQuickDrafts] = useState<Record<string, string>>({ Nick: "", Addison: "", "Sean Powell": "", "Patrick Tanner": "" });
-  const [dashboardQuickSaving, setDashboardQuickSaving] = useState<Record<string, boolean>>({});
   const dashboardQuickInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const dashboardAssigneeName = (value: unknown) => {
     const name = String(value || "").trim();
@@ -330,22 +329,37 @@ export default function AtlasDashboardWorkspace(props: any) {
 
   const createDashboardWorkForPerson = async (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") => {
     const title = String(dashboardQuickDrafts[person] || "").trim();
-    if (!title || dashboardQuickSaving[person]) return;
+    if (!title) return;
 
-    setDashboardQuickSaving((current) => ({ ...current, [person]: true }));
-    try {
-      const created = await addDashboardWorkOrder("Maintenance", {
-        title,
-        assignedTo: person,
-        date: todayISO(),
-        status: "Open",
-      });
-      if (!created) return;
-      setDashboardQuickDrafts((current) => ({ ...current, [person]: "" }));
-      window.requestAnimationFrame(() => dashboardQuickInputRefs.current[person]?.focus());
-    } finally {
-      setDashboardQuickSaving((current) => ({ ...current, [person]: false }));
-    }
+    const record = normalizeService({
+      id: uid("work"),
+      propertyId: activePropertyId,
+      title,
+      date: todayISO(),
+      status: "Open",
+      priority: "Medium",
+      assignedTo: person,
+      recurring: false,
+      workType: "Quick Task",
+      workCategory: "Maintenance",
+      responsibilityArea: "Dashboard Work",
+      notes: "",
+    });
+
+    setServiceRecords((current) => byTitle([record, ...current]));
+    setDashboardQuickDrafts((current) => ({ ...current, [person]: "" }));
+    window.requestAnimationFrame(() => dashboardQuickInputRefs.current[person]?.focus());
+
+    const saved = await postAtlasRecord("work_orders", record);
+    if (saved) return;
+
+    setServiceRecords((current) => current.filter((item) => item.id !== record.id));
+    setDashboardQuickDrafts((current) =>
+      String(current[person] || "").trim()
+        ? current
+        : { ...current, [person]: title },
+    );
+    showSaveToast("Work did not sync, so it was not added.", "warning");
   };
 
   const dashboardCalendarOwner = (event: AtlasCalendarItem) => {
@@ -2416,8 +2430,8 @@ export default function AtlasDashboardWorkspace(props: any) {
                 <span style={badgeStyle(records.length ? "Scheduled" : completedToday.length ? "Completed" : "Monitor")}>{records.length}</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "minmax(0,1fr) auto" : "minmax(0,1fr) auto", gap: 6, marginTop: 9 }}>
-                <input ref={(element) => { dashboardQuickInputRefs.current[person] = element; }} value={dashboardQuickDrafts[person] || ""} onChange={(event) => { const value = event.currentTarget.value; setDashboardQuickDrafts((current) => ({ ...current, [person]: value })); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createDashboardWorkForPerson(person); } }} placeholder="Add work title…" disabled={Boolean(dashboardQuickSaving[person])} style={{ ...inputStyle, minHeight: 34 }}/>
-                <button type="button" onClick={() => void createDashboardWorkForPerson(person)} disabled={!String(dashboardQuickDrafts[person] || "").trim() || Boolean(dashboardQuickSaving[person])} style={{ ...goldButtonStyle, minHeight: 34, padding: "6px 10px", opacity: String(dashboardQuickDrafts[person] || "").trim() && !dashboardQuickSaving[person] ? 1 : .55 }}>{dashboardQuickSaving[person] ? "Adding…" : "Add"}</button>
+                <input ref={(element) => { dashboardQuickInputRefs.current[person] = element; }} value={dashboardQuickDrafts[person] || ""} onChange={(event) => { const value = event.currentTarget.value; setDashboardQuickDrafts((current) => ({ ...current, [person]: value })); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createDashboardWorkForPerson(person); } }} placeholder="Add work title…" style={{ ...inputStyle, minHeight: 34 }}/>
+                <button type="button" onClick={() => void createDashboardWorkForPerson(person)} disabled={!String(dashboardQuickDrafts[person] || "").trim()} style={{ ...goldButtonStyle, minHeight: 34, padding: "6px 10px", opacity: String(dashboardQuickDrafts[person] || "").trim() ? 1 : .55 }}>Add</button>
               </div>
               <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: isMobile ? 340 : 470, overflowY: "auto", paddingRight: 2 }}>
                 {records.map((record) => {
