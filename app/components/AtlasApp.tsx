@@ -2371,6 +2371,7 @@ export default function AtlasApp() {
     useState<PendingAssistantAction | null>(null);
   const [assistantActionSaving, setAssistantActionSaving] = useState(false);
   const [dashboardAssistantOpen, setDashboardAssistantOpen] = useState(false);
+  const askAtlasAbortRef = useRef<AbortController | null>(null);
   const [workPlanInput, setWorkPlanInput] = useState("");
   const [workPlanTasks, setWorkPlanTasks] = useState<WorkPlanTask[]>(() =>
     readStoredArray<WorkPlanTask>(["atlas-tasks-v1"], []),
@@ -13966,6 +13967,68 @@ export default function AtlasApp() {
     addAssistantTurn("assistant", value);
   }
 
+  function renderAskAtlasInlineText(value: string) {
+    return value.split(/(\*\*[^*]+\*\*)/g).map((part, index) =>
+      part.startsWith("**") && part.endsWith("**") && part.length > 4 ? (
+        <strong key={`${index}-${part.slice(0, 12)}`}>
+          {part.slice(2, -2)}
+        </strong>
+      ) : (
+        <React.Fragment key={`${index}-${part.slice(0, 12)}`}>
+          {part}
+        </React.Fragment>
+      ),
+    );
+  }
+
+  function renderAskAtlasAnswer(value: string) {
+    const lines = String(value || "").split("\n");
+    const sourceIndex = lines.findIndex((line) =>
+      /^\s*source\s*:/i.test(line),
+    );
+    const bodyLines =
+      sourceIndex >= 0 ? lines.slice(0, sourceIndex) : lines;
+    const sourceLines =
+      sourceIndex >= 0 ? lines.slice(sourceIndex) : [];
+
+    return (
+      <div style={{ display: "grid", gap: sourceLines.length ? 10 : 0 }}>
+        <div style={{ whiteSpace: "pre-wrap" }}>
+          {renderAskAtlasInlineText(bodyLines.join("\n"))}
+        </div>
+        {sourceLines.length ? (
+          <div
+            style={{
+              paddingTop: 8,
+              borderTop: `1px solid ${colors.line}`,
+              fontSize: 13,
+              lineHeight: 1.4,
+              color: colors.muted,
+            }}
+          >
+            {renderAskAtlasInlineText(sourceLines.join("\n"))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function closeAndResetAskAtlas() {
+    askAtlasAbortRef.current?.abort();
+    askAtlasAbortRef.current = null;
+    setAssistantLoading(false);
+    setAssistantQuestion("");
+    setAssistantAnswer("");
+    setAssistantTurns([]);
+    setAssistantRecordResults([]);
+    setSelectedRelationshipId("");
+    setPendingAssistantAction(null);
+    setManualCandidates([]);
+    setManualSavingUrl("");
+    setManualSaveMessage("");
+    setDashboardAssistantOpen(false);
+  }
+
   function refreshAssistantRecordResults(question: string) {
     const matches = searchAtlas(buildSearchIndex(), question, 8);
     setAssistantRecordResults(matches);
@@ -14718,6 +14781,10 @@ export default function AtlasApp() {
         }
       : atlasSnapshot;
 
+    askAtlasAbortRef.current?.abort();
+    const requestController = new AbortController();
+    askAtlasAbortRef.current = requestController;
+
     setAssistantLoading(true);
     setManualCandidates([]);
     setManualSaveMessage("");
@@ -14730,6 +14797,7 @@ export default function AtlasApp() {
     try {
       const response = await fetch("/api/ask-atlas", {
         method: "POST",
+        signal: requestController.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question,
@@ -14820,13 +14888,17 @@ export default function AtlasApp() {
       );
       setManualCandidates(cleanManuals.slice(0, 3));
     } catch (error) {
+      if (requestController.signal.aborted) return;
       finishAssistantAnswer(
         error instanceof Error
           ? error.message
           : "Atlas Assistant could not answer right now.",
       );
     } finally {
-      setAssistantLoading(false);
+      if (askAtlasAbortRef.current === requestController) {
+        askAtlasAbortRef.current = null;
+        setAssistantLoading(false);
+      }
     }
   }
 
@@ -26740,7 +26812,9 @@ ${notes.trim()}` : notes.trim(),
                             lineHeight: 1.55,
                           }}
                         >
-                          {turn.text}
+                          {turn.role === "assistant"
+                            ? renderAskAtlasAnswer(turn.text)
+                            : turn.text}
                         </div>
                       </div>
                     ))
@@ -32259,7 +32333,7 @@ ${notes.trim()}` : notes.trim(),
               }}
               onMouseDown={(event) => {
                 if (event.currentTarget === event.target)
-                  setDashboardAssistantOpen(false);
+                  closeAndResetAskAtlas();
               }}
             >
               <section
@@ -32303,7 +32377,7 @@ ${notes.trim()}` : notes.trim(),
                   </div>
                   <button
                     type="button"
-                    onClick={() => setDashboardAssistantOpen(false)}
+                    onClick={closeAndResetAskAtlas}
                     style={{
                       ...secondaryButtonStyle,
                       minWidth: 42,
@@ -32464,28 +32538,41 @@ ${notes.trim()}` : notes.trim(),
                     </div>
                   ) : null}
 
-                  {assistantRecordResults.slice(0, 4).map((result) => (
-                    <button
-                      key={result.id}
-                      type="button"
-                      onClick={() => {
-                        setDashboardAssistantOpen(false);
-                        openSearchResult(result);
-                      }}
-                      style={{
-                        ...searchResultStyle,
-                        border: `1px solid ${colors.line}`,
-                        borderRadius: 10,
-                        padding: 10,
-                        background: colors.card,
-                      }}
-                    >
-                      <strong>{result.title}</strong>
-                      <div style={mutedSmallStyle}>
-                        {result.type} · {result.subtitle}
+                  {assistantRecordResults.length ? (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <div
+                        style={{
+                          ...eyebrowStyle,
+                          color: colors.muted,
+                          marginTop: 2,
+                        }}
+                      >
+                        Possible Matches
                       </div>
-                    </button>
-                  ))}
+                      {assistantRecordResults.slice(0, 4).map((result) => (
+                        <button
+                          key={result.id}
+                          type="button"
+                          onClick={() => {
+                            setDashboardAssistantOpen(false);
+                            openSearchResult(result);
+                          }}
+                          style={{
+                            ...searchResultStyle,
+                            border: `1px solid ${colors.line}`,
+                            borderRadius: 10,
+                            padding: 10,
+                            background: colors.card,
+                          }}
+                        >
+                          <strong>{result.title}</strong>
+                          <div style={mutedSmallStyle}>
+                            {result.type} · {result.subtitle}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
 
                   {assistantTurns.length ? (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
