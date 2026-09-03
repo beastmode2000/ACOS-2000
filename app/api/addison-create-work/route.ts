@@ -121,6 +121,212 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
   `;
 }
 
+
+function isAddisonAssignedTask(record: Record<string, any>) {
+  const meta =
+    record?.taskMeta && typeof record.taskMeta === "object"
+      ? record.taskMeta
+      : record;
+  const assigned = String(
+    meta?.assignee ||
+      meta?.assignedTo ||
+      meta?.assigned_to ||
+      record?.assignee ||
+      record?.assignedTo ||
+      record?.assigned_to ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+
+  return (
+    assigned === "addison" ||
+    assigned === "addison hutton" ||
+    assigned.startsWith("addison ")
+  );
+}
+
+function legacyWorkId(taskId: string) {
+  const safe = taskId
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 100);
+  return `addison-legacy-${safe || taskId}`;
+}
+
+async function syncLegacyAddisonTasksToWorkOrders(
+  sql: ReturnType<typeof neon>,
+) {
+  await ensureWorkOrderColumns(sql);
+
+  const today = pacificDateKey();
+  const rows = await sql`
+    SELECT id, record
+    FROM atlas_operational_records
+    WHERE record_type = 'tasks'
+      AND property_id = ${PROPERTY_ID}
+    ORDER BY updated_at DESC
+  `;
+
+  let migrated = 0;
+
+  for (const row of rows as Array<{ id?: unknown; record?: Record<string, any> }>) {
+    const taskId = cleanString(row.id || row.record?.id, 160);
+    if (!taskId || taskId.startsWith("work-order:")) continue;
+
+    const task = {
+      ...(row.record || {}),
+      id: taskId,
+    } as Record<string, any>;
+
+    if (!isAddisonAssignedTask(task)) continue;
+
+    const meta =
+      task?.taskMeta && typeof task.taskMeta === "object"
+        ? task.taskMeta
+        : task;
+    const status = cleanString(meta?.status || task?.status || "Open", 40);
+    if (status === "Completed" || Boolean(meta?.paused)) continue;
+
+    const dueDate =
+      cleanString(meta?.dueDate || task?.dueDate || today, 10).slice(0, 10) ||
+      today;
+    if (dueDate > today) continue;
+
+    const id = legacyWorkId(taskId);
+    const title =
+      cleanString(task?.title || meta?.title || "Addison work", 160) ||
+      "Addison work";
+    const notes = cleanString(
+      meta?.instructions || meta?.notes || task?.notes || "",
+      3000,
+    );
+    const category =
+      cleanString(task?.category || meta?.category || "Maintenance", 80) ||
+      "Maintenance";
+    const priority = ["High", "Medium", "Low"].includes(
+      String(task?.priority || meta?.priority || ""),
+    )
+      ? String(task?.priority || meta?.priority)
+      : "Medium";
+    const recurring = Boolean(task?.recurring || meta?.recurring);
+    const recurrenceInterval = Math.max(
+      1,
+      Number(meta?.recurrenceInterval || 1),
+    );
+    const recurrenceUnit = ["Days", "Weeks", "Months", "Years"].includes(
+      String(meta?.recurrenceUnit || ""),
+    )
+      ? String(meta?.recurrenceUnit)
+      : "Weeks";
+    const completionHistory = Array.isArray(meta?.completionHistory)
+      ? meta.completionHistory
+      : [];
+    const serviceHistory = Array.isArray(meta?.serviceHistory)
+      ? meta.serviceHistory
+      : [];
+    const photos = Array.isArray(meta?.photos) ? meta.photos : [];
+    const checklist = Array.isArray(meta?.checklist) ? meta.checklist : [];
+
+    const result = await sql`
+      INSERT INTO atlas_work_orders (
+        id,
+        asset_id,
+        date,
+        due_date_value,
+        due_date_initialized,
+        title,
+        status,
+        notes,
+        priority,
+        recurring,
+        recurrence_interval,
+        recurrence_unit,
+        season,
+        completion_history,
+        work_type,
+        work_category,
+        responsibility_area,
+        assigned_to,
+        checklist,
+        notes_history,
+        service_history,
+        photos,
+        documents,
+        property_id
+      )
+      VALUES (
+        ${id},
+        NULL,
+        ${dueDate}::date,
+        ${dueDate}::date,
+        true,
+        ${title},
+        'Open',
+        ${notes},
+        ${priority},
+        ${recurring},
+        ${recurrenceInterval},
+        ${recurrenceUnit},
+        'Year-Round',
+        ${JSON.stringify(completionHistory)}::jsonb,
+        'Work Order',
+        ${category},
+        ${`Legacy task ${taskId}`},
+        'Addison',
+        ${JSON.stringify(checklist)}::jsonb,
+        '[]'::jsonb,
+        ${JSON.stringify(serviceHistory)}::jsonb,
+        ${JSON.stringify(photos)}::jsonb,
+        '[]'::jsonb,
+        ${PROPERTY_ID}
+      )
+      ON CONFLICT (id) DO NOTHING
+      RETURNING id
+    `;
+
+    if (result.length) migrated += 1;
+  }
+
+  return migrated;
+}
+
+export async function GET(request: Request) {
+  try {
+    const url = new URL(request.url);
+    const token = cleanString(url.searchParams.get("token"), 256);
+    if (!token || token !== ADDISON_WORK_TOKEN) {
+      return NextResponse.json(
+        { ok: false, error: "Addison access is not authorized." },
+        { status: 401 },
+      );
+    }
+
+    const databaseUrl = getDatabaseUrl();
+    if (!databaseUrl) {
+      return NextResponse.json(
+        { ok: false, error: "Atlas database is not connected." },
+        { status: 503 },
+      );
+    }
+
+    const sql = neon(databaseUrl);
+    const migrated = await syncLegacyAddisonTasksToWorkOrders(sql);
+
+    return NextResponse.json(
+      { ok: true, migrated },
+      { headers: { "Cache-Control": "no-store, max-age=0" } },
+    );
+  } catch (error) {
+    console.error("Addison legacy work sync failed:", error);
+    return NextResponse.json(
+      { ok: false, error: "Atlas could not sync Addison work." },
+      { status: 500 },
+    );
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as Record<
@@ -239,6 +445,10 @@ export async function POST(request: Request) {
         AND property_id = ${PROPERTY_ID}
         AND id = ${id}
     `;
+
+    // Keep older Addison task records visible to the manager dashboard by
+    // promoting active due work into the unified work-order table.
+    await syncLegacyAddisonTasksToWorkOrders(sql);
 
     return NextResponse.json({
       ok: true,
