@@ -338,11 +338,78 @@ const MAX_INLINE_PDF_FILES = 4;
 const KNOWLEDGE_FETCH_TIMEOUT_MS = 12000;
 
 type PreparedKnowledgeFile = KnowledgeFile & {
-  fileData: string;
+  fileData?: string;
+  fileId?: string;
   bytes: number;
 };
 
+type OpenAIFileCacheEntry = {
+  fileId: string;
+  expiresAt: number;
+};
+
+const openAIKnowledgeFileCache = new Map<string, OpenAIFileCacheEntry>();
+const OPENAI_FILE_CACHE_TTL_MS = 20 * 60 * 60 * 1000;
+const MAX_OPENAI_UPLOAD_BYTES = 512 * 1024 * 1024;
+
+async function uploadKnowledgeFileToOpenAI(
+  apiKey: string,
+  file: KnowledgeFile,
+  buffer: Buffer,
+): Promise<string | null> {
+  const cached = openAIKnowledgeFileCache.get(file.url);
+  if (cached && cached.expiresAt > Date.now()) return cached.fileId;
+
+  try {
+    const form = new FormData();
+    form.append("purpose", "user_data");
+    form.append("expires_after[anchor]", "created_at");
+    form.append("expires_after[seconds]", String(24 * 60 * 60));
+    form.append(
+      "file",
+      new Blob([buffer], { type: "application/pdf" }),
+      file.filename,
+    );
+
+    const response = await fetch("https://api.openai.com/v1/files", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: form,
+    });
+
+    const payload = (await response.json()) as {
+      id?: string;
+      error?: { message?: string };
+    };
+    const fileId = String(payload.id ?? "").trim();
+
+    if (!response.ok || !fileId) {
+      console.warn("Ask Atlas could not upload saved PDF to OpenAI Files:", {
+        title: file.title,
+        status: response.status,
+        message: payload.error?.message || "",
+      });
+      return null;
+    }
+
+    openAIKnowledgeFileCache.set(file.url, {
+      fileId,
+      expiresAt: Date.now() + OPENAI_FILE_CACHE_TTL_MS,
+    });
+    return fileId;
+  } catch (error) {
+    console.warn("Ask Atlas OpenAI file upload failed:", {
+      title: file.title,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 async function fetchKnowledgeFileData(
+  apiKey: string,
   file: KnowledgeFile,
 ): Promise<PreparedKnowledgeFile | null> {
   const controller = new AbortController();
@@ -366,7 +433,7 @@ async function fetchKnowledgeFileData(
     }
 
     const declaredLength = Number(response.headers.get("content-length") || 0);
-    if (declaredLength > MAX_INLINE_PDF_BYTES) {
+    if (declaredLength > MAX_OPENAI_UPLOAD_BYTES) {
       console.warn("Ask Atlas skipped oversized saved PDF:", {
         title: file.title,
         bytes: declaredLength,
@@ -375,7 +442,7 @@ async function fetchKnowledgeFileData(
     }
 
     const buffer = Buffer.from(await response.arrayBuffer());
-    if (!buffer.length || buffer.length > MAX_INLINE_PDF_BYTES) {
+    if (!buffer.length || buffer.length > MAX_OPENAI_UPLOAD_BYTES) {
       console.warn("Ask Atlas skipped unreadable/oversized saved PDF:", {
         title: file.title,
         bytes: buffer.length,
@@ -383,15 +450,24 @@ async function fetchKnowledgeFileData(
       return null;
     }
 
-    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
-    const mimeType = contentType.includes("pdf")
-      ? "application/pdf"
-      : "application/pdf";
+    // Small PDFs can remain inline. Large plans/as-builts are uploaded to the
+    // OpenAI Files endpoint first so a 60+ MB blueprint is not discarded merely
+    // because it exceeds the inline JSON/base64 threshold.
+    if (buffer.length <= MAX_INLINE_PDF_BYTES) {
+      return {
+        ...file,
+        bytes: buffer.length,
+        fileData: `data:application/pdf;base64,${buffer.toString("base64")}`,
+      };
+    }
+
+    const fileId = await uploadKnowledgeFileToOpenAI(apiKey, file, buffer);
+    if (!fileId) return null;
 
     return {
       ...file,
       bytes: buffer.length,
-      fileData: `data:${mimeType};base64,${buffer.toString("base64")}`,
+      fileId,
     };
   } catch (error) {
     console.warn("Ask Atlas saved PDF fetch failed:", {
@@ -405,18 +481,25 @@ async function fetchKnowledgeFileData(
 }
 
 async function prepareKnowledgeFiles(
+  apiKey: string,
   files: KnowledgeFile[],
 ): Promise<PreparedKnowledgeFile[]> {
-  const candidates = files.slice(0, MAX_INLINE_PDF_FILES);
-  const loaded = await Promise.all(candidates.map(fetchKnowledgeFileData));
   const prepared: PreparedKnowledgeFile[] = [];
-  let totalBytes = 0;
+  let inlineBytes = 0;
 
-  for (const file of loaded) {
-    if (!file) continue;
-    if (totalBytes + file.bytes > MAX_INLINE_PDF_TOTAL_BYTES) continue;
-    prepared.push(file);
-    totalBytes += file.bytes;
+  // Try the full ranked list until enough usable sources are loaded. This is
+  // important when an early source is unavailable or oversized.
+  for (const file of files) {
+    if (prepared.length >= MAX_INLINE_PDF_FILES) break;
+    const loaded = await fetchKnowledgeFileData(apiKey, file);
+    if (!loaded) continue;
+
+    if (loaded.fileData) {
+      if (inlineBytes + loaded.bytes > MAX_INLINE_PDF_TOTAL_BYTES) continue;
+      inlineBytes += loaded.bytes;
+    }
+
+    prepared.push(loaded);
   }
 
   return prepared;
@@ -829,7 +912,7 @@ export async function POST(request: NextRequest) {
     question,
     conversation,
   );
-  const preparedKnowledgeFiles = await prepareKnowledgeFiles(knowledgeFiles);
+  const preparedKnowledgeFiles = await prepareKnowledgeFiles(apiKey, knowledgeFiles);
   const preparedUrls = new Set(preparedKnowledgeFiles.map((file) => file.url));
   const sourceList = knowledgeFiles.length
     ? knowledgeFiles
@@ -851,8 +934,7 @@ export async function POST(request: NextRequest) {
     ...preparedKnowledgeFiles.map((file) => ({
       type: "input_file",
       filename: file.filename,
-      file_data: file.fileData,
-      detail: "auto",
+      ...(file.fileId ? { file_id: file.fileId } : { file_data: file.fileData }),
     })),
   ];
 
