@@ -102,6 +102,14 @@ import type {
 type OwnerRequestRecord = BaseOwnerRequestRecord & {
   assignedTo?: string;
 };
+
+type AskAtlasSource = {
+  title: string;
+  url: string;
+  page?: number;
+  sheetTitle?: string;
+  kind?: string;
+};
 import {
   closeSymbol, atlasProperties as baseAtlasProperties, makeDailyForemanWidgets,
   normalizeDashboardWidgets, loadDashboardRoutineItems, todayLogStorageKeys, dashboardRoutineStorageKeys, atlasMoreToolsScreens, atlasPrimaryNavigationSections, localISODate,
@@ -2372,7 +2380,66 @@ export default function AtlasApp() {
   const [assistantActionSaving, setAssistantActionSaving] = useState(false);
   const [dashboardAssistantOpen, setDashboardAssistantOpen] = useState(false);
   const askAtlasAbortRef = useRef<AbortController | null>(null);
+  const askAtlasIndexRequestedRef = useRef<Set<string>>(new Set());
+  const [assistantSources, setAssistantSources] = useState<AskAtlasSource[]>([]);
   const [workPlanInput, setWorkPlanInput] = useState("");
+
+  useEffect(() => {
+    const focusedDocuments = intakeDocs.filter((document) => {
+      const text = [
+        document.title,
+        document.type,
+        document.area,
+        document.notes,
+        ...(document.files || []).map((file) => file.name),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      const hasPdf = (document.files || []).some((file) => {
+        const name = String(file.name || "").toLowerCase();
+        const type = String(file.type || "").toLowerCase();
+        const url = String(file.url || "").toLowerCase();
+        return type.includes("pdf") || name.endsWith(".pdf") || url.includes(".pdf");
+      });
+      return (
+        hasPdf &&
+        /as[- ]?built|as\s+buids?|blueprint|drawing|schematic/.test(text) &&
+        /mechanical|hvac|radiant|hydronic|boiler|pump/.test(text)
+      );
+    });
+
+    focusedDocuments.slice(0, 3).forEach((document) => {
+      const key = `${activePropertyId}:${document.id}`;
+      if (askAtlasIndexRequestedRef.current.has(key)) return;
+      askAtlasIndexRequestedRef.current.add(key);
+      void fetch("/api/atlas-document-index", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId: activePropertyId,
+          document: {
+            id: document.id,
+            propertyId: activePropertyId,
+            title: document.title,
+            type: document.type,
+            area: document.area,
+            notes: document.notes,
+            pastedText: document.pastedText,
+            href: document.href,
+            files: (document.files || []).map((file) => ({
+              name: file.name,
+              type: file.type,
+              url: file.url,
+            })),
+          },
+        }),
+      }).catch(() => {
+        askAtlasIndexRequestedRef.current.delete(key);
+      });
+    });
+  }, [activePropertyId, intakeDocs]);
+
   const [workPlanTasks, setWorkPlanTasks] = useState<WorkPlanTask[]>(() =>
     readStoredArray<WorkPlanTask>(["atlas-tasks-v1"], []),
   );
@@ -14020,6 +14087,7 @@ export default function AtlasApp() {
     setAssistantQuestion("");
     setAssistantAnswer("");
     setAssistantTurns([]);
+    setAssistantSources([]);
     setAssistantRecordResults([]);
     setSelectedRelationshipId("");
     setPendingAssistantAction(null);
@@ -14449,6 +14517,7 @@ export default function AtlasApp() {
     }
 
     setAssistantQuestion("");
+    setAssistantSources([]);
 
     addAssistantTurn("user", question);
     refreshAssistantRecordResults(question);
@@ -14860,6 +14929,31 @@ export default function AtlasApp() {
           : Array.isArray(nestedData.manuals)
             ? (nestedData.manuals as ManualCandidate[])
             : [];
+      const cleanSources = (Array.isArray(payload.sources)
+        ? payload.sources
+        : Array.isArray(nestedResult.sources)
+          ? nestedResult.sources
+          : Array.isArray(nestedData.sources)
+            ? nestedData.sources
+            : []
+      )
+        .map((value) => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+          const source = value as Record<string, unknown>;
+          const title = readString(source.title);
+          const url = readString(source.url);
+          if (!title || !/^https:\/\//i.test(url)) return null;
+          const page = Number(source.page || 0);
+          return {
+            title,
+            url,
+            page: Number.isFinite(page) && page > 0 ? page : undefined,
+            sheetTitle: readString(source.sheetTitle) || undefined,
+            kind: readString(source.kind) || undefined,
+          } satisfies AskAtlasSource;
+        })
+        .filter((value): value is AskAtlasSource => Boolean(value))
+        .slice(0, 6);
 
       if (cleanAnswer.startsWith("{") || cleanAnswer.startsWith("```")) {
         try {
@@ -14887,6 +14981,7 @@ export default function AtlasApp() {
             : "I could not find a matching Atlas record. Try naming the asset, vendor, location, or date more specifically."),
       );
       setManualCandidates(cleanManuals.slice(0, 3));
+      setAssistantSources(cleanSources);
     } catch (error) {
       if (requestController.signal.aborted) return;
       finishAssistantAnswer(
@@ -26823,6 +26918,52 @@ ${notes.trim()}` : notes.trim(),
                   {assistantLoading ? (
                     <div style={{ ...noticeStyle, lineHeight: 1.5 }}>
                       Atlas is reviewing property records...
+                    </div>
+                  ) : null}
+
+                  {!assistantLoading && assistantSources.length ? (
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 7,
+                        paddingTop: 4,
+                      }}
+                    >
+                      <div style={{ ...eyebrowStyle, color: colors.muted }}>Sources</div>
+                      {assistantSources.map((source, index) => {
+                        const href = source.page
+                          ? `${source.url}#page=${source.page}`
+                          : source.url;
+                        return (
+                          <a
+                            key={`${source.url}-${source.page || 0}-${index}`}
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              border: `1px solid ${colors.line}`,
+                              borderRadius: 10,
+                              padding: "9px 10px",
+                              background: colors.card,
+                              color: colors.navy,
+                              textDecoration: "none",
+                              display: "grid",
+                              gap: 2,
+                            }}
+                          >
+                            <strong style={{ fontSize: 13 }}>{source.title}</strong>
+                            <span style={mutedSmallStyle}>
+                              {[
+                                source.page ? `Page ${source.page}` : "",
+                                source.sheetTitle || "",
+                                source.kind || "",
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          </a>
+                        );
+                      })}
                     </div>
                   ) : null}
                 </div>
