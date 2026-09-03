@@ -6747,7 +6747,7 @@ export default function AtlasApp() {
         recognition.stop();
       }
     };
-    recognition.onerror = () => showSaveToast("Athena could not hear that request. Open Athena and try again.", "warning");
+    recognition.onerror = () => showSaveToast("Ask Atlas could not hear that request. Open Ask Atlas and try again.", "warning");
     recognition.onend = () => {
       voiceRecognitionRef.current = null;
       setVoiceAssistantListening(false);
@@ -13935,7 +13935,7 @@ export default function AtlasApp() {
       setManualSaveMessage(
         `Saved ${record.title} to Atlas Documents${linkedAsset ? ` and linked it to ${linkedAsset.name}` : ""}.`,
       );
-      setDocumentSyncStatus(`Saved ${record.title} from Athena.`);
+      setDocumentSyncStatus(`Saved ${record.title} from Ask Atlas.`);
     } catch (error) {
       setManualSaveMessage(
         error instanceof Error
@@ -14220,7 +14220,7 @@ export default function AtlasApp() {
           quantity,
           minQuantity,
           status,
-          notes: `Created through Athena on ${todayISO()}.`,
+          notes: `Created through Ask Atlas on ${todayISO()}.`,
         });
 
         const saved = await postAtlasRecord("parts", record);
@@ -14475,6 +14475,10 @@ export default function AtlasApp() {
       /\b(manual|owner'?s manual|user guide|installation guide|service manual|pdf|documentation|spec sheet|datasheet)\b/i.test(
         question,
       );
+    const manualSearchQuestion =
+      manualQuestion &&
+      (/(?:\bfind\b|\blocate\b|\bdownload\b|\bget\b|\bsearch(?:\s+for)?\b|\blook\s+for\b).{0,80}\b(manual|pdf|documentation|spec sheet|datasheet)\b/i.test(question) ||
+        /\b(manual|pdf|documentation|spec sheet|datasheet)\s+(?:for|of)\b/i.test(question));
 
     const cleanText = (value: unknown, maxLength = 1200) =>
       String(value ?? "").slice(0, maxLength);
@@ -14498,6 +14502,7 @@ export default function AtlasApp() {
         workOrders: serviceRecords.length,
         calendarItems: calendarItems.length,
         procedures: procedureRecords.length,
+        manuals: manualRecords.length,
         parts: partRecords.length,
         documents: intakeDocs.length,
         mapLabels: mapLabels.length,
@@ -14609,6 +14614,25 @@ export default function AtlasApp() {
           cleanText(document.name, 240),
         ),
       })),
+      manuals: manualRecords.map((item) => ({
+        id: item.id,
+        title: cleanText(item.title, 240),
+        category: cleanText(item.category, 160),
+        manufacturer: cleanText(item.manufacturer, 160),
+        model: cleanText(item.model, 160),
+        documentNumber: cleanText(item.documentNumber, 160),
+        linkedAssetId: item.linkedAssetId || "",
+        linkedAssetName: cleanText(item.linkedAssetName, 240),
+        sourceLabel: cleanText(item.sourceLabel, 240),
+        href: cleanText(item.href, 4000),
+        notes: cleanText(item.notes, 2500),
+        createdAt: item.createdAt || "",
+        files: (item.files || []).map((file) => ({
+          name: cleanText(file.name, 300),
+          type: cleanText(file.type, 160),
+          url: cleanText(file.url, 4000),
+        })),
+      })),
       parts: partRecords.map((item) => ({
         id: item.id,
         name: cleanText(item.name, 200),
@@ -14650,9 +14674,14 @@ export default function AtlasApp() {
         targetId: item.targetId || "",
         targetName: cleanText(item.targetName, 240),
         notes: cleanText(item.notes),
-        pastedText: cleanText(item.pastedText, 2500),
+        pastedText: cleanText(item.pastedText, 12000),
+        href: cleanText(item.href, 4000),
         createdAt: item.createdAt || "",
-        fileNames: (item.files || []).map((file) => cleanText(file.name, 240)),
+        files: (item.files || []).map((file) => ({
+          name: cleanText(file.name, 300),
+          type: cleanText(file.type, 160),
+          url: cleanText(file.url, 4000),
+        })),
       })),
       mapLabels: mapLabels.map((item) => ({
         id: item.id,
@@ -14673,9 +14702,10 @@ export default function AtlasApp() {
       },
     };
 
-    const requestSnapshot = manualQuestion
+    const requestSnapshot = manualSearchQuestion
       ? {
           generatedAt: atlasSnapshot.generatedAt,
+          activeProperty: atlasSnapshot.activeProperty,
           assets: atlasSnapshot.assets.map((asset) => ({
             id: asset.id,
             name: asset.name,
@@ -14692,9 +14722,9 @@ export default function AtlasApp() {
     setManualCandidates([]);
     setManualSaveMessage("");
     setAssistantAnswer(
-      manualQuestion
-        ? "Atlas Assistant is checking the exact equipment details and searching official manufacturer sources..."
-        : "Atlas Assistant is reviewing your Atlas records...",
+      manualSearchQuestion
+        ? "Ask Atlas is checking the exact equipment details and searching official manufacturer sources..."
+        : "Ask Atlas is reviewing your property records, manuals, and documents...",
     );
 
     try {
@@ -14704,7 +14734,7 @@ export default function AtlasApp() {
         body: JSON.stringify({
           question,
           atlas: requestSnapshot,
-          allowWebSearch: manualQuestion,
+          allowWebSearch: manualSearchQuestion,
           conversation: assistantTurns.map((turn) => ({
             role: turn.role,
             text: cleanText(turn.text, 1200),
@@ -26662,8 +26692,8 @@ ${notes.trim()}` : notes.trim(),
                 <div
                   style={{
                     flex: 1,
-                    overflowY: "auto",
-                    padding: 18,
+                    overflowY: assistantTurns.length ? "auto" : "hidden",
+                    padding: isMobile ? 14 : 18,
                     display: "grid",
                     alignContent: "start",
                     gap: 12,
@@ -29271,7 +29301,7 @@ ${notes.trim()}` : notes.trim(),
                 <button type="button" onClick={() => openQuickCapture("asset")}><span>◇</span>{quickCaptureMode === "create" ? "New Asset" : "Existing Asset"}</button>
                 <button type="button" onClick={() => openQuickCapture("vendor")}><span>V</span>{quickCaptureMode === "create" ? "New Vendor" : "Existing Vendor"}</button>
                 <button type="button" onClick={() => openQuickCapture("procedure")}><span>☷</span>{quickCaptureMode === "create" ? "New Procedure" : "Existing Procedure"}</button>
-                <button type="button" className="atlas-talk-action" onClick={() => { setQuickCaptureOpen(false); startVoiceAssistant(); }}><span>✦</span>Athena</button>
+                <button type="button" className="atlas-talk-action" onClick={() => { setQuickCaptureOpen(false); startVoiceAssistant(); }}><span>✦</span>Ask Atlas</button>
               </div>
               <label className="atlas-quick-note-box">
                 <span>Quick note</span>
@@ -31228,8 +31258,8 @@ ${notes.trim()}` : notes.trim(),
               <button
                 type="button"
                 onClick={() => setDashboardAssistantOpen(true)}
-                aria-label="Athena"
-                title="Athena"
+                aria-label="Ask Atlas"
+                title="Ask Atlas"
                 style={{
                   ...secondaryButtonStyle,
                   width: "100%",
@@ -31243,7 +31273,7 @@ ${notes.trim()}` : notes.trim(),
                   color: "#FFFFFF",
                 }}
               >
-                <span>Athena</span>
+                <span>Ask Atlas</span>
               </button>
             </div>
           ) : (
@@ -31660,8 +31690,8 @@ ${notes.trim()}` : notes.trim(),
                 <button
                   type="button"
                   onClick={() => setDashboardAssistantOpen(true)}
-                  aria-label="Open Athena"
-                  title="Athena"
+                  aria-label="Open Ask Atlas"
+                  title="Ask Atlas"
                   style={{
                     ...secondaryButtonStyle,
                     width: "auto",
@@ -31680,7 +31710,7 @@ ${notes.trim()}` : notes.trim(),
                   }}
                 >
                   <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>✦</span>
-                  {!isMobile ? <span>Athena</span> : null}
+                  {!isMobile ? <span>Ask Atlas</span> : null}
                 </button>
               </div>
               ) : null}
@@ -32216,7 +32246,7 @@ ${notes.trim()}` : notes.trim(),
             <div
               role="dialog"
               aria-modal="true"
-              aria-label="Athena"
+              aria-label="Ask Atlas"
               style={{
                 position: "fixed",
                 inset: 0,
@@ -32300,117 +32330,99 @@ ${notes.trim()}` : notes.trim(),
                   }}
                 >
                   {!assistantTurns.length ? (
-                    <div style={{ display: "grid", gap: 12 }}>
-                      <div>
-                        <div style={{ ...eyebrowStyle, marginBottom: 7 }}>Athena Actions</div>
-                        <div style={{ ...mutedSmallStyle, marginBottom: 9 }}>
-                          Athena helps you run the day. Ask Atlas remains the property knowledge system.
-                        </div>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: isMobile
-                              ? "repeat(2,minmax(0,1fr))"
-                              : "repeat(2,minmax(0,1fr))",
-                            gap: 8,
-                          }}
-                        >
-                          {[
-                            {
-                              label: "Plan My Day",
-                              detail: "Build today around priorities and available time.",
-                              action: () => {
-                                setDashboardAssistantOpen(false);
-                                setTasksView("tasks");
-                                setScreen("planner");
-                              },
-                            },
-                            {
-                              label: "Needs Attention",
-                              detail: "Review overdue and high-priority property work.",
-                              action: () => {
-                                const prompt = "What needs my attention right now?";
-                                setAssistantQuestion(prompt);
-                                void askAtlas(prompt);
-                              },
-                            },
-                            {
-                              label: "Find Something",
-                              detail: "Search Atlas records from one place.",
-                              action: () => {
-                                setDashboardAssistantOpen(false);
-                                setCommandCenterOpen(true);
-                                setSearchOpen(true);
-                              },
-                            },
-                            {
-                              label: "Create Work",
-                              detail: "Speak a task, work order, or project for review.",
-                              action: () => {
-                                setDashboardAssistantOpen(false);
-                                startVoiceAssistant();
-                              },
-                            },
-                          ].map((item) => (
-                            <button
-                              key={item.label}
-                              type="button"
-                              onClick={item.action}
-                              style={{
-                                ...secondaryButtonStyle,
-                                minHeight: 78,
-                                padding: 10,
-                                textAlign: "left",
-                                justifyContent: "flex-start",
-                                alignItems: "flex-start",
-                                whiteSpace: "normal",
-                              }}
-                            >
-                              <span>
-                                <strong
-                                  style={{
-                                    display: "block",
-                                    color: colors.navy,
-                                    marginBottom: 3,
-                                  }}
-                                >
-                                  {item.label}
-                                </strong>
-                                <small style={{ ...mutedSmallStyle, lineHeight: 1.3 }}>
-                                  {item.detail}
-                                </small>
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={startVoiceAssistant}
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 10,
+                        alignContent: "start",
+                      }}
+                    >
+                      <div style={{ ...eyebrowStyle }}>Ask Atlas</div>
+                      <div
                         style={{
-                          ...goldButtonStyle,
-                          width: "100%",
-                          minHeight: 48,
+                          display: "grid",
+                          gridTemplateColumns: "repeat(2,minmax(0,1fr))",
                           gap: 8,
                         }}
                       >
-                        <span aria-hidden="true">{voiceAssistantListening ? "●" : "🎤"}</span>
-                        {voiceAssistantListening ? "Listening…" : "Talk to Athena"}
-                      </button>
-
-                      <div style={{ ...mutedSmallStyle, textAlign: "center" }}>
-                        Nothing is saved automatically. Athena prepares changes for review first.
+                        {[
+                          {
+                            label: "Find Something",
+                            detail: "Assets, vendors, work, notes, and records",
+                            action: () => setAssistantQuestion("Find "),
+                          },
+                          {
+                            label: "As-Builts & Blueprints",
+                            detail: "Ask what the property drawings show",
+                            action: () => {
+                              const prompt =
+                                "Show me the as-builts and blueprints available for this property.";
+                              setAssistantQuestion(prompt);
+                              void askAtlas(prompt);
+                            },
+                          },
+                          {
+                            label: "Manuals",
+                            detail: "Ask questions from saved equipment manuals",
+                            action: () => {
+                              const prompt =
+                                "Show me the saved manuals available for this property.";
+                              setAssistantQuestion(prompt);
+                              void askAtlas(prompt);
+                            },
+                          },
+                          {
+                            label: "Mechanical Room",
+                            detail: "Assets, drawings, manuals, and history",
+                            action: () =>
+                              setAssistantQuestion("In the mechanical room, "),
+                          },
+                        ].map((item) => (
+                          <button
+                            key={item.label}
+                            type="button"
+                            onClick={item.action}
+                            style={{
+                              ...secondaryButtonStyle,
+                              minHeight: isMobile ? 64 : 68,
+                              padding: "9px 10px",
+                              textAlign: "left",
+                              justifyContent: "flex-start",
+                              alignItems: "flex-start",
+                              whiteSpace: "normal",
+                            }}
+                          >
+                            <span>
+                              <strong
+                                style={{
+                                  display: "block",
+                                  color: colors.navy,
+                                  marginBottom: 2,
+                                }}
+                              >
+                                {item.label}
+                              </strong>
+                              <small
+                                style={{
+                                  ...mutedSmallStyle,
+                                  lineHeight: 1.25,
+                                }}
+                              >
+                                {item.detail}
+                              </small>
+                            </span>
+                          </button>
+                        ))}
                       </div>
 
                       <div
                         style={{
-                          ...cardStyle,
-                          whiteSpace: "pre-wrap",
-                          lineHeight: 1.55,
+                          ...noticeStyle,
+                          padding: "9px 10px",
+                          lineHeight: 1.35,
                         }}
                       >
-                        {assistantAnswer}
+                        Ask naturally — for example, “What is Pump 6 in the mechanical room?”
                       </div>
                     </div>
                   ) : (
@@ -32475,29 +32487,31 @@ ${notes.trim()}` : notes.trim(),
                     </button>
                   ))}
 
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    {[
-                      "Summarize today",
-                      "Show high-priority work orders",
-                      "What needs my attention?",
-                    ].map((prompt) => (
-                      <button
-                        key={prompt}
-                        type="button"
-                        onClick={() => {
-                          setAssistantQuestion(prompt);
-                          void askAtlas(prompt);
-                        }}
-                        style={{
-                          ...secondaryButtonStyle,
-                          padding: "5px 7px",
-                          fontSize: 12,
-                        }}
-                      >
-                        {prompt}
-                      </button>
-                    ))}
-                  </div>
+                  {assistantTurns.length ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {[
+                        "Show me the source",
+                        "What do the as-builts show?",
+                        "Which manual covers this?",
+                      ].map((prompt) => (
+                        <button
+                          key={prompt}
+                          type="button"
+                          onClick={() => {
+                            setAssistantQuestion(prompt);
+                            void askAtlas(prompt);
+                          }}
+                          style={{
+                            ...secondaryButtonStyle,
+                            padding: "5px 7px",
+                            fontSize: 12,
+                          }}
+                        >
+                          {prompt}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 <footer
@@ -32547,20 +32561,6 @@ ${notes.trim()}` : notes.trim(),
                       {assistantLoading ? "Working..." : "Ask"}
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDashboardAssistantOpen(false);
-                      setScreen("assistant");
-                    }}
-                    style={{
-                      ...secondaryButtonStyle,
-                      width: "100%",
-                      marginTop: 8,
-                    }}
-                  >
-                    Ask Atlas
-                  </button>
                 </footer>
               </section>
             </div>
