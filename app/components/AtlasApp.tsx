@@ -9612,7 +9612,105 @@ export default function AtlasApp() {
     setSelectedManualId("");
   }
 
-  function startManualForAsset(asset: AssetRecord) {
+  async function uploadManualForAsset(
+    asset: AssetRecord,
+    fileList: FileList | null,
+  ): Promise<{ ok: boolean; title?: string; message?: string }> {
+    if (!asset.id || !fileList?.length) {
+      return { ok: false, message: "No PDF selected." };
+    }
+
+    const file = Array.from(fileList).find(
+      (item) =>
+        item.type === "application/pdf" ||
+        item.name.toLowerCase().endsWith(".pdf"),
+    );
+    if (!file) {
+      showSaveToast("Choose a PDF manual.", "warning");
+      return { ok: false, message: "Choose a PDF manual." };
+    }
+
+    const title =
+      file.name.replace(/\.pdf$/i, "").trim() || "Equipment Manual";
+
+    try {
+      const safeName = (file.name || "manual.pdf")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+
+      const pathname = `atlas-documents/${activePropertyId}/${asset.id}/${Date.now()}-${safeName || "manual.pdf"}`;
+
+      const blob = await upload(pathname, file, {
+        access: "public",
+        handleUploadUrl: "/api/atlas-document-upload",
+        multipart: file.size > 20 * 1024 * 1024,
+        contentType: file.type || "application/pdf",
+      });
+
+      const uploadedFile: UploadedFileRecord = {
+        id: uid("upload"),
+        name: file.name || "manual.pdf",
+        type: file.type || blob.contentType || "application/pdf",
+        url: blob.url,
+        createdAt: new Date().toISOString(),
+      };
+
+      const createdAt = new Date().toISOString();
+
+      const manual = normalizeManualRecord({
+        id: uid("manual"),
+        title,
+        category: inferManualCategory(title),
+        manufacturer: asset.make || "",
+        model: asset.model || "",
+        documentNumber: "",
+        linkedAssetId: asset.id,
+        linkedAssetName: asset.name,
+        sourceLabel: "Asset upload",
+        href: blob.url,
+        notes: "",
+        files: [uploadedFile],
+        createdAt,
+      });
+
+      const documentRecord = normalizeDocument({
+        id: uid("doc"),
+        title,
+        area: locationName(asset.locationId) || asset.name,
+        type: "Equipment Manual / PDF",
+        targetType: "Asset",
+        targetId: asset.id,
+        targetName: asset.name,
+        linkedAssetId: asset.id,
+        notes: "",
+        href: blob.url,
+        files: [uploadedFile],
+        createdAt,
+      });
+
+      await postDocumentToAtlasVault(documentRecord);
+      replaceDocumentInVault(documentRecord);
+
+      setManualRecords((current) => {
+        const next = [manual, ...current];
+        saveStoredArray(storageKeys.manuals[0], next);
+        return next;
+      });
+
+      showSaveToast(`${title} saved to ${asset.name}.`);
+      return { ok: true, title };
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Atlas could not save that manual.";
+      showSaveToast(`Manual was not saved: ${message}`, "warning");
+      return { ok: false, title, message };
+    }
+  }
+
+    function startManualForAsset(asset: AssetRecord) {
     if (!asset.id) return;
     setSelectedManualId("");
     setManualDraft(
@@ -20212,6 +20310,7 @@ ${notes.trim()}` : notes.trim(),
       showSaveToast,
       staffVisibleServiceRecords,
       startManualForAsset,
+      uploadManualForAsset,
       taskDetails,
       updateAsset,
       vendorName,
