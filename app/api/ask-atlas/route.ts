@@ -100,7 +100,6 @@ function questionTokens(question: string) {
   );
 }
 
-
 function exactEquipmentTerms(text: string) {
   const normalized = text.toLowerCase();
   const terms = new Set<string>();
@@ -846,6 +845,7 @@ export async function POST(request: NextRequest) {
   const manualSearchQuestion = isManualSearchQuestion(question);
   const allowWebSearch = body.allowWebSearch === true;
   const model = process.env.OPENAI_MODEL || "gpt-5-mini";
+  const documentModel = process.env.OPENAI_DOCUMENT_MODEL || "gpt-5.4-mini";
 
   if (manualSearchQuestion && allowWebSearch) {
     const cacheKey = makeCacheKey(question, atlasJson);
@@ -929,13 +929,15 @@ export async function POST(request: NextRequest) {
 
   const technicalDocumentQuestion =
     preparedKnowledgeFiles.length > 0 &&
-    /\\b(pump|boiler|dhw|domestic hot water|radiant|heated floor|hydronic|hvac|heating|terminal|wiring|controller|mechanical room|as[- ]?built|blueprint|drawing|schematic|diagram|manual|equipment|valve|circuit|loop)\\b/i.test(
+    /\b(pump|boiler|dhw|domestic hot water|radiant|heated floor|hydronic|hvac|heating|terminal|wiring|controller|mechanical room|as[- ]?built|blueprint|drawing|schematic|diagram|manual|equipment|valve|circuit|loop)\b/i.test(
       question,
     );
   const codeInterpreterFileIds = preparedKnowledgeFiles.map((file) => file.fileId);
 
+  const responseModel = technicalDocumentQuestion ? documentModel : model;
+
   const requestBody: Record<string, unknown> = {
-    model,
+    model: responseModel,
     instructions,
     input: [{ role: "user", content }],
     ...(technicalDocumentQuestion
@@ -973,13 +975,32 @@ export async function POST(request: NextRequest) {
   try {
     let response = await callOpenAI(apiKey, requestBody);
 
-    // A malformed or unsupported PDF should not make Ask Atlas unusable.
-    // Retry from Atlas record metadata/text without PDF attachments only if
-    // the provider rejects the already-fetched PDF data.
-    if (!response.ok && preparedKnowledgeFiles.length) {
-      const fallbackTextInput = `${textInput}\n\nPDF ATTACHMENT STATUS\nAtlas fetched the selected saved PDFs, but the AI provider rejected one or more PDF attachments for this request. Do not claim to have inspected their contents. Answer only from the Atlas snapshot and clearly state that the PDF evidence could not be processed if it is needed to establish the answer.`;
+    // Technical document questions use a model that explicitly supports Code
+    // Interpreter. If the tool call itself is rejected, retry with the same
+    // document-capable model and the already-uploaded PDFs as direct file
+    // inputs before ever falling back to snapshot-only reasoning.
+    if (!response.ok && technicalDocumentQuestion && preparedKnowledgeFiles.length) {
+      const toolError = response.payload.error?.message?.trim() || `HTTP ${response.status}`;
+      console.warn("Ask Atlas Code Interpreter attempt failed; retrying direct PDF reading:", toolError);
       response = await callOpenAI(apiKey, {
         ...requestBody,
+        model: documentModel,
+        tools: undefined,
+        tool_choice: undefined,
+        include: undefined,
+        input: [{ role: "user", content }],
+      });
+    }
+
+    // Only after both PDF-capable attempts fail do we fall back to Atlas
+    // metadata. Preserve the provider failure in server logs for diagnosis.
+    if (!response.ok && preparedKnowledgeFiles.length) {
+      const providerMessage = response.payload.error?.message?.trim() || `HTTP ${response.status}`;
+      console.error("Ask Atlas PDF processing failed after direct retry:", providerMessage);
+      const fallbackTextInput = `${textInput}\n\nPDF ATTACHMENT STATUS\nAtlas selected the saved PDFs for this question, but both PDF-capable processing attempts failed. Do not claim to have inspected their contents. Answer only from the Atlas snapshot and state that document processing failed if the missing PDF evidence is necessary.`;
+      response = await callOpenAI(apiKey, {
+        ...requestBody,
+        model,
         tools: undefined,
         tool_choice: undefined,
         include: undefined,
