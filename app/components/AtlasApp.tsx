@@ -1354,6 +1354,186 @@ export default function AtlasApp() {
   const [contactMessage, setContactMessage] = useState("");
   const [serviceRecords, setServiceRecords] =
     useState<AtlasServiceRecord[]>([]);
+  const addisonLegacyMigrationRef = useRef<Set<string>>(new Set());
+
+  // Addison's field page still exposes a small number of older task records
+  // alongside unified work orders. Promote only ACTIVE legacy Addison tasks
+  // into atlas_work_orders so his phone and the manager dashboard read the
+  // same authoritative work list. The original task is not deleted here;
+  // /api/landscape-help automatically suppresses it once the matching
+  // "Legacy task <id>" work order exists, preventing duplicate display.
+  useEffect(() => {
+    if (
+      !ready ||
+      !operationsHydrated ||
+      activePropertyId !== "2000" ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    let running = false;
+
+    const syncAddisonLegacyWork = async () => {
+      if (running || document.visibilityState === "hidden") return;
+      running = true;
+
+      try {
+        const response = await fetch(
+          "/api/landscape-help?token=addison-2000-7f94f468dca84de3a7b8c2d942ca3819",
+          { cache: "no-store" },
+        );
+        if (!response.ok) return;
+
+        const payload = await response.json().catch(() => ({}));
+        if (
+          cancelled ||
+          !payload?.ok ||
+          payload?.mode !== "addison" ||
+          !Array.isArray(payload?.addison?.tasks)
+        ) {
+          return;
+        }
+
+        const today = todayISO();
+        const activeLegacyTasks = payload.addison.tasks.filter(
+          (task: Record<string, any>) => {
+            const id = String(task?.id || "").trim();
+            if (!id || id.startsWith("work-order:") || task?.source === "unified-work") {
+              return false;
+            }
+
+            const meta =
+              task?.taskMeta && typeof task.taskMeta === "object"
+                ? task.taskMeta
+                : task;
+            const assignee = String(
+              meta?.assignee ||
+                meta?.assignedTo ||
+                task?.assignee ||
+                task?.assignedTo ||
+                "",
+            )
+              .trim()
+              .toLowerCase();
+            if (!(assignee === "addison" || assignee.startsWith("addison "))) {
+              return false;
+            }
+            if (String(meta?.status || task?.status || "Open") === "Completed") {
+              return false;
+            }
+            if (Boolean(meta?.paused)) return false;
+
+            const dueDate = String(meta?.dueDate || task?.dueDate || "").slice(0, 10);
+            return !dueDate || dueDate <= today;
+          },
+        );
+
+        for (const task of activeLegacyTasks) {
+          if (cancelled) return;
+
+          const legacyTaskId = String(task.id || "").trim();
+          if (
+            !legacyTaskId ||
+            addisonLegacyMigrationRef.current.has(legacyTaskId)
+          ) {
+            continue;
+          }
+
+          const meta =
+            task?.taskMeta && typeof task.taskMeta === "object"
+              ? task.taskMeta
+              : task;
+          const existing = serviceRecords.some(
+            (record) =>
+              String((record as AtlasServiceRecord).responsibilityArea || "") ===
+              `Legacy task ${legacyTaskId}`,
+          );
+          if (existing) {
+            addisonLegacyMigrationRef.current.add(legacyTaskId);
+            continue;
+          }
+
+          addisonLegacyMigrationRef.current.add(legacyTaskId);
+
+          const safeId = legacyTaskId
+            .replace(/[^a-zA-Z0-9_-]+/g, "-")
+            .replace(/-+/g, "-")
+            .replace(/^-|-$/g, "")
+            .slice(0, 100);
+          const dueDate =
+            String(meta?.dueDate || task?.dueDate || "").slice(0, 10) || today;
+          const recurring = Boolean(task?.recurring || meta?.recurring);
+          const record = normalizeService({
+            id: `addison-legacy-${safeId || legacyTaskId}`,
+            propertyId: "2000",
+            title: String(task?.title || "Addison work").trim() || "Addison work",
+            date: dueDate,
+            status: "Open",
+            priority: ["High", "Medium", "Low"].includes(String(task?.priority))
+              ? task.priority
+              : "Medium",
+            notes: String(
+              meta?.instructions || meta?.notes || task?.notes || "",
+            ),
+            recurring,
+            recurrenceInterval: Math.max(
+              1,
+              Number(meta?.recurrenceInterval || 1),
+            ),
+            recurrenceUnit:
+              meta?.recurrenceUnit === "Days" ||
+              meta?.recurrenceUnit === "Months" ||
+              meta?.recurrenceUnit === "Years"
+                ? meta.recurrenceUnit
+                : "Weeks",
+            season: "Year-Round",
+            completionHistory: Array.isArray(meta?.completionHistory)
+              ? meta.completionHistory
+              : [],
+            workType: "Work Order",
+            workCategory: String(task?.category || "Maintenance"),
+            responsibilityArea: `Legacy task ${legacyTaskId}`,
+            assignedTo: "Addison",
+            photos: Array.isArray(meta?.photos) ? meta.photos : [],
+            documents: [],
+            checklist: Array.isArray(meta?.checklist) ? meta.checklist : [],
+            notesHistory: [],
+            serviceHistory: Array.isArray(meta?.serviceHistory)
+              ? meta.serviceHistory
+              : [],
+          });
+
+          const saved = await postAtlasRecord("work_orders", record);
+          if (!saved) {
+            addisonLegacyMigrationRef.current.delete(legacyTaskId);
+            continue;
+          }
+
+          setServiceRecords((current) =>
+            workOrdersByIdentity([record, ...current]),
+          );
+        }
+      } catch {
+        // Keep the existing Atlas state intact if Addison's field endpoint is
+        // temporarily unavailable. The next poll/focus retries safely.
+      } finally {
+        running = false;
+      }
+    };
+
+    void syncAddisonLegacyWork();
+    const timer = window.setInterval(syncAddisonLegacyWork, 5000);
+    const onFocus = () => void syncAddisonLegacyWork();
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [ready, operationsHydrated, activePropertyId, serviceRecords]);
 
   // Addison's dedicated phone page can create work while the main Atlas app is
   // already open on another device. Pull only those externally-created work
