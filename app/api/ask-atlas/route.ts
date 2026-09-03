@@ -349,6 +349,157 @@ type OpenAIFileCacheEntry = {
 const openAIKnowledgeFileCache = new Map<string, OpenAIFileCacheEntry>();
 const OPENAI_FILE_CACHE_TTL_MS = 20 * 60 * 60 * 1000;
 const MAX_OPENAI_UPLOAD_BYTES = 512 * 1024 * 1024;
+const CHUNKED_UPLOAD_THRESHOLD_BYTES = 48 * 1024 * 1024;
+const OPENAI_UPLOAD_PART_BYTES = 32 * 1024 * 1024;
+
+async function uploadLargeKnowledgeFileToOpenAI(
+  apiKey: string,
+  file: KnowledgeFile,
+  buffer: Buffer,
+): Promise<string | null> {
+  let uploadId = "";
+  let completed = false;
+  try {
+    const createResponse = await fetch("https://api.openai.com/v1/uploads", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        purpose: "user_data",
+        filename: file.filename,
+        bytes: buffer.length,
+        mime_type: "application/pdf",
+        expires_after: {
+          anchor: "created_at",
+          seconds: 24 * 60 * 60,
+        },
+      }),
+    });
+
+    const createPayload = (await createResponse.json()) as {
+      id?: string;
+      error?: { message?: string };
+    };
+    uploadId = String(createPayload.id ?? "").trim();
+
+    if (!createResponse.ok || !uploadId) {
+      console.warn("Ask Atlas could not create chunked OpenAI upload:", {
+        title: file.title,
+        status: createResponse.status,
+        message: createPayload.error?.message || "",
+      });
+      return null;
+    }
+
+    const partIds: string[] = [];
+    for (
+      let offset = 0;
+      offset < buffer.length;
+      offset += OPENAI_UPLOAD_PART_BYTES
+    ) {
+      const end = Math.min(buffer.length, offset + OPENAI_UPLOAD_PART_BYTES);
+      const partBuffer = buffer.subarray(offset, end);
+      const form = new FormData();
+      form.append(
+        "data",
+        new Blob([Uint8Array.from(partBuffer)], {
+          type: "application/octet-stream",
+        }),
+        `${file.filename}.part-${partIds.length + 1}`,
+      );
+
+      const partResponse = await fetch(
+        `https://api.openai.com/v1/uploads/${encodeURIComponent(uploadId)}/parts`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: form,
+        },
+      );
+
+      const partPayload = (await partResponse.json()) as {
+        id?: string;
+        error?: { message?: string };
+      };
+      const partId = String(partPayload.id ?? "").trim();
+
+      if (!partResponse.ok || !partId) {
+        console.warn("Ask Atlas could not upload OpenAI PDF part:", {
+          title: file.title,
+          uploadId,
+          part: partIds.length + 1,
+          status: partResponse.status,
+          message: partPayload.error?.message || "",
+        });
+        return null;
+      }
+
+      partIds.push(partId);
+    }
+
+    const completeResponse = await fetch(
+      `https://api.openai.com/v1/uploads/${encodeURIComponent(uploadId)}/complete`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ part_ids: partIds }),
+      },
+    );
+
+    const completePayload = (await completeResponse.json()) as {
+      id?: string;
+      file_id?: string;
+      file?: { id?: string };
+      error?: { message?: string };
+    };
+    const fileId = String(
+      completePayload.file?.id ??
+        completePayload.file_id ??
+        (String(completePayload.id ?? "").startsWith("file")
+          ? completePayload.id
+          : ""),
+    ).trim();
+
+    if (!completeResponse.ok || !fileId) {
+      console.warn("Ask Atlas could not complete chunked OpenAI upload:", {
+        title: file.title,
+        uploadId,
+        status: completeResponse.status,
+        responseId: completePayload.id || "",
+        message: completePayload.error?.message || "",
+      });
+      return null;
+    }
+
+    completed = true;
+    return fileId;
+  } catch (error) {
+    console.warn("Ask Atlas chunked OpenAI upload failed:", {
+      title: file.title,
+      uploadId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  } finally {
+    if (uploadId && !completed) {
+      // If a part failed, cancel the abandoned upload.
+      void fetch(
+        `https://api.openai.com/v1/uploads/${encodeURIComponent(uploadId)}/cancel`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey}` },
+        },
+      ).catch(() => undefined);
+    }
+  }
+}
 
 async function uploadKnowledgeFileToOpenAI(
   apiKey: string,
@@ -359,41 +510,47 @@ async function uploadKnowledgeFileToOpenAI(
   if (cached && cached.expiresAt > Date.now()) return cached.fileId;
 
   try {
-    const form = new FormData();
-    form.append("purpose", "user_data");
-    form.append("expires_after[anchor]", "created_at");
-    form.append("expires_after[seconds]", String(24 * 60 * 60));
-    form.append(
-      "file",
-      new Blob(
-        [Uint8Array.from(buffer)],
-        { type: "application/pdf" },
-      ),
-      file.filename,
-    );
+    let fileId = "";
 
-    const response = await fetch("https://api.openai.com/v1/files", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: form,
-    });
+    if (buffer.length >= CHUNKED_UPLOAD_THRESHOLD_BYTES) {
+      fileId =
+        (await uploadLargeKnowledgeFileToOpenAI(apiKey, file, buffer)) || "";
+    } else {
+      const form = new FormData();
+      form.append("purpose", "user_data");
+      form.append("expires_after[anchor]", "created_at");
+      form.append("expires_after[seconds]", String(24 * 60 * 60));
+      form.append(
+        "file",
+        new Blob([Uint8Array.from(buffer)], { type: "application/pdf" }),
+        file.filename,
+      );
 
-    const payload = (await response.json()) as {
-      id?: string;
-      error?: { message?: string };
-    };
-    const fileId = String(payload.id ?? "").trim();
-
-    if (!response.ok || !fileId) {
-      console.warn("Ask Atlas could not upload saved PDF to OpenAI Files:", {
-        title: file.title,
-        status: response.status,
-        message: payload.error?.message || "",
+      const response = await fetch("https://api.openai.com/v1/files", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: form,
       });
-      return null;
+
+      const payload = (await response.json()) as {
+        id?: string;
+        error?: { message?: string };
+      };
+      fileId = String(payload.id ?? "").trim();
+
+      if (!response.ok || !fileId) {
+        console.warn("Ask Atlas could not upload saved PDF to OpenAI Files:", {
+          title: file.title,
+          status: response.status,
+          message: payload.error?.message || "",
+        });
+        return null;
+      }
     }
+
+    if (!fileId) return null;
 
     openAIKnowledgeFileCache.set(file.url, {
       fileId,
