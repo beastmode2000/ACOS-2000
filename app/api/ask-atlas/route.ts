@@ -100,6 +100,7 @@ function questionTokens(question: string) {
   );
 }
 
+
 function exactEquipmentTerms(text: string) {
   const normalized = text.toLowerCase();
   const terms = new Set<string>();
