@@ -286,7 +286,7 @@ async function syncLegacyAddisonTasksToWorkOrders(
       RETURNING id
     `;
 
-    if (result.length) migrated += 1;
+    if (Array.isArray(result) && result.length > 0) migrated += 1;
   }
 
   return migrated;
