@@ -367,7 +367,10 @@ async function uploadKnowledgeFileToOpenAI(
     form.append("expires_after[seconds]", String(24 * 60 * 60));
     form.append(
       "file",
-      new Blob([buffer], { type: "application/pdf" }),
+      new Blob(
+        [Uint8Array.from(buffer)],
+        { type: "application/pdf" },
+      ),
       file.filename,
     );
 
