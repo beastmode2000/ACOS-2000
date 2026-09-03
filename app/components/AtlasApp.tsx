@@ -1354,6 +1354,80 @@ export default function AtlasApp() {
   const [contactMessage, setContactMessage] = useState("");
   const [serviceRecords, setServiceRecords] =
     useState<AtlasServiceRecord[]>([]);
+
+  // Addison's dedicated phone page can create work while the main Atlas app is
+  // already open on another device. Pull only those externally-created work
+  // orders into the live client state so they appear without a manual reload.
+  // Existing/local work is never removed or overwritten by this refresh.
+  useEffect(() => {
+    if (
+      !ready ||
+      !operationsHydrated ||
+      activePropertyId !== "2000" ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    let refreshing = false;
+
+    const refreshAddisonSelfAddedWork = async () => {
+      if (refreshing || document.visibilityState === "hidden") return;
+      refreshing = true;
+
+      try {
+        const response = await fetch(
+          `/api/atlas?propertyId=${encodeURIComponent(activePropertyId)}`,
+          { cache: "no-store" },
+        );
+        if (!response.ok) return;
+
+        const payload = (await response.json()) as AtlasApiPayload;
+        if (cancelled) return;
+
+        const apiServices = Array.isArray(payload.serviceRecords)
+          ? payload.serviceRecords
+          : Array.isArray(payload.workOrders)
+            ? payload.workOrders
+            : [];
+
+        const addisonCreatedWork = apiServices
+          .map(normalizeService)
+          .filter((record) =>
+            String(record.id || "").startsWith("addison-self-") ||
+            String((record as AtlasServiceRecord).responsibilityArea || "") ===
+              "Addison self-added",
+          );
+
+        if (!addisonCreatedWork.length) return;
+
+        setServiceRecords((current) => {
+          const existingIds = new Set(current.map((record) => String(record.id)));
+          const missing = addisonCreatedWork.filter(
+            (record) => !existingIds.has(String(record.id)),
+          );
+          return missing.length ? [...missing, ...current] : current;
+        });
+      } catch {
+        // The normal Atlas hydration remains authoritative if this lightweight
+        // cross-device refresh is temporarily unavailable.
+      } finally {
+        refreshing = false;
+      }
+    };
+
+    void refreshAddisonSelfAddedWork();
+    const timer = window.setInterval(refreshAddisonSelfAddedWork, 5000);
+    const onFocus = () => void refreshAddisonSelfAddedWork();
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [ready, operationsHydrated, activePropertyId]);
   const aiGeneratedPurgeRunningRef = useRef(false);
   const applianceAnnualServiceSetupRunningRef = useRef(false);
   const [workOrderSeasonFilter, setWorkOrderSeasonFilter] = useState<
