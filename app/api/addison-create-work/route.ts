@@ -42,18 +42,82 @@ function safeRequestId(value: unknown) {
   return cleaned || randomUUID();
 }
 
-async function ensureOperationalRecordsTable(
-  sql: ReturnType<typeof neon>,
-) {
+async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
   await sql`
-    CREATE TABLE IF NOT EXISTS atlas_operational_records (
-      record_type text NOT NULL,
-      id text NOT NULL,
-      property_id text NOT NULL DEFAULT '2000',
-      record jsonb NOT NULL DEFAULT '{}'::jsonb,
-      updated_at timestamptz NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (record_type, id)
-    )
+    ALTER TABLE atlas_work_orders
+    ALTER COLUMN asset_id DROP NOT NULL
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS due_date_value date
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS due_date_initialized boolean NOT NULL DEFAULT false
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS priority text NOT NULL DEFAULT 'Medium'
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS recurring boolean NOT NULL DEFAULT false
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS recurrence_interval integer NOT NULL DEFAULT 1
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS recurrence_unit text NOT NULL DEFAULT 'Weeks'
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS season text NOT NULL DEFAULT 'Year-Round'
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS completion_history jsonb NOT NULL DEFAULT '[]'::jsonb
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS work_type text NOT NULL DEFAULT 'Work Order'
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS work_category text NOT NULL DEFAULT 'Maintenance'
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS responsibility_area text
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS assigned_to text
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS checklist jsonb NOT NULL DEFAULT '[]'::jsonb
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS notes_history jsonb NOT NULL DEFAULT '[]'::jsonb
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS service_history jsonb NOT NULL DEFAULT '[]'::jsonb
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS photos jsonb NOT NULL DEFAULT '[]'::jsonb
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS documents jsonb NOT NULL DEFAULT '[]'::jsonb
   `;
 }
 
@@ -99,60 +163,95 @@ export async function POST(request: Request) {
     }
 
     const sql = neon(databaseUrl);
-    await ensureOperationalRecordsTable(sql);
+    await ensureWorkOrderColumns(sql);
 
     const today = pacificDateKey();
-    const now = new Date().toISOString();
     const clientRequestId = safeRequestId(body.clientRequestId);
     const id = `addison-self-${clientRequestId}`;
 
-    const record = {
-      id,
-      propertyId: PROPERTY_ID,
-      title,
-      category,
-      notes,
-      priority: "Medium",
-      minutes: 30,
-      locationId: "",
-      recurring: false,
-      createdAt: now,
-      source: "Addison self-added",
-      taskMeta: {
-        status: "Open",
-        assignee: "Addison",
-        assignedTo: "Addison",
-        dueDate: today,
-        notes,
-        instructions: notes,
-        category,
-        source: "Addison self-added",
-        createdBy: "Addison",
-        createdAt: now,
-      },
-    };
-
     await sql`
-      INSERT INTO atlas_operational_records (
-        record_type,
+      INSERT INTO atlas_work_orders (
         id,
-        property_id,
-        record,
-        updated_at
+        asset_id,
+        date,
+        due_date_value,
+        due_date_initialized,
+        title,
+        status,
+        notes,
+        priority,
+        recurring,
+        recurrence_interval,
+        recurrence_unit,
+        season,
+        completion_history,
+        work_type,
+        work_category,
+        responsibility_area,
+        assigned_to,
+        checklist,
+        notes_history,
+        service_history,
+        photos,
+        documents,
+        property_id
       )
       VALUES (
-        'tasks',
         ${id},
-        ${PROPERTY_ID},
-        ${JSON.stringify(record)}::jsonb,
-        NOW()
+        NULL,
+        ${today}::date,
+        ${today}::date,
+        true,
+        ${title},
+        'Open',
+        ${notes},
+        'Medium',
+        false,
+        1,
+        'Weeks',
+        'Year-Round',
+        '[]'::jsonb,
+        'Work Order',
+        ${category},
+        'Addison self-added',
+        'Addison',
+        '[]'::jsonb,
+        '[]'::jsonb,
+        '[]'::jsonb,
+        '[]'::jsonb,
+        '[]'::jsonb,
+        ${PROPERTY_ID}
       )
-      ON CONFLICT (record_type, id) DO NOTHING
+      ON CONFLICT (id) DO UPDATE SET
+        title = EXCLUDED.title,
+        notes = EXCLUDED.notes,
+        work_category = EXCLUDED.work_category,
+        assigned_to = 'Addison',
+        property_id = ${PROPERTY_ID},
+        updated_at = NOW()
+    `;
+
+    // Clean up a same-id record created by the prior quick-add implementation.
+    // This does not touch any other Addison work or operational records.
+    await sql`
+      DELETE FROM atlas_operational_records
+      WHERE record_type = 'tasks'
+        AND property_id = ${PROPERTY_ID}
+        AND id = ${id}
     `;
 
     return NextResponse.json({
       ok: true,
-      task: record,
+      task: {
+        id,
+        propertyId: PROPERTY_ID,
+        title,
+        category,
+        notes,
+        status: "Open",
+        assignee: "Addison",
+        dueDate: today,
+      },
     });
   } catch (error) {
     console.error("Addison create work failed:", error);
