@@ -6747,7 +6747,7 @@ export default function AtlasApp() {
         recognition.stop();
       }
     };
-    recognition.onerror = () => showSaveToast("Ask Atlas could not hear that request. Open Ask Atlas and try again.", "warning");
+    recognition.onerror = () => showSaveToast("Athena could not hear that request. Open Athena and try again.", "warning");
     recognition.onend = () => {
       voiceRecognitionRef.current = null;
       setVoiceAssistantListening(false);
@@ -13935,7 +13935,7 @@ export default function AtlasApp() {
       setManualSaveMessage(
         `Saved ${record.title} to Atlas Documents${linkedAsset ? ` and linked it to ${linkedAsset.name}` : ""}.`,
       );
-      setDocumentSyncStatus(`Saved ${record.title} from Ask Atlas.`);
+      setDocumentSyncStatus(`Saved ${record.title} from Athena.`);
     } catch (error) {
       setManualSaveMessage(
         error instanceof Error
@@ -14220,7 +14220,7 @@ export default function AtlasApp() {
           quantity,
           minQuantity,
           status,
-          notes: `Created through Ask Atlas on ${todayISO()}.`,
+          notes: `Created through Athena on ${todayISO()}.`,
         });
 
         const saved = await postAtlasRecord("parts", record);
@@ -29271,7 +29271,7 @@ ${notes.trim()}` : notes.trim(),
                 <button type="button" onClick={() => openQuickCapture("asset")}><span>◇</span>{quickCaptureMode === "create" ? "New Asset" : "Existing Asset"}</button>
                 <button type="button" onClick={() => openQuickCapture("vendor")}><span>V</span>{quickCaptureMode === "create" ? "New Vendor" : "Existing Vendor"}</button>
                 <button type="button" onClick={() => openQuickCapture("procedure")}><span>☷</span>{quickCaptureMode === "create" ? "New Procedure" : "Existing Procedure"}</button>
-                <button type="button" className="atlas-talk-action" onClick={() => { setQuickCaptureOpen(false); startVoiceAssistant(); }}><span>✦</span>Ask Atlas</button>
+                <button type="button" className="atlas-talk-action" onClick={() => { setQuickCaptureOpen(false); startVoiceAssistant(); }}><span>✦</span>Athena</button>
               </div>
               <label className="atlas-quick-note-box">
                 <span>Quick note</span>
@@ -31228,8 +31228,8 @@ ${notes.trim()}` : notes.trim(),
               <button
                 type="button"
                 onClick={() => setDashboardAssistantOpen(true)}
-                aria-label="Ask Atlas"
-                title="Ask Atlas"
+                aria-label="Athena"
+                title="Athena"
                 style={{
                   ...secondaryButtonStyle,
                   width: "100%",
@@ -31243,7 +31243,7 @@ ${notes.trim()}` : notes.trim(),
                   color: "#FFFFFF",
                 }}
               >
-                <span>Ask Atlas</span>
+                <span>Athena</span>
               </button>
             </div>
           ) : (
@@ -31660,8 +31660,8 @@ ${notes.trim()}` : notes.trim(),
                 <button
                   type="button"
                   onClick={() => setDashboardAssistantOpen(true)}
-                  aria-label="Open Ask Atlas"
-                  title="Ask Atlas"
+                  aria-label="Open Athena"
+                  title="Athena"
                   style={{
                     ...secondaryButtonStyle,
                     width: "auto",
@@ -31680,7 +31680,7 @@ ${notes.trim()}` : notes.trim(),
                   }}
                 >
                   <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>✦</span>
-                  {!isMobile ? <span>Ask Atlas</span> : null}
+                  {!isMobile ? <span>Athena</span> : null}
                 </button>
               </div>
               ) : null}
@@ -32216,7 +32216,7 @@ ${notes.trim()}` : notes.trim(),
             <div
               role="dialog"
               aria-modal="true"
-              aria-label="Ask Atlas"
+              aria-label="Athena"
               style={{
                 position: "fixed",
                 inset: 0,
@@ -32302,9 +32302,9 @@ ${notes.trim()}` : notes.trim(),
                   {!assistantTurns.length ? (
                     <div style={{ display: "grid", gap: 12 }}>
                       <div>
-                        <div style={{ ...eyebrowStyle, marginBottom: 7 }}>Ask Atlas Actions</div>
+                        <div style={{ ...eyebrowStyle, marginBottom: 7 }}>Athena Actions</div>
                         <div style={{ ...mutedSmallStyle, marginBottom: 9 }}>
-                          Ask Atlas helps you run the day. Ask Atlas remains the property knowledge system.
+                          Athena helps you run the day. Ask Atlas remains the property knowledge system.
                         </div>
                         <div
                           style={{
@@ -32396,11 +32396,11 @@ ${notes.trim()}` : notes.trim(),
                         }}
                       >
                         <span aria-hidden="true">{voiceAssistantListening ? "●" : "🎤"}</span>
-                        {voiceAssistantListening ? "Listening…" : "Talk to Ask Atlas"}
+                        {voiceAssistantListening ? "Listening…" : "Talk to Athena"}
                       </button>
 
                       <div style={{ ...mutedSmallStyle, textAlign: "center" }}>
-                        Nothing is saved automatically. Ask Atlas prepares changes for review first.
+                        Nothing is saved automatically. Athena prepares changes for review first.
                       </div>
 
                       <div
