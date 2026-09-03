@@ -14952,7 +14952,7 @@ export default function AtlasApp() {
             kind: readString(source.kind) || undefined,
           } satisfies AskAtlasSource;
         })
-        .filter((value): value is AskAtlasSource => Boolean(value))
+        .filter((value): value is NonNullable<typeof value> => Boolean(value))
         .slice(0, 6);
 
       if (cleanAnswer.startsWith("{") || cleanAnswer.startsWith("```")) {
