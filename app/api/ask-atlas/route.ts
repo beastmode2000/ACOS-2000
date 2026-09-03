@@ -65,7 +65,7 @@ type KnowledgeFile = {
 const manualCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const CONTEXT_LIMIT = 260000;
-const MAX_KNOWLEDGE_FILES = 4;
+const MAX_KNOWLEDGE_FILES = 8;
 const QUESTION_STOP_WORDS = new Set([
   "what",
   "when",
@@ -94,9 +94,35 @@ function questionTokens(question: string) {
         .replace(/[^a-z0-9]+/g, " ")
         .split(/\s+/)
         .filter(
-          (token) => token.length >= 3 && !QUESTION_STOP_WORDS.has(token),
+          (token) => (token.length >= 3 || /^\d+$/.test(token)) && !QUESTION_STOP_WORDS.has(token),
         ),
     ),
+  );
+}
+
+
+function exactEquipmentTerms(text: string) {
+  const normalized = text.toLowerCase();
+  const terms = new Set<string>();
+  const patterns = [
+    /\b(?:pump|boiler|unit|fan|valve|zone|circuit|loop)\s*[-#:]?\s*[a-z]?\d+[a-z]?\b/gi,
+    /\b[a-z]{1,4}[- ]\d+[a-z]?\b/gi,
+  ];
+  for (const pattern of patterns) {
+    for (const match of normalized.matchAll(pattern)) {
+      const raw = String(match[0] || "").trim();
+      if (!raw) continue;
+      terms.add(raw);
+      terms.add(raw.replace(/[-#:\s]+/g, " "));
+      terms.add(raw.replace(/[-#:\s]+/g, ""));
+    }
+  }
+  return Array.from(terms).filter(Boolean);
+}
+
+function isDrawingLike(text: string) {
+  return /as[- ]?buil(?:t|d|ds|ts)?|as\s+buids?|blueprint|drawing|plan|schematic|diagram|hydronic\s+schematic|mechanical\s+plan/.test(
+    text.toLowerCase(),
   );
 }
 
@@ -376,12 +402,13 @@ function selectKnowledgeFiles(
     .join(" ");
   const contextQuestion = `${conversationText} ${question}`.trim();
   const tokens = questionTokens(contextQuestion);
+  const equipmentTerms = exactEquipmentTerms(contextQuestion);
   const mechanicalQuestion =
     /\b(mechanical room|pump|boiler|dhw|domestic hot water|radiant|heated floor|hydronic|hvac|heating|terminal|wiring|controller|vitotronic|vitocell)\b/i.test(
       contextQuestion,
     );
   const drawingQuestion =
-    /\b(as[- ]?built|blueprint|drawing|plan|schematic|diagram)\b/i.test(
+    /\b(as[- ]?buil(?:t|d|ds|ts)?|as\s+buids?|blueprint|drawing|plan|schematic|diagram)\b/i.test(
       contextQuestion,
     );
   const manualQuestion =
@@ -389,7 +416,7 @@ function selectKnowledgeFiles(
       contextQuestion,
     );
 
-  return deduped
+  const ranked = deduped
     .map((file, index) => {
       let score = tokens.reduce(
         (total, token) =>
@@ -405,22 +432,40 @@ function selectKnowledgeFiles(
       ) {
         score += 20;
       }
-      if (
-        mechanicalQuestion &&
-        /as[- ]?built|blueprint|drawing|plan|schematic/.test(file.searchText)
-      ) {
-        score += 18;
+      const drawingLike = isDrawingLike(file.searchText);
+      if (equipmentTerms.some((term) => file.searchText.includes(term))) {
+        score += 80;
       }
-      if (
-        drawingQuestion &&
-        /as[- ]?built|blueprint|drawing|plan|schematic/.test(file.searchText)
-      ) {
-        score += 26;
+      if (mechanicalQuestion && drawingLike) {
+        score += equipmentTerms.length ? 60 : 28;
+      }
+      if (drawingQuestion && drawingLike) {
+        score += 36;
       }
       if (manualQuestion && file.kind === "Manual") score += 24;
       return { file, index, score };
     })
-    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .sort((left, right) => right.score - left.score || left.index - right.index);
+
+  if (mechanicalQuestion && equipmentTerms.length) {
+    const drawings = ranked.filter((entry) => isDrawingLike(entry.file.searchText));
+    const others = ranked.filter((entry) => !isDrawingLike(entry.file.searchText));
+    const selected = [
+      ...drawings.slice(0, Math.min(4, MAX_KNOWLEDGE_FILES)),
+      ...others.slice(0, Math.max(0, MAX_KNOWLEDGE_FILES - Math.min(4, drawings.length))),
+    ];
+    if (selected.length < MAX_KNOWLEDGE_FILES) {
+      const selectedUrls = new Set(selected.map((entry) => entry.file.url));
+      selected.push(
+        ...ranked
+          .filter((entry) => !selectedUrls.has(entry.file.url))
+          .slice(0, MAX_KNOWLEDGE_FILES - selected.length),
+      );
+    }
+    return selected.slice(0, MAX_KNOWLEDGE_FILES).map((entry) => entry.file);
+  }
+
+  return ranked
     .slice(0, MAX_KNOWLEDGE_FILES)
     .map((entry) => entry.file);
 }
@@ -696,11 +741,11 @@ export async function POST(request: NextRequest) {
   );
   const sourceList = knowledgeFiles.length
     ? knowledgeFiles
-        .map((file, index) => `${index + 1}. ${file.title} (${file.kind})`)
+        .map((file, index) => `${index + 1}. ${file.title} (${file.kind}) — ${file.filename}`)
         .join("\n")
     : "No relevant saved PDF was attached for this question.";
 
-  const instructions = `You are Ask Atlas, the private property-operations assistant inside Atlas.\n\nUse the supplied Atlas snapshot and any attached saved Atlas PDFs as the authority for private property facts. Resolve IDs to readable names and connect information across assets, locations, vendors, work orders, procedures, documents, manuals, parts, calendar items, requests, and service history.\nThe snapshot's activeProperty identifies the property currently selected by the user. Keep every answer scoped to that property unless the snapshot explicitly contains a portfolio-wide comparison. State the active property name when it prevents ambiguity.\n${home4725 ? "\nCRITICAL 4725 PRIVACY RULE: The active property is 4725. Answer only from 4725 records. Never reference, infer from, compare with, or reveal records from any estate property, portfolio, employee workspace, or other property even if unrelated context is accidentally supplied.\n" : ""}\n\nKnowledge rules:\n- For questions about equipment, mechanical rooms, pumps, boilers, wiring, controls, as-builts, blueprints, drawings, or manuals, use the attached saved Atlas PDFs when they contain relevant evidence.\n- Treat a saved PDF's actual contents as stronger evidence than a filename or metadata guess.\n- Combine PDF evidence with related Atlas asset/location/service records when that makes the answer more useful.\n- Preserve conversational context: follow-up words such as \"it\", \"that pump\", or \"that room\" should resolve from the recent conversation when clear.\n- Name the source document or manual used for important technical claims. If multiple sources disagree, say so.\n- Do not invent page numbers, terminal numbers, equipment relationships, or document contents.\n- If the saved PDFs and Atlas records do not establish the answer, say exactly what is missing or unclear.\n\nAnswer rules:\n- Lead with the direct answer.\n- Answer conversationally, like a knowledgeable property expert, rather than returning search results.\n- Use exact Atlas names, dates, statuses, and quantities when available.\n- Explain the strongest connected evidence without dumping unrelated records.\n- Distinguish completed history from open or upcoming work.\n- When useful, finish with one practical next action.\n- Never invent records, dates, vendors, costs, maintenance history, relationships, or document contents.\n- Do not claim anything was changed or saved.\n\nReturn ONLY one JSON object with this exact shape:\n{\n  \"answer\": \"readable answer\"\n}`;
+  const instructions = `You are Ask Atlas, the private property-operations assistant inside Atlas.\n\nUse the supplied Atlas snapshot and any attached saved Atlas PDFs as the authority for private property facts. Resolve IDs to readable names and connect information across assets, locations, vendors, work orders, procedures, documents, manuals, parts, calendar items, requests, and service history.\nThe snapshot's activeProperty identifies the property currently selected by the user. Keep every answer scoped to that property unless the snapshot explicitly contains a portfolio-wide comparison. State the active property name when it prevents ambiguity.\n${home4725 ? "\nCRITICAL 4725 PRIVACY RULE: The active property is 4725. Answer only from 4725 records. Never reference, infer from, compare with, or reveal records from any estate property, portfolio, employee workspace, or other property even if unrelated context is accidentally supplied.\n" : ""}\n\nKnowledge rules:\n- For questions about equipment, mechanical rooms, pumps, boilers, wiring, controls, as-builts, blueprints, drawings, or manuals, use the attached saved Atlas PDFs when they contain relevant evidence.\n- Treat a saved PDF's actual contents as stronger evidence than a filename or metadata guess.\n- For exact equipment labels such as "Pump 6", "Pump 10", "B-1", or "B-2", inspect the attached drawings/manuals for that exact label and reasonable formatting variants before concluding the answer is unknown.\n- Mechanical as-builts and schematics may be scanned drawings. Use both visible diagram labels and extracted text; do not rely only on searchable text.\n- Combine PDF evidence with related Atlas asset/location/service records when that makes the answer more useful.\n- Preserve conversational context: follow-up words such as \"it\", \"that pump\", or \"that room\" should resolve from the recent conversation when clear.\n- Name the source document or manual used for important technical claims. If multiple sources disagree, say so.\n- Do not invent page numbers, terminal numbers, equipment relationships, or document contents.\n- If the saved PDFs and Atlas records do not establish the answer, say exactly what is missing or unclear.\n\nAnswer rules:\n- Lead with the direct answer.\n- Answer conversationally, like a knowledgeable property expert, rather than returning search results.\n- Use exact Atlas names, dates, statuses, and quantities when available.\n- Explain the strongest connected evidence without dumping unrelated records.\n- Distinguish completed history from open or upcoming work.\n- When useful, finish with one practical next action.\n- Never invent records, dates, vendors, costs, maintenance history, relationships, or document contents.\n- Do not claim anything was changed or saved.\n\nReturn ONLY one JSON object with this exact shape:\n{\n  \"answer\": \"readable answer\"\n}`;
 
   const textInput = `RECENT CONVERSATION\n${JSON.stringify(conversation)}\n\nQUESTION\n${question}\n\nSAVED PDF SOURCES ATTACHED TO THIS QUESTION\n${sourceList}\n\nATLAS SNAPSHOT\n${atlasJson}`;
 
@@ -709,7 +754,7 @@ export async function POST(request: NextRequest) {
     ...knowledgeFiles.map((file) => ({
       type: "input_file",
       filename: file.filename,
-      file_data: file.url,
+      file_url: file.url,
     })),
   ];
 
@@ -740,9 +785,10 @@ export async function POST(request: NextRequest) {
     // Retry from Atlas record metadata/text without PDF attachments if the
     // provider rejects one of the selected files.
     if (!response.ok && knowledgeFiles.length) {
+      const fallbackTextInput = `${textInput}\n\nPDF ATTACHMENT STATUS\nThe selected saved PDFs could not be loaded by the AI provider for this request. Do not claim to have inspected their contents. Answer only from the Atlas snapshot, and clearly say that the saved PDF evidence could not be opened if it is needed to establish the answer.`;
       response = await callOpenAI(apiKey, {
         ...requestBody,
-        input: [{ role: "user", content: [{ type: "input_text", text: textInput }] }],
+        input: [{ role: "user", content: [{ type: "input_text", text: fallbackTextInput }] }],
       });
     }
 
