@@ -332,6 +332,96 @@ function isPdfFile(name: string, type: string, url: string) {
   );
 }
 
+const MAX_INLINE_PDF_BYTES = 30 * 1024 * 1024;
+const MAX_INLINE_PDF_TOTAL_BYTES = 45 * 1024 * 1024;
+const MAX_INLINE_PDF_FILES = 4;
+const KNOWLEDGE_FETCH_TIMEOUT_MS = 12000;
+
+type PreparedKnowledgeFile = KnowledgeFile & {
+  fileData: string;
+  bytes: number;
+};
+
+async function fetchKnowledgeFileData(
+  file: KnowledgeFile,
+): Promise<PreparedKnowledgeFile | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), KNOWLEDGE_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(file.url, {
+      method: "GET",
+      cache: "no-store",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        Accept: "application/pdf,application/octet-stream;q=0.9,*/*;q=0.1",
+      },
+    });
+    if (!response.ok) {
+      console.warn("Ask Atlas could not fetch saved PDF:", {
+        title: file.title,
+        status: response.status,
+      });
+      return null;
+    }
+
+    const declaredLength = Number(response.headers.get("content-length") || 0);
+    if (declaredLength > MAX_INLINE_PDF_BYTES) {
+      console.warn("Ask Atlas skipped oversized saved PDF:", {
+        title: file.title,
+        bytes: declaredLength,
+      });
+      return null;
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length || buffer.length > MAX_INLINE_PDF_BYTES) {
+      console.warn("Ask Atlas skipped unreadable/oversized saved PDF:", {
+        title: file.title,
+        bytes: buffer.length,
+      });
+      return null;
+    }
+
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+    const mimeType = contentType.includes("pdf")
+      ? "application/pdf"
+      : "application/pdf";
+
+    return {
+      ...file,
+      bytes: buffer.length,
+      fileData: `data:${mimeType};base64,${buffer.toString("base64")}`,
+    };
+  } catch (error) {
+    console.warn("Ask Atlas saved PDF fetch failed:", {
+      title: file.title,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function prepareKnowledgeFiles(
+  files: KnowledgeFile[],
+): Promise<PreparedKnowledgeFile[]> {
+  const candidates = files.slice(0, MAX_INLINE_PDF_FILES);
+  const loaded = await Promise.all(candidates.map(fetchKnowledgeFileData));
+  const prepared: PreparedKnowledgeFile[] = [];
+  let totalBytes = 0;
+
+  for (const file of loaded) {
+    if (!file) continue;
+    if (totalBytes + file.bytes > MAX_INLINE_PDF_TOTAL_BYTES) continue;
+    prepared.push(file);
+    totalBytes += file.bytes;
+  }
+
+  return prepared;
+}
+
 function selectKnowledgeFiles(
   snapshot: unknown,
   question: string,
@@ -739,22 +829,30 @@ export async function POST(request: NextRequest) {
     question,
     conversation,
   );
+  const preparedKnowledgeFiles = await prepareKnowledgeFiles(knowledgeFiles);
+  const preparedUrls = new Set(preparedKnowledgeFiles.map((file) => file.url));
   const sourceList = knowledgeFiles.length
     ? knowledgeFiles
-        .map((file, index) => `${index + 1}. ${file.title} (${file.kind}) — ${file.filename}`)
+        .map(
+          (file, index) =>
+            `${index + 1}. ${file.title} (${file.kind}) — ${file.filename}${
+              preparedUrls.has(file.url) ? " [PDF loaded]" : " [PDF not loaded]"
+            }`,
+        )
         .join("\n")
-    : "No relevant saved PDF was attached for this question.";
+    : "No relevant saved PDF was selected for this question.";
 
-  const instructions = `You are Ask Atlas, the private property-operations assistant inside Atlas.\n\nUse the supplied Atlas snapshot and any attached saved Atlas PDFs as the authority for private property facts. Resolve IDs to readable names and connect information across assets, locations, vendors, work orders, procedures, documents, manuals, parts, calendar items, requests, and service history.\nThe snapshot's activeProperty identifies the property currently selected by the user. Keep every answer scoped to that property unless the snapshot explicitly contains a portfolio-wide comparison. State the active property name when it prevents ambiguity.\n${home4725 ? "\nCRITICAL 4725 PRIVACY RULE: The active property is 4725. Answer only from 4725 records. Never reference, infer from, compare with, or reveal records from any estate property, portfolio, employee workspace, or other property even if unrelated context is accidentally supplied.\n" : ""}\n\nKnowledge rules:\n- For questions about equipment, mechanical rooms, pumps, boilers, wiring, controls, as-builts, blueprints, drawings, or manuals, use the attached saved Atlas PDFs when they contain relevant evidence.\n- Treat a saved PDF's actual contents as stronger evidence than a filename or metadata guess.\n- For exact equipment labels such as "Pump 6", "Pump 10", "B-1", or "B-2", inspect the attached drawings/manuals for that exact label and reasonable formatting variants before concluding the answer is unknown.\n- Mechanical as-builts and schematics may be scanned drawings. Use both visible diagram labels and extracted text; do not rely only on searchable text.\n- Combine PDF evidence with related Atlas asset/location/service records when that makes the answer more useful.\n- Preserve conversational context: follow-up words such as \"it\", \"that pump\", or \"that room\" should resolve from the recent conversation when clear.\n- Name the source document or manual used for important technical claims. If multiple sources disagree, say so.\n- Do not invent page numbers, terminal numbers, equipment relationships, or document contents.\n- If the saved PDFs and Atlas records do not establish the answer, say exactly what is missing or unclear.\n\nAnswer rules:\n- Lead with the direct answer.\n- Answer conversationally, like a knowledgeable property expert, rather than returning search results.\n- Use exact Atlas names, dates, statuses, and quantities when available.\n- Explain the strongest connected evidence without dumping unrelated records.\n- Distinguish completed history from open or upcoming work.\n- When useful, finish with one practical next action.\n- Never invent records, dates, vendors, costs, maintenance history, relationships, or document contents.\n- Do not claim anything was changed or saved.\n\nReturn ONLY one JSON object with this exact shape:\n{\n  \"answer\": \"readable answer\"\n}`;
+  const instructions = `You are Ask Atlas, the private property-operations assistant inside Atlas.\n\nUse the supplied Atlas snapshot and any attached saved Atlas PDFs as the authority for private property facts. Resolve IDs to readable names and connect information across assets, locations, vendors, work orders, procedures, documents, manuals, parts, calendar items, requests, and service history.\nThe snapshot's activeProperty identifies the property currently selected by the user. Keep every answer scoped to that property unless the snapshot explicitly contains a portfolio-wide comparison. State the active property name when it prevents ambiguity.\n${home4725 ? "\nCRITICAL 4725 PRIVACY RULE: The active property is 4725. Answer only from 4725 records. Never reference, infer from, compare with, or reveal records from any estate property, portfolio, employee workspace, or other property even if unrelated context is accidentally supplied.\n" : ""}\n\nKnowledge rules:\n- For questions about equipment, mechanical rooms, pumps, boilers, wiring, controls, as-builts, blueprints, drawings, or manuals, use the attached saved Atlas PDFs when they contain relevant evidence.\n- Treat a saved PDF's actual contents as stronger evidence than a filename or metadata guess.\n- The source list marks each selected PDF as [PDF loaded] or [PDF not loaded]. Only claim to have inspected a PDF when it is marked [PDF loaded].\n- For exact equipment labels such as "Pump 6", "Pump 10", "B-1", or "B-2", inspect the attached drawings/manuals for that exact label and reasonable formatting variants before concluding the answer is unknown.\n- Mechanical as-builts and schematics may be scanned drawings. Use both visible diagram labels and extracted text; do not rely only on searchable text.\n- Combine PDF evidence with related Atlas asset/location/service records when that makes the answer more useful.\n- Preserve conversational context: follow-up words such as \"it\", \"that pump\", or \"that room\" should resolve from the recent conversation when clear.\n- Name the source document or manual used for important technical claims. If multiple sources disagree, say so.\n- Do not invent page numbers, terminal numbers, equipment relationships, or document contents.\n- If the saved PDFs and Atlas records do not establish the answer, say exactly what is missing or unclear.\n\nAnswer rules:\n- Lead with the direct answer.\n- Answer conversationally, like a knowledgeable property expert, rather than returning search results.\n- Use exact Atlas names, dates, statuses, and quantities when available.\n- Explain the strongest connected evidence without dumping unrelated records.\n- Distinguish completed history from open or upcoming work.\n- When useful, finish with one practical next action.\n- Never invent records, dates, vendors, costs, maintenance history, relationships, or document contents.\n- Do not claim anything was changed or saved.\n\nReturn ONLY one JSON object with this exact shape:\n{\n  \"answer\": \"readable answer\"\n}`;
 
   const textInput = `RECENT CONVERSATION\n${JSON.stringify(conversation)}\n\nQUESTION\n${question}\n\nSAVED PDF SOURCES ATTACHED TO THIS QUESTION\n${sourceList}\n\nATLAS SNAPSHOT\n${atlasJson}`;
 
   const content: Array<Record<string, unknown>> = [
     { type: "input_text", text: textInput },
-    ...knowledgeFiles.map((file) => ({
+    ...preparedKnowledgeFiles.map((file) => ({
       type: "input_file",
       filename: file.filename,
-      file_url: file.url,
+      file_data: file.fileData,
+      detail: "auto",
     })),
   ];
 
@@ -781,11 +879,11 @@ export async function POST(request: NextRequest) {
   try {
     let response = await callOpenAI(apiKey, requestBody);
 
-    // A stale or inaccessible Blob URL should not make Ask Atlas unusable.
-    // Retry from Atlas record metadata/text without PDF attachments if the
-    // provider rejects one of the selected files.
-    if (!response.ok && knowledgeFiles.length) {
-      const fallbackTextInput = `${textInput}\n\nPDF ATTACHMENT STATUS\nThe selected saved PDFs could not be loaded by the AI provider for this request. Do not claim to have inspected their contents. Answer only from the Atlas snapshot, and clearly say that the saved PDF evidence could not be opened if it is needed to establish the answer.`;
+    // A malformed or unsupported PDF should not make Ask Atlas unusable.
+    // Retry from Atlas record metadata/text without PDF attachments only if
+    // the provider rejects the already-fetched PDF data.
+    if (!response.ok && preparedKnowledgeFiles.length) {
+      const fallbackTextInput = `${textInput}\n\nPDF ATTACHMENT STATUS\nAtlas fetched the selected saved PDFs, but the AI provider rejected one or more PDF attachments for this request. Do not claim to have inspected their contents. Answer only from the Atlas snapshot and clearly state that the PDF evidence could not be processed if it is needed to establish the answer.`;
       response = await callOpenAI(apiKey, {
         ...requestBody,
         input: [{ role: "user", content: [{ type: "input_text", text: fallbackTextInput }] }],
