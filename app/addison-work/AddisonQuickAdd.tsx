@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 const colors = {
   navy: "#0B1E33",
@@ -37,6 +37,19 @@ export default function AddisonQuickAdd() {
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [requestId, setRequestId] = useState(() => makeRequestId());
+
+  useEffect(() => {
+    const token = addisonToken();
+    if (!token) return;
+
+    void fetch(
+      `/api/addison-create-work?token=${encodeURIComponent(token)}`,
+      { cache: "no-store" },
+    ).catch(() => {
+      // Addison's existing page still works if the background sync is
+      // temporarily unavailable. It retries on the next page load.
+    });
+  }, []);
 
   const canSave = useMemo(
     () => Boolean(title.trim() && category.trim()) && !saving,
