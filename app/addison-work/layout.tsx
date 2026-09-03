@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import AddisonQuickAdd from "./AddisonQuickAdd";
 
 export const metadata: Metadata = {
   title: "Addison | Atlas",
@@ -24,6 +25,10 @@ export default function AddisonWorkLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  return (
+    <>
+      {children}
+      <AddisonQuickAdd />
+    </>
+  );
 }
-
