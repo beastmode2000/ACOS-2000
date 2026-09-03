@@ -164,6 +164,7 @@ export default function AtlasVendorsWorkspace(props: any) {
   const [mobileFieldDetailsOpen, setMobileFieldDetailsOpen] = React.useState(false);
   const [vendorSearch, setVendorSearch] = React.useState("");
   const [showInactiveContacts, setShowInactiveContacts] = React.useState(false);
+  const [editingVendorContactId, setEditingVendorContactId] = React.useState("");
   const {
     addLinkedPhotoFiles,
     addVendor,
@@ -224,6 +225,7 @@ export default function AtlasVendorsWorkspace(props: any) {
   React.useEffect(() => {
     setMobileFieldDetailsOpen(false);
     setShowInactiveContacts(false);
+    setEditingVendorContactId("");
   }, [selectedVendorId]);
 
   const selectedVendorPhotos = selectedVendor.id
@@ -258,6 +260,7 @@ export default function AtlasVendorsWorkspace(props: any) {
       inactive: false,
     };
     updateVendorContacts([...vendorContacts, contact]);
+    setEditingVendorContactId(contact.id);
   };
 
   const updateVendorContact = (
@@ -293,6 +296,7 @@ export default function AtlasVendorsWorkspace(props: any) {
 
   const deleteVendorContact = (contactId: string) => {
     if (!window.confirm("Delete this vendor contact?")) return;
+    if (editingVendorContactId === contactId) setEditingVendorContactId("");
     let next = vendorContacts.filter((contact) => contact.id !== contactId);
     const activeContacts = next.filter((contact) => !contact.inactive);
     if (
@@ -691,7 +695,13 @@ export default function AtlasVendorsWorkspace(props: any) {
 
                 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
                   {visibleVendorContacts.map((contact) => {
-                    const cell = contact.cellPhone || contact.phone;
+                    const cell = String(contact.cellPhone || contact.phone || "").trim();
+                    const officePhone = String(contact.officePhone || "").trim();
+                    const email = String(contact.email || "").trim();
+                    const role = String(contact.role || "").trim();
+                    const notes = String(contact.notes || "").trim();
+                    const isEditing = editingVendorContactId === contact.id;
+                    const hasContactActions = Boolean(cell || officePhone || email);
                     return (
                       <section
                         key={contact.id}
@@ -707,71 +717,162 @@ export default function AtlasVendorsWorkspace(props: any) {
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
                           <div style={{ minWidth: 0 }}>
                             <strong style={{ display: "block", color: colors.navy, overflowWrap: "anywhere" }}>
-                              {contact.name.trim() || "New Contact"}
+                              {contact.name.trim() || (isEditing ? "New Contact" : contact.contactType)}
                             </strong>
-                            <span style={mutedSmallStyle}>
-                              {[contact.contactType, contact.role].filter(Boolean).join(" · ")}
-                            </span>
+                            {[contact.contactType, role].filter(Boolean).length ? (
+                              <span style={mutedSmallStyle}>
+                                {[contact.contactType, role].filter(Boolean).join(" · ")}
+                              </span>
+                            ) : null}
                           </div>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                             {contact.primary ? <span style={badgeStyle("Preferred")}>Primary</span> : null}
                             {contact.inactive ? <span style={badgeStyle("Monitor")}>Inactive</span> : null}
+                            {!isEditing ? (
+                              <button
+                                type="button"
+                                onClick={() => setEditingVendorContactId(contact.id)}
+                                style={secondaryButtonStyle}
+                              >
+                                Edit
+                              </button>
+                            ) : null}
                           </div>
                         </div>
 
-                        {!contact.inactive ? (
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
-                            {cell ? <a href={`tel:${cell.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Call Cell</a> : null}
-                            {cell ? <a href={`sms:${cell.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Text</a> : null}
-                            {contact.officePhone ? <a href={`tel:${contact.officePhone.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Call Office</a> : null}
-                            {contact.email ? <a href={`mailto:${contact.email.trim()}`} style={secondaryButtonStyle}>Email</a> : null}
-                          </div>
-                        ) : null}
+                        {!isEditing ? (
+                          <>
+                            {hasContactActions && !contact.inactive ? (
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
+                                {cell ? <a href={`tel:${cell.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Call Cell</a> : null}
+                                {cell ? <a href={`sms:${cell.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Text</a> : null}
+                                {officePhone ? <a href={`tel:${officePhone.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Call Office</a> : null}
+                                {email ? <a href={`mailto:${email}`} style={secondaryButtonStyle}>Email</a> : null}
+                              </div>
+                            ) : null}
 
-                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}>
-                          <Field label="Name" value={contact.name} onChange={(name) => updateVendorContact(contact.id, { name })} />
-                          <Field label="Role / Title" value={contact.role} onChange={(role) => updateVendorContact(contact.id, { role })} />
-                          <label style={{ display: "grid", gap: 5 }}>
-                            <span style={mutedSmallStyle}>Contact Type</span>
-                            <select value={contact.contactType} onChange={(event) => updateVendorContact(contact.id, { contactType: event.currentTarget.value as VendorContactCard["contactType"] })} style={{ width: "100%", minWidth: 0, minHeight: 40, border: `1px solid ${colors.line}`, borderRadius: 9, padding: "7px 9px", background: "#FFFFFF", color: colors.text }}>
-                              {vendorContactTypes.map((type) => <option key={type} value={type}>{type}</option>)}
-                            </select>
-                          </label>
-                          <label style={{ display: "grid", gap: 5 }}>
-                            <span style={mutedSmallStyle}>Preferred Contact</span>
-                            <select value={contact.preferredMethod} onChange={(event) => updateVendorContact(contact.id, { preferredMethod: event.currentTarget.value as VendorContactCard["preferredMethod"] })} style={{ width: "100%", minWidth: 0, minHeight: 40, border: `1px solid ${colors.line}`, borderRadius: 9, padding: "7px 9px", background: "#FFFFFF", color: colors.text }}>
-                              <option value="Cell">Cell</option>
-                              <option value="Office">Office</option>
-                              <option value="Email">Email</option>
-                            </select>
-                          </label>
-                          <Field label="Office Phone" value={contact.officePhone} onChange={(officePhone) => updateVendorContact(contact.id, { officePhone })} />
-                          <Field label="Cell Phone" value={contact.cellPhone || contact.phone} onChange={(cellPhone) => updateVendorContact(contact.id, { cellPhone, phone: cellPhone })} />
-                          <Field label="Email" value={contact.email} onChange={(email) => updateVendorContact(contact.id, { email })} />
-                          <Field label="Notes" value={contact.notes} onChange={(notes) => updateVendorContact(contact.id, { notes })} multiline />
-                        </div>
+                            {(officePhone || cell || email || notes) ? (
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))",
+                                  gap: 7,
+                                  marginTop: 10,
+                                }}
+                              >
+                                {officePhone ? (
+                                  <div style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: "7px 8px", background: "#FFFFFF" }}>
+                                    <span style={{ ...mutedSmallStyle, display: "block" }}>Office</span>
+                                    <strong style={{ color: colors.navy, overflowWrap: "anywhere" }}>{officePhone}</strong>
+                                  </div>
+                                ) : null}
+                                {cell ? (
+                                  <div style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: "7px 8px", background: "#FFFFFF" }}>
+                                    <span style={{ ...mutedSmallStyle, display: "block" }}>Cell</span>
+                                    <strong style={{ color: colors.navy, overflowWrap: "anywhere" }}>{cell}</strong>
+                                  </div>
+                                ) : null}
+                                {email ? (
+                                  <div style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: "7px 8px", background: "#FFFFFF" }}>
+                                    <span style={{ ...mutedSmallStyle, display: "block" }}>Email</span>
+                                    <strong style={{ color: colors.navy, overflowWrap: "anywhere" }}>{email}</strong>
+                                  </div>
+                                ) : null}
+                                {notes ? (
+                                  <div
+                                    style={{
+                                      border: `1px solid ${colors.line}`,
+                                      borderRadius: 9,
+                                      padding: "7px 8px",
+                                      background: "#FFFFFF",
+                                      gridColumn: isMobile ? "auto" : "1 / -1",
+                                    }}
+                                  >
+                                    <span style={{ ...mutedSmallStyle, display: "block" }}>Notes</span>
+                                    <div style={{ color: colors.text, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{notes}</div>
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
 
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                          <label style={{ display: "inline-flex", alignItems: "center", gap: 7, color: colors.navy, fontWeight: 800, cursor: contact.inactive ? "default" : "pointer", opacity: contact.inactive ? 0.55 : 1 }}>
-                            <input
-                              type="checkbox"
-                              checked={contact.primary}
-                              disabled={Boolean(contact.inactive)}
-                              onChange={(event) => updateVendorContact(contact.id, { primary: event.currentTarget.checked })}
-                            />
-                            Primary contact
-                          </label>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            <button
-                              type="button"
-                              onClick={() => updateVendorContact(contact.id, { inactive: !contact.inactive })}
-                              style={secondaryButtonStyle}
-                            >
-                              {contact.inactive ? "Restore" : "Archive"}
-                            </button>
-                            <button type="button" onClick={() => deleteVendorContact(contact.id)} style={dangerButtonStyle}>Delete Contact</button>
-                          </div>
-                        </div>
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                              <button
+                                type="button"
+                                onClick={() => updateVendorContact(contact.id, { inactive: !contact.inactive })}
+                                style={secondaryButtonStyle}
+                              >
+                                {contact.inactive ? "Restore" : "Archive"}
+                              </button>
+                              <button type="button" onClick={() => deleteVendorContact(contact.id)} style={dangerButtonStyle}>
+                                Delete Contact
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}>
+                              <Field label="Name" value={contact.name} onChange={(name) => updateVendorContact(contact.id, { name })} />
+                              <Field label="Role / Title" value={contact.role} onChange={(role) => updateVendorContact(contact.id, { role })} />
+                              <label style={{ display: "grid", gap: 5 }}>
+                                <span style={mutedSmallStyle}>Contact Type</span>
+                                <select
+                                  value={contact.contactType}
+                                  onChange={(event) => updateVendorContact(contact.id, { contactType: event.currentTarget.value as VendorContactCard["contactType"] })}
+                                  style={{ width: "100%", minWidth: 0, minHeight: 40, border: `1px solid ${colors.line}`, borderRadius: 9, padding: "7px 9px", background: "#FFFFFF", color: colors.text }}
+                                >
+                                  {vendorContactTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                                </select>
+                              </label>
+                              <label style={{ display: "grid", gap: 5 }}>
+                                <span style={mutedSmallStyle}>Preferred Contact</span>
+                                <select
+                                  value={contact.preferredMethod}
+                                  onChange={(event) => updateVendorContact(contact.id, { preferredMethod: event.currentTarget.value as VendorContactCard["preferredMethod"] })}
+                                  style={{ width: "100%", minWidth: 0, minHeight: 40, border: `1px solid ${colors.line}`, borderRadius: 9, padding: "7px 9px", background: "#FFFFFF", color: colors.text }}
+                                >
+                                  <option value="Cell">Cell</option>
+                                  <option value="Office">Office</option>
+                                  <option value="Email">Email</option>
+                                </select>
+                              </label>
+                              <Field label="Office Phone" value={contact.officePhone} onChange={(officePhone) => updateVendorContact(contact.id, { officePhone })} />
+                              <Field label="Cell Phone" value={contact.cellPhone || contact.phone} onChange={(cellPhone) => updateVendorContact(contact.id, { cellPhone, phone: cellPhone })} />
+                              <Field label="Email" value={contact.email} onChange={(email) => updateVendorContact(contact.id, { email })} />
+                              <Field label="Notes" value={contact.notes} onChange={(notes) => updateVendorContact(contact.id, { notes })} multiline />
+                            </div>
+
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                              <label style={{ display: "inline-flex", alignItems: "center", gap: 7, color: colors.navy, fontWeight: 800, cursor: contact.inactive ? "default" : "pointer", opacity: contact.inactive ? 0.55 : 1 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={contact.primary}
+                                  disabled={Boolean(contact.inactive)}
+                                  onChange={(event) => updateVendorContact(contact.id, { primary: event.currentTarget.checked })}
+                                />
+                                Primary contact
+                              </label>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingVendorContactId("")}
+                                  style={goldButtonStyle}
+                                >
+                                  Done
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateVendorContact(contact.id, { inactive: !contact.inactive })}
+                                  style={secondaryButtonStyle}
+                                >
+                                  {contact.inactive ? "Restore" : "Archive"}
+                                </button>
+                                <button type="button" onClick={() => deleteVendorContact(contact.id)} style={dangerButtonStyle}>
+                                  Delete Contact
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </section>
                     );
                   })}
