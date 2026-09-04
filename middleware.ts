@@ -19,7 +19,7 @@ function isPublicPath(request: NextRequest) {
   if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(p)) return true;
   if (p === "/landscape-help" && hasShareToken(request)) return true;
   if (p === "/api/landscape-help" && hasShareToken(request)) return true;
-  if (p === "/request") return true;
+  if (p === "/request" || p.startsWith("/request/")) return true;
   if (p === "/api/atlas-requests" && hasShareToken(request)) return true;
   if (p === "/reset-password" && hasShareToken(request)) return true;
   if (p === "/api/atlas-password-reset") return true;
@@ -58,6 +58,16 @@ function basic(username:string,password:string){ return `Basic ${btoa(`${usernam
 function toLogin(request:NextRequest){ const u=request.nextUrl.clone(); u.pathname="/login"; u.search=""; u.searchParams.set("next",`${request.nextUrl.pathname}${request.nextUrl.search}`); return NextResponse.redirect(u); }
 
 export async function middleware(request:NextRequest){
+  if(request.nextUrl.pathname === "/request"){
+    const token=request.nextUrl.searchParams.get("token")?.trim()||"";
+    if(token){
+      const u=request.nextUrl.clone();
+      u.pathname=`/request/${encodeURIComponent(token)}`;
+      u.searchParams.delete("token");
+      return NextResponse.redirect(u);
+    }
+  }
+
   if(isPublicPath(request)) return NextResponse.next();
   const adminUser=process.env.ATLAS_ACCESS_USERNAME||"";
   const adminPass=process.env.ATLAS_ACCESS_PASSWORD||"";
