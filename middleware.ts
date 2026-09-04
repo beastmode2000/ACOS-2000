@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 const SESSION_COOKIE = "atlas_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 90;
 const SESSION_VERSION = 2;
+const ADDISON_WORK_TOKEN =
+  process.env.ADDISON_WORK_TOKEN ||
+  "addison-2000-7f94f468dca84de3a7b8c2d942ca3819";
 
 function hasShareToken(request: NextRequest) {
   return request.nextUrl.searchParams.has("token");
@@ -19,6 +22,7 @@ function isPublicPath(request: NextRequest) {
   if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(p)) return true;
   if (p === "/landscape-help" && hasShareToken(request)) return true;
   if (p === "/api/landscape-help" && hasShareToken(request)) return true;
+  if (p === "/api/addison-create-work" && hasShareToken(request)) return true;
   if (p === "/request" || p.startsWith("/request/")) return true;
   if (p === "/api/atlas-requests" && hasShareToken(request)) return true;
   if (p === "/reset-password" && hasShareToken(request)) return true;
@@ -57,6 +61,20 @@ async function readSession(
 function basic(username:string,password:string){ return `Basic ${btoa(`${username}:${password}`)}`; }
 function toLogin(request:NextRequest){ const u=request.nextUrl.clone(); u.pathname="/login"; u.search=""; u.searchParams.set("next",`${request.nextUrl.pathname}${request.nextUrl.search}`); return NextResponse.redirect(u); }
 
+async function syncAddisonWorkBeforeAtlasLoad(request: NextRequest) {
+  if (request.nextUrl.pathname !== "/") return;
+
+  try {
+    const syncUrl = request.nextUrl.clone();
+    syncUrl.pathname = "/api/addison-create-work";
+    syncUrl.search = "";
+    syncUrl.searchParams.set("token", ADDISON_WORK_TOKEN);
+    await fetch(syncUrl, { cache: "no-store" });
+  } catch {
+    // Do not block Atlas from opening if the compatibility sync is unavailable.
+  }
+}
+
 export async function middleware(request:NextRequest){
   if(isPublicPath(request)) return NextResponse.next();
   const adminUser=process.env.ATLAS_ACCESS_USERNAME||"";
@@ -73,6 +91,8 @@ export async function middleware(request:NextRequest){
     if(request.nextUrl.pathname.startsWith("/api/")) return new NextResponse("Atlas login required.",{status:401});
     return toLogin(request);
   }
+
+  await syncAddisonWorkBeforeAtlasLoad(request);
 
   const headers=new Headers(request.headers);
   headers.set("authorization",basic(adminUser,adminPass));
