@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const SESSION_COOKIE = "atlas_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 90;
 const SESSION_VERSION = 2;
+const ADDISON_SYNC_COOKIE = "atlas_addison_sync";
 const ADDISON_WORK_TOKEN =
   process.env.ADDISON_WORK_TOKEN ||
   "addison-2000-7f94f468dca84de3a7b8c2d942ca3819";
@@ -51,8 +52,6 @@ async function readSession(
   try {
     const data=JSON.parse(decode(payload)) as Session;
     if(!data.expiresAt||Date.now()>data.expiresAt) return null;
-    // Accept the current v2 session and the immediately previous signed session
-    // shape so a deploy cannot strand an already-authenticated Atlas browser.
     if(data.email && (data.v===SESSION_VERSION || data.v===undefined)) return data;
     if(data.v===undefined&&data.username===expectedUsername) return data;
     return null;
@@ -61,18 +60,14 @@ async function readSession(
 function basic(username:string,password:string){ return `Basic ${btoa(`${username}:${password}`)}`; }
 function toLogin(request:NextRequest){ const u=request.nextUrl.clone(); u.pathname="/login"; u.search=""; u.searchParams.set("next",`${request.nextUrl.pathname}${request.nextUrl.search}`); return NextResponse.redirect(u); }
 
-async function syncAddisonWorkBeforeAtlasLoad(request: NextRequest) {
-  if (request.nextUrl.pathname !== "/") return;
-
-  try {
-    const syncUrl = request.nextUrl.clone();
-    syncUrl.pathname = "/api/addison-create-work";
-    syncUrl.search = "";
-    syncUrl.searchParams.set("token", ADDISON_WORK_TOKEN);
-    await fetch(syncUrl, { cache: "no-store" });
-  } catch {
-    // Do not block Atlas from opening if the compatibility sync is unavailable.
-  }
+function toAddisonSync(request: NextRequest) {
+  const u = request.nextUrl.clone();
+  const returnTo = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+  u.pathname = "/api/addison-create-work";
+  u.search = "";
+  u.searchParams.set("token", ADDISON_WORK_TOKEN);
+  u.searchParams.set("returnTo", returnTo || "/");
+  return NextResponse.redirect(u);
 }
 
 export async function middleware(request:NextRequest){
@@ -92,7 +87,12 @@ export async function middleware(request:NextRequest){
     return toLogin(request);
   }
 
-  await syncAddisonWorkBeforeAtlasLoad(request);
+  if (
+    request.nextUrl.pathname === "/" &&
+    !request.cookies.get(ADDISON_SYNC_COOKIE)?.value
+  ) {
+    return toAddisonSync(request);
+  }
 
   const headers=new Headers(request.headers);
   headers.set("authorization",basic(adminUser,adminPass));
