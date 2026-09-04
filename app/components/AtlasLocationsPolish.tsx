@@ -371,6 +371,10 @@ export default function AtlasLocationsPolish() {
         scroll-behavior: auto !important;
         overflow-anchor: none;
       }
+      .atlas-location-drawer-polish img[style*="object-fit: cover"] {
+        object-fit: contain !important;
+        background: #fff !important;
+      }
       .atlas-location-spec-grid { display: grid !important; grid-template-columns: minmax(0, 1fr) !important; gap: 12px !important; margin-top: 16px !important; padding-top: 38px !important; position: relative !important; }
       .atlas-location-spec-grid::before { content: "Specifications"; position: absolute; top: 0; left: 0; font-size: 17px; font-weight: 900; color: #0b1e33; }
       .atlas-spec-category { margin-top: 8px; padding: 10px 2px 3px; border-bottom: 1px solid #dce4ec; color: #0b1e33; font-size: 14px; font-weight: 900; }
