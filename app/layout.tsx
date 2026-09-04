@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import AtlasLocationsPolish from "./components/AtlasLocationsPolish";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -37,7 +38,10 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/atlas-logo.png" />
       </head>
 
-      <body>{children}</body>
+      <body>
+        <AtlasLocationsPolish />
+        {children}
+      </body>
     </html>
   );
 }
