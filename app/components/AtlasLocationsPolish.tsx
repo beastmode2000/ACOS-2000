@@ -168,15 +168,22 @@ function addControls(card: HTMLElement, room: string, label: string, value: stri
   const controls = document.createElement("div");
   controls.className = "atlas-spec-controls";
   const imageButton = makeButton("Add Image");
+  const pasteButton = makeButton("Paste Image");
   const documentButton = makeButton("Add Document");
   const status = document.createElement("span");
   status.className = "atlas-spec-status";
-  controls.append(imageButton, documentButton, status);
+  controls.append(imageButton, pasteButton, documentButton, status);
 
   const files = document.createElement("div");
   files.className = "atlas-spec-files";
   host.append(controls, files);
   card.appendChild(host);
+
+  const setBusy = (busy: boolean) => {
+    imageButton.disabled = busy;
+    pasteButton.disabled = busy;
+    documentButton.disabled = busy;
+  };
 
   const refresh = async () => {
     try {
@@ -194,8 +201,7 @@ function addControls(card: HTMLElement, room: string, label: string, value: stri
     input.addEventListener("change", async () => {
       const file = input.files?.[0];
       if (!file) return;
-      imageButton.disabled = true;
-      documentButton.disabled = true;
+      setBusy(true);
       status.textContent = "Uploading…";
       try {
         await addAttachment(room, key, file, kind);
@@ -204,14 +210,45 @@ function addControls(card: HTMLElement, room: string, label: string, value: stri
         status.textContent = "";
         window.alert(error instanceof Error ? error.message : "Upload failed.");
       } finally {
-        imageButton.disabled = false;
-        documentButton.disabled = false;
+        setBusy(false);
       }
     }, { once: true });
     input.click();
   };
 
+  const pasteImage = async () => {
+    if (!navigator.clipboard?.read) {
+      window.alert("Clipboard image paste is not supported by this browser. Use Add Image instead.");
+      return;
+    }
+
+    setBusy(true);
+    status.textContent = "Reading clipboard…";
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      for (const clipboardItem of clipboardItems) {
+        const imageType = clipboardItem.types.find((type) => type.startsWith("image/"));
+        if (!imageType) continue;
+        const blob = await clipboardItem.getType(imageType);
+        const extension = imageType.split("/")[1]?.replace("jpeg", "jpg") || "png";
+        const file = new File([blob], `pasted-spec-${Date.now()}.${extension}`, { type: imageType });
+        status.textContent = "Uploading…";
+        await addAttachment(room, key, file, "image");
+        await refresh();
+        return;
+      }
+      status.textContent = "";
+      window.alert("There is no image in the clipboard. Copy a screenshot first, then press Paste Image.");
+    } catch (error) {
+      status.textContent = "";
+      window.alert(error instanceof Error ? error.message : "Could not paste the clipboard image.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   imageButton.addEventListener("click", () => choose("image"));
+  pasteButton.addEventListener("click", () => void pasteImage());
   documentButton.addEventListener("click", () => choose("document"));
   void refresh();
 }
