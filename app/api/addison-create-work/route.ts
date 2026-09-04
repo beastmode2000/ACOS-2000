@@ -121,7 +121,6 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
   `;
 }
 
-
 function isAddisonAssignedTask(record: Record<string, any>) {
   const meta =
     record?.taskMeta && typeof record.taskMeta === "object"
@@ -187,12 +186,32 @@ async function syncLegacyAddisonTasksToWorkOrders(
         ? task.taskMeta
         : task;
     const status = cleanString(meta?.status || task?.status || "Open", 40);
-    if (status === "Completed" || Boolean(meta?.paused)) continue;
+    if (Boolean(meta?.paused)) continue;
 
+    const completionHistory = Array.isArray(meta?.completionHistory)
+      ? meta.completionHistory.map(String)
+      : [];
+    const lastCompletedDate = cleanString(
+      meta?.lastCompletedDate || meta?.completedAt || "",
+      32,
+    ).slice(0, 10);
+    const completedToday =
+      status === "Completed" &&
+      (completionHistory.includes(today) ||
+        lastCompletedDate === today ||
+        cleanString(meta?.completedAt || "", 32).slice(0, 10) === today);
+
+    if (status === "Completed" && !completedToday) continue;
+
+    const recurring = Boolean(task?.recurring || meta?.recurring);
     const dueDate =
-      cleanString(meta?.dueDate || task?.dueDate || today, 10).slice(0, 10) ||
-      today;
-    if (dueDate > today) continue;
+      cleanString(
+        completedToday && recurring
+          ? meta?.nextDueDate || meta?.dueDate || task?.dueDate || today
+          : meta?.dueDate || task?.dueDate || today,
+        10,
+      ).slice(0, 10) || today;
+    if (dueDate > today && !completedToday) continue;
 
     const id = legacyWorkId(taskId);
     const title =
@@ -210,7 +229,6 @@ async function syncLegacyAddisonTasksToWorkOrders(
     )
       ? String(task?.priority || meta?.priority)
       : "Medium";
-    const recurring = Boolean(task?.recurring || meta?.recurring);
     const recurrenceInterval = Math.max(
       1,
       Number(meta?.recurrenceInterval || 1),
@@ -220,9 +238,6 @@ async function syncLegacyAddisonTasksToWorkOrders(
     )
       ? String(meta?.recurrenceUnit)
       : "Weeks";
-    const completionHistory = Array.isArray(meta?.completionHistory)
-      ? meta.completionHistory
-      : [];
     const serviceHistory = Array.isArray(meta?.serviceHistory)
       ? meta.serviceHistory
       : [];
@@ -245,6 +260,7 @@ async function syncLegacyAddisonTasksToWorkOrders(
         recurrence_unit,
         season,
         completion_history,
+        last_completed_date,
         work_type,
         work_category,
         responsibility_area,
@@ -263,7 +279,7 @@ async function syncLegacyAddisonTasksToWorkOrders(
         ${dueDate}::date,
         true,
         ${title},
-        'Open',
+        ${completedToday ? (recurring ? "Scheduled" : "Completed") : "Open"},
         ${notes},
         ${priority},
         ${recurring},
@@ -271,6 +287,7 @@ async function syncLegacyAddisonTasksToWorkOrders(
         ${recurrenceUnit},
         'Year-Round',
         ${JSON.stringify(completionHistory)}::jsonb,
+        ${completedToday ? today : lastCompletedDate || null}::date,
         'Work Order',
         ${category},
         ${`Legacy task ${taskId}`},
@@ -282,7 +299,27 @@ async function syncLegacyAddisonTasksToWorkOrders(
         '[]'::jsonb,
         ${PROPERTY_ID}
       )
-      ON CONFLICT (id) DO NOTHING
+      ON CONFLICT (id) DO UPDATE SET
+        date = EXCLUDED.date,
+        due_date_value = EXCLUDED.due_date_value,
+        due_date_initialized = true,
+        title = EXCLUDED.title,
+        status = EXCLUDED.status,
+        notes = EXCLUDED.notes,
+        priority = EXCLUDED.priority,
+        recurring = EXCLUDED.recurring,
+        recurrence_interval = EXCLUDED.recurrence_interval,
+        recurrence_unit = EXCLUDED.recurrence_unit,
+        completion_history = EXCLUDED.completion_history,
+        last_completed_date = EXCLUDED.last_completed_date,
+        work_category = EXCLUDED.work_category,
+        responsibility_area = EXCLUDED.responsibility_area,
+        assigned_to = 'Addison',
+        checklist = EXCLUDED.checklist,
+        service_history = EXCLUDED.service_history,
+        photos = EXCLUDED.photos,
+        property_id = ${PROPERTY_ID},
+        updated_at = NOW()
       RETURNING id
     `;
 
@@ -437,8 +474,6 @@ export async function POST(request: Request) {
         updated_at = NOW()
     `;
 
-    // Clean up a same-id record created by the prior quick-add implementation.
-    // This does not touch any other Addison work or operational records.
     await sql`
       DELETE FROM atlas_operational_records
       WHERE record_type = 'tasks'
@@ -446,8 +481,6 @@ export async function POST(request: Request) {
         AND id = ${id}
     `;
 
-    // Keep older Addison task records visible to the manager dashboard by
-    // promoting active due work into the unified work-order table.
     await syncLegacyAddisonTasksToWorkOrders(sql);
 
     return NextResponse.json({
