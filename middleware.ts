@@ -4,9 +4,6 @@ const SESSION_COOKIE = "atlas_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 90;
 const SESSION_VERSION = 2;
 const ADDISON_SYNC_COOKIE = "atlas_addison_sync";
-const ADDISON_WORK_TOKEN =
-  process.env.ADDISON_WORK_TOKEN ||
-  "addison-2000-7f94f468dca84de3a7b8c2d942ca3819";
 
 function hasShareToken(request: NextRequest) {
   return request.nextUrl.searchParams.has("token");
@@ -63,9 +60,8 @@ function toLogin(request:NextRequest){ const u=request.nextUrl.clone(); u.pathna
 function toAddisonSync(request: NextRequest) {
   const u = request.nextUrl.clone();
   const returnTo = `${request.nextUrl.pathname}${request.nextUrl.search}`;
-  u.pathname = "/api/addison-create-work";
+  u.pathname = "/api/atlas-addison-sync";
   u.search = "";
-  u.searchParams.set("token", ADDISON_WORK_TOKEN);
   u.searchParams.set("returnTo", returnTo || "/");
   return NextResponse.redirect(u);
 }
