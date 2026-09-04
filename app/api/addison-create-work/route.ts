@@ -121,6 +121,7 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
   `;
 }
 
+
 function isAddisonAssignedTask(record: Record<string, any>) {
   const meta =
     record?.taskMeta && typeof record.taskMeta === "object"
@@ -201,6 +202,8 @@ async function syncLegacyAddisonTasksToWorkOrders(
         lastCompletedDate === today ||
         cleanString(meta?.completedAt || "", 32).slice(0, 10) === today);
 
+    // Older completed occurrences still need to be promoted when they were
+    // completed today so Nick's dashboard history matches Addison's phone.
     if (status === "Completed" && !completedToday) continue;
 
     const recurring = Boolean(task?.recurring || meta?.recurring);
@@ -474,6 +477,8 @@ export async function POST(request: Request) {
         updated_at = NOW()
     `;
 
+    // Clean up a same-id record created by the prior quick-add implementation.
+    // This does not touch any other Addison work or operational records.
     await sql`
       DELETE FROM atlas_operational_records
       WHERE record_type = 'tasks'
@@ -481,6 +486,8 @@ export async function POST(request: Request) {
         AND id = ${id}
     `;
 
+    // Keep older Addison task records visible to the manager dashboard by
+    // promoting active due work into the unified work-order table.
     await syncLegacyAddisonTasksToWorkOrders(sql);
 
     return NextResponse.json({
