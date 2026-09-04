@@ -121,7 +121,6 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
   `;
 }
 
-
 function isAddisonAssignedTask(record: Record<string, any>) {
   const meta =
     record?.taskMeta && typeof record.taskMeta === "object"
@@ -202,8 +201,6 @@ async function syncLegacyAddisonTasksToWorkOrders(
         lastCompletedDate === today ||
         cleanString(meta?.completedAt || "", 32).slice(0, 10) === today);
 
-    // Older completed occurrences still need to be promoted when they were
-    // completed today so Nick's dashboard history matches Addison's phone.
     if (status === "Completed" && !completedToday) continue;
 
     const recurring = Boolean(task?.recurring || meta?.recurring);
@@ -214,7 +211,6 @@ async function syncLegacyAddisonTasksToWorkOrders(
           : meta?.dueDate || task?.dueDate || today,
         10,
       ).slice(0, 10) || today;
-    if (dueDate > today && !completedToday) continue;
 
     const id = legacyWorkId(taskId);
     const title =
@@ -353,6 +349,20 @@ export async function GET(request: Request) {
 
     const sql = neon(databaseUrl);
     const migrated = await syncLegacyAddisonTasksToWorkOrders(sql);
+    const returnTo = cleanString(url.searchParams.get("returnTo"), 1000);
+
+    if (returnTo.startsWith("/")) {
+      const response = NextResponse.redirect(new URL(returnTo, url.origin));
+      response.cookies.set("atlas_addison_sync", "1", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: url.protocol === "https:",
+        path: "/",
+        maxAge: 5,
+      });
+      response.headers.set("Cache-Control", "no-store, max-age=0");
+      return response;
+    }
 
     return NextResponse.json(
       { ok: true, migrated },
@@ -477,8 +487,6 @@ export async function POST(request: Request) {
         updated_at = NOW()
     `;
 
-    // Clean up a same-id record created by the prior quick-add implementation.
-    // This does not touch any other Addison work or operational records.
     await sql`
       DELETE FROM atlas_operational_records
       WHERE record_type = 'tasks'
@@ -486,8 +494,6 @@ export async function POST(request: Request) {
         AND id = ${id}
     `;
 
-    // Keep older Addison task records visible to the manager dashboard by
-    // promoting active due work into the unified work-order table.
     await syncLegacyAddisonTasksToWorkOrders(sql);
 
     return NextResponse.json({
