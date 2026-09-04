@@ -6,7 +6,6 @@ export const dynamic = "force-dynamic";
 
 const PROPERTY_ID = "2000";
 const IMPORT_ID = "susan-marinello-specs-2017-v1";
-const CANONICAL_SYNC_ID = "susan-marinello-specs-2017-v2-atlas-locations";
 
 type SpecRow = {
   id: string;
@@ -229,124 +228,6 @@ export async function GET() {
   });
 }
 
-async function syncImportedLocationsToAtlas(sql: ReturnType<typeof neon>) {
-  const existingSync = await sql`
-    SELECT id, record
-    FROM atlas_operational_records
-    WHERE record_type = 'system_migration'
-      AND id = ${CANONICAL_SYNC_ID}
-      AND property_id = ${PROPERTY_ID}
-    LIMIT 1
-  `;
-  if (existingSync[0]) {
-    return { alreadySynced: true, ...(existingSync[0].record || {}) };
-  }
-
-  const importedRows = await sql`
-    SELECT id, record
-    FROM atlas_operational_records
-    WHERE record_type = 'locations'
-      AND property_id = ${PROPERTY_ID}
-      AND id LIKE 'susan-2000-location-%'
-    ORDER BY updated_at ASC
-  `;
-
-  const canonicalRows = await sql`
-    SELECT id, name, type, zone, notes, parent_id, custom_details, vendor_ids, sort_order
-    FROM atlas_locations
-    WHERE property_id = ${PROPERTY_ID}
-    ORDER BY sort_order ASC, name ASC
-  `;
-
-  let created = 0;
-  let updated = 0;
-  let detailsAdded = 0;
-  const createdNames: string[] = [];
-  const updatedNames: string[] = [];
-
-  for (const sourceRow of importedRows as any[]) {
-    const source = sourceRow.record || {};
-    const sourceName = String(source.name || '').trim();
-    if (!sourceName) continue;
-
-    const exact = (canonicalRows as any[]).find(
-      (row) => slug(String(row.name || '')) === slug(sourceName),
-    );
-
-    const sourceDetails = Array.isArray(source.customDetails) ? source.customDetails : [];
-
-    if (exact) {
-      const currentDetails = Array.isArray(exact.custom_details) ? exact.custom_details : [];
-      const ids = new Set(currentDetails.map((item: any) => String(item?.id || '')));
-      const additions = sourceDetails.filter((item: any) => !ids.has(String(item?.id || '')));
-      if (additions.length) {
-        const merged = [...currentDetails, ...additions];
-        await sql`
-          UPDATE atlas_locations
-          SET custom_details = ${JSON.stringify(merged)}::jsonb
-          WHERE id = ${String(exact.id)}
-            AND property_id = ${PROPERTY_ID}
-        `;
-        exact.custom_details = merged;
-        updated += 1;
-        detailsAdded += additions.length;
-        updatedNames.push(sourceName);
-      }
-      continue;
-    }
-
-    const id = String(sourceRow.id || source.id || `susan-2000-location-${slug(sourceName)}`);
-    await sql`
-      INSERT INTO atlas_locations (
-        id, name, type, zone, notes, parent_id, custom_details, vendor_ids, sort_order, property_id
-      ) VALUES (
-        ${id},
-        ${sourceName},
-        ${String(source.type || 'Room')},
-        ${String(source.zone || '')},
-        ${String(source.notes || '')},
-        ${null},
-        ${JSON.stringify(sourceDetails)}::jsonb,
-        ${Array.isArray(source.vendorIds) ? source.vendorIds.map(String) : []},
-        0,
-        ${PROPERTY_ID}
-      )
-      ON CONFLICT (id) DO NOTHING
-    `;
-    canonicalRows.push({
-      id,
-      name: sourceName,
-      type: String(source.type || 'Room'),
-      zone: String(source.zone || ''),
-      notes: String(source.notes || ''),
-      parent_id: null,
-      custom_details: sourceDetails,
-      vendor_ids: Array.isArray(source.vendorIds) ? source.vendorIds.map(String) : [],
-      sort_order: 0,
-    });
-    created += 1;
-    detailsAdded += sourceDetails.length;
-    createdNames.push(sourceName);
-  }
-
-  const result = {
-    syncedAt: new Date().toISOString(),
-    atlasLocationsCreated: created,
-    atlasLocationsUpdated: updated,
-    atlasSpecificationDetailsAdded: detailsAdded,
-    atlasCreatedLocationNames: createdNames,
-    atlasUpdatedLocationNames: updatedNames,
-  };
-
-  await sql`
-    INSERT INTO atlas_operational_records (record_type, id, property_id, record, updated_at)
-    VALUES ('system_migration', ${CANONICAL_SYNC_ID}, ${PROPERTY_ID}, ${JSON.stringify(result)}::jsonb, NOW())
-    ON CONFLICT (record_type, id) DO NOTHING
-  `;
-
-  return { alreadySynced: false, ...result };
-}
-
 export async function POST() {
   try {
     const databaseUrl = getDatabaseUrl();
@@ -365,14 +246,10 @@ export async function POST() {
       LIMIT 1
     `;
     if (marker[0]) {
-      const sync = await syncImportedLocationsToAtlas(sql);
       return NextResponse.json({
         ok: true,
         alreadyImported: true,
-        ...sync,
-        message: sync.alreadySynced
-          ? "Susan Marinello specifications are already in Atlas Locations."
-          : "Susan Marinello specifications were repaired and are now visible in Atlas Locations.",
+        message: "Susan Marinello specifications were already imported. Existing edits and deletions were left untouched.",
         ...(marker[0].record || {}),
       });
     }
@@ -501,16 +378,13 @@ export async function POST() {
         updated_at = NOW()
     `;
 
-    const sync = await syncImportedLocationsToAtlas(sql);
-
     return NextResponse.json({
       ok: true,
       alreadyImported: false,
       ...result,
-      ...sync,
       message: ambiguous.length
-        ? "Imported all confident room matches and synced them into Atlas Locations. Ambiguous locations were left untouched for review."
-        : "Susan Marinello room specifications imported and synced into Atlas Locations successfully.",
+        ? "Imported all confident room matches. Ambiguous locations were left untouched for review."
+        : "Susan Marinello room specifications imported successfully.",
     });
   } catch (error) {
     console.error("Susan Marinello specification import failed:", error);
