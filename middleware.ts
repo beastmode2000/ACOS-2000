@@ -58,16 +58,6 @@ function basic(username:string,password:string){ return `Basic ${btoa(`${usernam
 function toLogin(request:NextRequest){ const u=request.nextUrl.clone(); u.pathname="/login"; u.search=""; u.searchParams.set("next",`${request.nextUrl.pathname}${request.nextUrl.search}`); return NextResponse.redirect(u); }
 
 export async function middleware(request:NextRequest){
-  if(request.nextUrl.pathname === "/request"){
-    const token=request.nextUrl.searchParams.get("token")?.trim()||"";
-    if(token){
-      const u=request.nextUrl.clone();
-      u.pathname=`/request/${encodeURIComponent(token)}`;
-      u.searchParams.delete("token");
-      return NextResponse.redirect(u);
-    }
-  }
-
   if(isPublicPath(request)) return NextResponse.next();
   const adminUser=process.env.ATLAS_ACCESS_USERNAME||"";
   const adminPass=process.env.ATLAS_ACCESS_PASSWORD||"";
