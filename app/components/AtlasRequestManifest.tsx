@@ -13,15 +13,20 @@ export default function AtlasRequestManifest() {
 
     const previousManifest = manifestLink.getAttribute("href") || "/manifest.json";
     const previousAppleTitle = appleTitle?.getAttribute("content") || "Atlas";
+    const isRequestPath = pathname === "/request" || pathname.startsWith("/request/");
 
-    if (pathname !== "/request") {
+    if (!isRequestPath) {
       manifestLink.setAttribute("href", "/manifest.json");
       if (appleTitle) appleTitle.setAttribute("content", "Atlas");
       return;
     }
 
     const currentUrl = new URL(window.location.href);
-    const token = currentUrl.searchParams.get("token")?.trim() || "";
+    const pathParts = pathname.split("/").filter(Boolean);
+    const pathToken = pathParts[0] === "request" && pathParts[1]
+      ? decodeURIComponent(pathParts[1])
+      : "";
+    const token = currentUrl.searchParams.get("token")?.trim() || pathToken;
     const propertyId = currentUrl.searchParams.get("propertyId")?.trim() || "";
 
     if (!token) {
