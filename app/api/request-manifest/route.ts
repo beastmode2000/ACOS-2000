@@ -8,23 +8,22 @@ export async function GET(request: NextRequest) {
   const propertyId = request.nextUrl.searchParams.get("propertyId")?.trim() || "";
   const isMarine = token.toLowerCase().startsWith("marine-");
 
-  const startParams = new URLSearchParams();
-  if (token) startParams.set("token", token);
-  if (propertyId) startParams.set("propertyId", propertyId);
-
-  const startUrl = startParams.size
-    ? `/request?${startParams.toString()}`
+  const suffix = propertyId
+    ? `?propertyId=${encodeURIComponent(propertyId)}`
+    : "";
+  const startUrl = token
+    ? `/request/${encodeURIComponent(token)}${suffix}`
     : "/request";
 
   const manifest = {
-    id: isMarine ? "/request?app=marine" : "/request?app=requester",
+    id: isMarine ? "/request/app/marine" : "/request/app/requester",
     name: isMarine ? "Atlas Marine Request" : "Atlas Request",
     short_name: isMarine ? "Marine Request" : "Atlas Request",
     description: isMarine
       ? "Submit marine work requests without signing in to Atlas."
       : "Submit property requests without signing in to Atlas.",
     start_url: startUrl,
-    scope: "/request",
+    scope: "/request/",
     display: "standalone",
     background_color: "#07172f",
     theme_color: "#07172f",
