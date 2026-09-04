@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 
 const PROPERTY_ID = "2000";
 const IMPORT_ID = "susan-marinello-specs-2017-v1";
+const CANONICAL_SYNC_ID = "susan-marinello-specs-2017-v2-atlas-locations";
 
 type SpecRow = {
   id: string;
@@ -18,26 +19,31 @@ type SpecRow = {
 };
 
 const specs: SpecRow[] = [
+  // PLUMBING — Susan Merinello Interior Specifications.pdf
   { id:"pl-p1-1", locations:["Kitchen 103"], category:"Plumbing", item:"Main Sink", code:"P-1.1", details:["Description: True Undermount Sink","Manufacturer: Waterworks","Model: KRSK30","Finish: Stainless Steel","Size: 35-3/4 x 18-1/2 x 10-5/8"], source:"Susan Merinello Interior Specifications.pdf · page 1" },
   { id:"pl-p1-2", locations:["Kitchen 103"], category:"Plumbing", item:"Main Faucet", code:"P-1.2", details:["Description: Kitchen Faucet","Manufacturer: Kallista","Line: Vir Stil Minimal by Laura Kirar","Model: P23071-00","Finish: Brushed Nickel"], source:"Susan Merinello Interior Specifications.pdf · page 1" },
   { id:"pl-p1-3", locations:["Kitchen 103"], category:"Plumbing", item:"Garbage Disposal", code:"P-1.3", details:["Description: Food Waste Disposal","Manufacturer: InSinkErator","Line: Evolution Series","Model: Excel"], source:"Susan Merinello Interior Specifications.pdf · page 1" },
   { id:"pl-p1-4", locations:["Kitchen 103"], category:"Plumbing", item:"Hot/Cold Faucet", code:"P-1.4", details:["Description: Hot and Cold Filtration Faucet","Manufacturer: Franke","Line: Hot and Filtered Cold Water Dispenser","Model: LB3280","Finish: Satin Nickel"], source:"Susan Merinello Interior Specifications.pdf · page 1" },
   { id:"pl-p2-1", locations:["Kitchen 103"], category:"Plumbing", item:"Prep Sink", code:"P-2.1", details:["Description: Undermount Sink with center drain","Manufacturer: Waterworks","Model: KRSK110","Finish: Stainless Steel","Size: 19-3/4 x 17-3/4 x 9-1/2"], source:"Susan Merinello Interior Specifications.pdf · page 1" },
   { id:"pl-p2-2", locations:["Kitchen 103"], category:"Plumbing", item:"Prep Faucet", code:"P-2.2", details:["Description: Entertainment Faucet","Manufacturer: Kallista","Line: Vir Stil Minimal by Laura Kirar","Model: P23072-00","Finish: Brushed Nickel"], source:"Susan Merinello Interior Specifications.pdf · page 2" },
+
   { id:"pl-p4-1", locations:["Laundry E112"], category:"Plumbing", item:"Sink", code:"P-4.1", details:["Status: REUSE EXISTING"], source:"Susan Merinello Interior Specifications.pdf · page 2" },
   { id:"pl-p4-2", locations:["Laundry E112"], category:"Plumbing", item:"Faucet", code:"P-4.2", details:["Status: REUSE EXISTING"], source:"Susan Merinello Interior Specifications.pdf · page 2" },
   { id:"pl-p4-3", locations:["Laundry E112"], category:"Plumbing", item:"Garbage Disposal", code:"P-4.3", details:["Status: REUSE EXISTING"], source:"Susan Merinello Interior Specifications.pdf · page 2" },
+
   { id:"pl-p6-1", locations:["Nanny Bathroom 106"], category:"Plumbing", item:"Sink", code:"P-6.1", details:["Description: Undercounter Lavatory","Manufacturer: Kohler","Model: K-2214 Ladena","Finish: Vitreous China in White","Size: 20-7/8 L x 14-3/8 W x 8-1/8 D"], source:"Susan Merinello Interior Specifications.pdf · page 3" },
   { id:"pl-p6-2", locations:["Nanny Bathroom 106"], category:"Plumbing", item:"Lavatory Faucet", code:"P-6.2", details:["Description: Widespread Bathroom Sink Faucet","Manufacturer: Kohler","Model: Purist K-14406-4","Finish: Brushed Nickel (BN)"], source:"Susan Merinello Interior Specifications.pdf · page 3" },
   { id:"pl-p7", locations:["Nanny Bathroom 106"], category:"Plumbing", item:"Toilet", code:"P-7", details:["Description: One-piece High Efficiency Toilet","Manufacturer: Toto","Line: Legato","Model: MS624214CEF"], source:"Susan Merinello Interior Specifications.pdf · page 3" },
   { id:"pl-p8", locations:["Nanny Bathroom 106"], category:"Plumbing", item:"Tub/Shower Trim Set", code:"P-8", details:["Description: Rite-Temp Pressure Balance Trim Set","Manufacturer: Kohler","Line: Purist","Model: K-T14420-4","Finish: Brushed Nickel (BN)"], source:"Susan Merinello Interior Specifications.pdf · page 3" },
   { id:"pl-p9", locations:["Nanny Bathroom 106"], category:"Plumbing", item:"Bathtub", code:"P-9", details:["Description: Undermount Bathtub","Manufacturer: Zuma Collection","Model: C6634","Finish: White"], source:"Susan Merinello Interior Specifications.pdf · page 4" },
+
   { id:"pl-p10-1", locations:["Pool Bathroom 108"], category:"Plumbing", item:"Sink", code:"P-10.1", details:["Description: Washbasin","Manufacturer: Duravit","Model: 231980","Finish: White"], source:"Susan Merinello Interior Specifications.pdf · page 4" },
   { id:"pl-p10-2", locations:["Pool Bathroom 108"], category:"Plumbing", item:"Lavatory Faucet", code:"P-10.2", details:["Description: Single Hole Faucet","Manufacturer: Hansgrohe","Line: Axor Citterio","Model: 39010821","Finish: Satin Nickel"], source:"Susan Merinello Interior Specifications.pdf · page 4" },
   { id:"pl-p11", locations:["Pool Bathroom 108"], category:"Plumbing", item:"Toilet", code:"P-11", details:["Description: One-piece High Efficiency Toilet","Manufacturer: Toto","Line: Legato","Model: MS624214CEF"], source:"Susan Merinello Interior Specifications.pdf · page 4" },
   { id:"pl-p12-1-trim", locations:["Pool Bathroom 108"], category:"Plumbing", item:"Thermostatic Trim with Volume Control", code:"P-12.1", details:["Manufacturer: Hansgrohe","Line: Axor Citterio","Model: 39700821","Finish: Satin Nickel"], source:"Susan Merinello Interior Specifications.pdf · page 4" },
   { id:"pl-p12-1-head", locations:["Pool Bathroom 108"], category:"Plumbing", item:"Shower Head", code:"P-12.1", details:["Description: Raindance Showerhead","Manufacturer: Hansgrohe","Line: Raindance S 150 AIR 1-jet Showerhead","Finish: Brushed Nickel"], source:"Susan Merinello Interior Specifications.pdf · page 5" },
   { id:"pl-p12-2", locations:["Pool Bathroom 108"], category:"Plumbing", item:"Shower Drain", code:"P-12.2", details:["Description: Cast Iron Shower Drain","Manufacturer: Zurn","Line: Light Commercial","Model: FD2254-CI-SS-CP","Finish: Polished Nickel"], source:"Susan Merinello Interior Specifications.pdf · page 5" },
+
   { id:"pl-p13-1", locations:["Master Bathroom 208"], category:"Plumbing", item:"Sink Faucet", code:"P-13.1", details:["Description: One Basin Faucet Set","Manufacturer: Kallista","Line: One","Model: P24492-CR","Finish: Nickel Silver"], source:"Susan Merinello Interior Specifications.pdf · page 5" },
   { id:"pl-p13-2", locations:["Master Bathroom 208"], category:"Plumbing", item:"Sink", code:"P-13.2", details:["Description: Undercounter Lavatory","Manufacturer: Kohler","Model: K-2214 Ladena","Finish: Vitreous China in White","Size: 20-7/8 L x 14-3/8 W x 8-1/8 D"], source:"Susan Merinello Interior Specifications.pdf · page 5" },
   { id:"pl-p14", locations:["Master Bathroom 208"], category:"Plumbing", item:"Toilet", code:"P-14", details:["Description: Neorest 750H Dual Flush Toilet","Manufacturer: Toto","Line: Neorest 750H Dual Flush Toilet","Model: MS993CUMFX#01","Finish: #01 Cotton"], source:"Susan Merinello Interior Specifications.pdf · page 5" },
@@ -50,27 +56,33 @@ const specs: SpecRow[] = [
   { id:"pl-p16-5", locations:["Master Bathroom 208"], category:"Plumbing", item:"Hand Shower Slider Bar", code:"P-16.5", details:["Description: Slidebar","Manufacturer: Kallista","Line: One","Finish: Nickel Silver"], source:"Susan Merinello Interior Specifications.pdf · page 7" },
   { id:"pl-p16-6", locations:["Master Bathroom 208"], category:"Plumbing", item:"Hand Shower", code:"P-16.6", details:["Description: Water Dual Function Handshower with hose","Manufacturer: Kallista","Line: One","Model: P24443-00","Finish: Nickel Silver"], source:"Susan Merinello Interior Specifications.pdf · page 7" },
   { id:"pl-p16-7", locations:["Master Bathroom 208"], category:"Plumbing", item:"Shower Drain", code:"P-16.7", details:["Description: Linear Shower Drain","Manufacturer: QuickDrain USA","Line: Proline linear drain","Model/Length: TBD","Finish: TBD"], source:"Susan Merinello Interior Specifications.pdf · page 7" },
+
   { id:"pl-p17-1", locations:["Micah's Bathroom E207"], category:"Plumbing", item:"Sink", code:"P-17.1", details:["Description: Undercounter Lavatory","Manufacturer: Kohler","Model: K-2214 Ladena","Finish: Vitreous China in White"], source:"Susan Merinello Interior Specifications.pdf · page 7" },
   { id:"pl-p17-2", locations:["Micah's Bathroom E207"], category:"Plumbing", item:"Lavatory Faucet", code:"P-17.2", details:["Description: Widespread Bathroom Sink Faucet","Manufacturer: Kohler","Line: Purist","Model: K-14406-4","Finish: Brushed Nickel (BN)"], source:"Susan Merinello Interior Specifications.pdf · page 8" },
   { id:"pl-p18", locations:["Micah's Bathroom E207"], category:"Plumbing", item:"Toilet", code:"P-18", details:["Description: One-piece High Efficiency Toilet","Manufacturer: Toto","Line: Legato","Model: MS624214CEF"], source:"Susan Merinello Interior Specifications.pdf · page 8" },
   { id:"pl-p19-1", locations:["Micah's Bathroom E207"], category:"Plumbing", item:"Shower Head", code:"P-19.1", details:["Description: Multifunction Wall Mount Showerhead","Manufacturer: Kohler","Line: Purist","Finish: Brushed Nickel (BN)"], source:"Susan Merinello Interior Specifications.pdf · page 8" },
   { id:"pl-p19-2", locations:["Micah's Bathroom E207"], category:"Plumbing", item:"Shower Trim Set", code:"P-19.2", details:["Description: Rite-Temp Pressure Balance Valve","Manufacturer: Kohler","Line: Purist","Finish: Brushed Nickel"], source:"Susan Merinello Interior Specifications.pdf · page 8" },
   { id:"pl-p19-3", locations:["Micah's Bathroom E207"], category:"Plumbing", item:"Shower Drain", code:"P-19.3", details:["Description: Cast Iron Shower Drain","Manufacturer: Zurn","Line: Light Commercial","Model: FD2254-CI-SS-CP","Finish: Polished Nickel"], source:"Susan Merinello Interior Specifications.pdf · page 8" },
+
   { id:"pl-p20-1", locations:["Elliott & Elan's Bathroom 205"], category:"Plumbing", item:"Sink", code:"P-20.1", details:["Description: Undercounter Lavatory","Manufacturer: Kohler","Model: K-2214 Ladena","Finish: Vitreous China in White"], source:"Susan Merinello Interior Specifications.pdf · page 9" },
   { id:"pl-p20-2", locations:["Elliott & Elan's Bathroom 205"], category:"Plumbing", item:"Lavatory Faucet", code:"P-20.2", details:["Description: Widespread Bathroom Sink Faucet","Manufacturer: Kohler","Line: Purist","Model: K-14406-4","Finish: Brushed Nickel (BN)"], source:"Susan Merinello Interior Specifications.pdf · page 9" },
   { id:"pl-p21", locations:["Elliott & Elan's Bathroom 205"], category:"Plumbing", item:"Toilet", code:"P-21", details:["Description: One-piece High Efficiency Toilet","Manufacturer: Toto","Line: Legato","Model: MS624214CEF"], source:"Susan Merinello Interior Specifications.pdf · page 9" },
   { id:"pl-p22", locations:["Elliott & Elan's Bathroom 205"], category:"Plumbing", item:"Shower Trim Set", code:"P-22", details:["Manufacturer: Kohler","Line: Purist","Model: K-T14420-4","Finish: Brushed Nickel (BN)"], source:"Susan Merinello Interior Specifications.pdf · page 9" },
   { id:"pl-p24", locations:["Elliott & Elan's Bathroom 205"], category:"Plumbing", item:"Shower Base", code:"P-24", details:["Finish: White","Model: TBD"], source:"Susan Merinello Interior Specifications.pdf · page 9" },
   { id:"pl-p24-1-drain", locations:["Elliott & Elan's Bathroom 205"], category:"Plumbing", item:"Shower Drain", code:"P-24.1", details:["Description: Cast Iron Shower Drain","Manufacturer: Zurn","Line: Light Commercial","Model: FD2254-CI-SS-CP","Finish: Polished Nickel"], source:"Susan Merinello Interior Specifications.pdf · page 10" },
+
   { id:"pl-p24-1-evi", locations:["Evi's Bathroom 201"], category:"Plumbing", item:"Sink", code:"P-24.1", details:["Description: Undercounter Lavatory","Manufacturer: Kohler","Model: K-2214 Ladena","Finish: Vitreous China in White"], source:"Susan Merinello Interior Specifications.pdf · page 10" },
   { id:"pl-p24-2-evi", locations:["Evi's Bathroom 201"], category:"Plumbing", item:"Lavatory Faucet", code:"P-24.2", details:["Description: Widespread Faucet","Manufacturer: Brizo","Line: Rook","Finish: Luxe Nickel"], source:"Susan Merinello Interior Specifications.pdf · page 10" },
   { id:"pl-p25", locations:["Evi's Bathroom 201"], category:"Plumbing", item:"Toilet", code:"P-25", details:["Description: One-piece High Efficiency Toilet","Manufacturer: Toto","Line: Legato","Model: MS624214CEF"], source:"Susan Merinello Interior Specifications.pdf · page 10" },
   { id:"pl-p26-1", locations:["Evi's Bathroom 201"], category:"Plumbing", item:"Shower / Tub Set", code:"P-26.1", details:["Description: TempAssure Thermostatic Tub/Shower","Manufacturer: Brizo","Line: Rook","Finish: Luxe Nickel"], source:"Susan Merinello Interior Specifications.pdf · page 10" },
   { id:"pl-p27", locations:["Evi's Bathroom 201"], category:"Plumbing", item:"Bathtub", code:"P-27", details:["Description: Undermount Bathtub","Manufacturer: Zuma Collection","Model: C6634","Finish: White"], source:"Susan Merinello Interior Specifications.pdf · page 11" },
+
   { id:"pl-p28-poolbar", locations:["Pool Bar 109"], category:"Plumbing", item:"Sink", code:"P-28", details:["Description: Undermount Sink","Manufacturer: Waterworks","Finish: Stainless Steel"], source:"Susan Merinello Interior Specifications.pdf · page 11" },
   { id:"pl-p29-poolbar", locations:["Pool Bar 109"], category:"Plumbing", item:"Faucet", code:"P-29", details:["Description: Kitchen Faucet","Manufacturer: Kallista","Line: Vir Stil Minimal by Laura Kirar","Model: P23071-00","Finish: Brushed Nickel"], source:"Susan Merinello Interior Specifications.pdf · page 11" },
   { id:"pl-p28-masterbed", locations:["Master Bedroom 200"], category:"Plumbing", item:"Sink", code:"P-28", details:["Description: Undermount Sink","Manufacturer: Kohler","Line: Iron Tones","Finish: Ice Grey"], source:"Susan Merinello Interior Specifications.pdf · page 11" },
   { id:"pl-p29-masterbed", locations:["Master Bedroom 200"], category:"Plumbing", item:"Faucet", code:"P-29", details:["Description: One Pull-down Kitchen Faucet","Manufacturer: Kallista","Line: One","Finish: Brushed Nickel"], source:"Susan Merinello Interior Specifications.pdf · page 11" },
+
+  // PAINT — Susan Marinello Interior Specifications Paint List.pdf
   { id:"pt-06", locations:["Kitchen 103","Breakfast E110","Family Room E111"], category:"Paint", item:"Wall Paint", code:"PT-06", details:["Manufacturer: Benjamin Moore","Description: Regal WallSatin Latex Paint","Sheen: Eggshell"], source:"susan merinello interior specifications Paint List.pdf · page 2" },
   { id:"pt-07", locations:["Play Room 101"], category:"Paint", item:"Wall Paint", code:"PT-07", details:["Manufacturer: Benjamin Moore","Description: Regal WallSatin Latex Paint","Sheen: Eggshell"], source:"susan merinello interior specifications Paint List.pdf · page 2" },
   { id:"pt-08", locations:["Laundry E112"], category:"Paint", item:"Wall Paint", code:"PT-08", details:["Manufacturer: Benjamin Moore","Description: Regal WallSatin Latex Paint","Sheen: Eggshell"], source:"susan merinello interior specifications Paint List.pdf · page 2" },
@@ -92,6 +104,8 @@ const specs: SpecRow[] = [
   { id:"pt-23", locations:["Master Bedroom 209"], category:"Paint", item:"Wall Paint", code:"PT-23", details:["Manufacturer: Benjamin Moore","Description: Regal WallSatin Latex Paint","Sheen: Eggshell"], source:"susan merinello interior specifications Paint List.pdf · page 5" },
   { id:"pt-24", locations:["Master Bathroom 208"], category:"Paint", item:"Wall Paint", code:"PT-24", details:["Manufacturer: Benjamin Moore","Description: Regal WallSatin Latex Paint","Sheen: Eggshell"], source:"susan merinello interior specifications Paint List.pdf · page 5" },
   { id:"pt-25", locations:["Master Dressing Room 207"], category:"Paint", item:"Wall Paint", code:"PT-25", details:["Manufacturer: Benjamin Moore","Description: Regal WallSatin Latex Paint","Sheen: Eggshell"], source:"susan merinello interior specifications Paint List.pdf · page 5" },
+
+  // STONE
   { id:"st-01-kitchen", locations:["Kitchen 103","Pantry E109"], category:"Stone / Countertop", item:"Countertop", code:"ST-01", details:["Manufacturer/Supplier: Caesarstone Quartz","Material/Color: Calacatta Nuvo 5131","Size: 3 cm","Finish: Polished","Edge: Square Eased"], source:"susan merinello interior specifications Paint List.pdf · page 6" },
   { id:"st-02", locations:["Master Bathroom 208"], category:"Stone / Countertop", item:"Countertop / Backsplash / Thresholds / Shower Jamb / Tub Deck & Apron", code:"ST-02", details:["Manufacturer/Supplier: Ann Sacks","Material/Color: Reve Blue","Size: 3 cm","Finish: Honed","Edge: Square Eased"], source:"susan merinello interior specifications Paint List.pdf · page 6" },
   { id:"st-03", locations:["Micah's Bathroom E207"], category:"Stone / Countertop", item:"Countertop / Thresholds / Shower Jamb", code:"ST-03", details:["Manufacturer/Supplier: Pental Surfaces","Material/Color: Misterio Polished","Size: 3 cm","Finish: Polished","Edge: Square Eased"], source:"susan merinello interior specifications Paint List.pdf · page 6" },
@@ -103,6 +117,8 @@ const specs: SpecRow[] = [
   { id:"st-09", locations:["Pool Room 109"], category:"Stone / Countertop", item:"Countertop / Backsplash", code:"ST-09", details:["Manufacturer/Supplier: Pental Surfaces","Material/Color: Ondulato Polished","Size: 3 cm","Finish: Polished","Edge: Square Eased"], source:"susan merinello interior specifications Paint List.pdf · page 8" },
   { id:"st-10", locations:["Pool Bathroom 108"], category:"Stone / Countertop", item:"Countertop / Backsplash / Thresholds / Shower Jamb", code:"ST-10", details:["Manufacturer/Supplier: Pental Surfaces","Material/Color: Ondulato Polished","Size: 3 cm","Finish: Polished","Edge: Square Eased"], source:"susan merinello interior specifications Paint List.pdf · page 8" },
   { id:"st-11", locations:["Outdoor Dining BBQ 104"], category:"Stone / Countertop", item:"Countertop / Backsplash", code:"ST-11", details:["Specification: TBD"], source:"susan merinello interior specifications Paint List.pdf · page 8" },
+
+  // TILE
   { id:"ti-01", locations:["Master Bathroom 208"], category:"Tile", item:"Tile Flooring", code:"TI-01", details:["Supplier: Ann Sacks","Material: Reve Blue","Finish: Honed","Size: 16 x 16","Pattern: Offset"], source:"susan merinello interior specifications Paint List.pdf · page 8" },
   { id:"ti-02", locations:["Master Bathroom 208"], category:"Tile", item:"Wall & Shower Tile", code:"TI-02", details:["Supplier: Ann Sacks","Material: Reve Blue","Finish: Honed","Size: 16 x 16","Pattern: Offset"], source:"susan merinello interior specifications Paint List.pdf · page 9" },
   { id:"ti-03", locations:["Master Bathroom 208"], category:"Tile", item:"Shower Floor & Ceiling Mosaic", code:"TI-03", details:["Supplier: Ann Sacks","Material: Reve Blue","Finish: Honed","Size: 4 x 4","Pattern: Offset"], source:"susan merinello interior specifications Paint List.pdf · page 9" },
@@ -125,6 +141,8 @@ const specs: SpecRow[] = [
   { id:"ti-15", locations:["Pool Bathroom 108"], category:"Tile", item:"Shower Wall Tile", code:"TI-15", details:["Supplier: Pental Surfaces","Material: Atlas Concorde Mark","Finish: Strutturato Pearl Matte","Size: 12 x 24"], source:"susan merinello interior specifications Paint List.pdf · page 13" },
   { id:"ti-16", locations:["Pool 109"], category:"Tile", item:"Coping", code:"TI-16", details:["Specification: TBD"], source:"susan merinello interior specifications Paint List.pdf · page 13" },
   { id:"ti-17", locations:["Pool 109"], category:"Tile", item:"Pool Tile", code:"TI-17", details:["Specification: TBD"], source:"susan merinello interior specifications Paint List.pdf · page 14" },
+
+  // WOOD / CARPET
   { id:"wd-01", locations:["Main Flooring"], category:"Flooring", item:"Wood Flooring", code:"WD-01", details:["Material: Match existing","Supplier: Per contractor recommendation","Species: Match existing","Stain: Match existing","Finish: Match existing","Size: Match existing"], source:"susan merinello interior specifications Paint List.pdf · page 14" },
   { id:"wd-02", locations:["Upper Level"], category:"Flooring", item:"Wood Flooring", code:"WD-02", details:["Material: Match existing","Supplier: Per contractor recommendation","Species: Match existing","Stain: Match existing","Finish: Match existing","Size: Match existing"], source:"susan merinello interior specifications Paint List.pdf · page 14" },
   { id:"wd-03", locations:["Exercise Room 107"], category:"Flooring", item:"Wood Flooring", code:"WD-03", details:["Material: Engineered Bamboo","Supplier: Per contractor recommendation","Species: Bamboo","Stain: To match SMI control sample","Finish: To match SMI control sample","Size: TBD"], source:"susan merinello interior specifications Paint List.pdf · page 14" },
@@ -140,27 +158,39 @@ function getDatabaseUrl() {
 }
 
 function slug(value: string) {
-  return value.toLowerCase().replace(/[’']/g, "").replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 90);
+  return value
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 90);
 }
 
 function roomNumber(value: string) {
-  const match = String(value || "").match(/(?:^|[^0-9])([12][0-9]{2})(?:[^0-9]|$)/);
-  return match?.[1] || "";
+  const matches = String(value || "").match(/(?:^|[^0-9])([12][0-9]{2})(?:[^0-9]|$)/g);
+  if (!matches?.length) return "";
+  const final = matches[0].match(/([12][0-9]{2})/);
+  return final?.[1] || "";
 }
 
 function words(value: string) {
-  return slug(value).split("-").filter((word) => word.length > 2 && !["room","bathroom","bedroom","the","and"].includes(word));
+  return slug(value)
+    .split("-")
+    .filter((word) => word.length > 2 && !["room","bathroom","bedroom","the","and"].includes(word));
 }
 
 function scoreLocation(targetName: string, existingName: string) {
   const target = slug(targetName);
   const existing = slug(existingName);
   if (target === existing) return 1000;
+
   const tNum = roomNumber(targetName);
   const eNum = roomNumber(existingName);
   let score = 0;
   if (tNum && eNum && tNum === eNum) score += 500;
   if (tNum && eNum && tNum !== eNum) score -= 1000;
+
   const tWords = words(targetName);
   const eWords = new Set(words(existingName));
   for (const word of tWords) if (eWords.has(word)) score += 25;
@@ -179,7 +209,12 @@ function detailFor(spec: SpecRow) {
   return {
     id: `susan-${spec.id}`,
     label: `${spec.category} · ${spec.item}`,
-    value: [`Spec Code: ${spec.code}`, "Status: Specified", ...spec.details, `Source: ${spec.source}`].join("\n"),
+    value: [
+      `Spec Code: ${spec.code}`,
+      "Status: Specified",
+      ...spec.details,
+      `Source: ${spec.source}`,
+    ].join("\n"),
   };
 }
 
@@ -194,36 +229,171 @@ export async function GET() {
   });
 }
 
+async function syncImportedLocationsToAtlas(sql: ReturnType<typeof neon>) {
+  const existingSync = await sql`
+    SELECT id, record
+    FROM atlas_operational_records
+    WHERE record_type = 'system_migration'
+      AND id = ${CANONICAL_SYNC_ID}
+      AND property_id = ${PROPERTY_ID}
+    LIMIT 1
+  `;
+  if (existingSync[0]) {
+    return { alreadySynced: true, ...(existingSync[0].record || {}) };
+  }
+
+  const importedRows = await sql`
+    SELECT id, record
+    FROM atlas_operational_records
+    WHERE record_type = 'locations'
+      AND property_id = ${PROPERTY_ID}
+      AND id LIKE 'susan-2000-location-%'
+    ORDER BY updated_at ASC
+  `;
+
+  const canonicalRows = await sql`
+    SELECT id, name, type, zone, notes, parent_id, custom_details, vendor_ids, sort_order
+    FROM atlas_locations
+    WHERE property_id = ${PROPERTY_ID}
+    ORDER BY sort_order ASC, name ASC
+  `;
+
+  let created = 0;
+  let updated = 0;
+  let detailsAdded = 0;
+  const createdNames: string[] = [];
+  const updatedNames: string[] = [];
+
+  for (const sourceRow of importedRows as any[]) {
+    const source = sourceRow.record || {};
+    const sourceName = String(source.name || '').trim();
+    if (!sourceName) continue;
+
+    const exact = (canonicalRows as any[]).find(
+      (row) => slug(String(row.name || '')) === slug(sourceName),
+    );
+
+    const sourceDetails = Array.isArray(source.customDetails) ? source.customDetails : [];
+
+    if (exact) {
+      const currentDetails = Array.isArray(exact.custom_details) ? exact.custom_details : [];
+      const ids = new Set(currentDetails.map((item: any) => String(item?.id || '')));
+      const additions = sourceDetails.filter((item: any) => !ids.has(String(item?.id || '')));
+      if (additions.length) {
+        const merged = [...currentDetails, ...additions];
+        await sql`
+          UPDATE atlas_locations
+          SET custom_details = ${JSON.stringify(merged)}::jsonb
+          WHERE id = ${String(exact.id)}
+            AND property_id = ${PROPERTY_ID}
+        `;
+        exact.custom_details = merged;
+        updated += 1;
+        detailsAdded += additions.length;
+        updatedNames.push(sourceName);
+      }
+      continue;
+    }
+
+    const id = String(sourceRow.id || source.id || `susan-2000-location-${slug(sourceName)}`);
+    await sql`
+      INSERT INTO atlas_locations (
+        id, name, type, zone, notes, parent_id, custom_details, vendor_ids, sort_order, property_id
+      ) VALUES (
+        ${id},
+        ${sourceName},
+        ${String(source.type || 'Room')},
+        ${String(source.zone || '')},
+        ${String(source.notes || '')},
+        ${null},
+        ${JSON.stringify(sourceDetails)}::jsonb,
+        ${Array.isArray(source.vendorIds) ? source.vendorIds.map(String) : []},
+        0,
+        ${PROPERTY_ID}
+      )
+      ON CONFLICT (id) DO NOTHING
+    `;
+    canonicalRows.push({
+      id,
+      name: sourceName,
+      type: String(source.type || 'Room'),
+      zone: String(source.zone || ''),
+      notes: String(source.notes || ''),
+      parent_id: null,
+      custom_details: sourceDetails,
+      vendor_ids: Array.isArray(source.vendorIds) ? source.vendorIds.map(String) : [],
+      sort_order: 0,
+    });
+    created += 1;
+    detailsAdded += sourceDetails.length;
+    createdNames.push(sourceName);
+  }
+
+  const result = {
+    syncedAt: new Date().toISOString(),
+    atlasLocationsCreated: created,
+    atlasLocationsUpdated: updated,
+    atlasSpecificationDetailsAdded: detailsAdded,
+    atlasCreatedLocationNames: createdNames,
+    atlasUpdatedLocationNames: updatedNames,
+  };
+
+  await sql`
+    INSERT INTO atlas_operational_records (record_type, id, property_id, record, updated_at)
+    VALUES ('system_migration', ${CANONICAL_SYNC_ID}, ${PROPERTY_ID}, ${JSON.stringify(result)}::jsonb, NOW())
+    ON CONFLICT (record_type, id) DO NOTHING
+  `;
+
+  return { alreadySynced: false, ...result };
+}
+
 export async function POST() {
   try {
     const databaseUrl = getDatabaseUrl();
-    if (!databaseUrl) return NextResponse.json({ ok: false, error: "Atlas database is not connected." }, { status: 503 });
+    if (!databaseUrl) {
+      return NextResponse.json({ ok: false, error: "Atlas database is not connected." }, { status: 503 });
+    }
+
     const sql = neon(databaseUrl);
 
     const marker = await sql`
-      SELECT id, record FROM atlas_operational_records
-      WHERE record_type = 'system_migration' AND id = ${IMPORT_ID} AND property_id = ${PROPERTY_ID}
+      SELECT id, record
+      FROM atlas_operational_records
+      WHERE record_type = 'system_migration'
+        AND id = ${IMPORT_ID}
+        AND property_id = ${PROPERTY_ID}
       LIMIT 1
     `;
     if (marker[0]) {
+      const sync = await syncImportedLocationsToAtlas(sql);
       return NextResponse.json({
         ok: true,
         alreadyImported: true,
-        message: "Susan Marinello specifications were already imported. Existing edits and deletions were left untouched.",
+        ...sync,
+        message: sync.alreadySynced
+          ? "Susan Marinello specifications are already in Atlas Locations."
+          : "Susan Marinello specifications were repaired and are now visible in Atlas Locations.",
         ...(marker[0].record || {}),
       });
     }
 
     const rows = await sql`
-      SELECT id, record FROM atlas_operational_records
-      WHERE record_type = 'locations' AND property_id = ${PROPERTY_ID}
+      SELECT id, record
+      FROM atlas_operational_records
+      WHERE record_type = 'locations'
+        AND property_id = ${PROPERTY_ID}
       ORDER BY updated_at DESC
     `;
+
     const current = rows.map((row: any) => ({
       id: String(row.id || row.record?.id || ""),
       record: { ...(row.record || {}), id: String(row.id || row.record?.id || "") } as Record<string, any>,
     }));
-    const root = current.find((item) => slug(String(item.record.name || "")) === "2000") || current.find((item) => !item.record.parentId);
+
+    const root =
+      current.find((item) => slug(String(item.record.name || "")) === "2000") ||
+      current.find((item) => !item.record.parentId);
+
     const targetNames = Array.from(new Set(specs.flatMap((item) => item.locations)));
     const locationByTarget = new Map<string, { id: string; record: Record<string, any>; created: boolean }>();
     const ambiguous: Array<{ target: string; matches: string[] }> = [];
@@ -234,17 +404,31 @@ export async function POST() {
         .map((item) => ({ ...item, score: scoreLocation(target, String(item.record.name || "")) }))
         .filter((item) => item.score >= 100)
         .sort((a, b) => b.score - a.score);
+
       let match = ranked[0];
-      if (ranked.length > 1 && ranked[0].score === ranked[1].score && ranked[0].score < 1000) {
+      if (
+        ranked.length > 1 &&
+        ranked[0].score === ranked[1].score &&
+        ranked[0].score < 1000
+      ) {
         ambiguous.push({ target, matches: ranked.slice(0, 4).map((item) => String(item.record.name || item.id)) });
         continue;
       }
+
       if (!match) {
         const id = `susan-2000-location-${slug(target)}`;
         const record = {
           id,
           name: target,
-          type: /bathroom/i.test(target) ? "Bathroom" : /bedroom|nanny'?s room/i.test(target) ? "Bedroom" : /kitchen/i.test(target) ? "Kitchen" : /pool/i.test(target) ? "Area" : "Room",
+          type: /bathroom/i.test(target)
+            ? "Bathroom"
+            : /bedroom|nanny'?s room/i.test(target)
+              ? "Bedroom"
+              : /kitchen/i.test(target)
+                ? "Kitchen"
+                : /pool/i.test(target)
+                  ? "Area"
+                  : "Room",
           zone: "",
           notes: "",
           parentId: root?.id || "",
@@ -260,17 +444,21 @@ export async function POST() {
         current.push({ id, record });
         createdLocations.push(target);
       }
+
       locationByTarget.set(target, { id: match.id, record: match.record, created: createdLocations.includes(target) });
     }
 
     let addedDetails = 0;
     const touchedIds = new Set<string>();
+
     for (const spec of specs) {
       for (const target of spec.locations) {
         const location = locationByTarget.get(target);
         if (!location) continue;
         const detail = detailFor(spec);
-        const existingDetails = Array.isArray(location.record.customDetails) ? [...location.record.customDetails] : [];
+        const existingDetails = Array.isArray(location.record.customDetails)
+          ? [...location.record.customDetails]
+          : [];
         if (existingDetails.some((item: any) => String(item?.id || "") === detail.id)) continue;
         existingDetails.push(detail);
         location.record = { ...location.record, customDetails: existingDetails };
@@ -280,19 +468,20 @@ export async function POST() {
     }
 
     for (const id of touchedIds) {
-      const item = Array.from(locationByTarget.values()).find((value) => value.id === id) || current.find((value) => value.id === id);
+      const item =
+        Array.from(locationByTarget.values()).find((value) => value.id === id) ||
+        current.find((value) => value.id === id);
       if (!item) continue;
+      const record = item.record;
       await sql`
         UPDATE atlas_operational_records
-        SET record = ${JSON.stringify(item.record)}::jsonb, updated_at = NOW()
-        WHERE record_type = 'locations' AND id = ${id} AND property_id = ${PROPERTY_ID}
+        SET record = ${JSON.stringify(record)}::jsonb, updated_at = NOW()
+        WHERE record_type = 'locations'
+          AND id = ${id}
+          AND property_id = ${PROPERTY_ID}
       `;
     }
 
-    const createdTouched = createdLocations.filter((name) => {
-      const location = locationByTarget.get(name);
-      return Boolean(location && touchedIds.has(location.id));
-    }).length;
     const result = {
       importedAt: new Date().toISOString(),
       sourcePages: 27,
@@ -300,26 +489,34 @@ export async function POST() {
       specificationDetailsAdded: addedDetails,
       locationsCreated: createdLocations,
       locationsCreatedCount: createdLocations.length,
-      locationsUpdatedCount: Math.max(0, touchedIds.size - createdTouched),
+      locationsUpdatedCount: touchedIds.size - createdLocations.filter((name) => locationByTarget.get(name) && touchedIds.has(locationByTarget.get(name)!.id)).length,
       ambiguous,
     };
 
     await sql`
       INSERT INTO atlas_operational_records (record_type, id, property_id, record, updated_at)
       VALUES ('system_migration', ${IMPORT_ID}, ${PROPERTY_ID}, ${JSON.stringify(result)}::jsonb, NOW())
-      ON CONFLICT (record_type, id) DO UPDATE SET record = EXCLUDED.record, updated_at = NOW()
+      ON CONFLICT (record_type, id) DO UPDATE SET
+        record = EXCLUDED.record,
+        updated_at = NOW()
     `;
+
+    const sync = await syncImportedLocationsToAtlas(sql);
 
     return NextResponse.json({
       ok: true,
       alreadyImported: false,
       ...result,
+      ...sync,
       message: ambiguous.length
-        ? "Imported all confident room matches. Ambiguous locations were left untouched for review."
-        : "Susan Marinello room specifications imported successfully.",
+        ? "Imported all confident room matches and synced them into Atlas Locations. Ambiguous locations were left untouched for review."
+        : "Susan Marinello room specifications imported and synced into Atlas Locations successfully.",
     });
   } catch (error) {
     console.error("Susan Marinello specification import failed:", error);
-    return NextResponse.json({ ok: false, error: "Atlas could not import the Susan Marinello specifications." }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "Atlas could not import the Susan Marinello specifications." },
+      { status: 500 },
+    );
   }
 }
