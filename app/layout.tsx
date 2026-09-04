@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import AtlasLocationsPolish from "./components/AtlasLocationsPolish";
+import AtlasRequestManifest from "./components/AtlasRequestManifest";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -39,6 +40,7 @@ export default function RootLayout({
       </head>
 
       <body>
+        <AtlasRequestManifest />
         <AtlasLocationsPolish />
         {children}
       </body>
