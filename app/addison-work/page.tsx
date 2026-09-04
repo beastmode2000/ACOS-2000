@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
 
 type LandscapeStatus = "Not Started" | "In Progress" | "Complete" | "Needs Review";
@@ -144,6 +144,8 @@ export default function LandscapeHelpPage() {
   const [addisonData, setAddisonData] = useState<AddisonWorkData | null>(null);
   const [addisonSync, setAddisonSync] = useState<"saved" | "syncing" | "offline">("saved");
   const [uploadingItemId, setUploadingItemId] = useState("");
+  const addisonRequestVersionRef = useRef(0);
+  const addisonMutationInFlightRef = useRef(false);
 
   useEffect(() => {
     const token = getLandscapeShareTokenFromUrl();
@@ -167,6 +169,8 @@ export default function LandscapeHelpPage() {
 
   async function patchAddison(action: string, payload: Record<string, unknown>) {
     if (!shareToken) return;
+    const requestVersion = ++addisonRequestVersionRef.current;
+    addisonMutationInFlightRef.current = true;
     setSaving(true);
     setAddisonSync("syncing");
     setMessage("");
@@ -178,7 +182,13 @@ export default function LandscapeHelpPage() {
       });
       const data = await readLandscapeJson(response, "Could not save Addison work.");
       if (!data.ok) throw new Error(data.error || "Could not save Addison work.");
-      if (data.mode === "addison" && data.addison) setAddisonData(data.addison);
+      if (
+        requestVersion === addisonRequestVersionRef.current &&
+        data.mode === "addison" &&
+        data.addison
+      ) {
+        setAddisonData(data.addison);
+      }
       setAddisonSync("saved");
       if (action === "task-status" && String(payload.status || "") === "Completed") {
         const savedTask = Array.isArray(data.addison?.tasks)
@@ -198,7 +208,11 @@ export default function LandscapeHelpPage() {
       setAddisonSync("offline");
       setMessage(error instanceof Error ? error.message : "Could not save Addison work.");
     } finally {
+      addisonMutationInFlightRef.current = false;
       setSaving(false);
+      if (action === "task-status") {
+        void loadCurrentWeek(shareToken, false);
+      }
     }
   }
 
@@ -246,6 +260,9 @@ export default function LandscapeHelpPage() {
   }, [origin, week]);
 
   async function loadCurrentWeek(tokenOverride = shareToken, showLoading = true) {
+    if (!showLoading && addisonMutationInFlightRef.current) return;
+    const requestVersion = ++addisonRequestVersionRef.current;
+
     if (showLoading) {
       setLoading(true);
       setMessage("");
@@ -256,9 +273,14 @@ export default function LandscapeHelpPage() {
       const data = await readLandscapeJson(response, "Could not load Landscape Help.");
 
       if (!data.ok) throw new Error(data.error || "Could not load Landscape Help.");
+      if (requestVersion !== addisonRequestVersionRef.current) return;
 
       if (data.mode === "addison" && data.addison) {
         setAddisonData(data.addison);
+        setAddisonSync("saved");
+        if (!showLoading) {
+          setMessage((current) => current === "Failed to fetch" ? "" : current);
+        }
         setWeek(null);
         setItems([]);
         setWeeks([]);
@@ -271,7 +293,11 @@ export default function LandscapeHelpPage() {
       setWeeks(data.weeks || []);
     } catch (error) {
       const text = error instanceof Error ? error.message : "Could not load Landscape Help.";
-      setMessage(text);
+      if (showLoading) {
+        setMessage(text);
+      } else {
+        setAddisonSync("offline");
+      }
     } finally {
       if (showLoading) setLoading(false);
     }
