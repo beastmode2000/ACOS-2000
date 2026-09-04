@@ -166,44 +166,6 @@ function slug(value: string) {
     .slice(0, 90);
 }
 
-function roomNumber(value: string) {
-  const matches = String(value || "").match(/(?:^|[^0-9])([12][0-9]{2})(?:[^0-9]|$)/g);
-  if (!matches?.length) return "";
-  const final = matches[0].match(/([12][0-9]{2})/);
-  return final?.[1] || "";
-}
-
-function words(value: string) {
-  return slug(value)
-    .split("-")
-    .filter((word) => word.length > 2 && !["room","bathroom","bedroom","the","and"].includes(word));
-}
-
-function scoreLocation(targetName: string, existingName: string) {
-  const target = slug(targetName);
-  const existing = slug(existingName);
-  if (target === existing) return 1000;
-
-  const tNum = roomNumber(targetName);
-  const eNum = roomNumber(existingName);
-  let score = 0;
-  if (tNum && eNum && tNum === eNum) score += 500;
-  if (tNum && eNum && tNum !== eNum) score -= 1000;
-
-  const tWords = words(targetName);
-  const eWords = new Set(words(existingName));
-  for (const word of tWords) if (eWords.has(word)) score += 25;
-  if (target.includes("micah") && existing.includes("micah")) score += 100;
-  if (target.includes("evi") && existing.includes("evi")) score += 100;
-  if (target.includes("elliott") && existing.includes("elliott")) score += 70;
-  if (target.includes("elan") && existing.includes("elan")) score += 70;
-  if (target.includes("master") && existing.includes("master")) score += 80;
-  if (target.includes("nanny") && existing.includes("nanny")) score += 80;
-  if (target.includes("pool") && existing.includes("pool")) score += 60;
-  if (target.includes("kitchen") && existing.includes("kitchen")) score += 100;
-  return score;
-}
-
 function detailFor(spec: SpecRow) {
   return {
     id: `susan-${spec.id}`,
@@ -217,6 +179,75 @@ function detailFor(spec: SpecRow) {
   };
 }
 
+function typeForLocation(name: string) {
+  if (/bathroom/i.test(name)) return "Bathroom";
+  if (/bedroom|nanny'?s room/i.test(name)) return "Bedroom";
+  if (/kitchen/i.test(name)) return "Kitchen";
+  if (/pool/i.test(name)) return "Area";
+  return "Room / Area";
+}
+
+async function ensureLocationColumns(sql: ReturnType<typeof neon>) {
+  await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
+  await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS parent_id text`;
+  await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS custom_details jsonb NOT NULL DEFAULT '[]'::jsonb`;
+  await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS vendor_ids text[] NOT NULL DEFAULT '{}'`;
+  await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 0`;
+}
+
+async function verification(sql: ReturnType<typeof neon>) {
+  const expectedByName = new Map<string, Set<string>>();
+  for (const spec of specs) {
+    for (const locationName of spec.locations) {
+      const key = slug(locationName);
+      if (!expectedByName.has(key)) expectedByName.set(key, new Set<string>());
+      expectedByName.get(key)!.add(`susan-${spec.id}`);
+    }
+  }
+
+  const rows = await sql`
+    SELECT id, name, custom_details
+    FROM atlas_locations
+    WHERE property_id = ${PROPERTY_ID}
+  `;
+
+  let verifiedLocations = 0;
+  let verifiedDetails = 0;
+  const missingLocations: string[] = [];
+  const missingDetails: Array<{ location: string; count: number }> = [];
+
+  for (const [nameKey, expectedIds] of expectedByName.entries()) {
+    const expectedName = Array.from(new Set(specs.flatMap((spec) => spec.locations)))
+      .find((name) => slug(name) === nameKey) || nameKey;
+    const row = (rows as any[]).find((item) => slug(String(item.name || "")) === nameKey);
+    if (!row) {
+      missingLocations.push(expectedName);
+      continue;
+    }
+    verifiedLocations += 1;
+    const details = Array.isArray(row.custom_details) ? row.custom_details : [];
+    const presentIds = new Set(details.map((detail: any) => String(detail?.id || "")));
+    let present = 0;
+    for (const id of expectedIds) if (presentIds.has(id)) present += 1;
+    verifiedDetails += present;
+    if (present !== expectedIds.size) {
+      missingDetails.push({ location: expectedName, count: expectedIds.size - present });
+    }
+  }
+
+  return {
+    verifiedLocations,
+    verifiedDetails,
+    expectedLocations: expectedByName.size,
+    expectedDetails: specs.reduce((total, spec) => total + spec.locations.length, 0),
+    missingLocations,
+    missingDetails,
+    complete:
+      missingLocations.length === 0 &&
+      missingDetails.length === 0,
+  };
+}
+
 export async function GET() {
   return NextResponse.json({
     ok: true,
@@ -224,7 +255,8 @@ export async function GET() {
     importId: IMPORT_ID,
     sourcePages: 27,
     specificationRows: specs.length,
-    locationNames: Array.from(new Set(specs.flatMap((item) => item.locations))).sort(),
+    expectedLocations: new Set(specs.flatMap((item) => item.locations.map(slug))).size,
+    expectedDetails: specs.reduce((total, spec) => total + spec.locations.length, 0),
   });
 }
 
@@ -232,159 +264,204 @@ export async function POST() {
   try {
     const databaseUrl = getDatabaseUrl();
     if (!databaseUrl) {
-      return NextResponse.json({ ok: false, error: "Atlas database is not connected." }, { status: 503 });
+      return NextResponse.json(
+        { ok: false, error: "Atlas database is not connected." },
+        { status: 503 },
+      );
     }
 
     const sql = neon(databaseUrl);
+    await ensureLocationColumns(sql);
 
-    const marker = await sql`
+    const FINAL_IMPORT_ID = "susan-marinello-specs-2017-atlas-locations-v3";
+    const existingFinal = await sql`
       SELECT id, record
       FROM atlas_operational_records
       WHERE record_type = 'system_migration'
-        AND id = ${IMPORT_ID}
+        AND id = ${FINAL_IMPORT_ID}
         AND property_id = ${PROPERTY_ID}
       LIMIT 1
     `;
-    if (marker[0]) {
+
+    if (existingFinal[0]) {
+      const check = await verification(sql);
       return NextResponse.json({
         ok: true,
         alreadyImported: true,
-        message: "Susan Marinello specifications were already imported. Existing edits and deletions were left untouched.",
-        ...(marker[0].record || {}),
+        sourcePages: 27,
+        specificationRows: specs.length,
+        specificationDetailsAdded: 0,
+        locationsCreated: [],
+        locationsCreatedCount: 0,
+        locationsUpdatedCount: 0,
+        ...check,
+        message: check.complete
+          ? "All Susan Marinello room specifications are already visible in Atlas Locations."
+          : "The prior import marker exists, but verification found missing Atlas Location data. Remove the v3 marker before retrying.",
       });
     }
 
-    const rows = await sql`
-      SELECT id, record
-      FROM atlas_operational_records
-      WHERE record_type = 'locations'
-        AND property_id = ${PROPERTY_ID}
-      ORDER BY updated_at DESC
+    const currentRows = await sql`
+      SELECT id, name, type, zone, notes, parent_id, custom_details, vendor_ids, sort_order
+      FROM atlas_locations
+      WHERE property_id = ${PROPERTY_ID}
+      ORDER BY sort_order ASC, name ASC
     `;
 
-    const current = rows.map((row: any) => ({
-      id: String(row.id || row.record?.id || ""),
-      record: { ...(row.record || {}), id: String(row.id || row.record?.id || "") } as Record<string, any>,
+    const current = (currentRows as any[]).map((row) => ({
+      id: String(row.id || ""),
+      name: String(row.name || ""),
+      type: String(row.type || ""),
+      zone: String(row.zone || ""),
+      notes: String(row.notes || ""),
+      parentId: String(row.parent_id || ""),
+      customDetails: Array.isArray(row.custom_details) ? row.custom_details : [],
+      vendorIds: Array.isArray(row.vendor_ids) ? row.vendor_ids.map(String) : [],
+      sortOrder: Number(row.sort_order || 0),
     }));
 
-    const root =
-      current.find((item) => slug(String(item.record.name || "")) === "2000") ||
-      current.find((item) => !item.record.parentId);
-
     const targetNames = Array.from(new Set(specs.flatMap((item) => item.locations)));
-    const locationByTarget = new Map<string, { id: string; record: Record<string, any>; created: boolean }>();
-    const ambiguous: Array<{ target: string; matches: string[] }> = [];
-    const createdLocations: string[] = [];
+    const locationByTarget = new Map<string, { id: string; name: string; customDetails: any[]; created: boolean }>();
+    const locationsCreated: string[] = [];
+    const updatedLocationIds = new Set<string>();
+    let specificationDetailsAdded = 0;
 
     for (const target of targetNames) {
-      const ranked = current
-        .map((item) => ({ ...item, score: scoreLocation(target, String(item.record.name || "")) }))
-        .filter((item) => item.score >= 100)
-        .sort((a, b) => b.score - a.score);
-
-      let match = ranked[0];
-      if (
-        ranked.length > 1 &&
-        ranked[0].score === ranked[1].score &&
-        ranked[0].score < 1000
-      ) {
-        ambiguous.push({ target, matches: ranked.slice(0, 4).map((item) => String(item.record.name || item.id)) });
+      const exact = current.find((item) => slug(item.name) === slug(target));
+      if (exact) {
+        locationByTarget.set(target, {
+          id: exact.id,
+          name: exact.name,
+          customDetails: [...exact.customDetails],
+          created: false,
+        });
         continue;
       }
 
-      if (!match) {
-        const id = `susan-2000-location-${slug(target)}`;
-        const record = {
+      const id = `susan-2000-location-${slug(target)}`;
+      await sql`
+        INSERT INTO atlas_locations (
           id,
-          name: target,
-          type: /bathroom/i.test(target)
-            ? "Bathroom"
-            : /bedroom|nanny'?s room/i.test(target)
-              ? "Bedroom"
-              : /kitchen/i.test(target)
-                ? "Kitchen"
-                : /pool/i.test(target)
-                  ? "Area"
-                  : "Room",
-          zone: "",
-          notes: "",
-          parentId: root?.id || "",
-          customDetails: [],
-          vendorIds: [],
-        };
-        await sql`
-          INSERT INTO atlas_operational_records (record_type, id, property_id, record, updated_at)
-          VALUES ('locations', ${id}, ${PROPERTY_ID}, ${JSON.stringify(record)}::jsonb, NOW())
-          ON CONFLICT (record_type, id) DO NOTHING
-        `;
-        match = { id, record, score: 1000 };
-        current.push({ id, record });
-        createdLocations.push(target);
-      }
+          name,
+          type,
+          zone,
+          notes,
+          parent_id,
+          custom_details,
+          vendor_ids,
+          sort_order,
+          property_id
+        ) VALUES (
+          ${id},
+          ${target},
+          ${typeForLocation(target)},
+          '',
+          '',
+          ${null},
+          '[]'::jsonb,
+          ${[] as string[]},
+          0,
+          ${PROPERTY_ID}
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          name = EXCLUDED.name,
+          property_id = EXCLUDED.property_id
+      `;
 
-      locationByTarget.set(target, { id: match.id, record: match.record, created: createdLocations.includes(target) });
+      const created = {
+        id,
+        name: target,
+        type: typeForLocation(target),
+        zone: "",
+        notes: "",
+        parentId: "",
+        customDetails: [] as any[],
+        vendorIds: [] as string[],
+        sortOrder: 0,
+      };
+      current.push(created);
+      locationByTarget.set(target, {
+        id,
+        name: target,
+        customDetails: [],
+        created: true,
+      });
+      locationsCreated.push(target);
     }
-
-    let addedDetails = 0;
-    const touchedIds = new Set<string>();
 
     for (const spec of specs) {
       for (const target of spec.locations) {
         const location = locationByTarget.get(target);
         if (!location) continue;
+
         const detail = detailFor(spec);
-        const existingDetails = Array.isArray(location.record.customDetails)
-          ? [...location.record.customDetails]
-          : [];
-        if (existingDetails.some((item: any) => String(item?.id || "") === detail.id)) continue;
-        existingDetails.push(detail);
-        location.record = { ...location.record, customDetails: existingDetails };
-        touchedIds.add(location.id);
-        addedDetails += 1;
+        if (location.customDetails.some((item: any) => String(item?.id || "") === detail.id)) {
+          continue;
+        }
+
+        location.customDetails.push(detail);
+        specificationDetailsAdded += 1;
+        updatedLocationIds.add(location.id);
       }
     }
 
-    for (const id of touchedIds) {
-      const item =
-        Array.from(locationByTarget.values()).find((value) => value.id === id) ||
-        current.find((value) => value.id === id);
-      if (!item) continue;
-      const record = item.record;
+    for (const location of locationByTarget.values()) {
+      if (!updatedLocationIds.has(location.id)) continue;
       await sql`
-        UPDATE atlas_operational_records
-        SET record = ${JSON.stringify(record)}::jsonb, updated_at = NOW()
-        WHERE record_type = 'locations'
-          AND id = ${id}
+        UPDATE atlas_locations
+        SET custom_details = ${JSON.stringify(location.customDetails)}::jsonb
+        WHERE id = ${location.id}
           AND property_id = ${PROPERTY_ID}
       `;
+    }
+
+    const check = await verification(sql);
+
+    if (!check.complete) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "The import wrote to Atlas Locations but verification found missing rooms or specification details.",
+          sourcePages: 27,
+          specificationRows: specs.length,
+          specificationDetailsAdded,
+          locationsCreated,
+          locationsCreatedCount: locationsCreated.length,
+          locationsUpdatedCount: updatedLocationIds.size - locationsCreated.length,
+          ...check,
+        },
+        { status: 500 },
+      );
     }
 
     const result = {
       importedAt: new Date().toISOString(),
       sourcePages: 27,
       specificationRows: specs.length,
-      specificationDetailsAdded: addedDetails,
-      locationsCreated: createdLocations,
-      locationsCreatedCount: createdLocations.length,
-      locationsUpdatedCount: touchedIds.size - createdLocations.filter((name) => locationByTarget.get(name) && touchedIds.has(locationByTarget.get(name)!.id)).length,
-      ambiguous,
+      specificationDetailsAdded,
+      locationsCreated,
+      locationsCreatedCount: locationsCreated.length,
+      locationsUpdatedCount: updatedLocationIds.size - locationsCreated.length,
+      ...check,
     };
 
     await sql`
       INSERT INTO atlas_operational_records (record_type, id, property_id, record, updated_at)
-      VALUES ('system_migration', ${IMPORT_ID}, ${PROPERTY_ID}, ${JSON.stringify(result)}::jsonb, NOW())
-      ON CONFLICT (record_type, id) DO UPDATE SET
-        record = EXCLUDED.record,
-        updated_at = NOW()
+      VALUES (
+        'system_migration',
+        ${FINAL_IMPORT_ID},
+        ${PROPERTY_ID},
+        ${JSON.stringify(result)}::jsonb,
+        NOW()
+      )
+      ON CONFLICT (record_type, id) DO NOTHING
     `;
 
     return NextResponse.json({
       ok: true,
       alreadyImported: false,
       ...result,
-      message: ambiguous.length
-        ? "Imported all confident room matches. Ambiguous locations were left untouched for review."
-        : "Susan Marinello room specifications imported successfully.",
+      message: `Verified ${check.verifiedLocations} locations and ${check.verifiedDetails} room-specification details in Atlas Locations.`,
     });
   } catch (error) {
     console.error("Susan Marinello specification import failed:", error);
