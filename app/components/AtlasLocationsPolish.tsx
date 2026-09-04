@@ -43,6 +43,31 @@ function safeFileName(value: string) {
     .replace(/^-|-$/g, "") || "attachment";
 }
 
+async function normalizeClipboardImage(blob: Blob) {
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) throw new Error("Atlas could not prepare the pasted image.");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0);
+
+    const pngBlob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((result) => {
+        if (result) resolve(result);
+        else reject(new Error("Atlas could not prepare the pasted image."));
+      }, "image/png");
+    });
+
+    return new File([pngBlob], `pasted-spec-${Date.now()}.png`, { type: "image/png" });
+  } finally {
+    bitmap.close();
+  }
+}
+
 async function loadAttachments(room: string, key: string): Promise<Attachment[]> {
   const params = new URLSearchParams({ propertyId: PROPERTY_ID, locationName: room, specKey: key });
   const response = await fetch(`/api/location-spec-attachments?${params}`, { cache: "no-store" });
@@ -123,6 +148,7 @@ function renderAttachmentList(host: HTMLElement, items: Attachment[], refresh: (
       image.src = item.url;
       image.alt = item.name || "Specification reference";
       image.className = "atlas-spec-image";
+      image.loading = "lazy";
       imageLink.appendChild(image);
       card.appendChild(imageLink);
     }
@@ -160,7 +186,6 @@ function addControls(card: HTMLElement, room: string, label: string, value: stri
   const key = specKey(room, label, value);
   if (!key || card.querySelector(`.atlas-spec-attachments[data-spec-key="${key}"]`)) return;
 
-  card.querySelectorAll(".atlas-spec-attachments").forEach((node) => node.remove());
   const host = document.createElement("div");
   host.className = "atlas-spec-attachments";
   host.dataset.specKey = key;
@@ -229,9 +254,8 @@ function addControls(card: HTMLElement, room: string, label: string, value: stri
       for (const clipboardItem of clipboardItems) {
         const imageType = clipboardItem.types.find((type) => type.startsWith("image/"));
         if (!imageType) continue;
-        const blob = await clipboardItem.getType(imageType);
-        const extension = imageType.split("/")[1]?.replace("jpeg", "jpg") || "png";
-        const file = new File([blob], `pasted-spec-${Date.now()}.${extension}`, { type: imageType });
+        const clipboardBlob = await clipboardItem.getType(imageType);
+        const file = await normalizeClipboardImage(clipboardBlob);
         status.textContent = "Uploading…";
         await addAttachment(room, key, file, "image");
         await refresh();
@@ -251,6 +275,23 @@ function addControls(card: HTMLElement, room: string, label: string, value: stri
   pasteButton.addEventListener("click", () => void pasteImage());
   documentButton.addEventListener("click", () => choose("document"));
   void refresh();
+}
+
+function ensureCategoryHeadings(grid: HTMLElement) {
+  let previousCategory = "";
+  for (const card of Array.from(grid.querySelectorAll<HTMLElement>(":scope > .atlas-location-spec-card"))) {
+    const category = card.dataset.specCategory || "Specifications";
+    const previous = card.previousElementSibling as HTMLElement | null;
+    const alreadyCorrect = previous?.classList.contains("atlas-spec-category") && previous.textContent === category;
+
+    if (category !== previousCategory && !alreadyCorrect) {
+      const heading = document.createElement("div");
+      heading.className = "atlas-spec-category";
+      heading.textContent = category;
+      grid.insertBefore(heading, card);
+    }
+    previousCategory = category;
+  }
 }
 
 export default function AtlasLocationsPolish() {
@@ -286,17 +327,7 @@ export default function AtlasLocationsPolish() {
         const grids = new Set(specCards.map((card) => card.parentElement).filter(Boolean) as HTMLElement[]);
         for (const grid of grids) {
           grid.classList.add("atlas-location-spec-grid");
-          grid.querySelectorAll(":scope > .atlas-spec-category").forEach((node) => node.remove());
-          let previous = "";
-          for (const card of Array.from(grid.querySelectorAll<HTMLElement>(":scope > .atlas-location-spec-card"))) {
-            const category = card.dataset.specCategory || "Specifications";
-            if (category === previous) continue;
-            const heading = document.createElement("div");
-            heading.className = "atlas-spec-category";
-            heading.textContent = category;
-            grid.insertBefore(heading, card);
-            previous = category;
-          }
+          ensureCategoryHeadings(grid);
         }
 
         for (const textarea of Array.from(drawer.querySelectorAll<HTMLTextAreaElement>("textarea"))) {
@@ -312,10 +343,18 @@ export default function AtlasLocationsPolish() {
     const schedule = () => {
       if (!frame) frame = window.requestAnimationFrame(apply);
     };
+
     schedule();
-    const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    const observer = new MutationObserver((mutations) => {
+      const hasExternalChange = mutations.some((mutation) => {
+        const target = mutation.target as HTMLElement;
+        return !target.closest?.(".atlas-spec-attachments") && !target.closest?.(".atlas-spec-category");
+      });
+      if (hasExternalChange) schedule();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener("input", schedule, true);
+
     return () => {
       observer.disconnect();
       document.removeEventListener("input", schedule, true);
@@ -325,7 +364,13 @@ export default function AtlasLocationsPolish() {
 
   return (
     <style jsx global>{`
-      .atlas-location-drawer-polish { overflow-x: hidden !important; overscroll-behavior: contain; }
+      .atlas-location-drawer-polish {
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        overscroll-behavior: contain;
+        scroll-behavior: auto !important;
+        overflow-anchor: none;
+      }
       .atlas-location-spec-grid { display: grid !important; grid-template-columns: minmax(0, 1fr) !important; gap: 12px !important; margin-top: 16px !important; padding-top: 38px !important; position: relative !important; }
       .atlas-location-spec-grid::before { content: "Specifications"; position: absolute; top: 0; left: 0; font-size: 17px; font-weight: 900; color: #0b1e33; }
       .atlas-spec-category { margin-top: 8px; padding: 10px 2px 3px; border-bottom: 1px solid #dce4ec; color: #0b1e33; font-size: 14px; font-weight: 900; }
@@ -341,7 +386,8 @@ export default function AtlasLocationsPolish() {
       .atlas-spec-status,.atlas-spec-empty { color:#607086; font-size:11px; }
       .atlas-spec-files { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; }
       .atlas-spec-file { min-width:0; overflow:hidden; border:1px solid #dce4ec; border-radius:10px; background:#f8fafc; }
-      .atlas-spec-image { display:block; width:100%; max-height:240px; object-fit:contain; background:#fff; }
+      .atlas-spec-file > a { display:block; background:#fff; }
+      .atlas-spec-image { display:block; width:100%; max-height:320px; object-fit:contain; background:#fff; }
       .atlas-spec-file-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px; }
       .atlas-spec-file-link { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#175cd3; font-size:12px; font-weight:800; text-decoration:none; }
       .atlas-location-spec-edit-list { display:grid !important; gap:12px !important; }
