@@ -14,6 +14,10 @@ type ImportResult = {
   locationsCreatedCount?: number;
   locationsUpdatedCount?: number;
   ambiguous?: Array<{ target: string; matches: string[] }>;
+  verifiedLocations?: number;
+  verifiedDetails?: number;
+  expectedLocations?: number;
+  expectedDetails?: number;
 };
 
 export default function SusanSpecImportPage() {
@@ -93,6 +97,12 @@ export default function SusanSpecImportPage() {
                 <span>Details added: {result.specificationDetailsAdded ?? (result.alreadyImported ? "Already imported" : "—")}</span>
                 <span>Locations created: {result.locationsCreatedCount ?? result.locationsCreated?.length ?? 0}</span>
                 <span>Existing locations updated: {result.locationsUpdatedCount ?? 0}</span>
+                {typeof result.verifiedLocations === "number" ? (
+                  <span>Verified Atlas locations: {result.verifiedLocations} / {result.expectedLocations ?? result.verifiedLocations}</span>
+                ) : null}
+                {typeof result.verifiedDetails === "number" ? (
+                  <span>Verified specification details: {result.verifiedDetails} / {result.expectedDetails ?? result.verifiedDetails}</span>
+                ) : null}
                 {result.locationsCreated?.length ? (
                   <span>New rooms: {result.locationsCreated.join(", ")}</span>
                 ) : null}
