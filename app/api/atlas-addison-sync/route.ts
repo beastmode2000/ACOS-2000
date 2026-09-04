@@ -143,12 +143,9 @@ async function syncAddisonWork() {
         AND responsibility_area = ${`Legacy task ${taskId}`}
       LIMIT 1
     `;
-    if (existingLegacyRows.length) {
-      alreadyUnified += 1;
-      continue;
-    }
 
-    let id = legacyWorkId(taskId);
+    let id = cleanString(existingLegacyRows[0]?.id, 180) || legacyWorkId(taskId);
+
     if (taskId.startsWith(UNIFIED_WORK_PREFIX)) {
       const referencedId = cleanString(taskId.slice(UNIFIED_WORK_PREFIX.length), 180);
       if (referencedId) {
@@ -164,7 +161,9 @@ async function syncAddisonWork() {
           alreadyUnified += 1;
           continue;
         }
-        id = referenced ? legacyWorkId(taskId) : referencedId;
+        if (!existingLegacyRows.length) {
+          id = referenced ? legacyWorkId(taskId) : referencedId;
+        }
       }
     }
 
