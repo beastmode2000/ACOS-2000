@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 const SESSION_COOKIE = "atlas_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 90;
 const SESSION_VERSION = 2;
-const ADDISON_SYNC_COOKIE = "atlas_addison_sync";
+const ADDISON_WORK_TOKEN =
+  process.env.ADDISON_WORK_TOKEN ||
+  "addison-2000-7f94f468dca84de3a7b8c2d942ca3819";
 
 function hasShareToken(request: NextRequest) {
   return request.nextUrl.searchParams.has("token");
@@ -16,7 +18,7 @@ function hasAssetShareToken(request: NextRequest) {
 function isPublicPath(request: NextRequest) {
   const p = request.nextUrl.pathname;
   if (p.startsWith("/_next/")) return true;
-  if (["/favicon.ico","/manifest.json","/robots.txt","/site.webmanifest","/sw.js","/atlas-icon-192.png","/atlas-icon-512.png","/apple-touch-icon.png","/login","/invite","/api/atlas-login","/api/atlas-logout","/api/atlas-invite","/api/request-manifest"].includes(p)) return true;
+  if (["/favicon.ico","/manifest.json","/robots.txt","/site.webmanifest","/sw.js","/atlas-icon-192.png","/atlas-icon-512.png","/apple-touch-icon.png","/login","/invite","/api/atlas-login","/api/atlas-logout","/api/atlas-invite","/api/request-manifest","/api/addison-work-canonical"].includes(p)) return true;
   if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(p)) return true;
   if (p === "/landscape-help" && hasShareToken(request)) return true;
   if (p === "/api/landscape-help" && hasShareToken(request)) return true;
@@ -28,6 +30,14 @@ function isPublicPath(request: NextRequest) {
   if (p === "/asset-share" && hasShareToken(request)) return true;
   if (p === "/api/atlas" && hasAssetShareToken(request)) return true;
   return false;
+}
+
+function shouldUseCanonicalAddisonWork(request: NextRequest) {
+  return (
+    request.method === "GET" &&
+    request.nextUrl.pathname === "/api/landscape-help" &&
+    request.nextUrl.searchParams.get("token") === ADDISON_WORK_TOKEN
+  );
 }
 
 function b64bytes(bytes: Uint8Array) { let s=""; for (const b of bytes) s+=String.fromCharCode(b); return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,""); }
@@ -57,16 +67,13 @@ async function readSession(
 function basic(username:string,password:string){ return `Basic ${btoa(`${username}:${password}`)}`; }
 function toLogin(request:NextRequest){ const u=request.nextUrl.clone(); u.pathname="/login"; u.search=""; u.searchParams.set("next",`${request.nextUrl.pathname}${request.nextUrl.search}`); return NextResponse.redirect(u); }
 
-function toAddisonSync(request: NextRequest) {
-  const u = request.nextUrl.clone();
-  const returnTo = `${request.nextUrl.pathname}${request.nextUrl.search}`;
-  u.pathname = "/api/atlas-addison-sync";
-  u.search = "";
-  u.searchParams.set("returnTo", returnTo || "/");
-  return NextResponse.redirect(u);
-}
-
 export async function middleware(request:NextRequest){
+  if (shouldUseCanonicalAddisonWork(request)) {
+    const u = request.nextUrl.clone();
+    u.pathname = "/api/addison-work-canonical";
+    return NextResponse.rewrite(u);
+  }
+
   if(isPublicPath(request)) return NextResponse.next();
   const adminUser=process.env.ATLAS_ACCESS_USERNAME||"";
   const adminPass=process.env.ATLAS_ACCESS_PASSWORD||"";
@@ -81,13 +88,6 @@ export async function middleware(request:NextRequest){
   if(!session){
     if(request.nextUrl.pathname.startsWith("/api/")) return new NextResponse("Atlas login required.",{status:401});
     return toLogin(request);
-  }
-
-  if (
-    request.nextUrl.pathname === "/" &&
-    !request.cookies.get(ADDISON_SYNC_COOKIE)?.value
-  ) {
-    return toAddisonSync(request);
   }
 
   const headers=new Headers(request.headers);
