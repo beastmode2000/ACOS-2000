@@ -103,7 +103,6 @@ export async function GET(request: Request) {
              content_type, attachment_kind, created_at
       FROM atlas_location_spec_attachments
       WHERE property_id = ${propertyId}
-        AND location_name = ${locationName}
         AND spec_key = ${specKey}
       ORDER BY created_at ASC
     `) as AttachmentRow[];
