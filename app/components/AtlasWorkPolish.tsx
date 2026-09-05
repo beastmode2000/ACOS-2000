@@ -41,6 +41,75 @@ function ensureActionOption(
   else actions.appendChild(option);
 }
 
+function ensureWorkCategories(root: HTMLElement) {
+  const additions = [
+    { value: "🔒 Security", label: "Security" },
+    { value: "💻 IT", label: "IT" },
+  ];
+
+  try {
+    const key = "atlas-work-category-settings-v1";
+    const raw = window.localStorage.getItem(key);
+    const current = raw ? JSON.parse(raw) : [];
+    const next = Array.from(
+      new Set([
+        ...(Array.isArray(current) ? current.map(String) : []),
+        ...additions.map((item) => item.value),
+      ]),
+    );
+    window.localStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    // Category preferences are optional UI state.
+  }
+
+  for (const select of Array.from(root.querySelectorAll<HTMLSelectElement>("select"))) {
+    const optionText = Array.from(select.options).map((option) => normalized(option.textContent));
+    const looksLikeCategory =
+      optionText.includes("maintenance") &&
+      optionText.includes("cleaning") &&
+      optionText.includes("inspection");
+    if (!looksLikeCategory) continue;
+
+    for (const item of additions) {
+      if (Array.from(select.options).some((option) => option.value === item.value || normalized(option.textContent) === normalized(item.label))) {
+        continue;
+      }
+      const option = document.createElement("option");
+      option.value = item.value;
+      option.textContent = item.label;
+      select.appendChild(option);
+    }
+  }
+}
+
+function markWhatWasDone(panel: HTMLElement) {
+  const heading = Array.from(panel.querySelectorAll<HTMLElement>("div, strong")).find(
+    (element) => normalized(element.textContent) === "what was done",
+  );
+  const section = heading?.closest<HTMLElement>("section") || null;
+  if (!section) return;
+
+  section.classList.add("atlas-work-completion-section");
+  heading?.classList.add("atlas-work-original-completion-heading");
+
+  const body = section.firstElementChild;
+  if (body instanceof HTMLElement) body.classList.add("atlas-work-completion-body");
+
+  if (section.querySelector(":scope > .atlas-work-completion-toggle")) return;
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "atlas-work-completion-toggle";
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.textContent = "What Was Done  ▸";
+  toggle.addEventListener("click", () => {
+    const expanded = section.classList.toggle("atlas-work-completion-open");
+    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    toggle.textContent = expanded ? "What Was Done  ▾" : "What Was Done  ▸";
+  });
+  section.insertBefore(toggle, section.firstChild);
+}
+
 function markWorkDetail(root: HTMLElement) {
   const panel = root.querySelector<HTMLElement>("[data-atlas-work-detail-panel]");
   if (!panel) return;
@@ -140,6 +209,8 @@ function markWorkDetail(root: HTMLElement) {
     updateCard?.classList.add("atlas-work-latest-update-duplicate");
   }
 
+  markWhatWasDone(panel);
+
   const actions = panel.querySelector<HTMLSelectElement>('select[aria-label="Work order actions"]');
   if (actions) {
     const isClosed = Boolean(actions.querySelector('option[value="reopen"]'));
@@ -161,6 +232,7 @@ function markWorkPage() {
   const root = workMain();
   if (!root) return;
   root.classList.add("atlas-work-polish-root");
+  ensureWorkCategories(root);
 
   const addWork = Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
     (button) => normalized(button.textContent).replace(/^\+\s*/, "") === "add work",
@@ -305,7 +377,8 @@ export default function AtlasWorkPolish() {
       .atlas-work-polish-root .atlas-work-redundant-badge,
       .atlas-work-polish-root .atlas-work-primary-description,
       .atlas-work-polish-root .atlas-work-latest-update-duplicate,
-      .atlas-work-polish-root .atlas-work-defer-button {
+      .atlas-work-polish-root .atlas-work-defer-button,
+      .atlas-work-polish-root .atlas-work-original-completion-heading {
         display: none !important;
       }
 
@@ -417,6 +490,39 @@ export default function AtlasWorkPolish() {
         font-size: 12.5px !important;
         line-height: 1.3 !important;
         font-weight: 600 !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-completion-section {
+        padding: 0 !important;
+        overflow: hidden !important;
+        background: #ffffff !important;
+        border-color: var(--atlas-work-line) !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-completion-toggle {
+        width: 100% !important;
+        min-height: 38px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        padding: 8px 10px !important;
+        border: 0 !important;
+        background: #ffffff !important;
+        color: #172b3a !important;
+        text-align: left !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
+        cursor: pointer !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-completion-body {
+        display: none !important;
+        padding: 8px 10px 10px !important;
+        border-top: 1px solid var(--atlas-work-line) !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-completion-open .atlas-work-completion-body {
+        display: grid !important;
       }
 
       .atlas-work-polish-root .atlas-work-detail-section {
