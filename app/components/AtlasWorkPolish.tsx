@@ -10,6 +10,15 @@ function normalized(value: unknown) {
   return text(value).toLowerCase();
 }
 
+function isVehicleCleaningTitle(value: unknown) {
+  return /^(clean|wash|detail)\b/i.test(text(value));
+}
+
+function looksLikeDisplayDate(value: string) {
+  return /^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:,\s*\d{4})?$/i.test(value) ||
+    /^\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?$/.test(value);
+}
+
 function workMain() {
   const heading = Array.from(document.querySelectorAll<HTMLElement>("h1")).find(
     (node) => normalized(node.textContent) === "work",
@@ -110,6 +119,34 @@ function markWhatWasDone(panel: HTMLElement) {
   section.insertBefore(toggle, section.firstChild);
 }
 
+function markWeeklyVehicleDetail(panel: HTMLElement, title: HTMLElement | null) {
+  const vehicleCleaning =
+    isVehicleCleaningTitle(title?.textContent) &&
+    normalized(panel.textContent).includes("vehicles");
+
+  panel.classList.toggle("atlas-work-weekly-vehicle-detail", vehicleCleaning);
+  if (!vehicleCleaning) return;
+
+  for (const label of Array.from(panel.querySelectorAll<HTMLElement>("span"))) {
+    const value = normalized(label.textContent);
+    if (value !== "next due" && value !== "due") continue;
+    const parent = label.parentElement;
+    if (!parent) continue;
+
+    const dateInput = parent.querySelector<HTMLInputElement>('input[type="date"]');
+    if (dateInput) {
+      parent.classList.add("atlas-work-weekly-due-editor");
+      continue;
+    }
+
+    const valueElement = Array.from(parent.children).find(
+      (child) => child !== label && child instanceof HTMLElement,
+    ) as HTMLElement | undefined;
+    label.textContent = "Window";
+    if (valueElement) valueElement.textContent = "This Week";
+  }
+}
+
 function markWorkDetail(root: HTMLElement) {
   const panel = root.querySelector<HTMLElement>("[data-atlas-work-detail-panel]");
   if (!panel) return;
@@ -167,6 +204,8 @@ function markWorkDetail(root: HTMLElement) {
       }
     }
   }
+
+  markWeeklyVehicleDetail(panel, title);
 
   for (const button of Array.from(panel.querySelectorAll<HTMLButtonElement>("button"))) {
     const value = normalized(button.textContent).replace(/[’]/g, "'");
@@ -228,6 +267,40 @@ function markWorkDetail(root: HTMLElement) {
   }
 }
 
+function markWeeklyVehicleRow(row: HTMLElement) {
+  const titleButton = Array.from(row.querySelectorAll<HTMLButtonElement>(":scope > button")).find(
+    (button) => normalized(button.textContent) !== "details",
+  );
+  const title = titleButton?.querySelector<HTMLElement>("strong");
+  const subtitle = titleButton?.querySelector<HTMLElement>("span");
+  const vehicleCleaning =
+    isVehicleCleaningTitle(title?.textContent) &&
+    normalized(subtitle?.textContent).includes("vehicles");
+
+  row.classList.toggle("atlas-work-weekly-vehicle", Boolean(vehicleCleaning));
+  if (!vehicleCleaning || !titleButton) return;
+
+  const dateInput = row.querySelector<HTMLInputElement>(':scope > input[type="date"]');
+  dateInput?.classList.add("atlas-work-weekly-vehicle-date");
+
+  if (subtitle) {
+    const parts = text(subtitle.textContent)
+      .split(" · ")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .filter((part) => !looksLikeDisplayDate(part));
+    subtitle.textContent = parts.join(" · ");
+  }
+
+  let label = titleButton.querySelector<HTMLElement>(".atlas-work-weekly-label");
+  if (!label) {
+    label = document.createElement("span");
+    label.className = "atlas-work-weekly-label";
+    label.textContent = "This Week";
+    titleButton.appendChild(label);
+  }
+}
+
 function markWorkPage() {
   const root = workMain();
   if (!root) return;
@@ -276,6 +349,7 @@ function markWorkPage() {
     titleButton?.classList.add("atlas-work-row-main");
     row.querySelector<HTMLSelectElement>(":scope > select")?.classList.add("atlas-work-row-assignee");
     row.querySelector<HTMLInputElement>(':scope > input[type="date"]')?.classList.add("atlas-work-row-date");
+    markWeeklyVehicleRow(row);
   });
 
   const groupLabels = new Set(["today", "this week", "upcoming", "recurring", "projects"]);
@@ -397,6 +471,33 @@ export default function AtlasWorkPolish() {
         gap: 7px !important;
         border-radius: 9px !important;
         box-shadow: none !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-weekly-vehicle {
+        border-left: 3px solid transparent !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-weekly-vehicle-date {
+        display: none !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-weekly-label {
+        display: inline-flex !important;
+        width: max-content !important;
+        margin-top: 4px !important;
+        padding: 2px 7px !important;
+        border: 1px solid #d8e1e9 !important;
+        border-radius: 999px !important;
+        background: #f8fafc !important;
+        color: #475569 !important;
+        font-size: 10px !important;
+        line-height: 1.2 !important;
+        font-weight: 600 !important;
+        white-space: nowrap !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-weekly-due-editor {
+        display: none !important;
       }
 
       .atlas-work-polish-root .atlas-work-row-main strong {
@@ -669,6 +770,10 @@ export default function AtlasWorkPolish() {
 
         .atlas-work-polish-root .atlas-work-row {
           grid-template-columns: auto minmax(220px, 1fr) minmax(112px, 0.38fr) 128px !important;
+        }
+
+        .atlas-work-polish-root .atlas-work-weekly-vehicle {
+          grid-template-columns: auto minmax(220px, 1fr) minmax(112px, 0.38fr) !important;
         }
       }
 
