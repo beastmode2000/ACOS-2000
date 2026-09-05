@@ -306,6 +306,15 @@ export default function AtlasLocationsPolish() {
         const room = drawer.querySelector("h3")?.textContent?.trim() || "";
         if (!room) continue;
 
+        drawer.classList.add("atlas-location-drawer-polish", "atlas-location-independent-scroll");
+
+        const drawerPanel = drawer.parentElement as HTMLElement | null;
+        const listPanel = drawerPanel?.previousElementSibling as HTMLElement | null;
+        if (drawerPanel && listPanel) {
+          drawerPanel.classList.add("atlas-location-drawer-panel");
+          listPanel.classList.add("atlas-location-list-panel", "atlas-location-independent-scroll");
+        }
+
         const specCards: HTMLElement[] = [];
         for (const valueNode of Array.from(drawer.querySelectorAll<HTMLElement>("strong"))) {
           const value = valueNode.textContent || "";
@@ -335,8 +344,6 @@ export default function AtlasLocationsPolish() {
           textarea.parentElement?.classList.add("atlas-location-spec-edit-row");
           textarea.parentElement?.parentElement?.classList.add("atlas-location-spec-edit-list");
         }
-
-        if (specCards.length) drawer.classList.add("atlas-location-drawer-polish");
       }
     };
 
@@ -370,6 +377,20 @@ export default function AtlasLocationsPolish() {
         overscroll-behavior: contain;
         scroll-behavior: auto !important;
         overflow-anchor: none;
+      }
+      @media (min-width: 901px) {
+        .atlas-location-independent-scroll {
+          min-height: 0 !important;
+          max-height: calc(100dvh - 190px) !important;
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+          overscroll-behavior: contain !important;
+          scrollbar-gutter: stable;
+        }
+        .atlas-location-drawer-panel {
+          min-height: 0 !important;
+          overflow: hidden !important;
+        }
       }
       .atlas-location-drawer-polish img[style*="object-fit: cover"] {
         object-fit: contain !important;
