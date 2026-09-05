@@ -1,0 +1,190 @@
+:root {
+  --atlas-font-sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --atlas-type-page: 30px;
+  --atlas-type-drawer: 22px;
+  --atlas-type-section: 15px;
+  --atlas-type-primary: 14px;
+  --atlas-type-body: 13.5px;
+  --atlas-type-meta: 12px;
+  --atlas-type-control: 13px;
+  --atlas-type-badge: 11px;
+  --atlas-weight-regular: 400;
+  --atlas-weight-medium: 500;
+  --atlas-weight-semibold: 600;
+  --atlas-weight-bold: 700;
+}
+
+html,
+body {
+  font-family: var(--atlas-font-sans) !important;
+  font-size: var(--atlas-type-body);
+  line-height: 1.45;
+  letter-spacing: -0.006em;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-family: var(--atlas-font-sans) !important;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+strong,
+b {
+  font-family: var(--atlas-font-sans) !important;
+}
+
+h1 {
+  font-size: var(--atlas-type-page) !important;
+  line-height: 1.12 !important;
+  font-weight: var(--atlas-weight-bold) !important;
+  letter-spacing: -0.028em !important;
+}
+
+h2 {
+  font-size: var(--atlas-type-drawer) !important;
+  line-height: 1.18 !important;
+  font-weight: var(--atlas-weight-bold) !important;
+  letter-spacing: -0.022em !important;
+}
+
+h3 {
+  font-size: 20px !important;
+  line-height: 1.2 !important;
+  font-weight: var(--atlas-weight-bold) !important;
+  letter-spacing: -0.018em !important;
+}
+
+h4,
+h5,
+h6 {
+  font-size: var(--atlas-type-section) !important;
+  line-height: 1.28 !important;
+  font-weight: var(--atlas-weight-semibold) !important;
+  letter-spacing: -0.01em !important;
+}
+
+strong,
+b {
+  font-weight: var(--atlas-weight-semibold) !important;
+}
+
+p,
+li,
+dd,
+dt,
+td,
+th {
+  font-size: var(--atlas-type-body);
+  line-height: 1.48;
+}
+
+small {
+  font-size: var(--atlas-type-meta) !important;
+  line-height: 1.38 !important;
+  font-weight: var(--atlas-weight-regular) !important;
+  letter-spacing: 0 !important;
+}
+
+label {
+  font-size: var(--atlas-type-meta);
+  font-weight: var(--atlas-weight-medium);
+}
+
+button,
+[role="button"] {
+  font-size: var(--atlas-type-control) !important;
+  line-height: 1.2 !important;
+  font-weight: var(--atlas-weight-semibold) !important;
+  letter-spacing: -0.004em !important;
+}
+
+input,
+select,
+textarea {
+  font-size: 14px !important;
+  line-height: 1.4 !important;
+  font-weight: var(--atlas-weight-regular) !important;
+  letter-spacing: 0 !important;
+}
+
+.atlas-page-title {
+  font-size: var(--atlas-type-page) !important;
+  line-height: 1.12 !important;
+  font-weight: var(--atlas-weight-bold) !important;
+  letter-spacing: -0.028em !important;
+}
+
+.atlas-page-subtitle {
+  font-size: var(--atlas-type-body) !important;
+  line-height: 1.45 !important;
+  font-weight: var(--atlas-weight-regular) !important;
+}
+
+.atlas-section-label,
+.atlas-preview-kicker,
+.atlas-hover-preview__stat-label {
+  font-size: var(--atlas-type-badge) !important;
+  font-weight: var(--atlas-weight-semibold) !important;
+  letter-spacing: 0.055em !important;
+}
+
+.atlas-button,
+.atlas-preview-open-button {
+  font-size: var(--atlas-type-control) !important;
+  font-weight: var(--atlas-weight-semibold) !important;
+}
+
+.atlas-chip,
+.atlas-preview-status {
+  font-size: var(--atlas-type-badge) !important;
+  font-weight: var(--atlas-weight-semibold) !important;
+  letter-spacing: 0.015em !important;
+}
+
+.atlas-hover-preview__title,
+.atlas-preview-title-row h4 {
+  font-size: 16px !important;
+  line-height: 1.25 !important;
+  font-weight: var(--atlas-weight-semibold) !important;
+}
+
+.atlas-hover-preview__meta,
+.atlas-preview-summary {
+  font-size: var(--atlas-type-meta) !important;
+  line-height: 1.45 !important;
+  font-weight: var(--atlas-weight-regular) !important;
+}
+
+.atlas-hover-preview__stat-value,
+.atlas-preview-fields dd {
+  font-size: var(--atlas-type-body) !important;
+  font-weight: var(--atlas-weight-semibold) !important;
+}
+
+@media (max-width: 900px) {
+  :root {
+    --atlas-type-page: 26px;
+    --atlas-type-drawer: 20px;
+    --atlas-type-section: 14px;
+    --atlas-type-primary: 14px;
+    --atlas-type-body: 13.5px;
+    --atlas-type-meta: 12px;
+    --atlas-type-control: 13px;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
