@@ -32,6 +32,9 @@ function markWorkDetail(root: HTMLElement) {
   if (!panel) return;
   panel.classList.add("atlas-work-detail-root");
 
+  const backButton = panel.querySelector<HTMLButtonElement>('button[aria-label="Back to work"]');
+  backButton?.parentElement?.parentElement?.classList.add("atlas-work-desktop-back-row");
+
   const title = panel.querySelector<HTMLHeadingElement>("h2");
   if (title) {
     title.classList.add("atlas-work-detail-title");
@@ -438,6 +441,10 @@ export default function AtlasWorkPolish() {
         .atlas-work-polish-root > div,
         .atlas-work-polish-root > section {
           min-height: 0 !important;
+        }
+
+        .atlas-work-polish-root .atlas-work-desktop-back-row {
+          display: none !important;
         }
 
         .atlas-work-polish-root .atlas-work-list-pane,
