@@ -53,12 +53,18 @@ function markAssetsViewport() {
   }
   detailPanel.classList.add("atlas-assets-viewport-detail");
 
+  const sortSelect = root.querySelector<HTMLSelectElement>(
+    'select[aria-label="Sort assets alphabetically"]',
+  );
+  sortSelect?.classList.add("atlas-assets-sort-hidden");
+
   const addAsset = Array.from(
     root.querySelectorAll<HTMLButtonElement>("button"),
   ).find((button) => normalized(button.textContent) === "add asset");
 
   if (addAsset) {
     addAsset.parentElement?.classList.add("atlas-assets-viewport-toolbar");
+    addAsset.classList.add("atlas-assets-add-button");
   }
 }
 
@@ -90,25 +96,29 @@ export default function AtlasAssetsViewportPolish() {
 
   return (
     <style jsx global>{`
+      .atlas-assets-viewport-root .atlas-assets-sort-hidden {
+        display: none !important;
+      }
+
       @media (min-width: 901px) {
         .atlas-assets-viewport-root .atlas-assets-viewport-shell {
-          height: calc(100dvh - 128px) !important;
-          min-height: calc(100dvh - 128px) !important;
-          max-height: calc(100dvh - 128px) !important;
+          height: calc(100dvh - 108px) !important;
+          min-height: calc(100dvh - 108px) !important;
+          max-height: calc(100dvh - 108px) !important;
           display: grid !important;
           grid-template-rows: auto minmax(0, 1fr) !important;
           align-content: stretch !important;
-          padding: 10px 16px 14px !important;
+          padding: 6px 16px 8px !important;
           overflow: hidden !important;
         }
 
         .atlas-assets-viewport-root .atlas-assets-viewport-header {
           min-height: 0 !important;
           height: auto !important;
-          max-height: 54px !important;
+          max-height: 42px !important;
           display: block !important;
-          margin: 0 0 8px !important;
-          padding: 0 0 8px !important;
+          margin: 0 0 4px !important;
+          padding: 0 0 4px !important;
           overflow: hidden !important;
         }
 
@@ -117,7 +127,7 @@ export default function AtlasAssetsViewportPolish() {
         .atlas-assets-viewport-root .atlas-assets-viewport-toolbar {
           min-height: 0 !important;
           height: auto !important;
-          max-height: 44px !important;
+          max-height: 38px !important;
           margin-top: 0 !important;
           margin-bottom: 0 !important;
           padding-top: 0 !important;
@@ -128,7 +138,7 @@ export default function AtlasAssetsViewportPolish() {
           display: flex !important;
           align-items: center !important;
           justify-content: flex-end !important;
-          gap: 8px !important;
+          gap: 6px !important;
         }
 
         .atlas-assets-viewport-root .atlas-assets-viewport-header > div:first-child > div:first-child:empty {
@@ -146,9 +156,15 @@ export default function AtlasAssetsViewportPolish() {
           display: flex !important;
           align-items: center !important;
           justify-content: flex-end !important;
-          gap: 8px !important;
+          gap: 6px !important;
           margin: 0 !important;
           padding: 0 !important;
+        }
+
+        .atlas-assets-viewport-root .atlas-assets-add-button {
+          min-height: 34px !important;
+          height: 34px !important;
+          padding: 6px 12px !important;
         }
 
         .atlas-assets-viewport-root .atlas-assets-viewport-grid {
@@ -196,7 +212,7 @@ export default function AtlasAssetsViewportPolish() {
           min-height: 0 !important;
           height: auto !important;
           max-height: none !important;
-          padding-top: 6px !important;
+          padding-top: 4px !important;
           overflow: visible !important;
         }
 
@@ -204,8 +220,8 @@ export default function AtlasAssetsViewportPolish() {
           min-height: 0 !important;
           height: auto !important;
           max-height: none !important;
-          margin: 0 0 6px !important;
-          padding: 0 0 6px !important;
+          margin: 0 0 4px !important;
+          padding: 0 0 4px !important;
         }
 
         .atlas-assets-viewport-root .atlas-assets-viewport-grid {
