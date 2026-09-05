@@ -4,8 +4,6 @@ import "./atlas-visual-system.css";
 import AtlasLocationsPolish from "./components/AtlasLocationsPolish";
 import AtlasPropertyVisibility from "./components/AtlasPropertyVisibility";
 import AtlasWorkspacePolish from "./components/AtlasWorkspacePolish";
-import AtlasAssetReferencePolish from "./components/AtlasAssetReferencePolish";
-import AtlasAssetsViewportPolish from "./components/AtlasAssetsViewportPolish";
 import AtlasWorkPolish from "./components/AtlasWorkPolish";
 
 export const metadata: Metadata = {
@@ -49,8 +47,6 @@ export default function RootLayout({
         <AtlasLocationsPolish />
         <AtlasPropertyVisibility />
         <AtlasWorkspacePolish />
-        <AtlasAssetReferencePolish />
-        <AtlasAssetsViewportPolish />
         <AtlasWorkPolish />
         {children}
       </body>
