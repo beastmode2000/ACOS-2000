@@ -135,7 +135,7 @@ function setNativeTab(drawer: HTMLElement, tab: "overview" | "work") {
 function clearNativeClasses(drawer: HTMLElement) {
   for (const element of Array.from(
     drawer.querySelectorAll<HTMLElement>(
-      ".atlas-native-asset-top, .atlas-native-asset-section, .atlas-native-photos-shell, .atlas-native-photo-child, .atlas-native-section-inner-title, .atlas-native-procedures, .atlas-asset-reference-inner-scroll",
+      ".atlas-native-asset-top, .atlas-native-asset-section, .atlas-native-photos-shell, .atlas-native-photo-child, .atlas-native-section-inner-title, .atlas-native-procedures, .atlas-native-asset-tabs-hidden, .atlas-asset-reference-inner-scroll",
     ),
   )) {
     element.classList.remove(
@@ -147,6 +147,7 @@ function clearNativeClasses(drawer: HTMLElement) {
       "atlas-native-photo-child",
       "atlas-native-section-inner-title",
       "atlas-native-procedures",
+      "atlas-native-asset-tabs-hidden",
       "atlas-asset-reference-inner-scroll",
     );
   }
@@ -334,6 +335,7 @@ export default function AtlasAssetReferencePolish() {
         (button) => normalized(button.textContent) === "save changes",
       );
       drawer.classList.toggle("atlas-asset-reference-editing", editing);
+      if (editing) clearNativeClasses(drawer);
 
       const title = drawerTitle(drawer);
       if (title && title !== lastTitleRef.current) {
@@ -395,7 +397,6 @@ export default function AtlasAssetReferencePolish() {
         }
       }
 
-      markNestedScrollContainers(drawer);
       setManualCount((current) => {
         const next = nativeManualCount(drawer);
         return next === current ? current : next;
@@ -585,7 +586,7 @@ function AssetReferenceStyles() {
         padding-right: 12px !important;
       }
 
-      .atlas-asset-reference-drawer {
+      .atlas-asset-reference-drawer:not(.atlas-asset-reference-editing) {
         width: 100% !important;
         min-width: 0 !important;
         max-width: 100% !important;
@@ -601,7 +602,7 @@ function AssetReferenceStyles() {
         box-sizing: border-box;
       }
 
-      .atlas-asset-reference-inner-scroll {
+      .atlas-asset-reference-drawer:not(.atlas-asset-reference-editing) .atlas-asset-reference-inner-scroll {
         height: auto !important;
         min-height: 0 !important;
         max-height: none !important;
@@ -877,11 +878,6 @@ function AssetReferenceStyles() {
       .atlas-asset-reference-editing .atlas-native-asset-section,
       .atlas-asset-reference-editing .atlas-native-photos-shell {
         display: none !important;
-      }
-
-      .atlas-asset-reference-editing .atlas-native-asset-top,
-      .atlas-asset-reference-editing .atlas-native-asset-tabs-hidden {
-        display: grid !important;
       }
 
       .atlas-asset-reference-editing .atlas-asset-reference-native-title-row > div:first-child {
