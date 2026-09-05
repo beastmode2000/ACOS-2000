@@ -28,6 +28,14 @@ type SavedReport = {
   updatedAt: string;
 };
 
+type RoutineGroup = {
+  key: string;
+  title: string;
+  department: string;
+  person: string;
+  dates: string[];
+};
+
 type Props = {
   propertyId: string;
   workOrders: Row[];
@@ -52,6 +60,20 @@ const departments = [
   "Projects",
   "Administration",
   "Other",
+];
+
+const reportOutcomeLabels = [
+  "not needed this time",
+  "didn't get to this week",
+  "didnt get to this week",
+  "rescheduled",
+  "started / in progress",
+  "reopened",
+  "cancelled",
+  "canceled",
+  "recurring series stopped",
+  "waiting",
+  "monitor",
 ];
 
 function localDate(date = new Date()) {
@@ -205,11 +227,7 @@ function completedWorkOrderItems(workOrders: Row[]) {
         person: displayPerson(historyEntry ? { ...row, ...historyEntry } : row),
         department: inferDepartment(row),
         title: String(row.title || row.name || "Work order completed"),
-        notes: String(
-          historyEntry?.notes ||
-            row.completionNotes ||
-            "Completed",
-        ),
+        notes: String(historyEntry?.notes || row.completionNotes || "Completed"),
       });
     }
   }
@@ -224,9 +242,7 @@ function workOrderActionItems(workOrders: Row[]) {
     const id = String(row.id || "");
     if (!id) continue;
 
-    const notesHistory = Array.isArray(row.notesHistory)
-      ? (row.notesHistory as Row[])
-      : [];
+    const notesHistory = Array.isArray(row.notesHistory) ? (row.notesHistory as Row[]) : [];
 
     for (const entry of notesHistory) {
       const outcome = reportableOutcomeFromEntry(entry);
@@ -242,8 +258,7 @@ function workOrderActionItems(workOrders: Row[]) {
       if (!date) continue;
 
       const entryId = String(
-        entry.id ||
-          `${outcome.label}-${date}-${String(entry.text || entry.note || "").slice(0, 40)}`,
+        entry.id || `${outcome.label}-${date}-${String(entry.text || entry.note || "").slice(0, 40)}`,
       );
 
       items.push({
@@ -256,15 +271,16 @@ function workOrderActionItems(workOrders: Row[]) {
         department: inferDepartment(row),
         title: String(row.title || row.name || "Work order"),
         notes:
-          outcome.detail &&
-          normalizedOutcome(outcome.detail) !== normalizedOutcome(outcome.label)
+          outcome.detail && normalizedOutcome(outcome.detail) !== normalizedOutcome(outcome.label)
             ? `${outcome.label} — ${outcome.detail}`
             : outcome.label,
       });
     }
 
     const lastOutcome = String(row.lastOutcome || row.last_outcome || "").trim();
-    const lastOutcomeAt = dateOnly(row.lastOutcomeAt || row.last_outcome_at || row.lastSkippedAt || row.last_skipped_at);
+    const lastOutcomeAt = dateOnly(
+      row.lastOutcomeAt || row.last_outcome_at || row.lastSkippedAt || row.last_skipped_at,
+    );
     if (lastOutcome && lastOutcomeAt) {
       const alreadyRepresented = items.some(
         (item) =>
@@ -317,9 +333,7 @@ function completedTaskItems(tasks: Row[]) {
         title: String(row.title || meta.title || "Task completed"),
         notes: String(
           (Array.isArray(meta.completionNotes)
-            ? meta.completionNotes.find(
-                (entry: Row) => dateOnly(entry.completedAt) === date,
-              )?.note
+            ? meta.completionNotes.find((entry: Row) => dateOnly(entry.completedAt) === date)?.note
             : "") ||
             meta.lastCompletionNote ||
             meta.addisonNote ||
@@ -355,11 +369,7 @@ function completedTeamItems(rows: Row[], propertyId: string) {
         person: displayPerson(row),
         department: inferDepartment(row),
         title: String(row.taskTitle || row.task_title || row.title || "Team work"),
-        notes: outcome
-          ? baseNote
-            ? `${outcome} — ${baseNote}`
-            : outcome
-          : baseNote,
+        notes: outcome ? (baseNote ? `${outcome} — ${baseNote}` : outcome) : baseNote,
       };
     })
     .filter((item) => Boolean(item.id && item.date));
@@ -393,6 +403,82 @@ function escapeHtml(value: unknown) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function itemTitleKey(item: ReportItem) {
+  return item.title.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function isOutcomeItem(item: ReportItem) {
+  const value = normalizedOutcome(item.notes);
+  return reportOutcomeLabels.some((label) => value.startsWith(label));
+}
+
+function meaningfulNotes(value: unknown) {
+  const note = String(value || "").trim();
+  if (!note) return "";
+  const normalized = note.toLowerCase().replace(/[.!]+$/g, "").trim();
+  if (["completed", "complete", "done", "end", "nothing needed", "n/a", "na"].includes(normalized)) {
+    return "";
+  }
+  return note;
+}
+
+function displayDate(value: string) {
+  if (!value) return "";
+  return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function businessDays(start: string, end: string) {
+  if (!start || !end) return [] as { date: string; label: string }[];
+  const startDate = new Date(`${start}T12:00:00`);
+  const endDate = new Date(`${end}T12:00:00`);
+  const result: { date: string; label: string }[] = [];
+  const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  for (const cursor = new Date(startDate); cursor <= endDate; cursor.setDate(cursor.getDate() + 1)) {
+    const day = cursor.getDay();
+    if (day === 0 || day === 6) continue;
+    result.push({ date: localDate(cursor), label: labels[day] });
+  }
+  return result;
+}
+
+function buildReportPresentation(items: ReportItem[]) {
+  const outcomeItems = items.filter(isOutcomeItem);
+  const completedItems = items.filter((item) => !isOutcomeItem(item));
+  const grouped = new Map<string, ReportItem[]>();
+
+  completedItems.forEach((item) => {
+    const identity = item.sourceId || itemTitleKey(item);
+    const key = `${item.sourceType}|${identity}|${itemTitleKey(item)}`;
+    grouped.set(key, [...(grouped.get(key) || []), item]);
+  });
+
+  const routineGroups: RoutineGroup[] = [];
+  const routineItemIds = new Set<string>();
+  grouped.forEach((rows, key) => {
+    const dates = uniqueDates(rows.map((row) => row.date));
+    if (dates.length < 2) return;
+    rows.forEach((row) => routineItemIds.add(row.id));
+    routineGroups.push({
+      key,
+      title: rows[0]?.title || "Routine work",
+      department: rows[0]?.department || "Other",
+      person: rows.map((row) => row.person).find(Boolean) || "",
+      dates,
+    });
+  });
+
+  routineGroups.sort((a, b) => a.title.localeCompare(b.title));
+  const completed = completedItems
+    .filter((item) => !routineItemIds.has(item.id))
+    .sort((a, b) => a.department.localeCompare(b.department) || a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
+  const exceptions = [...outcomeItems].sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
+
+  return { routineGroups, completed, exceptions };
 }
 
 export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMobile }: Props) {
@@ -431,6 +517,48 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     [sourceItems, excludedSourceKeys, periodStart, periodEnd],
   );
 
+  const presentation = useMemo(() => buildReportPresentation(items), [items]);
+  const weekdayColumns = useMemo(() => businessDays(periodStart, periodEnd), [periodStart, periodEnd]);
+
+  const upcomingWork = useMemo(() => {
+    if (!periodEnd) return [] as Row[];
+    const start = new Date(`${periodEnd}T12:00:00`);
+    start.setDate(start.getDate() + 1);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    const startKey = localDate(start);
+    const endKey = localDate(end);
+    const seen = new Set<string>();
+    return workOrders
+      .filter((row) => {
+        const statusValue = String(row.status || "").toLowerCase();
+        if (statusValue === "completed" || statusValue === "closed" || statusValue === "cancelled") return false;
+        const due = dateOnly(row.date || row.dueDate || row.due_date);
+        return Boolean(due && due >= startKey && due <= endKey);
+      })
+      .sort((a, b) => dateOnly(a.date || a.dueDate).localeCompare(dateOnly(b.date || b.dueDate)))
+      .filter((row) => {
+        const key = `${String(row.title || row.name || "").trim().toLowerCase()}|${dateOnly(row.date || row.dueDate)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 8);
+  }, [workOrders, periodEnd]);
+
+  const reportSummary = useMemo(() => {
+    const completedCount = presentation.completed.length + presentation.routineGroups.reduce((total, group) => total + group.dates.length, 0);
+    const areaCount = new Set(items.map((item) => item.department).filter(Boolean)).size;
+    const pieces = [`${completedCount} completed work item${completedCount === 1 ? "" : "s"} recorded${areaCount ? ` across ${areaCount} areas` : ""}.`];
+    if (presentation.routineGroups.length) {
+      pieces.push(`${presentation.routineGroups.length} recurring routine${presentation.routineGroups.length === 1 ? " was" : "s were"} rolled up by completion day.`);
+    }
+    if (presentation.exceptions.length) {
+      pieces.push(`${presentation.exceptions.length} item${presentation.exceptions.length === 1 ? "" : "s"} had a deferred, not-needed, or in-progress update.`);
+    }
+    return pieces.join(" ");
+  }, [items, presentation]);
+
   async function loadSavedReports(openCurrentReport = false) {
     const response = await fetch(
       `/api/atlas-owner-reports?propertyId=${encodeURIComponent(propertyId)}`,
@@ -440,10 +568,14 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     if (response.ok && payload.ok && Array.isArray(payload.reports)) {
       const reports = payload.reports as SavedReport[];
       setSavedReports(reports);
-      const savedExclusions = Array.isArray(payload.excludedSourceKeys) ? payload.excludedSourceKeys.map(String) : [];
+      const savedExclusions = Array.isArray(payload.excludedSourceKeys)
+        ? payload.excludedSourceKeys.map(String)
+        : [];
       setExcludedSourceKeys((current) => Array.from(new Set([...current, ...savedExclusions])));
       if (openCurrentReport) {
-        const currentReport = reports.find((report) => report.periodStart === periodStart && report.periodEnd === periodEnd);
+        const currentReport = reports.find(
+          (report) => report.periodStart === periodStart && report.periodEnd === periodEnd,
+        );
         if (currentReport) {
           setActiveReportId(currentReport.id);
           setStatus(currentReport.status);
@@ -480,7 +612,9 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   useEffect(() => {
     void fetch("/api/atlas-team-work", { cache: "no-store" })
       .then((response) => response.json())
-      .then((payload) => setTeamHistory(payload.ok && Array.isArray(payload.workHistory) ? payload.workHistory : []))
+      .then((payload) =>
+        setTeamHistory(payload.ok && Array.isArray(payload.workHistory) ? payload.workHistory : []),
+      )
       .catch(() => setTeamHistory([]));
   }, []);
 
@@ -559,11 +693,16 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !payload.ok) throw new Error(String(payload.error || "Owner report could not be saved."));
+      if (!response.ok || !payload.ok) {
+        throw new Error(String(payload.error || "Owner report could not be saved."));
+      }
 
       setActiveReportId(id);
       setStatus(nextStatus);
-      setMessage(successMessage || (nextStatus === "Final" ? "Owner report finalized and saved." : "Owner report saved."));
+      setMessage(
+        successMessage ||
+          (nextStatus === "Final" ? "Owner report finalized and saved." : "Owner report saved."),
+      );
       await loadSavedReports();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Owner report could not be saved.");
@@ -578,15 +717,23 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     const nextItems = items.filter((item) => item.id !== itemId);
     setItems(nextItems);
     if (deletedItem.sourceType !== "Manual" && deletedItem.sourceKey) {
-      setExcludedSourceKeys((current) => current.includes(deletedItem.sourceKey) ? current : [...current, deletedItem.sourceKey]);
+      setExcludedSourceKeys((current) =>
+        current.includes(deletedItem.sourceKey) ? current : [...current, deletedItem.sourceKey],
+      );
       try {
         const response = await fetch("/api/atlas-owner-reports", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "exclude-item", propertyId, sourceKey: deletedItem.sourceKey }),
+          body: JSON.stringify({
+            action: "exclude-item",
+            propertyId,
+            sourceKey: deletedItem.sourceKey,
+          }),
         });
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.ok) throw new Error(String(payload.error || "Report item could not be deleted."));
+        if (!response.ok || !payload.ok) {
+          throw new Error(String(payload.error || "Report item could not be deleted."));
+        }
       } catch {
         // Keep the item removed from this saved report even if the permanent
         // source exclusion request needs to be retried on a later delete.
@@ -630,26 +777,84 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     const popup = window.open("", "_blank");
     if (!popup) return;
 
-    const groups = departments
-      .map((department) => ({ department, rows: items.filter((item) => item.department === department) }))
+    const logoUrl = `${window.location.origin}/atlas-logo.png`;
+    const completedByDepartment = departments
+      .map((department) => ({
+        department,
+        rows: presentation.completed.filter((item) => item.department === department),
+      }))
       .filter((group) => group.rows.length);
 
-    popup.document.write(`<!doctype html><html><head><title>${escapeHtml(reportTitle(periodStart, periodEnd))}</title><style>
-      @page{size:letter;margin:.55in}body{font-family:Arial,sans-serif;color:#071b2f;margin:0}.head{border-bottom:3px solid #c99a3d;padding-bottom:10px;margin-bottom:16px}h1{font-size:22px;margin:0}.meta,.when{color:#667788;font-size:10px}.dept{font-size:15px;border-bottom:1px solid #d8e0e8;padding-bottom:5px;margin:17px 0 5px}.item{padding:6px 0;border-bottom:1px solid #edf0f3;break-inside:avoid}.line{display:flex;justify-content:space-between;gap:10px}.title{font-size:11px;font-weight:700}.notes{font-size:10px;color:#405164;margin-top:3px;white-space:pre-wrap}
-    </style></head><body><div class="head"><h1>${escapeHtml(reportTitle(periodStart, periodEnd))}</h1><div class="meta">Property ${escapeHtml(propertyId)} · ${items.length} activity item${items.length === 1 ? "" : "s"}</div></div>${groups
-      .map(
-        (group) =>
-          `<section><h2 class="dept">${escapeHtml(group.department)}</h2>${group.rows
-            .map(
-              (item) =>
-                `<div class="item"><div class="line"><div class="title">${escapeHtml(item.title || "Work activity")}${item.person ? ` · ${escapeHtml(item.person)}` : ""}</div><div class="when">${escapeHtml(new Date(`${item.date}T12:00:00`).toLocaleDateString())}</div></div>${item.notes ? `<div class="notes">${escapeHtml(item.notes)}</div>` : ""}</div>`,
-            )
-            .join("")}</section>`,
-      )
-      .join("")}</body></html>`);
+    const routineMarkup = presentation.routineGroups.length
+      ? `<section class="section"><h2>Routine Work</h2><div class="routine-wrap"><table class="routine"><thead><tr><th>Routine</th>${weekdayColumns
+          .map((day) => `<th>${escapeHtml(day.label)}<span>${escapeHtml(displayDate(day.date))}</span></th>`)
+          .join("")}</tr></thead><tbody>${presentation.routineGroups
+          .map(
+            (group) =>
+              `<tr><td><strong>${escapeHtml(group.title)}</strong>${group.person ? `<span>${escapeHtml(group.person)}</span>` : ""}</td>${weekdayColumns
+                .map((day) => `<td class="mark">${group.dates.includes(day.date) ? "✓" : "—"}</td>`)
+                .join("")}</tr>`,
+          )
+          .join("")}</tbody></table></div></section>`
+      : "";
+
+    const completedMarkup = completedByDepartment.length
+      ? `<section class="section"><h2>Completed Work</h2>${completedByDepartment
+          .map(
+            (group) =>
+              `<div class="dept-group"><h3>${escapeHtml(group.department)}</h3>${group.rows
+                .map((item) => {
+                  const note = meaningfulNotes(item.notes);
+                  return `<div class="item"><div class="item-main"><strong>${escapeHtml(item.title || "Work activity")}</strong><span>${escapeHtml([item.person, displayDate(item.date)].filter(Boolean).join(" · "))}</span></div>${note ? `<div class="note">${escapeHtml(note)}</div>` : ""}</div>`;
+                })
+                .join("")}</div>`,
+          )
+          .join("")}</section>`
+      : "";
+
+    const exceptionMarkup = presentation.exceptions.length
+      ? `<section class="section"><h2>Open / Deferred</h2>${presentation.exceptions
+          .map(
+            (item) =>
+              `<div class="item"><div class="item-main"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml([item.person, displayDate(item.date)].filter(Boolean).join(" · "))}</span></div><div class="note">${escapeHtml(item.notes)}</div></div>`,
+          )
+          .join("")}</section>`
+      : "";
+
+    const upcomingMarkup = upcomingWork.length
+      ? `<section class="section"><h2>Next Week</h2>${upcomingWork
+          .map(
+            (row) =>
+              `<div class="upcoming"><strong>${escapeHtml(row.title || row.name || "Upcoming work")}</strong><span>${escapeHtml(displayDate(dateOnly(row.date || row.dueDate || row.due_date)))}</span></div>`,
+          )
+          .join("")}</section>`
+      : "";
+
+    popup.document.write(`<!doctype html><html><head><title>${escapeHtml(
+      reportTitle(periodStart, periodEnd),
+    )}</title><style>
+      @page{size:letter;margin:.48in}
+      *{box-sizing:border-box}
+      body{font-family:Arial,Helvetica,sans-serif;color:#0b2a44;margin:0;background:#fff;font-size:10px;line-height:1.35}
+      .header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-bottom:12px;border-bottom:3px solid #c99a3d;margin-bottom:14px}
+      .brand{display:flex;align-items:center;gap:11px}.logo{width:58px;height:58px;object-fit:contain}.brand-name{font-size:18px;font-weight:800;letter-spacing:.08em}.brand-sub{font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:#667788;margin-top:2px}
+      .report-head{text-align:right}.report-head h1{margin:0;font-size:22px;line-height:1.05}.report-head .property{font-size:11px;font-weight:700;margin-top:4px}.report-head .dates{font-size:9px;color:#667788;margin-top:2px}
+      .summary{padding:11px 13px;background:#f5f8fb;border-left:4px solid #c99a3d;margin-bottom:14px;font-size:10.5px}
+      .section{margin:0 0 15px;break-inside:auto}.section h2{font-size:13px;margin:0 0 7px;padding-bottom:4px;border-bottom:1px solid #cfd9e2;text-transform:uppercase;letter-spacing:.06em}.dept-group{margin-bottom:8px}.dept-group h3{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#7a8794;margin:8px 0 2px}
+      .item{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;padding:4px 0;border-bottom:1px solid #edf1f4;break-inside:avoid}.item-main{display:flex;justify-content:space-between;gap:14px;align-items:baseline}.item-main strong{font-size:10px}.item-main span{font-size:8.5px;color:#6a7886;white-space:nowrap}.note{font-size:9px;color:#46596b;padding-right:8px}
+      .routine-wrap{overflow:hidden;border:1px solid #d7e0e8;border-radius:6px}.routine{width:100%;border-collapse:collapse}.routine th,.routine td{border-right:1px solid #e4e9ee;border-bottom:1px solid #e4e9ee;padding:5px 6px;text-align:center}.routine th:first-child,.routine td:first-child{text-align:left;width:48%}.routine th{background:#f5f8fb;font-size:8px;text-transform:uppercase;letter-spacing:.04em}.routine th span{display:block;font-size:7px;color:#7a8794;margin-top:1px}.routine td:first-child strong{display:block;font-size:9.5px}.routine td:first-child span{display:block;font-size:7.5px;color:#7a8794;margin-top:1px}.routine .mark{font-size:12px;font-weight:800;color:#0b6b48}.routine tr:last-child td{border-bottom:0}.routine th:last-child,.routine td:last-child{border-right:0}
+      .upcoming{display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px solid #edf1f4}.upcoming strong{font-size:9.5px}.upcoming span{font-size:8.5px;color:#6a7886;white-space:nowrap}
+      .footer{margin-top:16px;padding-top:7px;border-top:1px solid #c99a3d;display:flex;justify-content:space-between;color:#7a8794;font-size:7.5px}
+      @media print{.section{page-break-inside:auto}.item,.routine tr,.upcoming{page-break-inside:avoid}}
+    </style></head><body>
+      <header class="header"><div class="brand"><img class="logo" src="${escapeHtml(logoUrl)}" alt="Atlas"><div><div class="brand-name">ATLAS</div><div class="brand-sub">2000 Estate Systems</div></div></div><div class="report-head"><h1>Owners Report</h1><div class="property">Property ${escapeHtml(propertyId)}</div><div class="dates">${escapeHtml(displayDate(periodStart))} – ${escapeHtml(displayDate(periodEnd))}</div></div></header>
+      <div class="summary"><strong>This Week</strong><br>${escapeHtml(reportSummary)}</div>
+      ${routineMarkup}${completedMarkup}${exceptionMarkup}${upcomingMarkup}
+      <div class="footer"><span>Atlas Estate Operations</span><span>${escapeHtml(reportTitle(periodStart, periodEnd))}</span></div>
+    </body></html>`);
     popup.document.close();
     popup.focus();
-    window.setTimeout(() => popup.print(), 250);
+    window.setTimeout(() => popup.print(), 350);
   }
 
   const cardStyle = {
@@ -680,64 +885,322 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     cursor: "pointer",
     whiteSpace: "nowrap" as const,
   };
-  const quietButtonStyle = { ...buttonStyle, background: "#fff", border: `1px solid ${colors.line}` };
+  const quietButtonStyle = {
+    ...buttonStyle,
+    background: "#fff",
+    border: `1px solid ${colors.line}`,
+  };
 
   return (
     <section style={cardStyle}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 12 }}>
-        <div>
-          <div style={{ color: colors.gold, fontSize: 10, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>Weekly reporting</div>
-          <h2 style={{ margin: "4px 0 2px", color: colors.navy, fontSize: 20 }}>Owner Report</h2>
-          <div style={{ color: colors.muted, fontSize: 12 }}>Property {propertyId} · {activeReportId ? `${status} saved report` : "live draft"}</div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+          marginBottom: 12,
+        }}
+      >
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <img src="/atlas-logo.png" alt="Atlas" style={{ width: 48, height: 48, objectFit: "contain" }} />
+          <div>
+            <div
+              style={{
+                color: colors.gold,
+                fontSize: 10,
+                fontWeight: 950,
+                letterSpacing: ".12em",
+                textTransform: "uppercase",
+              }}
+            >
+              Weekly reporting
+            </div>
+            <h2 style={{ margin: "4px 0 2px", color: colors.navy, fontSize: 20 }}>Owners Report</h2>
+            <div style={{ color: colors.muted, fontSize: 12 }}>
+              Property {propertyId} · {activeReportId ? `${status} saved report` : "live draft"}
+            </div>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-          <button type="button" onClick={() => setShowSavedReports((value) => !value)} style={quietButtonStyle}>Saved Reports</button>
-          <button type="button" onClick={printReport} disabled={!items.length} style={{ ...quietButtonStyle, opacity: items.length ? 1 : 0.5 }}>Print / PDF</button>
-          <button type="button" onClick={() => void saveReport("Draft")} disabled={saving} style={quietButtonStyle}>Save</button>
-          <button type="button" onClick={() => void saveReport("Final")} disabled={saving || !items.length} style={{ ...buttonStyle, opacity: items.length ? 1 : 0.5 }}>Finalize</button>
+          <button
+            type="button"
+            onClick={() => setShowSavedReports((value) => !value)}
+            style={quietButtonStyle}
+          >
+            Saved Reports
+          </button>
+          <button
+            type="button"
+            onClick={printReport}
+            disabled={!items.length}
+            style={{ ...quietButtonStyle, opacity: items.length ? 1 : 0.5 }}
+          >
+            Print / PDF
+          </button>
+          <button
+            type="button"
+            onClick={() => void saveReport("Draft")}
+            disabled={saving}
+            style={quietButtonStyle}
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => void saveReport("Final")}
+            disabled={saving || !items.length}
+            style={{ ...buttonStyle, opacity: items.length ? 1 : 0.5 }}
+          >
+            Finalize
+          </button>
         </div>
       </div>
 
       {showSavedReports ? (
-        <div style={{ display: "grid", gap: 6, marginBottom: 12, padding: 10, border: `1px solid ${colors.line}`, borderRadius: 11, background: colors.panel }}>
-          {savedReports.length ? savedReports.map((report) => (
-            <div key={report.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "7px 8px", background: "#fff", borderRadius: 9 }}>
-              <button type="button" onClick={() => openSavedReport(report)} style={{ border: 0, background: "transparent", padding: 0, color: colors.navy, fontWeight: 850, cursor: "pointer", textAlign: "left" }}>{report.title} · {report.status} · {report.items.length}</button>
-              <button type="button" onClick={() => void deleteSavedReport(report)} style={{ ...quietButtonStyle, padding: "6px 8px", fontSize: 11 }}>Delete</button>
-            </div>
-          )) : <div style={{ color: colors.muted, fontSize: 12 }}>No saved owner reports yet.</div>}
+        <div
+          style={{
+            display: "grid",
+            gap: 6,
+            marginBottom: 12,
+            padding: 10,
+            border: `1px solid ${colors.line}`,
+            borderRadius: 11,
+            background: colors.panel,
+          }}
+        >
+          {savedReports.length ? (
+            savedReports.map((report) => (
+              <div
+                key={report.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  padding: "7px 8px",
+                  background: "#fff",
+                  borderRadius: 9,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => openSavedReport(report)}
+                  style={{
+                    border: 0,
+                    background: "transparent",
+                    padding: 0,
+                    color: colors.navy,
+                    fontWeight: 850,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  {report.title} · {report.status} · {report.items.length}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void deleteSavedReport(report)}
+                  style={{ ...quietButtonStyle, padding: "6px 8px", fontSize: 11 }}
+                >
+                  Delete
+                </button>
+              </div>
+            ))
+          ) : (
+            <div style={{ color: colors.muted, fontSize: 12 }}>No saved owner reports yet.</div>
+          )}
         </div>
       ) : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "150px 150px auto auto", gap: 7, alignItems: "end", marginBottom: 11 }}>
-        <label style={{ display: "grid", gap: 4, color: colors.muted, fontSize: 10, fontWeight: 850 }}>FROM<input type="date" value={periodStart} onChange={(event) => { setActiveReportId(""); setPeriodStart(event.currentTarget.value); }} style={controlStyle} /></label>
-        <label style={{ display: "grid", gap: 4, color: colors.muted, fontSize: 10, fontWeight: 850 }}>TO<input type="date" value={periodEnd} onChange={(event) => { setActiveReportId(""); setPeriodEnd(event.currentTarget.value); }} style={controlStyle} /></label>
-        <button type="button" onClick={refreshFromAtlas} style={quietButtonStyle}>Refresh from Atlas</button>
-        <button type="button" onClick={addManualItem} style={quietButtonStyle}>Add Note</button>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr 1fr" : "150px 150px auto auto",
+          gap: 7,
+          alignItems: "end",
+          marginBottom: 11,
+        }}
+      >
+        <label
+          style={{ display: "grid", gap: 4, color: colors.muted, fontSize: 10, fontWeight: 850 }}
+        >
+          FROM
+          <input
+            type="date"
+            value={periodStart}
+            onChange={(event) => {
+              setActiveReportId("");
+              setPeriodStart(event.currentTarget.value);
+            }}
+            style={controlStyle}
+          />
+        </label>
+        <label
+          style={{ display: "grid", gap: 4, color: colors.muted, fontSize: 10, fontWeight: 850 }}
+        >
+          TO
+          <input
+            type="date"
+            value={periodEnd}
+            onChange={(event) => {
+              setActiveReportId("");
+              setPeriodEnd(event.currentTarget.value);
+            }}
+            style={controlStyle}
+          />
+        </label>
+        <button type="button" onClick={refreshFromAtlas} style={quietButtonStyle}>
+          Refresh from Atlas
+        </button>
+        <button type="button" onClick={addManualItem} style={quietButtonStyle}>
+          Add Note
+        </button>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8, color: colors.muted, fontSize: 11 }}>
-        <span><strong style={{ color: colors.navy }}>{items.length}</strong> items in report</span>
-        <span>Report edits do not change source records.</span>
+      <div
+        style={{
+          border: `1px solid ${colors.line}`,
+          borderTop: `3px solid ${colors.gold}`,
+          borderRadius: 12,
+          background: "#fff",
+          padding: isMobile ? 12 : 16,
+          marginBottom: 12,
+        }}
+      >
+        <div style={{ color: colors.gold, fontSize: 9, fontWeight: 900, letterSpacing: ".11em", textTransform: "uppercase" }}>
+          This Week
+        </div>
+        <div style={{ color: colors.navy, fontSize: 13, lineHeight: 1.5, marginTop: 5 }}>{reportSummary}</div>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, color: colors.muted, fontSize: 10.5 }}>
+          {presentation.routineGroups.length ? <span>{presentation.routineGroups.length} routines rolled up</span> : null}
+          {presentation.completed.length ? <span>{presentation.completed.length} one-time items</span> : null}
+          {presentation.exceptions.length ? <span>{presentation.exceptions.length} open/deferred updates</span> : null}
+          {upcomingWork.length ? <span>{upcomingWork.length} upcoming</span> : null}
+        </div>
       </div>
 
-      <div style={{ display: "grid", gap: 7 }}>
-        {items.length ? items.map((item) => (
-          <div key={item.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 9, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "110px 120px minmax(145px,.8fr) minmax(220px,1.5fr) minmax(220px,1.5fr) auto", gap: 7, alignItems: "start" }}>
-            <input type="date" value={item.date} onChange={(event) => updateItem(item.id, { date: event.currentTarget.value })} style={controlStyle} />
-            <input value={item.person} onChange={(event) => updateItem(item.id, { person: event.currentTarget.value })} placeholder="Person" style={controlStyle} />
-            <select value={item.department} onChange={(event) => updateItem(item.id, { department: event.currentTarget.value })} style={controlStyle}>{departments.map((department) => <option key={department}>{department}</option>)}</select>
-            <input value={item.title} onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })} placeholder="Work activity" style={controlStyle} />
-            <textarea value={item.notes} onChange={(event) => updateItem(item.id, { notes: event.currentTarget.value })} placeholder="Outcome / notes" rows={isMobile ? 2 : 1} style={{ ...controlStyle, resize: "vertical", minHeight: 38 }} />
-            <div style={{ display: "grid", gap: 5 }}>
-              <button type="button" onClick={() => void saveReportItem(item.id)} disabled={saving} style={{ ...buttonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}>Save</button>
-              <button type="button" onClick={() => void deleteReportItem(item.id)} disabled={saving} style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}>Delete</button>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 8,
+          flexWrap: "wrap",
+          marginBottom: 8,
+          color: colors.muted,
+          fontSize: 11,
+        }}
+      >
+        <span>
+          <strong style={{ color: colors.navy }}>{items.length}</strong> source items in report
+        </span>
+        <span>Print / PDF now rolls recurring work into one line.</span>
+      </div>
+
+      <details>
+        <summary
+          style={{
+            cursor: "pointer",
+            color: colors.navy,
+            fontSize: 12,
+            fontWeight: 850,
+            padding: "8px 0",
+          }}
+        >
+          Edit report items
+        </summary>
+        <div style={{ display: "grid", gap: 7, marginTop: 4 }}>
+          {items.length ? (
+            items.map((item) => (
+              <div
+                key={item.id}
+                style={{
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 11,
+                  padding: 9,
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "110px 120px minmax(145px,.8fr) minmax(220px,1.5fr) minmax(220px,1.5fr) auto",
+                  gap: 7,
+                  alignItems: "start",
+                }}
+              >
+                <input
+                  type="date"
+                  value={item.date}
+                  onChange={(event) => updateItem(item.id, { date: event.currentTarget.value })}
+                  style={controlStyle}
+                />
+                <input
+                  value={item.person}
+                  onChange={(event) => updateItem(item.id, { person: event.currentTarget.value })}
+                  placeholder="Person"
+                  style={controlStyle}
+                />
+                <select
+                  value={item.department}
+                  onChange={(event) => updateItem(item.id, { department: event.currentTarget.value })}
+                  style={controlStyle}
+                >
+                  {departments.map((department) => (
+                    <option key={department}>{department}</option>
+                  ))}
+                </select>
+                <input
+                  value={item.title}
+                  onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })}
+                  placeholder="Work activity"
+                  style={controlStyle}
+                />
+                <textarea
+                  value={item.notes}
+                  onChange={(event) => updateItem(item.id, { notes: event.currentTarget.value })}
+                  placeholder="Outcome / notes"
+                  rows={isMobile ? 2 : 1}
+                  style={{ ...controlStyle, resize: "vertical", minHeight: 38 }}
+                />
+                <div style={{ display: "grid", gap: 5 }}>
+                  <button
+                    type="button"
+                    onClick={() => void saveReportItem(item.id)}
+                    disabled={saving}
+                    style={{ ...buttonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteReportItem(item.id)}
+                    disabled={saving}
+                    style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div
+              style={{
+                padding: 16,
+                border: `1px dashed ${colors.line}`,
+                borderRadius: 11,
+                color: colors.muted,
+                fontSize: 12,
+              }}
+            >
+              No work activity found for this date range.
             </div>
-          </div>
-        )) : <div style={{ padding: 16, border: `1px dashed ${colors.line}`, borderRadius: 11, color: colors.muted, fontSize: 12 }}>No work activity found for this date range.</div>}
-      </div>
+          )}
+        </div>
+      </details>
 
-      {message ? <div style={{ marginTop: 10, color: colors.navy, fontSize: 12, fontWeight: 800 }}>{message}</div> : null}
+      {message ? (
+        <div style={{ marginTop: 10, color: colors.navy, fontSize: 12, fontWeight: 800 }}>{message}</div>
+      ) : null}
     </section>
   );
 }
