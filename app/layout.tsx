@@ -3,6 +3,7 @@ import "./atlas-typography.css";
 import "./atlas-visual-system.css";
 import AtlasLocationsPolish from "./components/AtlasLocationsPolish";
 import AtlasPropertyVisibility from "./components/AtlasPropertyVisibility";
+import AtlasWorkspacePolish from "./components/AtlasWorkspacePolish";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -44,6 +45,7 @@ export default function RootLayout({
       <body>
         <AtlasLocationsPolish />
         <AtlasPropertyVisibility />
+        <AtlasWorkspacePolish />
         {children}
       </body>
     </html>
