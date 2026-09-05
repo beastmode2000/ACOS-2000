@@ -159,6 +159,76 @@ export default function AtlasAssetsViewportPolish() {
         display: none !important;
       }
 
+      .atlas-assets-viewport-root .atlas-native-photos-manual-open > section[aria-label="Asset manuals"],
+      .atlas-assets-viewport-root section[aria-label="Asset manuals"].atlas-native-section-open {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-native-photos-manual-open > section[aria-label="Asset manuals"] > div,
+      .atlas-assets-viewport-root section[aria-label="Asset manuals"].atlas-native-section-open > div {
+        min-width: 0 !important;
+        max-width: 100% !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-native-photos-manual-open > section[aria-label="Asset manuals"] > div:last-of-type > div,
+      .atlas-assets-viewport-root section[aria-label="Asset manuals"].atlas-native-section-open > div:last-of-type > div {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+        padding: 10px !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-native-photos-manual-open > section[aria-label="Asset manuals"] > div:last-of-type > div > div:first-child,
+      .atlas-assets-viewport-root section[aria-label="Asset manuals"].atlas-native-section-open > div:last-of-type > div > div:first-child {
+        min-width: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-native-photos-manual-open > section[aria-label="Asset manuals"] > div:last-of-type > div > div:first-child strong,
+      .atlas-assets-viewport-root section[aria-label="Asset manuals"].atlas-native-section-open > div:last-of-type > div > div:first-child strong {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-native-photos-manual-open > section[aria-label="Asset manuals"] > div:last-of-type > div > div:first-child span,
+      .atlas-assets-viewport-root section[aria-label="Asset manuals"].atlas-native-section-open > div:last-of-type > div > div:first-child span {
+        display: block !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-native-photos-manual-open > section[aria-label="Asset manuals"] > div:last-of-type > div > div:last-child,
+      .atlas-assets-viewport-root section[aria-label="Asset manuals"].atlas-native-section-open > div:last-of-type > div > div:last-child {
+        display: flex !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-native-photos-manual-open > section[aria-label="Asset manuals"] button,
+      .atlas-assets-viewport-root section[aria-label="Asset manuals"].atlas-native-section-open button {
+        flex: 0 0 auto !important;
+        white-space: nowrap !important;
+      }
+
       @media (min-width: 901px) {
         .atlas-assets-viewport-root .atlas-assets-viewport-shell {
           height: calc(100dvh - 96px) !important;
@@ -295,6 +365,11 @@ export default function AtlasAssetsViewportPolish() {
           justify-content: flex-end !important;
           gap: 6px !important;
           flex-wrap: wrap !important;
+        }
+
+        .atlas-assets-viewport-root .atlas-native-photos-manual-open > section[aria-label="Asset manuals"] > div:last-of-type > div > div:last-child,
+        .atlas-assets-viewport-root section[aria-label="Asset manuals"].atlas-native-section-open > div:last-of-type > div > div:last-child {
+          justify-content: flex-start !important;
         }
       }
     `}</style>
