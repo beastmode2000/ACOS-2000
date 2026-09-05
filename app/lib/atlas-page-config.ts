@@ -49,7 +49,6 @@ export const screens: { id: AtlasScreen; label: string }[] = [
   { id: "vendors", label: "Vendors" },
   { id: "contacts", label: "Contacts" },
   { id: "documents", label: "Documents" },
-  { id: "procedures", label: "Procedures" },
   { id: "team", label: "Team" },
   { id: "map", label: "Map" },
   { id: "qr", label: "QR Codes" },
