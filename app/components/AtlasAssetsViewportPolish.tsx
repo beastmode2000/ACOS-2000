@@ -46,6 +46,14 @@ function markAssetsViewport() {
   const drawer = root.querySelector<HTMLElement>(".atlas-asset-drawer");
   if (!drawer) return;
 
+  const editing = Array.from(drawer.querySelectorAll<HTMLButtonElement>("button")).some(
+    (button) => normalized(button.textContent) === "save changes",
+  );
+  const notesSection = Array.from(drawer.querySelectorAll<HTMLElement>("section")).find(
+    (section) => normalized(section.querySelector<HTMLElement>("strong")?.textContent) === "notes",
+  );
+  notesSection?.classList.toggle("atlas-assets-notes-hidden", !editing);
+
   const grid = drawer.parentElement;
   if (!grid) return;
   grid.classList.add("atlas-assets-viewport-grid");
@@ -156,6 +164,10 @@ export default function AtlasAssetsViewportPolish() {
   return (
     <style jsx global>{`
       .atlas-assets-viewport-root .atlas-assets-sort-hidden {
+        display: none !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-assets-notes-hidden {
         display: none !important;
       }
 
