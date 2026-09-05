@@ -17,6 +17,96 @@ function workMain() {
   return (heading?.closest("main") as HTMLElement | null) || null;
 }
 
+function isLegacyGeneratedDescription(value: unknown) {
+  const description = normalized(value);
+  if (!description) return false;
+  return (
+    (/^weekly\b/.test(description) && /\bapproved\b/.test(description)) ||
+    (/\bvehicle cleaning\b/.test(description) && /\bapproved\b/.test(description)) ||
+    description.includes("weekly approved vehicle cleaning")
+  );
+}
+
+function markWorkDetail(root: HTMLElement) {
+  const panel = root.querySelector<HTMLElement>("[data-atlas-work-detail-panel]");
+  if (!panel) return;
+  panel.classList.add("atlas-work-detail-root");
+
+  const title = panel.querySelector<HTMLHeadingElement>("h2");
+  if (title) {
+    title.classList.add("atlas-work-detail-title");
+
+    const titleBlock = title.parentElement;
+    const description = titleBlock?.querySelector<HTMLElement>(":scope > p") || null;
+    if (description) {
+      description.classList.add("atlas-work-primary-description");
+      if (isLegacyGeneratedDescription(description.textContent)) {
+        description.classList.add("atlas-work-generated-description");
+      }
+    }
+
+    const badgeTexts = new Set([
+      "open",
+      "scheduled",
+      "in progress",
+      "waiting",
+      "monitor",
+      "completed",
+      "cancelled",
+      "recurring",
+    ]);
+    for (const badge of Array.from(titleBlock?.querySelectorAll<HTMLElement>("span") || [])) {
+      if (badgeTexts.has(normalized(badge.textContent))) {
+        badge.classList.add("atlas-work-redundant-badge");
+      }
+    }
+  }
+
+  const workDetails = Array.from(panel.querySelectorAll<HTMLDetailsElement>("details")).find(
+    (details) => {
+      const summary = details.querySelector<HTMLElement>("summary");
+      const value = normalized(summary?.textContent);
+      return value === "additional details" || value === "work details";
+    },
+  );
+  if (workDetails) {
+    workDetails.classList.add("atlas-work-reference-details");
+    workDetails.open = true;
+    const summary = workDetails.querySelector<HTMLElement>("summary");
+    if (summary && normalized(summary.textContent) !== "work details") {
+      summary.textContent = "Work details";
+    }
+  }
+
+  for (const strong of Array.from(panel.querySelectorAll<HTMLElement>("strong"))) {
+    if (normalized(strong.textContent) === "work notes") {
+      strong.textContent = "Notes";
+      strong.classList.add("atlas-work-notes-heading");
+    }
+  }
+
+  const notesInput = Array.from(panel.querySelectorAll<HTMLInputElement>("input")).find(
+    (input) => normalized(input.placeholder).startsWith("add a note"),
+  );
+  if (notesInput) notesInput.placeholder = "Add a note...";
+
+  for (const element of Array.from(panel.querySelectorAll<HTMLElement>("span, div"))) {
+    if (normalized(element.textContent) !== "latest update") continue;
+    const updateCard = element.parentElement;
+    updateCard?.classList.add("atlas-work-latest-update-duplicate");
+  }
+
+  const actions = panel.querySelector<HTMLSelectElement>('select[aria-label="Work order actions"]');
+  if (actions && !actions.querySelector('option[value="photo"]')) {
+    const option = document.createElement("option");
+    option.value = "photo";
+    option.textContent = "Add Photo";
+    const deleteOption = actions.querySelector('option[value="delete"]');
+    if (deleteOption) actions.insertBefore(option, deleteOption);
+    else actions.appendChild(option);
+  }
+}
+
 function markWorkPage() {
   const root = workMain();
   if (!root) return;
@@ -100,6 +190,7 @@ function markWorkPage() {
     "what to do",
     "what was done",
     "notes",
+    "work notes",
     "photos",
     "documents",
     "procedure",
@@ -114,6 +205,8 @@ function markWorkPage() {
     const section = heading.closest<HTMLElement>("section, article") || heading.parentElement;
     section?.classList.add("atlas-work-detail-section");
   }
+
+  markWorkDetail(root);
 }
 
 export default function AtlasWorkPolish() {
@@ -168,7 +261,10 @@ export default function AtlasWorkPolish() {
         border-radius: 9px !important;
       }
 
-      .atlas-work-polish-root .atlas-work-secondary-clutter {
+      .atlas-work-polish-root .atlas-work-secondary-clutter,
+      .atlas-work-polish-root .atlas-work-redundant-badge,
+      .atlas-work-polish-root .atlas-work-generated-description,
+      .atlas-work-polish-root .atlas-work-latest-update-duplicate {
         display: none !important;
       }
 
@@ -225,7 +321,8 @@ export default function AtlasWorkPolish() {
         font-weight: 400 !important;
       }
 
-      .atlas-work-polish-root .atlas-work-detail-heading {
+      .atlas-work-polish-root .atlas-work-detail-heading,
+      .atlas-work-polish-root .atlas-work-notes-heading {
         font-size: 13px !important;
         line-height: 1.25 !important;
         font-weight: 600 !important;
@@ -239,11 +336,32 @@ export default function AtlasWorkPolish() {
         letter-spacing: -0.004em !important;
       }
 
-      .atlas-work-polish-root [data-atlas-work-detail-panel] h2 {
-        font-size: 20px !important;
+      .atlas-work-polish-root [data-atlas-work-detail-panel] h2,
+      .atlas-work-polish-root .atlas-work-detail-title {
+        font-size: 19px !important;
         line-height: 1.18 !important;
         font-weight: 600 !important;
         letter-spacing: -0.018em !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-primary-description {
+        margin-top: 6px !important;
+        color: #475569 !important;
+        font-size: 13px !important;
+        line-height: 1.42 !important;
+        font-weight: 400 !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-primary-description:not(.atlas-work-generated-description)::before {
+        content: "Description";
+        display: block;
+        margin-bottom: 3px;
+        color: #667085;
+        font-size: 10.5px;
+        line-height: 1.2;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.035em;
       }
 
       .atlas-work-polish-root [data-atlas-work-detail-panel] h3,
@@ -281,6 +399,28 @@ export default function AtlasWorkPolish() {
         line-height: 1.3 !important;
         font-weight: 600 !important;
         letter-spacing: -0.004em !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-reference-details {
+        padding: 9px 10px !important;
+        border-radius: 10px !important;
+        background: #ffffff !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-reference-details > div {
+        grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)) !important;
+        gap: 7px !important;
+        margin-top: 8px !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-reference-details > div > div {
+        padding: 0 !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-reference-details > div > div > div {
+        margin-top: 2px !important;
+        font-size: 12.5px !important;
+        font-weight: 500 !important;
       }
 
       .atlas-work-polish-root [data-atlas-work-detail-panel] button,
@@ -330,8 +470,9 @@ export default function AtlasWorkPolish() {
           scrollbar-gutter: auto !important;
         }
 
-        .atlas-work-polish-root [data-atlas-work-detail-panel] h2 {
-          font-size: 19px !important;
+        .atlas-work-polish-root [data-atlas-work-detail-panel] h2,
+        .atlas-work-polish-root .atlas-work-detail-title {
+          font-size: 18px !important;
         }
       }
     `}</style>
