@@ -277,21 +277,79 @@ function addControls(card: HTMLElement, room: string, label: string, value: stri
   void refresh();
 }
 
-function ensureCategoryHeadings(grid: HTMLElement) {
-  let previousCategory = "";
-  for (const card of Array.from(grid.querySelectorAll<HTMLElement>(":scope > .atlas-location-spec-card"))) {
-    const category = card.dataset.specCategory || "Specifications";
-    const previous = card.previousElementSibling as HTMLElement | null;
-    const alreadyCorrect = previous?.classList.contains("atlas-spec-category") && previous.textContent === category;
-
-    if (category !== previousCategory && !alreadyCorrect) {
-      const heading = document.createElement("div");
-      heading.className = "atlas-spec-category";
-      heading.textContent = category;
-      grid.insertBefore(heading, card);
-    }
-    previousCategory = category;
+function removeCategoryHeadings(grid: HTMLElement) {
+  for (const heading of Array.from(grid.querySelectorAll<HTMLElement>(":scope > .atlas-spec-category"))) {
+    heading.remove();
   }
+}
+
+function markBusyLocationChrome(drawer: HTMLElement, listPanel: HTMLElement | null) {
+  for (const button of Array.from(drawer.querySelectorAll<HTMLButtonElement>("button"))) {
+    const text = button.textContent?.trim() || "";
+    if (text === "+ Sub-location" || text === "+ Sub") {
+      button.classList.add("atlas-location-hidden-sub");
+    }
+  }
+
+  for (const section of Array.from(drawer.querySelectorAll<HTMLElement>("section"))) {
+    const text = section.textContent || "";
+    if (text.includes("Location at a glance") || text.includes("Property Intelligence")) {
+      section.classList.add("atlas-location-hidden-overview");
+    }
+    if (text.includes("Assets Assigned Here")) {
+      section.classList.add("atlas-location-equipment-section");
+      const eyebrow = Array.from(section.querySelectorAll<HTMLElement>("div")).find(
+        (node) => node.textContent?.trim() === "Assets Assigned Here",
+      );
+      if (eyebrow) eyebrow.textContent = "Appliances & Equipment";
+      const hint = Array.from(section.querySelectorAll<HTMLElement>("div")).find(
+        (node) => node.textContent?.includes("Assets remain separate records"),
+      );
+      if (hint) hint.classList.add("atlas-location-hidden-hint");
+    }
+  }
+
+  for (const label of Array.from(drawer.querySelectorAll<HTMLElement>("span"))) {
+    const text = label.textContent?.trim() || "";
+    if (text === "Type" || text === "Parent" || text === "Hierarchy Path") {
+      label.parentElement?.classList.add("atlas-location-hidden-hierarchy-card");
+    }
+  }
+
+  if (!listPanel) return;
+
+  for (const button of Array.from(listPanel.querySelectorAll<HTMLButtonElement>("button"))) {
+    const text = button.textContent?.trim() || "";
+    if (text === "+ Sub") button.classList.add("atlas-location-hidden-sub");
+
+    const title = button.querySelector<HTMLElement>("strong")?.textContent?.trim() || "";
+    if (!title) continue;
+    const wrapper = button.parentElement as HTMLElement | null;
+    if (!wrapper) continue;
+    button.classList.add("atlas-location-list-card-main");
+    wrapper.classList.add("atlas-location-list-card-clean");
+  }
+
+  for (const section of Array.from(listPanel.querySelectorAll<HTMLElement>("section"))) {
+    const text = section.textContent || "";
+    if (
+      text.includes("Hierarchy and Assignment Review") ||
+      text.includes("Location Classification Review")
+    ) {
+      section.classList.add("atlas-location-hidden-list-review");
+    }
+  }
+
+  const topSummary = Array.from(listPanel.querySelectorAll<HTMLElement>("div")).find((node) => {
+    const text = node.textContent || "";
+    return (
+      text.includes("Top level") &&
+      text.includes("Connected") &&
+      text.includes("Active work") &&
+      text.includes("Hierarchy Issues")
+    );
+  });
+  if (topSummary) topSummary.classList.add("atlas-location-hidden-list-summary");
 }
 
 export default function AtlasLocationsPolish() {
@@ -315,6 +373,8 @@ export default function AtlasLocationsPolish() {
           listPanel.classList.add("atlas-location-list-panel", "atlas-location-independent-scroll");
         }
 
+        markBusyLocationChrome(drawer, listPanel);
+
         const specCards: HTMLElement[] = [];
         for (const valueNode of Array.from(drawer.querySelectorAll<HTMLElement>("strong"))) {
           const value = valueNode.textContent || "";
@@ -336,7 +396,7 @@ export default function AtlasLocationsPolish() {
         const grids = new Set(specCards.map((card) => card.parentElement).filter(Boolean) as HTMLElement[]);
         for (const grid of grids) {
           grid.classList.add("atlas-location-spec-grid");
-          ensureCategoryHeadings(grid);
+          removeCategoryHeadings(grid);
         }
 
         for (const textarea of Array.from(drawer.querySelectorAll<HTMLTextAreaElement>("textarea"))) {
@@ -392,37 +452,120 @@ export default function AtlasLocationsPolish() {
           overflow: hidden !important;
         }
       }
+      .atlas-location-hidden-sub,
+      .atlas-location-hidden-overview,
+      .atlas-location-hidden-hierarchy-card,
+      .atlas-location-hidden-list-review,
+      .atlas-location-hidden-list-summary,
+      .atlas-location-hidden-hint {
+        display: none !important;
+      }
+      .atlas-location-list-card-clean {
+        border-radius: 10px !important;
+        box-shadow: none !important;
+        transform: none !important;
+      }
+      .atlas-location-list-card-main {
+        padding-top: 9px !important;
+        padding-bottom: 9px !important;
+      }
+      .atlas-location-list-card-main > span:nth-child(2) {
+        display: none !important;
+      }
+      .atlas-location-list-card-main > span:last-child > span,
+      .atlas-location-list-card-main > span:last-child > small {
+        display: none !important;
+      }
+      .atlas-location-list-card-main > span:last-child > strong {
+        display: block !important;
+        font-size: 14px !important;
+        line-height: 1.35 !important;
+      }
+      .atlas-location-equipment-section {
+        order: -5;
+      }
+      .atlas-location-equipment-section [style*="box-shadow"] {
+        box-shadow: none !important;
+      }
       .atlas-location-drawer-polish img[style*="object-fit: cover"] {
         object-fit: contain !important;
         background: #fff !important;
       }
-      .atlas-location-spec-grid { display: grid !important; grid-template-columns: minmax(0, 1fr) !important; gap: 12px !important; margin-top: 16px !important; padding-top: 38px !important; position: relative !important; }
-      .atlas-location-spec-grid::before { content: "Specifications"; position: absolute; top: 0; left: 0; font-size: 17px; font-weight: 900; color: #0b1e33; }
-      .atlas-spec-category { margin-top: 8px; padding: 10px 2px 3px; border-bottom: 1px solid #dce4ec; color: #0b1e33; font-size: 14px; font-weight: 900; }
-      .atlas-location-spec-card { display: grid !important; grid-template-columns: minmax(190px,.32fr) minmax(0,1fr) !important; gap: 18px !important; align-items: start !important; min-width: 0 !important; padding: 16px !important; border: 1px solid #d9e2eb !important; border-radius: 12px !important; background: #fff !important; box-shadow: 0 2px 7px rgba(15,42,67,.04) !important; }
-      .atlas-location-spec-label { display:block !important; color:#0b1e33 !important; font-size:13px !important; line-height:1.4 !important; font-weight:900 !important; text-transform:none !important; overflow-wrap:anywhere !important; }
-      .atlas-location-spec-value { display:block !important; min-width:0 !important; color:#33465b !important; font-size:13px !important; line-height:1.65 !important; font-weight:650 !important; white-space:pre-wrap !important; overflow-wrap:anywhere !important; }
-      .atlas-spec-attachments { grid-column:1/-1; display:grid; gap:10px; padding-top:12px; border-top:1px solid #e6ebf0; }
-      .atlas-spec-controls { display:flex; align-items:center; flex-wrap:wrap; gap:7px; }
-      .atlas-spec-action { min-height:32px; padding:6px 10px; border:1px solid #d2dbe4; border-radius:8px; background:#fff; color:#0b1e33; font:inherit; font-size:12px; font-weight:800; cursor:pointer; }
+      .atlas-location-spec-grid {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 8px !important;
+        margin-top: 12px !important;
+        padding-top: 0 !important;
+        position: relative !important;
+      }
+      .atlas-location-spec-grid::before {
+        content: none !important;
+      }
+      .atlas-spec-category {
+        display: none !important;
+      }
+      .atlas-location-spec-card {
+        display: grid !important;
+        grid-template-columns: minmax(150px,.28fr) minmax(0,1fr) !important;
+        gap: 12px !important;
+        align-items: start !important;
+        min-width: 0 !important;
+        padding: 11px 12px !important;
+        border: 1px solid #d9e2eb !important;
+        border-radius: 10px !important;
+        background: #fff !important;
+        box-shadow: none !important;
+      }
+      .atlas-location-spec-label {
+        display:block !important;
+        color:#0b1e33 !important;
+        font-size:12px !important;
+        line-height:1.35 !important;
+        font-weight:850 !important;
+        text-transform:none !important;
+        overflow-wrap:anywhere !important;
+      }
+      .atlas-location-spec-value {
+        display:block !important;
+        min-width:0 !important;
+        color:#33465b !important;
+        font-size:12px !important;
+        line-height:1.5 !important;
+        font-weight:600 !important;
+        white-space:pre-wrap !important;
+        overflow-wrap:anywhere !important;
+      }
+      .atlas-spec-attachments {
+        grid-column:1/-1;
+        display:grid;
+        gap:8px;
+        padding-top:8px;
+        border-top:1px solid #e6ebf0;
+      }
+      .atlas-spec-controls { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+      .atlas-spec-action { min-height:30px; padding:5px 9px; border:1px solid #d2dbe4; border-radius:8px; background:#fff; color:#0b1e33; font:inherit; font-size:11px; font-weight:800; cursor:pointer; }
       .atlas-spec-action:hover { border-color:#c99a3d; background:#fffaf0; }
       .atlas-spec-action:disabled { opacity:.55; cursor:default; }
       .atlas-spec-delete { color:#b42318; }
       .atlas-spec-status,.atlas-spec-empty { color:#607086; font-size:11px; }
-      .atlas-spec-files { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; }
+      .atlas-spec-files { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; }
       .atlas-spec-file { min-width:0; overflow:hidden; border:1px solid #dce4ec; border-radius:10px; background:#f8fafc; }
       .atlas-spec-file > a { display:block; background:#fff; }
       .atlas-spec-image { display:block; width:100%; max-height:320px; object-fit:contain; background:#fff; }
       .atlas-spec-file-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px; }
       .atlas-spec-file-link { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#175cd3; font-size:12px; font-weight:800; text-decoration:none; }
-      .atlas-location-spec-edit-list { display:grid !important; gap:12px !important; }
-      .atlas-location-spec-edit-row { display:grid !important; grid-template-columns:minmax(190px,.42fr) minmax(320px,1fr) auto !important; gap:10px !important; align-items:start !important; padding:12px !important; border:1px solid #d9e2eb !important; border-radius:12px !important; background:#fbfcfd !important; }
-      .atlas-location-spec-edit-row textarea { min-height:132px !important; line-height:1.5 !important; }
+      .atlas-location-spec-edit-list { display:grid !important; gap:10px !important; }
+      .atlas-location-spec-edit-row { display:grid !important; grid-template-columns:minmax(170px,.38fr) minmax(320px,1fr) auto !important; gap:9px !important; align-items:start !important; padding:10px !important; border:1px solid #d9e2eb !important; border-radius:10px !important; background:#fbfcfd !important; }
+      .atlas-location-spec-edit-row textarea { min-height:118px !important; line-height:1.5 !important; }
       @media (max-width:900px) {
-        .atlas-location-spec-card { grid-template-columns:minmax(0,1fr) !important; gap:8px !important; padding:13px !important; }
-        .atlas-location-spec-value { font-size:12.5px !important; line-height:1.6 !important; }
+        .atlas-location-spec-card { grid-template-columns:minmax(0,1fr) !important; gap:6px !important; padding:10px !important; }
+        .atlas-location-spec-value { font-size:12px !important; line-height:1.5 !important; }
         .atlas-spec-files { grid-template-columns:minmax(0,1fr); }
         .atlas-location-spec-edit-row { grid-template-columns:minmax(0,1fr) !important; }
+        .atlas-location-list-card-main > span:first-child {
+          display: none !important;
+        }
       }
     `}</style>
   );
