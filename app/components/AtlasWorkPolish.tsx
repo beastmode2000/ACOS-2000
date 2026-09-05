@@ -37,6 +37,20 @@ function isLegacyGeneratedDescription(value: unknown) {
   );
 }
 
+function ensureActionOption(
+  actions: HTMLSelectElement,
+  value: string,
+  label: string,
+) {
+  if (actions.querySelector(`option[value="${value}"]`)) return;
+  const option = document.createElement("option");
+  option.value = value;
+  option.textContent = label;
+  const deleteOption = actions.querySelector('option[value="delete"]');
+  if (deleteOption) actions.insertBefore(option, deleteOption);
+  else actions.appendChild(option);
+}
+
 function markWorkDetail(root: HTMLElement) {
   const panel = root.querySelector<HTMLElement>("[data-atlas-work-detail-panel]");
   if (!panel) return;
@@ -65,6 +79,16 @@ function markWorkDetail(root: HTMLElement) {
     title.classList.add("atlas-work-detail-title");
 
     const titleBlock = title.parentElement;
+    titleBlock?.classList.add("atlas-work-title-block");
+    const summaryHeader = titleBlock?.parentElement || null;
+    summaryHeader?.classList.add("atlas-work-summary-header");
+    const summaryCard = summaryHeader?.parentElement || null;
+    summaryCard?.classList.add("atlas-work-summary-card");
+    const summaryFields = summaryCard?.children?.[1];
+    if (summaryFields instanceof HTMLElement) {
+      summaryFields.classList.add("atlas-work-summary-fields");
+    }
+
     const description = titleBlock?.querySelector<HTMLElement>(":scope > p") || null;
     if (description) {
       description.classList.add("atlas-work-primary-description");
@@ -125,13 +149,16 @@ function markWorkDetail(root: HTMLElement) {
   }
 
   const actions = panel.querySelector<HTMLSelectElement>('select[aria-label="Work order actions"]');
-  if (actions && !actions.querySelector('option[value="photo"]')) {
-    const option = document.createElement("option");
-    option.value = "photo";
-    option.textContent = "Add Photo";
-    const deleteOption = actions.querySelector('option[value="delete"]');
-    if (deleteOption) actions.insertBefore(option, deleteOption);
-    else actions.appendChild(option);
+  if (actions) {
+    const isClosed = Boolean(actions.querySelector('option[value="reopen"]'));
+    const isRecurring = Boolean(actions.querySelector('option[value="edit-series"]'));
+    if (!isClosed) ensureActionOption(actions, "start", "Start Work");
+    if (!isClosed && !isRecurring) {
+      ensureActionOption(actions, "tomorrow", "Move to Tomorrow");
+      ensureActionOption(actions, "next-week", "Move to Next Week");
+    }
+    ensureActionOption(actions, "photo", "Add Photo");
+    ensureActionOption(actions, "duplicate", "Duplicate Work");
   }
 }
 
@@ -331,6 +358,67 @@ export default function AtlasWorkPolish() {
         display: none !important;
       }
 
+      .atlas-work-polish-root .atlas-work-summary-card {
+        padding: 3px 2px 8px !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: #ffffff !important;
+        box-shadow: none !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-summary-header {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) auto !important;
+        align-items: start !important;
+        gap: 12px !important;
+        padding: 2px 2px 9px !important;
+        border-bottom: 1px solid var(--atlas-work-line) !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-summary-header > :last-child {
+        width: auto !important;
+        justify-content: flex-end !important;
+        align-items: center !important;
+        gap: 6px !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-summary-header button,
+      .atlas-work-polish-root .atlas-work-summary-header select {
+        min-height: 32px !important;
+        height: 32px !important;
+        padding-top: 5px !important;
+        padding-bottom: 5px !important;
+        border-radius: 8px !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-summary-fields {
+        display: grid !important;
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: 0 !important;
+        margin-top: 0 !important;
+        border-bottom: 1px solid var(--atlas-work-line) !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-summary-fields > div {
+        min-width: 0 !important;
+        padding: 9px 10px !important;
+        border: 0 !important;
+        border-right: 1px solid #edf1f5 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-summary-fields > div:last-child {
+        border-right: 0 !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-summary-fields > div > div {
+        margin-top: 2px !important;
+        font-size: 12.5px !important;
+        line-height: 1.3 !important;
+        font-weight: 600 !important;
+      }
+
       .atlas-work-polish-root .atlas-work-detail-section {
         border-color: var(--atlas-work-line) !important;
         border-radius: 10px !important;
@@ -356,26 +444,27 @@ export default function AtlasWorkPolish() {
 
       .atlas-work-polish-root [data-atlas-work-detail-panel] h2,
       .atlas-work-polish-root .atlas-work-detail-title {
-        font-size: 19px !important;
+        margin-top: 2px !important;
+        font-size: 18px !important;
         line-height: 1.18 !important;
         font-weight: 600 !important;
         letter-spacing: -0.018em !important;
       }
 
       .atlas-work-polish-root .atlas-work-primary-description {
-        margin-top: 6px !important;
+        margin-top: 5px !important;
         color: #475569 !important;
-        font-size: 13px !important;
-        line-height: 1.42 !important;
+        font-size: 12.5px !important;
+        line-height: 1.4 !important;
         font-weight: 400 !important;
       }
 
       .atlas-work-polish-root .atlas-work-primary-description:not(.atlas-work-generated-description)::before {
         content: "Description";
         display: block;
-        margin-bottom: 3px;
+        margin-bottom: 2px;
         color: #667085;
-        font-size: 10.5px;
+        font-size: 10px;
         line-height: 1.2;
         font-weight: 500;
         text-transform: uppercase;
@@ -420,15 +509,24 @@ export default function AtlasWorkPolish() {
       }
 
       .atlas-work-polish-root .atlas-work-reference-details {
-        padding: 9px 10px !important;
-        border-radius: 10px !important;
+        margin-top: 2px !important;
+        padding: 8px 2px 10px !important;
+        border: 0 !important;
+        border-bottom: 1px solid var(--atlas-work-line) !important;
+        border-radius: 0 !important;
         background: #ffffff !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-reference-details > summary {
+        color: #475569 !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
       }
 
       .atlas-work-polish-root .atlas-work-reference-details > div {
         grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)) !important;
-        gap: 7px !important;
-        margin-top: 8px !important;
+        gap: 7px 14px !important;
+        margin-top: 7px !important;
       }
 
       .atlas-work-polish-root .atlas-work-reference-details > div > div {
@@ -487,6 +585,22 @@ export default function AtlasWorkPolish() {
       }
 
       @media (max-width: 900px) {
+        .atlas-work-polish-root .atlas-work-summary-header {
+          grid-template-columns: 1fr !important;
+        }
+
+        .atlas-work-polish-root .atlas-work-summary-header > :last-child {
+          justify-content: flex-start !important;
+        }
+
+        .atlas-work-polish-root .atlas-work-summary-fields {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+
+        .atlas-work-polish-root .atlas-work-summary-fields > div:nth-child(2n) {
+          border-right: 0 !important;
+        }
+
         .atlas-work-polish-root .atlas-work-row {
           padding: 9px 8px !important;
         }
