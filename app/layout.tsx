@@ -5,6 +5,7 @@ import AtlasLocationsPolish from "./components/AtlasLocationsPolish";
 import AtlasPropertyVisibility from "./components/AtlasPropertyVisibility";
 import AtlasWorkspacePolish from "./components/AtlasWorkspacePolish";
 import AtlasAssetReferencePolish from "./components/AtlasAssetReferencePolish";
+import AtlasAssetsViewportPolish from "./components/AtlasAssetsViewportPolish";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -48,6 +49,7 @@ export default function RootLayout({
         <AtlasPropertyVisibility />
         <AtlasWorkspacePolish />
         <AtlasAssetReferencePolish />
+        <AtlasAssetsViewportPolish />
         {children}
       </body>
     </html>
