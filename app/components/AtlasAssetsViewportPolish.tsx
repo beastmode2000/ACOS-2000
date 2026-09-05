@@ -27,6 +27,14 @@ function markAssetsViewport() {
 
   grid.classList.add("atlas-assets-viewport-grid");
 
+  const header = grid.previousElementSibling as HTMLElement | null;
+  if (header && header.parentElement === grid.parentElement) {
+    header.classList.add("atlas-assets-viewport-header");
+  }
+
+  const outer = grid.parentElement as HTMLElement | null;
+  outer?.classList.add("atlas-assets-viewport-shell");
+
   const search = root.querySelector<HTMLInputElement>(
     'input[placeholder*="Search assets" i]',
   );
@@ -51,11 +59,6 @@ function markAssetsViewport() {
 
   if (addAsset) {
     addAsset.parentElement?.classList.add("atlas-assets-viewport-toolbar");
-
-    let toolbarShell: HTMLElement | null = addAsset.parentElement?.parentElement || null;
-    if (toolbarShell && !toolbarShell.contains(grid)) {
-      toolbarShell.classList.add("atlas-assets-viewport-toolbar-shell");
-    }
   }
 }
 
@@ -87,30 +90,56 @@ export default function AtlasAssetsViewportPolish() {
 
   return (
     <style jsx global>{`
-      .atlas-assets-viewport-root .atlas-asset-reference-toolbar-shell,
-      .atlas-assets-viewport-root .atlas-assets-viewport-toolbar-shell {
+      .atlas-assets-viewport-root .atlas-assets-viewport-shell {
+        min-height: 0 !important;
+        padding-top: 8px !important;
+        padding-bottom: 10px !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-assets-viewport-header {
+        min-height: 0 !important;
+        height: auto !important;
+        gap: 0 !important;
+        margin: 0 0 6px !important;
+        padding: 0 0 6px !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-assets-viewport-header > div:first-child {
         min-height: 0 !important;
         height: auto !important;
         margin: 0 !important;
-        padding-top: 0 !important;
-        padding-bottom: 6px !important;
+        padding: 0 !important;
+        align-items: center !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-assets-viewport-header > div:first-child > div:first-child:empty {
+        display: none !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-assets-viewport-header > div:first-child > div:last-child {
+        min-height: 0 !important;
+        height: auto !important;
+        margin: 0 0 0 auto !important;
+        padding: 0 !important;
       }
 
       .atlas-assets-viewport-root .atlas-assets-viewport-toolbar {
         min-height: 0 !important;
         height: auto !important;
+        gap: 8px !important;
         margin: 0 !important;
-        padding-top: 0 !important;
-        padding-bottom: 0 !important;
+        padding: 0 !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
       }
 
       .atlas-assets-viewport-root .atlas-assets-viewport-grid {
         margin-top: 0 !important;
         padding-top: 0 !important;
         align-items: stretch !important;
-        min-height: calc(100dvh - 132px) !important;
-        height: calc(100dvh - 132px) !important;
-        max-height: calc(100dvh - 132px) !important;
+        min-height: calc(100dvh - 116px) !important;
+        height: calc(100dvh - 116px) !important;
+        max-height: calc(100dvh - 116px) !important;
         overflow: hidden !important;
       }
 
@@ -144,6 +173,15 @@ export default function AtlasAssetsViewportPolish() {
       }
 
       @media (max-width: 900px) {
+        .atlas-assets-viewport-root .atlas-assets-viewport-shell {
+          padding-top: 6px !important;
+        }
+
+        .atlas-assets-viewport-root .atlas-assets-viewport-header {
+          margin-bottom: 6px !important;
+          padding-bottom: 6px !important;
+        }
+
         .atlas-assets-viewport-root .atlas-assets-viewport-grid {
           min-height: auto !important;
           height: auto !important;
