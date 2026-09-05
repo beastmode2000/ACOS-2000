@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./atlas-typography.css";
 import "./atlas-visual-system.css";
 import AtlasLocationsPolish from "./components/AtlasLocationsPolish";
+import AtlasPropertyVisibility from "./components/AtlasPropertyVisibility";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -42,6 +43,7 @@ export default function RootLayout({
 
       <body>
         <AtlasLocationsPolish />
+        <AtlasPropertyVisibility />
         {children}
       </body>
     </html>
