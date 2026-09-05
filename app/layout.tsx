@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./atlas-typography.css";
+import "./atlas-visual-system.css";
 import AtlasLocationsPolish from "./components/AtlasLocationsPolish";
 
 export const metadata: Metadata = {
