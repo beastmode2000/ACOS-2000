@@ -17,6 +17,86 @@ function workMain() {
   return (heading?.closest("main") as HTMLElement | null) || null;
 }
 
+function restructureWorkDetail(root: HTMLElement) {
+  const panel = root.querySelector<HTMLElement>("[data-atlas-work-detail-panel]");
+  if (!panel) return;
+
+  panel.classList.add("atlas-work-detail-root");
+
+  const backRow = panel.firstElementChild as HTMLElement | null;
+  backRow?.classList.add("atlas-work-back-row");
+
+  const primarySection = Array.from(panel.children).find(
+    (element) => element.tagName.toLowerCase() === "section",
+  ) as HTMLElement | undefined;
+  const viewRoot = primarySection?.firstElementChild as HTMLElement | null;
+  if (!primarySection || !viewRoot) return;
+
+  primarySection.classList.add("atlas-work-primary-section");
+  viewRoot.classList.add("atlas-work-detail-flow");
+
+  const title = viewRoot.querySelector<HTMLHeadingElement>("h2");
+  if (!title) return;
+  title.classList.add("atlas-work-sticky-title");
+
+  let heroCard: HTMLElement | null = title.parentElement;
+  while (heroCard?.parentElement && heroCard.parentElement !== viewRoot) {
+    heroCard = heroCard.parentElement;
+  }
+  if (!heroCard || heroCard.parentElement !== viewRoot) return;
+  heroCard.classList.add("atlas-work-description-card");
+
+  const headerRow = heroCard.firstElementChild as HTMLElement | null;
+  if (headerRow) {
+    headerRow.classList.add("atlas-work-sticky-header");
+    if (headerRow.parentElement !== viewRoot) {
+      viewRoot.insertBefore(headerRow, heroCard);
+    }
+  }
+
+  const titleBlock = title.parentElement;
+  const notes = titleBlock?.querySelector<HTMLElement>(":scope > p") || null;
+  if (notes) {
+    notes.classList.add("atlas-work-description-text");
+  }
+
+  let descriptionHeading = heroCard.querySelector<HTMLElement>(
+    ':scope > [data-atlas-work-description-heading="true"]',
+  );
+  if (!descriptionHeading) {
+    descriptionHeading = document.createElement("div");
+    descriptionHeading.dataset.atlasWorkDescriptionHeading = "true";
+    descriptionHeading.className = "atlas-work-description-heading";
+    descriptionHeading.textContent = "Description";
+    heroCard.insertBefore(descriptionHeading, heroCard.firstChild);
+  }
+
+  if (notes && notes.parentElement !== heroCard) {
+    descriptionHeading.insertAdjacentElement("afterend", notes);
+  }
+
+  const extraDetails = Array.from(viewRoot.querySelectorAll<HTMLDetailsElement>("details")).find(
+    (details) => normalized(details.querySelector("summary")?.textContent) === "additional details",
+  );
+  if (extraDetails) {
+    extraDetails.open = true;
+    extraDetails.classList.add("atlas-work-description-extra");
+    extraDetails.querySelector("summary")?.classList.add("atlas-work-description-extra-summary");
+    if (extraDetails.parentElement !== heroCard) heroCard.appendChild(extraDetails);
+  }
+
+  const actionRow = headerRow
+    ? Array.from(headerRow.children).find((child) => {
+        const value = normalized(child.textContent);
+        return value.includes("complete") || value.includes("actions") || value.includes("edit");
+      }) as HTMLElement | undefined
+    : undefined;
+  actionRow?.classList.add("atlas-work-sticky-actions");
+
+  const statusTitleBlock = title.closest<HTMLElement>("div");
+  statusTitleBlock?.classList.add("atlas-work-sticky-title-block");
+}
+
 function markWorkPage() {
   const root = workMain();
   if (!root) return;
@@ -114,6 +194,8 @@ function markWorkPage() {
     const section = heading.closest<HTMLElement>("section, article") || heading.parentElement;
     section?.classList.add("atlas-work-detail-section");
   }
+
+  restructureWorkDetail(root);
 }
 
 export default function AtlasWorkPolish() {
@@ -163,8 +245,8 @@ export default function AtlasWorkPolish() {
       }
 
       .atlas-work-polish-root .atlas-work-search {
-        min-height: 38px !important;
-        height: 38px !important;
+        min-height: 36px !important;
+        height: 36px !important;
         border-radius: 9px !important;
       }
 
@@ -173,40 +255,40 @@ export default function AtlasWorkPolish() {
       }
 
       .atlas-work-polish-root .atlas-work-group-header {
-        min-height: 38px !important;
-        padding: 8px 10px !important;
+        min-height: 34px !important;
+        padding: 6px 9px !important;
         background: #f8fafc !important;
         border-radius: 0 !important;
-        font-size: 13px !important;
+        font-size: 12.5px !important;
       }
 
       .atlas-work-polish-root .atlas-work-row {
         min-height: 0 !important;
-        padding: 7px 8px !important;
-        gap: 7px !important;
-        border-radius: 9px !important;
+        padding: 6px 7px !important;
+        gap: 6px !important;
+        border-radius: 8px !important;
         box-shadow: none !important;
       }
 
       .atlas-work-polish-root .atlas-work-row-main strong {
-        font-size: 13.5px !important;
-        line-height: 1.2 !important;
+        font-size: 13px !important;
+        line-height: 1.18 !important;
       }
 
       .atlas-work-polish-root .atlas-work-row-main span {
         margin-top: 2px !important;
-        font-size: 10.5px !important;
-        line-height: 1.2 !important;
+        font-size: 10px !important;
+        line-height: 1.18 !important;
       }
 
       .atlas-work-polish-root .atlas-work-row-assignee,
       .atlas-work-polish-root .atlas-work-row-date {
-        min-height: 32px !important;
-        height: 32px !important;
-        padding-top: 4px !important;
-        padding-bottom: 4px !important;
-        border-radius: 8px !important;
-        font-size: 11px !important;
+        min-height: 30px !important;
+        height: 30px !important;
+        padding-top: 3px !important;
+        padding-bottom: 3px !important;
+        border-radius: 7px !important;
+        font-size: 10.5px !important;
       }
 
       .atlas-work-polish-root .atlas-work-row-details {
@@ -224,22 +306,132 @@ export default function AtlasWorkPolish() {
         line-height: 1.25 !important;
       }
 
+      .atlas-work-polish-root .atlas-work-primary-section {
+        padding: 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-detail-flow {
+        gap: 8px !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-sticky-header {
+        background: rgba(255, 255, 255, 0.98) !important;
+        border: 1px solid var(--atlas-work-line) !important;
+        border-radius: 10px !important;
+        padding: 7px 9px !important;
+        box-shadow: 0 4px 12px rgba(15, 42, 67, 0.06) !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-sticky-title {
+        margin: 3px 0 0 !important;
+        font-size: 18px !important;
+        line-height: 1.15 !important;
+        letter-spacing: -0.01em !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-sticky-title-block > div:first-child {
+        gap: 5px !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-sticky-actions {
+        gap: 5px !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-sticky-actions button,
+      .atlas-work-polish-root .atlas-work-sticky-actions select {
+        min-height: 32px !important;
+        height: 32px !important;
+        padding-top: 4px !important;
+        padding-bottom: 4px !important;
+        font-size: 11px !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-description-card {
+        display: grid !important;
+        gap: 8px !important;
+        padding: 10px 11px !important;
+        border: 1px solid var(--atlas-work-line) !important;
+        border-radius: 10px !important;
+        background: #fff !important;
+        box-shadow: none !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-description-heading {
+        color: #172331 !important;
+        font-size: 13px !important;
+        line-height: 1.2 !important;
+        font-weight: 800 !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-description-text {
+        margin: 0 !important;
+        color: #475569 !important;
+        font-size: 13px !important;
+        line-height: 1.4 !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-description-card > div:not(.atlas-work-description-heading) {
+        gap: 6px !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-description-card > div:not(.atlas-work-description-heading) > div {
+        padding: 7px 8px !important;
+        border-radius: 8px !important;
+        box-shadow: none !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-description-extra {
+        margin: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-description-extra-summary {
+        display: none !important;
+      }
+
+      .atlas-work-polish-root .atlas-work-description-extra > div {
+        margin-top: 0 !important;
+        padding-top: 2px !important;
+        border-top: 1px solid #edf2f7 !important;
+      }
+
       @media (min-width: 901px) {
         .atlas-work-polish-root > div,
         .atlas-work-polish-root > section {
           min-height: 0 !important;
         }
 
+        .atlas-work-polish-root .atlas-work-back-row {
+          display: none !important;
+        }
+
+        .atlas-work-polish-root .atlas-work-detail-pane {
+          position: relative !important;
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+        }
+
+        .atlas-work-polish-root .atlas-work-sticky-header {
+          position: sticky !important;
+          top: 0 !important;
+          z-index: 20 !important;
+        }
+
         .atlas-work-polish-root .atlas-work-list-pane,
         .atlas-work-polish-root .atlas-work-detail-pane {
-          max-height: calc(100dvh - 130px) !important;
-          min-height: calc(100dvh - 130px) !important;
+          max-height: calc(100dvh - 118px) !important;
+          min-height: calc(100dvh - 118px) !important;
           scrollbar-gutter: stable !important;
           overscroll-behavior: contain !important;
         }
 
         .atlas-work-polish-root .atlas-work-row {
-          grid-template-columns: auto minmax(220px, 1fr) minmax(112px, 0.38fr) 128px !important;
+          grid-template-columns: auto minmax(205px, 1fr) minmax(104px, 0.34fr) 118px !important;
         }
       }
 
@@ -249,7 +441,28 @@ export default function AtlasWorkPolish() {
         }
 
         .atlas-work-polish-root .atlas-work-row {
-          padding: 9px 8px !important;
+          padding: 8px 7px !important;
+        }
+
+        .atlas-work-polish-root .atlas-work-back-row {
+          position: sticky !important;
+          top: 0 !important;
+          z-index: 30 !important;
+          background: #fff !important;
+        }
+
+        .atlas-work-polish-root .atlas-work-sticky-header {
+          position: sticky !important;
+          top: 52px !important;
+          z-index: 20 !important;
+        }
+
+        .atlas-work-polish-root .atlas-work-sticky-title {
+          font-size: 17px !important;
+        }
+
+        .atlas-work-polish-root .atlas-work-sticky-header {
+          align-items: flex-start !important;
         }
 
         .atlas-work-polish-root .atlas-work-list-pane,
