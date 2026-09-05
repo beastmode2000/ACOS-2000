@@ -184,15 +184,9 @@ function markWorkPage() {
 
   if (scrollables.length) {
     scrollables.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
-    const listPane = scrollables[0];
-    const detailPane = scrollables[scrollables.length - 1];
-    listPane?.classList.add("atlas-work-list-pane");
-    if (detailPane && detailPane !== listPane) {
-      detailPane.classList.add("atlas-work-detail-pane");
-      let common = listPane.parentElement;
-      while (common && common !== root && !common.contains(detailPane)) common = common.parentElement;
-      if (common && common !== root) common.classList.add("atlas-work-split-height");
-    }
+    scrollables[0]?.classList.add("atlas-work-list-pane");
+    const last = scrollables[scrollables.length - 1];
+    if (last && last !== scrollables[0]) last.classList.add("atlas-work-detail-pane");
   }
 
   const detailSections = [
@@ -449,23 +443,10 @@ export default function AtlasWorkPolish() {
           display: none !important;
         }
 
-        .atlas-work-polish-root .atlas-work-split-height {
-          height: calc(100dvh - 280px) !important;
-          min-height: calc(100dvh - 280px) !important;
-          align-items: stretch !important;
-          overflow: hidden !important;
-        }
-
-        .atlas-work-polish-root .atlas-work-split-height > * {
-          min-height: 0 !important;
-          height: 100% !important;
-        }
-
         .atlas-work-polish-root .atlas-work-list-pane,
         .atlas-work-polish-root .atlas-work-detail-pane {
-          height: 100% !important;
-          max-height: none !important;
-          min-height: 0 !important;
+          max-height: calc(100dvh - 130px) !important;
+          min-height: calc(100dvh - 130px) !important;
           scrollbar-gutter: stable !important;
           overscroll-behavior: contain !important;
         }
