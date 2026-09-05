@@ -17,6 +17,16 @@ function workMain() {
   return (heading?.closest("main") as HTMLElement | null) || null;
 }
 
+function findScrollAncestor(node: HTMLElement | null, stop: HTMLElement) {
+  let current = node?.parentElement || null;
+  while (current && current !== stop) {
+    const style = window.getComputedStyle(current);
+    if (/auto|scroll/.test(style.overflowY)) return current;
+    current = current.parentElement;
+  }
+  return null;
+}
+
 function isLegacyGeneratedDescription(value: unknown) {
   const description = normalized(value);
   if (!description) return false;
@@ -31,6 +41,21 @@ function markWorkDetail(root: HTMLElement) {
   const panel = root.querySelector<HTMLElement>("[data-atlas-work-detail-panel]");
   if (!panel) return;
   panel.classList.add("atlas-work-detail-root");
+
+  const drawerPane = findScrollAncestor(panel, root);
+  if (drawerPane) {
+    drawerPane.classList.add("atlas-work-detail-pane");
+    const splitGrid = drawerPane.parentElement;
+    if (splitGrid && splitGrid !== root) {
+      splitGrid.classList.add("atlas-work-split-grid");
+      for (const child of Array.from(splitGrid.children)) {
+        if (child instanceof HTMLElement && child !== drawerPane) {
+          child.classList.add("atlas-work-list-pane");
+          break;
+        }
+      }
+    }
+  }
 
   const backButton = panel.querySelector<HTMLButtonElement>('button[aria-label="Back to work"]');
   backButton?.parentElement?.parentElement?.classList.add("atlas-work-desktop-back-row");
@@ -130,6 +155,13 @@ function markWorkPage() {
   );
   search?.classList.add("atlas-work-search");
 
+  const listPane = findScrollAncestor(search || null, root);
+  if (listPane) {
+    listPane.classList.add("atlas-work-list-pane");
+    const splitGrid = listPane.parentElement;
+    if (splitGrid && splitGrid !== root) splitGrid.classList.add("atlas-work-split-grid");
+  }
+
   const rows = Array.from(root.querySelectorAll<HTMLElement>("div")).filter((element) => {
     const checkbox = element.querySelector(':scope > input[type="checkbox"]');
     const details = Array.from(element.querySelectorAll<HTMLButtonElement>(":scope > button")).find(
@@ -174,19 +206,6 @@ function markWorkPage() {
     if (!clutterPhrases.some((phrase) => value.includes(phrase))) continue;
     if (element.querySelector("input, textarea, select")) continue;
     element.classList.add("atlas-work-secondary-clutter");
-  }
-
-  const scrollables = Array.from(root.querySelectorAll<HTMLElement>("div, section")).filter((element) => {
-    const style = window.getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    return /auto|scroll/.test(style.overflowY) && rect.height > 260 && rect.width > 260;
-  });
-
-  if (scrollables.length) {
-    scrollables.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
-    scrollables[0]?.classList.add("atlas-work-list-pane");
-    const last = scrollables[scrollables.length - 1];
-    if (last && last !== scrollables[0]) last.classList.add("atlas-work-detail-pane");
   }
 
   const detailSections = [
@@ -443,12 +462,23 @@ export default function AtlasWorkPolish() {
           display: none !important;
         }
 
+        .atlas-work-polish-root .atlas-work-split-grid {
+          height: 100% !important;
+          min-height: 0 !important;
+          align-items: stretch !important;
+          overflow: hidden !important;
+        }
+
         .atlas-work-polish-root .atlas-work-list-pane,
         .atlas-work-polish-root .atlas-work-detail-pane {
-          max-height: calc(100dvh - 130px) !important;
-          min-height: calc(100dvh - 130px) !important;
+          height: 100% !important;
+          max-height: none !important;
+          min-height: 0 !important;
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
           scrollbar-gutter: stable !important;
           overscroll-behavior: contain !important;
+          align-self: stretch !important;
         }
 
         .atlas-work-polish-root .atlas-work-row {
