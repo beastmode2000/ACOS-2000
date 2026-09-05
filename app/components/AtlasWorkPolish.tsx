@@ -184,9 +184,15 @@ function markWorkPage() {
 
   if (scrollables.length) {
     scrollables.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
-    scrollables[0]?.classList.add("atlas-work-list-pane");
-    const last = scrollables[scrollables.length - 1];
-    if (last && last !== scrollables[0]) last.classList.add("atlas-work-detail-pane");
+    const listPane = scrollables[0];
+    const detailPane = scrollables[scrollables.length - 1];
+    listPane?.classList.add("atlas-work-list-pane");
+    if (detailPane && detailPane !== listPane) {
+      detailPane.classList.add("atlas-work-detail-pane");
+      let common = listPane.parentElement;
+      while (common && common !== root && !common.contains(detailPane)) common = common.parentElement;
+      if (common && common !== root) common.classList.add("atlas-work-split-height");
+    }
   }
 
   const detailSections = [
@@ -251,11 +257,7 @@ export default function AtlasWorkPolish() {
       }
 
       .atlas-work-polish-root .atlas-work-more-select {
-        min-height: 36px !important;
-        height: 36px !important;
-        min-width: 104px !important;
-        padding-top: 5px !important;
-        padding-bottom: 5px !important;
+        display: none !important;
       }
 
       .atlas-work-polish-root .atlas-work-search {
@@ -447,10 +449,23 @@ export default function AtlasWorkPolish() {
           display: none !important;
         }
 
+        .atlas-work-polish-root .atlas-work-split-height {
+          height: calc(100dvh - 280px) !important;
+          min-height: calc(100dvh - 280px) !important;
+          align-items: stretch !important;
+          overflow: hidden !important;
+        }
+
+        .atlas-work-polish-root .atlas-work-split-height > * {
+          min-height: 0 !important;
+          height: 100% !important;
+        }
+
         .atlas-work-polish-root .atlas-work-list-pane,
         .atlas-work-polish-root .atlas-work-detail-pane {
-          max-height: calc(100dvh - 130px) !important;
-          min-height: calc(100dvh - 130px) !important;
+          height: 100% !important;
+          max-height: none !important;
+          min-height: 0 !important;
           scrollbar-gutter: stable !important;
           overscroll-behavior: contain !important;
         }
@@ -461,10 +476,6 @@ export default function AtlasWorkPolish() {
       }
 
       @media (max-width: 900px) {
-        .atlas-work-polish-root .atlas-work-more-select {
-          min-width: 92px !important;
-        }
-
         .atlas-work-polish-root .atlas-work-row {
           padding: 9px 8px !important;
         }
