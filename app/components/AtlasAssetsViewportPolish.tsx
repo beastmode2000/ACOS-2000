@@ -24,7 +24,6 @@ function markAssetsViewport() {
 
   const grid = drawer.parentElement;
   if (!grid) return;
-
   grid.classList.add("atlas-assets-viewport-grid");
 
   const header = grid.previousElementSibling as HTMLElement | null;
@@ -39,12 +38,44 @@ function markAssetsViewport() {
     'input[placeholder*="Search assets" i]',
   );
 
+  let listPanel: HTMLElement | null = null;
   if (search) {
-    let listPanel: HTMLElement | null = search.parentElement;
+    listPanel = search.parentElement;
     while (listPanel && listPanel.parentElement !== grid) {
       listPanel = listPanel.parentElement;
     }
     listPanel?.classList.add("atlas-assets-viewport-list");
+
+    let searchRow = search.parentElement as HTMLElement | null;
+    while (
+      searchRow &&
+      searchRow.parentElement &&
+      searchRow.parentElement !== listPanel &&
+      searchRow.parentElement !== grid
+    ) {
+      searchRow = searchRow.parentElement;
+    }
+    searchRow?.classList.add("atlas-assets-search-row");
+
+    if (listPanel) {
+      const scrollCandidates = Array.from(
+        listPanel.querySelectorAll<HTMLElement>("div, section"),
+      ).filter((element) => {
+        if (element === searchRow) return false;
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return (
+          /auto|scroll/.test(style.overflowY) &&
+          rect.height > 180 &&
+          rect.width > 180
+        );
+      });
+
+      scrollCandidates
+        .sort((a, b) => b.getBoundingClientRect().height - a.getBoundingClientRect().height)
+        .slice(0, 1)
+        .forEach((element) => element.classList.add("atlas-assets-list-scroll"));
+    }
   }
 
   let detailPanel: HTMLElement | null = drawer;
@@ -63,8 +94,19 @@ function markAssetsViewport() {
   ).find((button) => normalized(button.textContent) === "add asset");
 
   if (addAsset) {
-    addAsset.parentElement?.classList.add("atlas-assets-viewport-toolbar");
     addAsset.classList.add("atlas-assets-add-button");
+
+    const deleteAsset = Array.from(
+      drawer.querySelectorAll<HTMLButtonElement>("button"),
+    ).find((button) => normalized(button.textContent) === "delete asset");
+
+    const actionRow = deleteAsset?.parentElement || null;
+    if (actionRow) {
+      actionRow.classList.add("atlas-assets-detail-actions");
+      if (addAsset.parentElement !== actionRow) {
+        actionRow.insertBefore(addAsset, actionRow.firstChild);
+      }
+    }
   }
 }
 
@@ -102,69 +144,18 @@ export default function AtlasAssetsViewportPolish() {
 
       @media (min-width: 901px) {
         .atlas-assets-viewport-root .atlas-assets-viewport-shell {
-          height: calc(100dvh - 108px) !important;
-          min-height: calc(100dvh - 108px) !important;
-          max-height: calc(100dvh - 108px) !important;
+          height: calc(100dvh - 96px) !important;
+          min-height: calc(100dvh - 96px) !important;
+          max-height: calc(100dvh - 96px) !important;
           display: grid !important;
-          grid-template-rows: auto minmax(0, 1fr) !important;
+          grid-template-rows: minmax(0, 1fr) !important;
           align-content: stretch !important;
-          padding: 6px 16px 8px !important;
+          padding: 4px 16px 6px !important;
           overflow: hidden !important;
         }
 
         .atlas-assets-viewport-root .atlas-assets-viewport-header {
-          min-height: 0 !important;
-          height: auto !important;
-          max-height: 42px !important;
-          display: block !important;
-          margin: 0 0 4px !important;
-          padding: 0 0 4px !important;
-          overflow: hidden !important;
-        }
-
-        .atlas-assets-viewport-root .atlas-assets-viewport-header > div,
-        .atlas-assets-viewport-root .atlas-assets-viewport-header > div > div,
-        .atlas-assets-viewport-root .atlas-assets-viewport-toolbar {
-          min-height: 0 !important;
-          height: auto !important;
-          max-height: 38px !important;
-          margin-top: 0 !important;
-          margin-bottom: 0 !important;
-          padding-top: 0 !important;
-          padding-bottom: 0 !important;
-        }
-
-        .atlas-assets-viewport-root .atlas-assets-viewport-header > div:first-child {
-          display: flex !important;
-          align-items: center !important;
-          justify-content: flex-end !important;
-          gap: 6px !important;
-        }
-
-        .atlas-assets-viewport-root .atlas-assets-viewport-header > div:first-child > div:first-child:empty {
           display: none !important;
-        }
-
-        .atlas-assets-viewport-root .atlas-assets-viewport-header > div:first-child > div:last-child {
-          display: flex !important;
-          align-items: center !important;
-          justify-content: flex-end !important;
-          margin-left: auto !important;
-        }
-
-        .atlas-assets-viewport-root .atlas-assets-viewport-toolbar {
-          display: flex !important;
-          align-items: center !important;
-          justify-content: flex-end !important;
-          gap: 6px !important;
-          margin: 0 !important;
-          padding: 0 !important;
-        }
-
-        .atlas-assets-viewport-root .atlas-assets-add-button {
-          min-height: 34px !important;
-          height: 34px !important;
-          padding: 6px 12px !important;
         }
 
         .atlas-assets-viewport-root .atlas-assets-viewport-grid {
@@ -183,6 +174,34 @@ export default function AtlasAssetsViewportPolish() {
           height: 100% !important;
           max-height: 100% !important;
           align-self: stretch !important;
+          overflow: hidden !important;
+        }
+
+        .atlas-assets-viewport-root .atlas-assets-viewport-list {
+          display: flex !important;
+          flex-direction: column !important;
+        }
+
+        .atlas-assets-viewport-root .atlas-assets-search-row {
+          flex: 0 0 auto !important;
+          min-height: 0 !important;
+          margin: 0 0 6px !important;
+          padding: 0 !important;
+        }
+
+        .atlas-assets-viewport-root .atlas-assets-list-scroll,
+        .atlas-assets-viewport-root .atlas-polish-assets-list-pane {
+          flex: 1 1 auto !important;
+          min-height: 0 !important;
+          height: auto !important;
+          max-height: none !important;
+          overflow-x: hidden !important;
+          overflow-y: auto !important;
+          scrollbar-gutter: stable !important;
+          overscroll-behavior: contain !important;
+        }
+
+        .atlas-assets-viewport-root .atlas-assets-viewport-detail {
           overflow-x: hidden !important;
           overflow-y: auto !important;
           scrollbar-gutter: stable !important;
@@ -200,10 +219,19 @@ export default function AtlasAssetsViewportPolish() {
           overscroll-behavior: auto !important;
         }
 
-        .atlas-assets-viewport-root .atlas-polish-assets-list-pane {
-          min-height: 0 !important;
-          height: 100% !important;
-          max-height: 100% !important;
+        .atlas-assets-viewport-root .atlas-assets-detail-actions {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: flex-end !important;
+          gap: 8px !important;
+          flex-wrap: wrap !important;
+        }
+
+        .atlas-assets-viewport-root .atlas-assets-add-button {
+          min-height: 34px !important;
+          height: 34px !important;
+          padding: 6px 12px !important;
+          margin: 0 !important;
         }
       }
 
@@ -217,30 +245,28 @@ export default function AtlasAssetsViewportPolish() {
         }
 
         .atlas-assets-viewport-root .atlas-assets-viewport-header {
-          min-height: 0 !important;
-          height: auto !important;
-          max-height: none !important;
-          margin: 0 0 4px !important;
-          padding: 0 0 4px !important;
+          display: none !important;
         }
 
-        .atlas-assets-viewport-root .atlas-assets-viewport-grid {
-          min-height: auto !important;
-          height: auto !important;
-          max-height: none !important;
-          overflow: visible !important;
-        }
-
+        .atlas-assets-viewport-root .atlas-assets-viewport-grid,
         .atlas-assets-viewport-root .atlas-assets-viewport-list,
         .atlas-assets-viewport-root .atlas-assets-viewport-detail,
         .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-asset-reference-drawer,
         .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-record-detail-content,
         .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-polish-assets-detail-pane {
+          min-height: 0 !important;
           height: auto !important;
           max-height: none !important;
-          overflow-y: visible !important;
-          overflow-x: visible !important;
+          overflow: visible !important;
           scrollbar-gutter: auto !important;
+        }
+
+        .atlas-assets-viewport-root .atlas-assets-detail-actions {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: flex-end !important;
+          gap: 6px !important;
+          flex-wrap: wrap !important;
         }
       }
     `}</style>
