@@ -13,6 +13,30 @@ function assetsMain() {
   return (heading?.closest("main") as HTMLElement | null) || null;
 }
 
+function assetsListScrollContainer(
+  listPanel: HTMLElement,
+  searchRow: HTMLElement | null,
+) {
+  const candidates = Array.from(
+    listPanel.querySelectorAll<HTMLElement>("div, section"),
+  ).filter((element) => {
+    if (element === searchRow) return false;
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return (
+      /auto|scroll/.test(style.overflowY) &&
+      rect.height > 180 &&
+      rect.width > 180
+    );
+  });
+
+  candidates.sort(
+    (a, b) => b.getBoundingClientRect().height - a.getBoundingClientRect().height,
+  );
+
+  return candidates[0] || null;
+}
+
 function markAssetsViewport() {
   const root = assetsMain();
   if (!root) return;
@@ -58,23 +82,16 @@ function markAssetsViewport() {
     searchRow?.classList.add("atlas-assets-search-row");
 
     if (listPanel) {
-      const scrollCandidates = Array.from(
-        listPanel.querySelectorAll<HTMLElement>("div, section"),
-      ).filter((element) => {
-        if (element === searchRow) return false;
-        const style = window.getComputedStyle(element);
-        const rect = element.getBoundingClientRect();
-        return (
-          /auto|scroll/.test(style.overflowY) &&
-          rect.height > 180 &&
-          rect.width > 180
-        );
-      });
+      const listScroll = assetsListScrollContainer(listPanel, searchRow);
+      if (listScroll) {
+        listScroll.classList.add("atlas-assets-list-scroll");
 
-      scrollCandidates
-        .sort((a, b) => b.getBoundingClientRect().height - a.getBoundingClientRect().height)
-        .slice(0, 1)
-        .forEach((element) => element.classList.add("atlas-assets-list-scroll"));
+        let node: HTMLElement | null = listScroll.parentElement;
+        while (node && node !== listPanel) {
+          node.classList.add("atlas-assets-list-fill-chain");
+          node = node.parentElement;
+        }
+      }
     }
   }
 
@@ -189,11 +206,21 @@ export default function AtlasAssetsViewportPolish() {
           padding: 0 !important;
         }
 
+        .atlas-assets-viewport-root .atlas-assets-list-fill-chain {
+          flex: 1 1 0 !important;
+          min-height: 0 !important;
+          height: 100% !important;
+          max-height: none !important;
+          overflow: hidden !important;
+          display: flex !important;
+          flex-direction: column !important;
+        }
+
         .atlas-assets-viewport-root .atlas-assets-list-scroll,
         .atlas-assets-viewport-root .atlas-polish-assets-list-pane {
-          flex: 1 1 auto !important;
+          flex: 1 1 0 !important;
           min-height: 0 !important;
-          height: auto !important;
+          height: 100% !important;
           max-height: none !important;
           overflow-x: hidden !important;
           overflow-y: auto !important;
@@ -253,7 +280,8 @@ export default function AtlasAssetsViewportPolish() {
         .atlas-assets-viewport-root .atlas-assets-viewport-detail,
         .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-asset-reference-drawer,
         .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-record-detail-content,
-        .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-polish-assets-detail-pane {
+        .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-polish-assets-detail-pane,
+        .atlas-assets-viewport-root .atlas-assets-list-fill-chain {
           min-height: 0 !important;
           height: auto !important;
           max-height: none !important;
