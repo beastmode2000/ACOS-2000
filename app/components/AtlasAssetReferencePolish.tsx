@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 type AssetRecord = {
@@ -97,27 +97,45 @@ function findSection(drawer: HTMLElement, title: string) {
   );
 }
 
+function nativeManualSection(drawer: HTMLElement) {
+  return drawer.querySelector<HTMLElement>('section[aria-label="Asset manuals"]');
+}
+
+function nativeDocumentSection(drawer: HTMLElement) {
+  return drawer.querySelector<HTMLElement>('section[aria-label="Asset documents"]');
+}
+
 function setNativeTab(drawer: HTMLElement, tab: "overview" | "work") {
-  const desktopButton = Array.from(drawer.querySelectorAll<HTMLButtonElement>('button[role="tab"]')).find((button) => {
+  const desktopButton = Array.from(
+    drawer.querySelectorAll<HTMLButtonElement>('button[role="tab"]'),
+  ).find((button) => {
     const text = normalized(button.textContent);
-    return tab === "overview" ? text.startsWith("asset information") : text.startsWith("work / history");
+    return tab === "overview"
+      ? text.startsWith("asset information")
+      : text.startsWith("work / history");
   });
+
   if (desktopButton && desktopButton.getAttribute("aria-selected") !== "true") {
     desktopButton.click();
-    return;
+    return true;
   }
 
-  const select = drawer.querySelector<HTMLSelectElement>('select[aria-label="Asset information section"]');
+  const select = drawer.querySelector<HTMLSelectElement>(
+    'select[aria-label="Asset information section"]',
+  );
   if (select && select.value !== tab) {
     select.value = tab;
     select.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
   }
+
+  return false;
 }
 
 function clearNativeClasses(drawer: HTMLElement) {
   for (const element of Array.from(
     drawer.querySelectorAll<HTMLElement>(
-      ".atlas-native-asset-top, .atlas-native-asset-section, .atlas-native-photos-shell, .atlas-native-photo-child, .atlas-native-section-inner-title, .atlas-native-procedures",
+      ".atlas-native-asset-top, .atlas-native-asset-section, .atlas-native-photos-shell, .atlas-native-photo-child, .atlas-native-section-inner-title, .atlas-native-procedures, .atlas-asset-reference-inner-scroll",
     ),
   )) {
     element.classList.remove(
@@ -129,28 +147,39 @@ function clearNativeClasses(drawer: HTMLElement) {
       "atlas-native-photo-child",
       "atlas-native-section-inner-title",
       "atlas-native-procedures",
+      "atlas-asset-reference-inner-scroll",
     );
+  }
+}
+
+function markNestedScrollContainers(drawer: HTMLElement) {
+  for (const element of Array.from(drawer.querySelectorAll<HTMLElement>("div, section"))) {
+    const style = window.getComputedStyle(element);
+    if (!/auto|scroll/.test(style.overflowY)) continue;
+    if (element.scrollHeight <= element.clientHeight + 4) continue;
+    element.classList.add("atlas-asset-reference-inner-scroll");
   }
 }
 
 function markNativeAssetLayout(drawer: HTMLElement, openSection: SecondarySection) {
   clearNativeClasses(drawer);
+  markNestedScrollContainers(drawer);
 
   const infoSection = findSection(drawer, "Asset Information");
-  if (infoSection?.parentElement) infoSection.parentElement.classList.add("atlas-native-asset-top");
+  if (infoSection?.parentElement) {
+    infoSection.parentElement.classList.add("atlas-native-asset-top");
+  }
 
-  const tabList = drawer.querySelector<HTMLElement>('[role="tablist"]');
-  tabList?.classList.add("atlas-native-asset-tabs-hidden");
+  drawer.querySelector<HTMLElement>('[role="tablist"]')?.classList.add("atlas-native-asset-tabs-hidden");
   drawer
     .querySelector<HTMLElement>('select[aria-label="Asset information section"]')
     ?.classList.add("atlas-native-asset-tabs-hidden");
 
-  const procedures = findSection(drawer, "Procedures");
-  procedures?.classList.add("atlas-native-procedures");
+  findSection(drawer, "Procedures")?.classList.add("atlas-native-procedures");
 
   const photoShell = findSection(drawer, "Photos");
-  const manuals = drawer.querySelector<HTMLElement>('section[aria-label="Asset manuals"]');
-  const documents = drawer.querySelector<HTMLElement>('section[aria-label="Asset documents"]');
+  const manuals = nativeManualSection(drawer);
+  const documents = nativeDocumentSection(drawer);
   const notes = findSection(drawer, "Notes");
   const work = findSection(drawer, "Open Work Orders");
   const history = findSection(drawer, "History");
@@ -159,7 +188,9 @@ function markNativeAssetLayout(drawer: HTMLElement, openSection: SecondarySectio
     photoShell.classList.add("atlas-native-photos-shell");
     if (manuals && photoShell.contains(manuals)) {
       for (const child of Array.from(photoShell.children)) {
-        if (child !== manuals) (child as HTMLElement).classList.add("atlas-native-photo-child");
+        if (child !== manuals) {
+          (child as HTMLElement).classList.add("atlas-native-photo-child");
+        }
       }
     }
   }
@@ -176,8 +207,7 @@ function markNativeAssetLayout(drawer: HTMLElement, openSection: SecondarySectio
     if (!section) continue;
     section.classList.add("atlas-native-asset-section");
     if (key === openSection) section.classList.add("atlas-native-section-open");
-    const title = section.querySelector<HTMLElement>("strong");
-    title?.classList.add("atlas-native-section-inner-title");
+    section.querySelector<HTMLElement>("strong")?.classList.add("atlas-native-section-inner-title");
   }
 
   if (openSection === "manuals" && photoShell) {
@@ -185,25 +215,55 @@ function markNativeAssetLayout(drawer: HTMLElement, openSection: SecondarySectio
   }
 }
 
-function activateSection(drawer: HTMLElement, section: SecondarySection) {
-  if (section === "work" || section === "history") {
-    if (!findSection(drawer, section === "work" ? "Open Work Orders" : "History")) {
-      setNativeTab(drawer, "work");
-      return;
-    }
-  } else if (section === "manuals" || section === "documents" || section === "notes") {
-    const exists =
-      section === "manuals"
-        ? drawer.querySelector('section[aria-label="Asset manuals"]')
-        : section === "documents"
-          ? drawer.querySelector('section[aria-label="Asset documents"]')
-          : findSection(drawer, "Notes");
-    if (!exists) {
-      setNativeTab(drawer, "overview");
-      return;
-    }
+function nativeSectionExists(drawer: HTMLElement, section: Exclude<SecondarySection, null>) {
+  if (section === "manuals") return Boolean(nativeManualSection(drawer));
+  if (section === "documents") return Boolean(nativeDocumentSection(drawer));
+  if (section === "notes") return Boolean(findSection(drawer, "Notes"));
+  if (section === "work") return Boolean(findSection(drawer, "Open Work Orders"));
+  return Boolean(findSection(drawer, "History"));
+}
+
+function revealNativeSection(
+  drawer: HTMLElement,
+  section: SecondarySection,
+  attempt = 0,
+) {
+  if (!section) {
+    markNativeAssetLayout(drawer, null);
+    return;
   }
-  markNativeAssetLayout(drawer, section);
+
+  const desiredTab = section === "work" || section === "history" ? "work" : "overview";
+  const changedTab = setNativeTab(drawer, desiredTab);
+
+  if (nativeSectionExists(drawer, section)) {
+    markNativeAssetLayout(drawer, section);
+    return;
+  }
+
+  if (attempt >= 8) {
+    markNativeAssetLayout(drawer, section);
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    revealNativeSection(drawer, section, changedTab ? attempt + 1 : attempt + 1);
+  });
+}
+
+function nativeManualCount(drawer: HTMLElement | null) {
+  if (!drawer) return 0;
+  const section = nativeManualSection(drawer);
+  if (!section) return 0;
+
+  const explicitCount = Array.from(section.querySelectorAll<HTMLElement>("span")).find((span) =>
+    /^\d+$/.test(String(span.textContent || "").trim()),
+  );
+  if (explicitCount) return Number(explicitCount.textContent || 0) || 0;
+
+  return Array.from(section.querySelectorAll<HTMLButtonElement>("button")).filter(
+    (button) => normalized(button.textContent) === "open pdf",
+  ).length;
 }
 
 function operationalLabel(status: string | undefined) {
@@ -225,21 +285,25 @@ export default function AtlasAssetReferencePolish() {
   const [propertyId, setPropertyId] = useState("2000");
   const [payload, setPayload] = useState<AtlasPayload | null>(null);
   const [openSection, setOpenSection] = useState<SecondarySection>("work");
+  const [manualCount, setManualCount] = useState(0);
+  const lastTitleRef = useRef("");
 
   useEffect(() => {
     let cancelled = false;
+
     const load = async () => {
       try {
-        const response = await fetch(`/api/atlas?propertyId=${encodeURIComponent(propertyId)}&t=${Date.now()}`, {
-          cache: "no-store",
-          credentials: "include",
-        });
+        const response = await fetch(
+          `/api/atlas?propertyId=${encodeURIComponent(propertyId)}&t=${Date.now()}`,
+          { cache: "no-store", credentials: "include" },
+        );
         const data = (await response.json().catch(() => ({}))) as AtlasPayload;
         if (!cancelled && response.ok && data?.ok !== false) setPayload(data);
       } catch {
         if (!cancelled) setPayload(null);
       }
     };
+
     void load();
     return () => {
       cancelled = true;
@@ -248,7 +312,6 @@ export default function AtlasAssetReferencePolish() {
 
   useEffect(() => {
     let frame = 0;
-    let lastTitle = "";
 
     const scan = () => {
       frame = 0;
@@ -257,13 +320,14 @@ export default function AtlasAssetReferencePolish() {
         setPortalTarget(null);
         return;
       }
-      root.classList.add("atlas-asset-reference-root");
 
+      root.classList.add("atlas-asset-reference-root");
       const drawer = root.querySelector<HTMLElement>(".atlas-asset-drawer");
       if (!drawer) {
         setPortalTarget(null);
         return;
       }
+
       drawer.classList.add("atlas-asset-reference-drawer");
 
       const editing = Array.from(drawer.querySelectorAll<HTMLButtonElement>("button")).some(
@@ -272,8 +336,8 @@ export default function AtlasAssetReferencePolish() {
       drawer.classList.toggle("atlas-asset-reference-editing", editing);
 
       const title = drawerTitle(drawer);
-      if (title && title !== lastTitle) {
-        lastTitle = title;
+      if (title && title !== lastTitleRef.current) {
+        lastTitleRef.current = title;
         setSelectedName(title);
         setOpenSection("work");
       }
@@ -294,8 +358,7 @@ export default function AtlasAssetReferencePolish() {
       const titleRow = drawer.firstElementChild as HTMLElement | null;
       if (titleRow) {
         titleRow.classList.add("atlas-asset-reference-native-title-row");
-        const buttons = Array.from(titleRow.querySelectorAll<HTMLButtonElement>("button"));
-        for (const button of buttons) {
+        for (const button of Array.from(titleRow.querySelectorAll<HTMLButtonElement>("button"))) {
           const text = normalized(button.textContent);
           if (!["edit asset", "save changes", "cancel", "delete asset"].includes(text)) {
             button.classList.add("atlas-asset-reference-native-action-hidden");
@@ -306,25 +369,24 @@ export default function AtlasAssetReferencePolish() {
       const addAsset = Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
         (button) => normalized(button.textContent) === "add asset",
       );
-      const toolbar = addAsset?.parentElement;
-      toolbar?.classList.add("atlas-asset-reference-toolbar");
-      toolbar?.parentElement?.classList.add("atlas-asset-reference-toolbar-shell");
+      addAsset?.parentElement?.classList.add("atlas-asset-reference-toolbar");
+      addAsset?.parentElement?.parentElement?.classList.add("atlas-asset-reference-toolbar-shell");
 
       const comfort = Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
         (button) => normalized(button.textContent) === "comfortable",
       );
       comfort?.parentElement?.classList.add("atlas-asset-reference-density-hidden");
-      const selectButton = Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
+
+      Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
         (button) => normalized(button.textContent) === "select",
-      );
-      selectButton?.classList.add("atlas-asset-reference-density-hidden");
+      )?.classList.add("atlas-asset-reference-density-hidden");
 
       const midpoint = root.getBoundingClientRect().left + root.getBoundingClientRect().width * 0.45;
       for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>("button"))) {
         const rect = button.getBoundingClientRect();
         if (rect.left >= midpoint) continue;
         const text = normalized(button.textContent);
-        if (text === "edit" || text === "work order" || text === "☆" || text === "★") {
+        if (["edit", "work order", "☆", "★"].includes(text)) {
           button.classList.add("atlas-asset-reference-list-action-hidden");
           continue;
         }
@@ -333,7 +395,13 @@ export default function AtlasAssetReferencePolish() {
         }
       }
 
-      if (!editing) activateSection(drawer, openSection);
+      markNestedScrollContainers(drawer);
+      setManualCount((current) => {
+        const next = nativeManualCount(drawer);
+        return next === current ? current : next;
+      });
+
+      if (!editing) revealNativeSection(drawer, openSection);
     };
 
     const schedule = () => {
@@ -355,10 +423,10 @@ export default function AtlasAssetReferencePolish() {
   }, [openSection]);
 
   useEffect(() => {
-    const root = assetsMain();
-    const drawer = root?.querySelector<HTMLElement>(".atlas-asset-drawer");
+    const drawer = assetsMain()?.querySelector<HTMLElement>(".atlas-asset-drawer");
     if (!drawer || drawer.classList.contains("atlas-asset-reference-editing")) return;
-    activateSection(drawer, openSection);
+    revealNativeSection(drawer, openSection);
+    window.requestAnimationFrame(() => setManualCount(nativeManualCount(drawer)));
   }, [openSection, selectedName]);
 
   const selectedAsset = useMemo(() => {
@@ -393,22 +461,16 @@ export default function AtlasAssetReferencePolish() {
     );
   }, [payload, selectedAsset]);
 
-  const manualCount = linkedDocuments.filter((document) =>
-    /manual|service|installation|owner/i.test(`${document.type || ""} ${document.title || ""}`),
-  ).length;
-
   const photoSource = useMemo(() => {
     if (!selectedAsset) return "";
-    const photos = (payload?.photos || [])
+    const assetPhotos = (payload?.photos || [])
       .filter((photo) => photo.assetId === selectedAsset.id)
       .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
-    const cover = photos.find((photo) => /cover|main|primary|hero/i.test(photo.name || "")) || photos[0];
+    const cover = assetPhotos.find((photo) => /cover|main|primary|hero/i.test(photo.name || "")) || assetPhotos[0];
     return cover?.dataUrl || cover?.url || "";
   }, [payload, selectedAsset]);
 
-  if (!portalTarget || !selectedAsset) {
-    return <AssetReferenceStyles />;
-  }
+  if (!portalTarget || !selectedAsset) return <AssetReferenceStyles />;
 
   const specs = [
     ["Make", selectedAsset.make],
@@ -421,9 +483,9 @@ export default function AtlasAssetReferencePolish() {
     ["Location", location],
   ].filter(([, value]) => String(value || "").trim());
 
-  const controls: Array<{ key: Exclude<SecondarySection, null>; label: string; count?: number }> = [
+  const controls: Array<{ key: Exclude<SecondarySection, null>; label: string; count: number }> = [
     { key: "work", label: "Open Work Orders", count: openWork.length },
-    { key: "manuals", label: "Manuals", count: manualCount || undefined },
+    { key: "manuals", label: "Manuals", count: manualCount },
     { key: "documents", label: "Documents", count: linkedDocuments.length },
     { key: "notes", label: "Notes", count: selectedAsset.notes?.trim() ? 1 : 0 },
     { key: "history", label: "History", count: historyCount },
@@ -474,8 +536,10 @@ export default function AtlasAssetReferencePolish() {
                   aria-expanded={expanded}
                   onClick={() => setOpenSection(expanded ? null : control.key)}
                 >
-                  <span>{control.label}{typeof control.count === "number" ? ` (${control.count})` : ""}</span>
-                  <span aria-hidden="true">{expanded ? "−" : "+"}</span>
+                  <span>{control.label} ({control.count})</span>
+                  <span className="atlas-asset-reference-accordion-symbol" aria-hidden="true">
+                    {expanded ? "−" : "+"}
+                  </span>
                 </button>
               );
             })}
@@ -525,12 +589,25 @@ function AssetReferenceStyles() {
         width: 100% !important;
         min-width: 0 !important;
         max-width: 100% !important;
-        overflow-x: hidden !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
         box-sizing: border-box !important;
+        scrollbar-gutter: auto !important;
       }
 
       .atlas-asset-reference-drawer * {
         box-sizing: border-box;
+      }
+
+      .atlas-asset-reference-inner-scroll {
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow-y: visible !important;
+        overflow-x: hidden !important;
+        scrollbar-gutter: auto !important;
       }
 
       .atlas-asset-reference-native-title-row > div:first-child {
@@ -715,11 +792,26 @@ function AssetReferenceStyles() {
         background: #fffaf0 !important;
       }
 
+      .atlas-asset-reference-accordion-symbol {
+        display: inline-grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
+        border-radius: 7px;
+        color: #071b2f;
+        background: #f6f8fb;
+        font-size: 16px;
+        line-height: 1;
+      }
+
       .atlas-native-asset-section {
         display: none !important;
         width: 100% !important;
         min-width: 0 !important;
         max-width: 100% !important;
+        height: auto !important;
+        max-height: none !important;
         margin: 6px 0 10px !important;
         border-radius: 10px !important;
         box-shadow: none !important;
@@ -734,10 +826,13 @@ function AssetReferenceStyles() {
         display: none !important;
         width: 100% !important;
         min-width: 0 !important;
+        height: auto !important;
+        max-height: none !important;
         padding: 0 !important;
         border: 0 !important;
         box-shadow: none !important;
         background: transparent !important;
+        overflow: visible !important;
       }
 
       .atlas-native-photos-shell.atlas-native-photos-manual-open {
@@ -750,7 +845,10 @@ function AssetReferenceStyles() {
 
       .atlas-native-photos-manual-open > section[aria-label="Asset manuals"] {
         display: block !important;
+        height: auto !important;
+        max-height: none !important;
         margin: 6px 0 10px !important;
+        overflow: visible !important;
       }
 
       .atlas-native-section-inner-title {
@@ -770,7 +868,9 @@ function AssetReferenceStyles() {
 
       .atlas-native-section-open > div,
       .atlas-native-section-open > section {
-        overflow-x: hidden !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
       }
 
       .atlas-asset-reference-editing [data-atlas-asset-reference-host],
