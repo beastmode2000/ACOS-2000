@@ -25,22 +25,38 @@ function cleanDate(value: unknown) {
   return /^\d{4}-\d{2}-\d{2}$/.test(result) ? result : "";
 }
 
+function cleanImage(value: unknown) {
+  const result = String(value || "").trim();
+  if (!result.startsWith("data:image/") && !/^https?:\/\//i.test(result)) return "";
+  return result.slice(0, 8_000_000);
+}
+
 function cleanItems(value: unknown) {
   if (!Array.isArray(value)) return [];
-  return value.slice(0, 2500).map((entry, index) => {
-    const row = entry && typeof entry === "object" ? (entry as Row) : {};
-    return {
-      id: String(row.id || `owner-report-item-${index}`),
-      sourceKey: String(row.sourceKey || ""),
-      sourceType: String(row.sourceType || "Manual"),
-      sourceId: String(row.sourceId || ""),
-      date: cleanDate(row.date),
-      person: String(row.person || "").slice(0, 160),
-      department: String(row.department || "Other").slice(0, 160),
-      title: String(row.title || "").slice(0, 500),
-      notes: String(row.notes || "").slice(0, 5000),
-    };
-  }).filter((item) => Boolean(item.date || item.title || item.notes));
+  return value
+    .slice(0, 2500)
+    .map((entry, index) => {
+      const row = entry && typeof entry === "object" ? (entry as Row) : {};
+      return {
+        id: String(row.id || `owner-report-item-${index}`),
+        sourceKey: String(row.sourceKey || ""),
+        sourceType: String(row.sourceType || "Manual"),
+        sourceId: String(row.sourceId || ""),
+        date: cleanDate(row.date),
+        person: String(row.person || "").slice(0, 160),
+        department: String(row.department || "Other").slice(0, 160),
+        title: String(row.title || "").slice(0, 500),
+        notes: String(row.notes || "").slice(0, 5000),
+        includeInReport: row.includeInReport !== false,
+        ownerAttention: row.ownerAttention === true,
+        highlight: row.highlight === true,
+        reportSection: String(row.reportSection || "Auto").slice(0, 80),
+        beforePhoto: cleanImage(row.beforePhoto),
+        afterPhoto: cleanImage(row.afterPhoto),
+        highlightPhoto: cleanImage(row.highlightPhoto),
+      };
+    })
+    .filter((item) => Boolean(item.date || item.title || item.notes));
 }
 
 async function ensureTable(sql: ReturnType<typeof neon>) {
@@ -52,11 +68,13 @@ async function ensureTable(sql: ReturnType<typeof neon>) {
       period_end date NOT NULL,
       title text NOT NULL,
       status text NOT NULL DEFAULT 'Draft',
+      summary text NOT NULL DEFAULT '',
       items jsonb NOT NULL DEFAULT '[]'::jsonb,
       created_at timestamptz NOT NULL DEFAULT NOW(),
       updated_at timestamptz NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE atlas_owner_reports ADD COLUMN IF NOT EXISTS summary text NOT NULL DEFAULT ''`;
   await sql`
     CREATE INDEX IF NOT EXISTS atlas_owner_reports_property_period_idx
     ON atlas_owner_reports(property_id, period_end DESC, period_start DESC)
@@ -79,6 +97,7 @@ function mapReport(row: Row) {
     periodEnd: cleanDate(row.period_end),
     title: String(row.title || "Owner Report"),
     status: String(row.status || "Draft") === "Final" ? "Final" : "Draft",
+    summary: String(row.summary || ""),
     items: Array.isArray(row.items) ? row.items : [],
     createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : "",
     updatedAt: row.updated_at ? new Date(String(row.updated_at)).toISOString() : "",
@@ -91,7 +110,7 @@ export async function GET(request: NextRequest) {
     await ensureTable(sql);
     const propertyId = cleanPropertyId(request.nextUrl.searchParams.get("propertyId"));
     const rows = await sql`
-      SELECT id, property_id, period_start, period_end, title, status, items, created_at, updated_at
+      SELECT id, property_id, period_start, period_end, title, status, summary, items, created_at, updated_at
       FROM atlas_owner_reports
       WHERE property_id = ${propertyId}
       ORDER BY period_end DESC, updated_at DESC
@@ -107,13 +126,18 @@ export async function GET(request: NextRequest) {
         ok: true,
         propertyId,
         reports: (rows as unknown as Row[]).map(mapReport),
-        excludedSourceKeys: (exclusionRows as unknown as Row[]).map((row) => String(row.source_key || "")).filter(Boolean),
+        excludedSourceKeys: (exclusionRows as unknown as Row[])
+          .map((row) => String(row.source_key || ""))
+          .filter(Boolean),
       },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Owner reports could not be loaded." },
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Owner reports could not be loaded.",
+      },
       { status: 500 },
     );
   }
@@ -123,12 +147,16 @@ export async function POST(request: NextRequest) {
   try {
     const sql = getSql();
     await ensureTable(sql);
-    const body = await request.json().catch(() => ({})) as Row;
+    const body = (await request.json().catch(() => ({}))) as Row;
     const propertyId = cleanPropertyId(body.propertyId);
+
     if (String(body.action || "") === "exclude-item") {
       const sourceKey = String(body.sourceKey || "").trim().slice(0, 1000);
       if (!sourceKey) {
-        return NextResponse.json({ ok: false, error: "Report item source is required." }, { status: 400 });
+        return NextResponse.json(
+          { ok: false, error: "Report item source is required." },
+          { status: 400 },
+        );
       }
       await sql`
         INSERT INTO atlas_owner_report_exclusions (property_id, source_key, created_at)
@@ -137,26 +165,37 @@ export async function POST(request: NextRequest) {
       `;
       return NextResponse.json({ ok: true, propertyId, sourceKey });
     }
+
     const periodStart = cleanDate(body.periodStart);
     const periodEnd = cleanDate(body.periodEnd);
-
     if (!periodStart || !periodEnd) {
-      return NextResponse.json({ ok: false, error: "Report start and end dates are required." }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Report start and end dates are required." },
+        { status: 400 },
+      );
     }
     if (periodEnd < periodStart) {
-      return NextResponse.json({ ok: false, error: "Report end date cannot be before the start date." }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Report end date cannot be before the start date." },
+        { status: 400 },
+      );
     }
 
-    const id = String(body.id || `owner-report-${propertyId}-${periodStart}-${periodEnd}`).trim().slice(0, 240);
-    const title = String(body.title || `Owner Report ${periodStart}–${periodEnd}`).trim().slice(0, 500);
+    const id = String(body.id || `owner-report-${propertyId}-${periodStart}-${periodEnd}`)
+      .trim()
+      .slice(0, 240);
+    const title = String(body.title || `Owner Report ${periodStart}–${periodEnd}`)
+      .trim()
+      .slice(0, 500);
     const status = String(body.status || "Draft") === "Final" ? "Final" : "Draft";
+    const summary = String(body.summary || "").slice(0, 10000);
     const items = cleanItems(body.items);
 
     await sql`
       INSERT INTO atlas_owner_reports (
-        id, property_id, period_start, period_end, title, status, items, created_at, updated_at
+        id, property_id, period_start, period_end, title, status, summary, items, created_at, updated_at
       ) VALUES (
-        ${id}, ${propertyId}, ${periodStart}::date, ${periodEnd}::date, ${title}, ${status},
+        ${id}, ${propertyId}, ${periodStart}::date, ${periodEnd}::date, ${title}, ${status}, ${summary},
         ${JSON.stringify(items)}::jsonb, NOW(), NOW()
       )
       ON CONFLICT (id) DO UPDATE SET
@@ -165,6 +204,7 @@ export async function POST(request: NextRequest) {
         period_end = EXCLUDED.period_end,
         title = EXCLUDED.title,
         status = EXCLUDED.status,
+        summary = EXCLUDED.summary,
         items = EXCLUDED.items,
         updated_at = NOW()
     `;
@@ -172,7 +212,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, id, propertyId, itemCount: items.length });
   } catch (error) {
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Owner report could not be saved." },
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Owner report could not be saved.",
+      },
       { status: 500 },
     );
   }
@@ -184,7 +227,9 @@ export async function DELETE(request: NextRequest) {
     await ensureTable(sql);
     const id = String(request.nextUrl.searchParams.get("id") || "").trim();
     const propertyId = cleanPropertyId(request.nextUrl.searchParams.get("propertyId"));
-    if (!id) return NextResponse.json({ ok: false, error: "Report id is required." }, { status: 400 });
+    if (!id) {
+      return NextResponse.json({ ok: false, error: "Report id is required." }, { status: 400 });
+    }
 
     const rows = await sql`
       DELETE FROM atlas_owner_reports
@@ -194,7 +239,10 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ ok: true, deleted: (rows as unknown as Row[]).length > 0 });
   } catch (error) {
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Saved report could not be deleted." },
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Saved report could not be deleted.",
+      },
       { status: 500 },
     );
   }
