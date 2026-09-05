@@ -178,6 +178,7 @@ export default function AtlasWorkPolish() {
         background: #f8fafc !important;
         border-radius: 0 !important;
         font-size: 13px !important;
+        font-weight: 600 !important;
       }
 
       .atlas-work-polish-root .atlas-work-row {
@@ -191,12 +192,14 @@ export default function AtlasWorkPolish() {
       .atlas-work-polish-root .atlas-work-row-main strong {
         font-size: 13.5px !important;
         line-height: 1.2 !important;
+        font-weight: 600 !important;
       }
 
       .atlas-work-polish-root .atlas-work-row-main span {
         margin-top: 2px !important;
         font-size: 10.5px !important;
         line-height: 1.2 !important;
+        font-weight: 400 !important;
       }
 
       .atlas-work-polish-root .atlas-work-row-assignee,
@@ -207,6 +210,7 @@ export default function AtlasWorkPolish() {
         padding-bottom: 4px !important;
         border-radius: 8px !important;
         font-size: 11px !important;
+        font-weight: 400 !important;
       }
 
       .atlas-work-polish-root .atlas-work-row-details {
@@ -217,11 +221,77 @@ export default function AtlasWorkPolish() {
         border-color: var(--atlas-work-line) !important;
         border-radius: 10px !important;
         box-shadow: none !important;
+        font-size: 13px !important;
+        font-weight: 400 !important;
       }
 
       .atlas-work-polish-root .atlas-work-detail-heading {
         font-size: 13px !important;
         line-height: 1.25 !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.006em !important;
+      }
+
+      .atlas-work-polish-root [data-atlas-work-detail-panel] {
+        font-size: 13px !important;
+        line-height: 1.42 !important;
+        font-weight: 400 !important;
+        letter-spacing: -0.004em !important;
+      }
+
+      .atlas-work-polish-root [data-atlas-work-detail-panel] h2 {
+        font-size: 20px !important;
+        line-height: 1.18 !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.018em !important;
+      }
+
+      .atlas-work-polish-root [data-atlas-work-detail-panel] h3,
+      .atlas-work-polish-root [data-atlas-work-detail-panel] h4 {
+        font-size: 14px !important;
+        line-height: 1.28 !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.008em !important;
+      }
+
+      .atlas-work-polish-root [data-atlas-work-detail-panel] strong,
+      .atlas-work-polish-root [data-atlas-work-detail-panel] b {
+        font-weight: 600 !important;
+      }
+
+      .atlas-work-polish-root [data-atlas-work-detail-panel] p,
+      .atlas-work-polish-root [data-atlas-work-detail-panel] li,
+      .atlas-work-polish-root [data-atlas-work-detail-panel] dd,
+      .atlas-work-polish-root [data-atlas-work-detail-panel] dt {
+        font-size: 13px !important;
+        line-height: 1.45 !important;
+        font-weight: 400 !important;
+      }
+
+      .atlas-work-polish-root [data-atlas-work-detail-panel] label,
+      .atlas-work-polish-root [data-atlas-work-detail-panel] small {
+        font-size: 11.5px !important;
+        line-height: 1.35 !important;
+        font-weight: 500 !important;
+        letter-spacing: 0 !important;
+      }
+
+      .atlas-work-polish-root [data-atlas-work-detail-panel] summary {
+        font-size: 13px !important;
+        line-height: 1.3 !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.004em !important;
+      }
+
+      .atlas-work-polish-root [data-atlas-work-detail-panel] button,
+      .atlas-work-polish-root [data-atlas-work-detail-panel] select {
+        font-size: 12px !important;
+        font-weight: 600 !important;
+      }
+
+      .atlas-work-polish-root [data-atlas-work-detail-panel] input,
+      .atlas-work-polish-root [data-atlas-work-detail-panel] textarea {
+        font-weight: 400 !important;
       }
 
       @media (min-width: 901px) {
@@ -258,6 +328,10 @@ export default function AtlasWorkPolish() {
           min-height: 0 !important;
           overflow: visible !important;
           scrollbar-gutter: auto !important;
+        }
+
+        .atlas-work-polish-root [data-atlas-work-detail-panel] h2 {
+          font-size: 19px !important;
         }
       }
     `}</style>
