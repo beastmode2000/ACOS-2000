@@ -189,18 +189,18 @@ export default function AtlasAssetsViewportPolish() {
           overscroll-behavior: contain !important;
         }
 
-        .atlas-assets-viewport-root .atlas-assets-viewport-detail.atlas-asset-reference-drawer,
-        .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-asset-reference-drawer {
-          min-height: 100% !important;
-          height: 100% !important;
-          max-height: 100% !important;
-          overflow-x: hidden !important;
-          overflow-y: auto !important;
-          scrollbar-gutter: stable !important;
+        .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-asset-reference-drawer,
+        .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-record-detail-content,
+        .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-polish-assets-detail-pane {
+          min-height: 0 !important;
+          height: auto !important;
+          max-height: none !important;
+          overflow: visible !important;
+          scrollbar-gutter: auto !important;
+          overscroll-behavior: auto !important;
         }
 
-        .atlas-assets-viewport-root .atlas-polish-assets-list-pane,
-        .atlas-assets-viewport-root .atlas-polish-assets-detail-pane {
+        .atlas-assets-viewport-root .atlas-polish-assets-list-pane {
           min-height: 0 !important;
           height: 100% !important;
           max-height: 100% !important;
@@ -233,11 +233,13 @@ export default function AtlasAssetsViewportPolish() {
 
         .atlas-assets-viewport-root .atlas-assets-viewport-list,
         .atlas-assets-viewport-root .atlas-assets-viewport-detail,
-        .atlas-assets-viewport-root .atlas-assets-viewport-detail.atlas-asset-reference-drawer,
-        .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-asset-reference-drawer {
+        .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-asset-reference-drawer,
+        .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-record-detail-content,
+        .atlas-assets-viewport-root .atlas-assets-viewport-detail .atlas-polish-assets-detail-pane {
           height: auto !important;
           max-height: none !important;
           overflow-y: visible !important;
+          overflow-x: visible !important;
           scrollbar-gutter: auto !important;
         }
       }
