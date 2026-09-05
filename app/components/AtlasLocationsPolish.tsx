@@ -283,6 +283,15 @@ function removeCategoryHeadings(grid: HTMLElement) {
   }
 }
 
+function sectionHasNoUsefulRecords(section: HTMLElement) {
+  const text = section.textContent || "";
+  if (text.includes("No work history is linked yet.")) return true;
+  if (text.includes("No Tasks are linked to this location.")) return true;
+  if (text.includes("0 work records")) return true;
+  if (text.includes("0 related") && text.includes("Tasks")) return true;
+  return false;
+}
+
 function markBusyLocationChrome(drawer: HTMLElement, listPanel: HTMLElement | null) {
   for (const button of Array.from(drawer.querySelectorAll<HTMLButtonElement>("button"))) {
     const text = button.textContent?.trim() || "";
@@ -291,12 +300,16 @@ function markBusyLocationChrome(drawer: HTMLElement, listPanel: HTMLElement | nu
     }
   }
 
+  let equipmentSection: HTMLElement | null = null;
+  let photosSection: HTMLElement | null = null;
+
   for (const section of Array.from(drawer.querySelectorAll<HTMLElement>("section"))) {
     const text = section.textContent || "";
     if (text.includes("Location at a glance") || text.includes("Property Intelligence")) {
       section.classList.add("atlas-location-hidden-overview");
     }
-    if (text.includes("Assets Assigned Here")) {
+    if (text.includes("Assets Assigned Here") || text.includes("Appliances & Equipment")) {
+      equipmentSection = section;
       section.classList.add("atlas-location-equipment-section");
       const eyebrow = Array.from(section.querySelectorAll<HTMLElement>("div")).find(
         (node) => node.textContent?.trim() === "Assets Assigned Here",
@@ -307,6 +320,20 @@ function markBusyLocationChrome(drawer: HTMLElement, listPanel: HTMLElement | nu
       );
       if (hint) hint.classList.add("atlas-location-hidden-hint");
     }
+    if (text.includes("Photos") && text.includes("attached")) {
+      photosSection = section;
+      section.classList.add("atlas-location-reference-photos");
+    }
+    if (sectionHasNoUsefulRecords(section)) {
+      section.classList.add("atlas-location-hidden-empty-secondary");
+    }
+    if (text.includes("Location History") || text.includes("Property History")) {
+      section.classList.add("atlas-location-history-section");
+    }
+  }
+
+  if (equipmentSection && photosSection && equipmentSection.parentElement === drawer) {
+    drawer.insertBefore(equipmentSection, photosSection);
   }
 
   for (const label of Array.from(drawer.querySelectorAll<HTMLElement>("span"))) {
@@ -322,12 +349,25 @@ function markBusyLocationChrome(drawer: HTMLElement, listPanel: HTMLElement | nu
     const text = button.textContent?.trim() || "";
     if (text === "+ Sub") button.classList.add("atlas-location-hidden-sub");
 
-    const title = button.querySelector<HTMLElement>("strong")?.textContent?.trim() || "";
-    if (!title) continue;
+    const titleNode = button.querySelector<HTMLElement>("strong");
+    const title = titleNode?.textContent?.trim() || "";
+    if (!titleNode || !title) continue;
+
     const wrapper = button.parentElement as HTMLElement | null;
     if (!wrapper) continue;
+
     button.classList.add("atlas-location-list-card-main");
     wrapper.classList.add("atlas-location-list-card-clean");
+
+    for (const child of Array.from(button.children) as HTMLElement[]) {
+      if (!child.contains(titleNode)) child.classList.add("atlas-location-list-card-meta-hidden");
+    }
+    const titleContainer = titleNode.parentElement;
+    if (titleContainer) {
+      for (const child of Array.from(titleContainer.children) as HTMLElement[]) {
+        if (child !== titleNode) child.classList.add("atlas-location-list-card-meta-hidden");
+      }
+    }
   }
 
   for (const section of Array.from(listPanel.querySelectorAll<HTMLElement>("section"))) {
@@ -350,6 +390,20 @@ function markBusyLocationChrome(drawer: HTMLElement, listPanel: HTMLElement | nu
     );
   });
   if (topSummary) topSummary.classList.add("atlas-location-hidden-list-summary");
+
+  const workspaceColumns = listPanel.parentElement as HTMLElement | null;
+  if (workspaceColumns) {
+    workspaceColumns.classList.add("atlas-location-workspace-columns");
+    workspaceColumns.parentElement?.classList.add("atlas-location-workspace-shell");
+  }
+
+  const addLocationButton = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+    (button) => button.textContent?.trim() === "Add Location",
+  );
+  if (addLocationButton) {
+    addLocationButton.classList.add("atlas-location-add-button-compact");
+    addLocationButton.parentElement?.classList.add("atlas-location-add-row-compact");
+  }
 }
 
 export default function AtlasLocationsPolish() {
@@ -439,9 +493,17 @@ export default function AtlasLocationsPolish() {
         overflow-anchor: none;
       }
       @media (min-width: 901px) {
+        .atlas-location-workspace-shell {
+          margin-top: -14px !important;
+          padding-top: 0 !important;
+        }
+        .atlas-location-workspace-columns {
+          min-height: 0 !important;
+        }
         .atlas-location-independent-scroll {
           min-height: 0 !important;
-          max-height: calc(100dvh - 190px) !important;
+          height: calc(100dvh - 132px) !important;
+          max-height: calc(100dvh - 132px) !important;
           overflow-y: auto !important;
           overflow-x: hidden !important;
           overscroll-behavior: contain !important;
@@ -449,6 +511,8 @@ export default function AtlasLocationsPolish() {
         }
         .atlas-location-drawer-panel {
           min-height: 0 !important;
+          height: calc(100dvh - 132px) !important;
+          max-height: calc(100dvh - 132px) !important;
           overflow: hidden !important;
         }
       }
@@ -457,35 +521,56 @@ export default function AtlasLocationsPolish() {
       .atlas-location-hidden-hierarchy-card,
       .atlas-location-hidden-list-review,
       .atlas-location-hidden-list-summary,
-      .atlas-location-hidden-hint {
+      .atlas-location-hidden-hint,
+      .atlas-location-hidden-empty-secondary,
+      .atlas-location-list-card-meta-hidden {
         display: none !important;
       }
+      .atlas-location-add-row-compact {
+        min-height: 0 !important;
+        padding-top: 0 !important;
+        padding-bottom: 4px !important;
+        margin-top: 0 !important;
+        margin-bottom: 2px !important;
+      }
+      .atlas-location-add-button-compact {
+        min-height: 34px !important;
+        padding: 6px 12px !important;
+        font-size: 12px !important;
+      }
       .atlas-location-list-card-clean {
-        border-radius: 10px !important;
+        min-height: 0 !important;
+        border-radius: 9px !important;
         box-shadow: none !important;
         transform: none !important;
       }
       .atlas-location-list-card-main {
-        padding-top: 9px !important;
-        padding-bottom: 9px !important;
+        display: block !important;
+        min-height: 0 !important;
+        padding: 10px 12px !important;
+        text-align: left !important;
       }
-      .atlas-location-list-card-main > span:nth-child(2) {
-        display: none !important;
-      }
-      .atlas-location-list-card-main > span:last-child > span,
-      .atlas-location-list-card-main > span:last-child > small {
-        display: none !important;
-      }
-      .atlas-location-list-card-main > span:last-child > strong {
+      .atlas-location-list-card-main strong {
         display: block !important;
         font-size: 14px !important;
-        line-height: 1.35 !important;
+        line-height: 1.3 !important;
+        color: #0b2c43 !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
       }
       .atlas-location-equipment-section {
-        order: -5;
+        margin-top: 10px !important;
       }
       .atlas-location-equipment-section [style*="box-shadow"] {
         box-shadow: none !important;
+      }
+      .atlas-location-reference-photos {
+        margin-top: 10px !important;
+      }
+      .atlas-location-history-section {
+        margin-top: 14px !important;
+        opacity: 0.92;
       }
       .atlas-location-drawer-polish img[style*="object-fit: cover"] {
         object-fit: contain !important;
@@ -495,7 +580,7 @@ export default function AtlasLocationsPolish() {
         display: grid !important;
         grid-template-columns: minmax(0, 1fr) !important;
         gap: 8px !important;
-        margin-top: 12px !important;
+        margin-top: 10px !important;
         padding-top: 0 !important;
         position: relative !important;
       }
@@ -511,9 +596,9 @@ export default function AtlasLocationsPolish() {
         gap: 12px !important;
         align-items: start !important;
         min-width: 0 !important;
-        padding: 11px 12px !important;
+        padding: 10px 11px !important;
         border: 1px solid #d9e2eb !important;
-        border-radius: 10px !important;
+        border-radius: 9px !important;
         background: #fff !important;
         box-shadow: none !important;
       }
@@ -559,12 +644,16 @@ export default function AtlasLocationsPolish() {
       .atlas-location-spec-edit-row { display:grid !important; grid-template-columns:minmax(170px,.38fr) minmax(320px,1fr) auto !important; gap:9px !important; align-items:start !important; padding:10px !important; border:1px solid #d9e2eb !important; border-radius:10px !important; background:#fbfcfd !important; }
       .atlas-location-spec-edit-row textarea { min-height:118px !important; line-height:1.5 !important; }
       @media (max-width:900px) {
+        .atlas-location-workspace-shell {
+          margin-top: -8px !important;
+          padding-top: 0 !important;
+        }
         .atlas-location-spec-card { grid-template-columns:minmax(0,1fr) !important; gap:6px !important; padding:10px !important; }
         .atlas-location-spec-value { font-size:12px !important; line-height:1.5 !important; }
         .atlas-spec-files { grid-template-columns:minmax(0,1fr); }
         .atlas-location-spec-edit-row { grid-template-columns:minmax(0,1fr) !important; }
-        .atlas-location-list-card-main > span:first-child {
-          display: none !important;
+        .atlas-location-list-card-main {
+          padding: 10px !important;
         }
       }
     `}</style>
