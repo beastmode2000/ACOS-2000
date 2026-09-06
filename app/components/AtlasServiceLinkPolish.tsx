@@ -52,6 +52,42 @@ function pageMain(title: string) {
   return (heading?.closest("main") as HTMLElement | null) || null;
 }
 
+function currentPageTitle() {
+  return normalized(
+    Array.from(document.querySelectorAll<HTMLElement>("main h1")).find(
+      (node) => Boolean(normalized(node.textContent)),
+    )?.textContent,
+  );
+}
+
+function polishSidebar() {
+  const pageTitle = currentPageTitle();
+  const scopes = Array.from(document.querySelectorAll<HTMLElement>("aside, nav")).filter(
+    (scope) => {
+      const text = normalized(scope.textContent);
+      return (
+        text.includes("house maintenance") &&
+        text.includes("garage") &&
+        text.includes("pool spa") &&
+        text.includes("landscaping irrigation")
+      );
+    },
+  );
+
+  for (const scope of scopes) {
+    scope.classList.add("atlas-sidebar-polished");
+    for (const item of Array.from(scope.querySelectorAll<HTMLElement>("button, a"))) {
+      const label = normalized(item.textContent);
+      if (!label) continue;
+      item.classList.add("atlas-sidebar-item-polished");
+      item.classList.toggle(
+        "atlas-sidebar-item-current",
+        Boolean(pageTitle && (label === pageTitle || label.startsWith(`${pageTitle} `))),
+      );
+    }
+  }
+}
+
 function currentPropertyId() {
   const fromQuery = new URLSearchParams(window.location.search).get("propertyId");
   if (fromQuery && KNOWN_PROPERTIES.has(fromQuery.toLowerCase())) {
@@ -69,16 +105,6 @@ function currentPropertyId() {
     }
   }
 
-  const selectedButtons = Array.from(
-    document.querySelectorAll<HTMLButtonElement>(
-      'button[aria-pressed="true"], button[aria-current="true"], button[aria-selected="true"]',
-    ),
-  );
-  for (const button of selectedButtons) {
-    const value = normalized(button.textContent).replace(/\s+/g, "");
-    if (KNOWN_PROPERTIES.has(value)) return value;
-  }
-
   return "";
 }
 
@@ -86,7 +112,6 @@ async function loadPropertyData(propertyId: string) {
   if (!propertyId) return null;
   const cached = propertyCache.get(propertyId);
   if (cached) return cached;
-
   const existing = propertyLoads.get(propertyId);
   if (existing) return existing;
 
@@ -149,10 +174,7 @@ function formatCompactDate(value: unknown) {
   if (!raw) return "";
   const date = new Date(raw.length <= 10 ? `${raw}T12:00:00` : raw);
   if (Number.isNaN(date.getTime())) return raw;
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-  }).format(date);
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
 }
 
 function uniqueAssetByName(data: PropertyUiData | null, name: string) {
@@ -160,6 +182,18 @@ function uniqueAssetByName(data: PropertyUiData | null, name: string) {
   const target = normalized(name);
   const matches = data.assets.filter((asset) => normalized(asset.name) === target);
   return matches.length === 1 ? matches[0] : null;
+}
+
+function selectedAssetFromDrawer(root: HTMLElement, data: PropertyUiData | null) {
+  if (!data) return null;
+  const drawer = root.querySelector<HTMLElement>(".atlas-asset-drawer");
+  if (!drawer) return null;
+  const headings = Array.from(drawer.querySelectorAll<HTMLElement>("h1, h2, h3, h4"));
+  for (const heading of headings) {
+    const asset = uniqueAssetByName(data, heading.textContent || "");
+    if (asset) return asset;
+  }
+  return null;
 }
 
 function originalAssetStatus(card: HTMLElement) {
@@ -172,23 +206,17 @@ function originalAssetStatus(card: HTMLElement) {
   return "Monitor";
 }
 
-function ensureAssetCardIndicators(
-  card: HTMLElement,
-  asset: AssetRecord | null,
-  openCount: number,
-) {
+function ensureAssetCardIndicators(card: HTMLElement, asset: AssetRecord | null, openCount: number) {
   let indicators = card.querySelector<HTMLElement>(".atlas-asset-card-indicators");
   if (!indicators) {
     indicators = document.createElement("div");
     indicators.className = "atlas-asset-card-indicators";
     card.appendChild(indicators);
   }
-
   const resolvedStatus = statusLabel(asset?.status || originalAssetStatus(card));
   let status = indicators.querySelector<HTMLElement>(".atlas-asset-card-status");
   if (!status) {
     status = document.createElement("span");
-    status.className = "atlas-asset-card-status";
     indicators.appendChild(status);
   }
   status.className = `atlas-asset-card-status ${statusClass(resolvedStatus)}`;
@@ -210,57 +238,38 @@ function ensureAssetCardIndicators(
 function markAssetListSelection(data: PropertyUiData | null) {
   const root = pageMain("Assets");
   if (!root) return;
+  const selectedAsset = selectedAssetFromDrawer(root, data);
 
-  const listRoot =
-    root.querySelector<HTMLElement>(".atlas-assets-native-list-panel") ||
-    root.querySelector<HTMLElement>(".atlas-assets-viewport-list");
-  if (!listRoot) return;
-
-  const detailTitle = normalized(
-    root.querySelector<HTMLElement>(
-      ".atlas-assets-viewport-detail h2, .atlas-assets-viewport-detail h3, .atlas-asset-reference-drawer h2, .atlas-asset-reference-drawer h3",
-    )?.textContent,
-  );
-
-  for (const card of Array.from(
-    listRoot.querySelectorAll<HTMLElement>(".atlas-gold-hover-card"),
-  )) {
+  for (const card of Array.from(root.querySelectorAll<HTMLElement>(".atlas-gold-hover-card"))) {
     const nameNode = card.querySelector<HTMLElement>("button strong");
-    const name = normalized(nameNode?.textContent);
-    if (!name) continue;
-
-    const checked = Boolean(
-      card.querySelector<HTMLInputElement>('input[type="checkbox"]:checked'),
-    );
-    const current = Boolean(detailTitle && name === detailTitle);
     const asset = uniqueAssetByName(data, nameNode?.textContent || "");
-    const openCount = asset?.id
-      ? data?.workOrders.filter(
-          (workOrder) => workOrder.assetId === asset.id && !isClosedWork(workOrder),
-        ).length || 0
-      : 0;
+    if (!nameNode || !asset?.id) continue;
+
+    const current = Boolean(selectedAsset?.id && selectedAsset.id === asset.id);
+    const checked = Boolean(card.querySelector<HTMLInputElement>('input[type="checkbox"]:checked'));
+    const openCount = data?.workOrders.filter(
+      (workOrder) => workOrder.assetId === asset.id && !isClosedWork(workOrder),
+    ).length || 0;
 
     card.classList.add("atlas-asset-list-card-polished");
     card.classList.toggle("atlas-asset-list-card-current", current);
     card.classList.toggle("atlas-asset-list-card-bulk-selected", checked && !current);
+    nameNode.classList.add("atlas-asset-list-name-polished");
 
-    nameNode?.classList.add("atlas-asset-list-name-polished");
-
-    const identity = nameNode?.parentElement || null;
+    const identity = nameNode.parentElement;
     const meta = identity
-      ? Array.from(identity.children).find(
+      ? (Array.from(identity.children).find(
           (child) => child instanceof HTMLElement && child.tagName === "SPAN",
-        ) as HTMLElement | undefined
+        ) as HTMLElement | undefined)
       : undefined;
     meta?.classList.add("atlas-asset-list-meta-polished");
 
     const badgeRow = identity
-      ? Array.from(identity.children).find(
+      ? (Array.from(identity.children).find(
           (child) => child instanceof HTMLElement && child.tagName === "DIV",
-        ) as HTMLElement | undefined
+        ) as HTMLElement | undefined)
       : undefined;
     badgeRow?.classList.add("atlas-asset-list-native-badges");
-
     ensureAssetCardIndicators(card, asset, openCount);
   }
 }
@@ -268,21 +277,17 @@ function markAssetListSelection(data: PropertyUiData | null) {
 function clickMatchingWorkOrder(root: HTMLElement, workOrder: WorkOrderRecord) {
   const target = normalized(workOrder.title);
   if (!target) return;
-  const button = Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
+  Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
     (candidate) => normalized(candidate.textContent).includes(target),
-  );
-  button?.click();
+  )?.click();
 }
 
 function markAssetAnnualService(data: PropertyUiData | null) {
   const root = pageMain("Assets");
   if (!root || !data) return;
-
   const drawer = root.querySelector<HTMLElement>(".atlas-asset-drawer");
   if (!drawer) return;
-
-  const titleNode = drawer.querySelector<HTMLElement>("h2, h3");
-  const selectedAsset = uniqueAssetByName(data, titleNode?.textContent || "");
+  const selectedAsset = selectedAssetFromDrawer(root, data);
   if (!selectedAsset?.id) return;
 
   const annual = data.workOrders
@@ -300,50 +305,38 @@ function markAssetAnnualService(data: PropertyUiData | null) {
     return;
   }
 
-  const host =
-    drawer.querySelector<HTMLElement>("[data-atlas-asset-reference-host]") || drawer;
+  const host = drawer.querySelector<HTMLElement>("[data-atlas-asset-reference-host]") || drawer;
   let strip = existing;
   if (!strip) {
     strip = document.createElement("button");
-    strip.type = "button";
     strip.className = "atlas-asset-next-service-strip";
     if (host === drawer) drawer.insertBefore(strip, drawer.children[1] || null);
     else host.insertBefore(strip, host.firstChild);
   }
-
   const due = formatCompactDate(annual.date);
-  strip.textContent = due
-    ? `${annual.title || "Annual Service"} · ${due}`
-    : annual.title || "Annual Service";
+  strip.textContent = due ? `${annual.title || "Annual Service"} · ${due}` : annual.title || "Annual Service";
   strip.onclick = () => clickMatchingWorkOrder(drawer, annual);
 }
 
 function findAssetSelect(panel: HTMLElement) {
   const selects = Array.from(panel.querySelectorAll<HTMLSelectElement>("select"));
-
-  const byOption = selects.find((select) => {
-    const optionText = Array.from(select.options).map((option) =>
-      normalized(option.textContent),
-    );
-    return optionText.some((value) =>
-      ["no asset", "select asset", "choose asset", "asset"].includes(value),
-    );
-  });
+  const byOption = selects.find((select) =>
+    Array.from(select.options)
+      .map((option) => normalized(option.textContent))
+      .some((value) => ["no asset", "select asset", "choose asset", "asset"].includes(value)),
+  );
   if (byOption) return byOption;
-
   for (const select of selects) {
     let node: HTMLElement | null = select.parentElement;
     for (let depth = 0; node && depth < 4; depth += 1) {
-      const labels = Array.from(
-        node.querySelectorAll<HTMLElement>("label, span, strong"),
-      );
-      if (labels.some((label) => normalized(label.textContent) === "asset")) {
-        return select;
-      }
+      if (
+        Array.from(node.querySelectorAll<HTMLElement>("label, span, strong")).some(
+          (label) => normalized(label.textContent) === "asset",
+        )
+      ) return select;
       node = node.parentElement;
     }
   }
-
   return null;
 }
 
@@ -362,24 +355,15 @@ function annualSubject(title: string) {
 
 function suggestedAssetOption(select: HTMLSelectElement, title: string) {
   if (select.value) return null;
-
   const titleText = normalized(title);
   if (!titleText.includes("annual") && !titleText.includes("yearly")) return null;
-
   const subject = annualSubject(title);
   if (!subject) return null;
-
   const matches = Array.from(select.options).filter((option) => {
     if (!option.value) return false;
     const label = normalized(option.textContent);
-    if (!label) return false;
-    return (
-      label === subject ||
-      label.startsWith(`${subject} `) ||
-      subject.startsWith(`${label} `)
-    );
+    return label === subject || label.startsWith(`${subject} `) || subject.startsWith(`${label} `);
   });
-
   return matches.length === 1 ? matches[0] : null;
 }
 
@@ -392,10 +376,8 @@ function syncSelectValue(nativeSelect: HTMLSelectElement, value: string) {
 function markWorkAssetLink() {
   const root = pageMain("Work");
   if (!root) return;
-
   const panel = root.querySelector<HTMLElement>("[data-atlas-work-detail-panel]");
   if (!panel) return;
-
   const nativeSelect = findAssetSelect(panel);
   if (!nativeSelect) return;
 
@@ -406,42 +388,31 @@ function markWorkAssetLink() {
     panel;
 
   let host = summaryCard.querySelector<HTMLElement>(":scope > .atlas-work-asset-quick-link");
-
   if (!host) {
     host = document.createElement("div");
     host.className = "atlas-work-asset-quick-link";
-
     const label = document.createElement("span");
     label.className = "atlas-work-asset-quick-label";
     label.textContent = "Asset";
-
     const mirror = document.createElement("select");
     mirror.className = "atlas-work-asset-quick-select";
     mirror.setAttribute("aria-label", "Linked asset");
-    mirror.addEventListener("change", () => {
-      syncSelectValue(nativeSelect, mirror.value);
-    });
-
+    mirror.addEventListener("change", () => syncSelectValue(nativeSelect, mirror.value));
     host.append(label, mirror);
     summaryCard.appendChild(host);
   }
 
   const mirror = host.querySelector<HTMLSelectElement>(".atlas-work-asset-quick-select");
   if (!mirror) return;
-
   const signature = Array.from(nativeSelect.options)
     .map((option) => `${option.value}:${option.textContent || ""}`)
     .join("|");
-
   if (mirror.dataset.optionsSignature !== signature) {
     mirror.innerHTML = "";
-    for (const option of Array.from(nativeSelect.options)) {
-      mirror.appendChild(option.cloneNode(true));
-    }
+    for (const option of Array.from(nativeSelect.options)) mirror.appendChild(option.cloneNode(true));
     mirror.dataset.optionsSignature = signature;
   }
   mirror.value = nativeSelect.value;
-
   host.querySelector(".atlas-work-asset-suggestion")?.remove();
   const suggestion = suggestedAssetOption(nativeSelect, title);
   if (suggestion) {
@@ -458,6 +429,7 @@ function markWorkAssetLink() {
 }
 
 function applyPolish(data: PropertyUiData | null) {
+  polishSidebar();
   markAssetListSelection(data);
   markAssetAnnualService(data);
   markWorkAssetLink();
@@ -491,7 +463,6 @@ export default function AtlasServiceLinkPolish() {
     };
 
     schedule();
-
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
 
@@ -520,28 +491,46 @@ export default function AtlasServiceLinkPolish() {
 
   return (
     <style jsx global>{`
+      .atlas-sidebar-polished .atlas-sidebar-item-polished {
+        background: transparent !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+        color: #f4f7fb !important;
+      }
+
+      .atlas-sidebar-polished .atlas-sidebar-item-polished:hover {
+        background: rgba(255, 255, 255, 0.08) !important;
+        color: #ffffff !important;
+      }
+
+      .atlas-sidebar-polished .atlas-sidebar-item-current {
+        background: #edf5ff !important;
+        border-color: #c8ddf3 !important;
+        color: #123d63 !important;
+        box-shadow: none !important;
+      }
+
       .atlas-assets-viewport-root .atlas-asset-list-card-polished {
-        border-color: #d8e1eb !important;
+        border: 1px solid #d8e1eb !important;
         background: #ffffff !important;
         box-shadow: none !important;
         transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease !important;
       }
 
-      .atlas-assets-viewport-root
-        .atlas-asset-list-card-polished
-        > .atlas-gold-hover-card-accent {
+      .atlas-assets-viewport-root .atlas-asset-list-card-polished > .atlas-gold-hover-card-accent {
         display: none !important;
       }
 
       .atlas-assets-viewport-root .atlas-asset-list-card-current {
         border-color: #175cd3 !important;
         background: #f4f8fd !important;
-        box-shadow: 0 0 0 1px rgba(23, 92, 211, 0.22) !important;
+        box-shadow: inset 3px 0 0 #175cd3 !important;
       }
 
-      .atlas-assets-viewport-root .atlas-asset-list-card-bulk-selected {
-        border-color: #c99a3d !important;
-        background: #fff9e8 !important;
+      .atlas-assets-viewport-root .atlas-asset-list-card-bulk-selected:not(.atlas-asset-list-card-current) {
+        border-color: #d8e1eb !important;
+        background: #ffffff !important;
+        box-shadow: none !important;
       }
 
       .atlas-assets-viewport-root .atlas-asset-list-name-polished {
@@ -631,11 +620,6 @@ export default function AtlasServiceLinkPolish() {
         cursor: pointer !important;
       }
 
-      .atlas-assets-viewport-root .atlas-asset-next-service-strip:hover {
-        border-color: #afc2d5 !important;
-        background: #f3f7fb !important;
-      }
-
       .atlas-assets-viewport-root [data-atlas-asset-reference-host],
       .atlas-assets-viewport-root .atlas-asset-reference-content {
         gap: 8px !important;
@@ -701,11 +685,6 @@ export default function AtlasServiceLinkPolish() {
         .atlas-assets-viewport-root .atlas-asset-card-open-work {
           font-size: 10px !important;
           padding: 2px 6px !important;
-        }
-
-        .atlas-assets-viewport-root .atlas-asset-next-service-strip {
-          min-height: 40px !important;
-          font-size: 12.5px !important;
         }
 
         .atlas-work-asset-quick-link {
