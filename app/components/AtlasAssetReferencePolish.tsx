@@ -135,7 +135,7 @@ function setNativeTab(drawer: HTMLElement, tab: "overview" | "work") {
 function clearNativeClasses(drawer: HTMLElement) {
   for (const element of Array.from(
     drawer.querySelectorAll<HTMLElement>(
-      ".atlas-native-asset-top, .atlas-native-asset-section, .atlas-native-photos-shell, .atlas-native-photo-child, .atlas-native-section-inner-title, .atlas-native-procedures, .atlas-native-asset-tabs-hidden, .atlas-native-section-host, .atlas-asset-reference-inner-scroll",
+      ".atlas-native-asset-top, .atlas-native-asset-section, .atlas-native-photos-shell, .atlas-native-photo-child, .atlas-native-section-inner-title, .atlas-native-procedures, .atlas-native-asset-tabs-hidden, .atlas-native-section-host, .atlas-native-section-suppressed, .atlas-asset-reference-inner-scroll",
     ),
   )) {
     element.classList.remove(
@@ -149,6 +149,7 @@ function clearNativeClasses(drawer: HTMLElement) {
       "atlas-native-procedures",
       "atlas-native-asset-tabs-hidden",
       "atlas-native-section-host",
+      "atlas-native-section-suppressed",
       "atlas-asset-reference-inner-scroll",
     );
   }
@@ -170,6 +171,22 @@ function markSectionHosts(drawer: HTMLElement, section: HTMLElement | null) {
   while (node && node !== drawer && depth < 3) {
     node.classList.add("atlas-native-section-host");
     node = node.parentElement;
+    depth += 1;
+  }
+}
+
+function suppressSiblingBranches(drawer: HTMLElement, section: HTMLElement | null) {
+  if (!section) return;
+  let node: HTMLElement = section;
+  let depth = 0;
+  while (node.parentElement && node.parentElement !== drawer && depth < 4) {
+    const parent = node.parentElement;
+    for (const sibling of Array.from(parent.children)) {
+      if (sibling !== node && sibling instanceof HTMLElement) {
+        sibling.classList.add("atlas-native-section-suppressed");
+      }
+    }
+    node = parent;
     depth += 1;
   }
 }
@@ -216,14 +233,20 @@ function markNativeAssetLayout(drawer: HTMLElement, openSection: SecondarySectio
     ["history", history],
   ];
 
+  let activeSection: HTMLElement | null = null;
   for (const [key, section] of sections) {
     if (!section) continue;
     section.classList.add("atlas-native-asset-section");
     if (key === openSection) {
+      activeSection = section;
       section.classList.add("atlas-native-section-open");
       markSectionHosts(drawer, section);
     }
     section.querySelector<HTMLElement>("strong")?.classList.add("atlas-native-section-inner-title");
+  }
+
+  if (activeSection) {
+    suppressSiblingBranches(drawer, activeSection);
   }
 
   if (openSection === "manuals" && photoShell) {
@@ -594,7 +617,8 @@ function AssetReferenceStyles() {
       .atlas-asset-reference-native-action-hidden,
       .atlas-native-asset-tabs-hidden,
       .atlas-native-asset-top,
-      .atlas-native-procedures {
+      .atlas-native-procedures,
+      .atlas-native-section-suppressed {
         display: none !important;
       }
 
