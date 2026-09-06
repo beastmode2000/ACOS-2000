@@ -37,6 +37,24 @@ function assetsListScrollContainer(
   return candidates[0] || null;
 }
 
+function suppressInactiveAssetBranches(drawer: HTMLElement) {
+  const activeSection = drawer.querySelector<HTMLElement>(
+    ".atlas-native-asset-section.atlas-native-section-open",
+  );
+  if (!activeSection) return;
+
+  let node: HTMLElement = activeSection;
+  while (node.parentElement && node.parentElement !== drawer) {
+    const parent = node.parentElement;
+    for (const sibling of Array.from(parent.children)) {
+      if (sibling !== node && sibling instanceof HTMLElement) {
+        sibling.classList.add("atlas-native-section-suppressed");
+      }
+    }
+    node = parent;
+  }
+}
+
 function markAssetsViewport() {
   const root = assetsMain();
   if (!root) return;
@@ -53,6 +71,8 @@ function markAssetsViewport() {
     (section) => normalized(section.querySelector<HTMLElement>("strong")?.textContent) === "notes",
   );
   notesSection?.classList.toggle("atlas-assets-notes-hidden", !editing);
+
+  if (!editing) suppressInactiveAssetBranches(drawer);
 
   const grid = drawer.parentElement;
   if (!grid) return;
@@ -171,6 +191,54 @@ export default function AtlasAssetsViewportPolish() {
         display: none !important;
       }
 
+      .atlas-assets-viewport-root .atlas-native-section-suppressed {
+        display: none !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-native-asset-section.atlas-native-section-open {
+        position: static !important;
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        height: auto !important;
+        max-height: none !important;
+        margin: 8px 0 10px !important;
+        padding: 12px !important;
+        border: 1px solid #dce5ed !important;
+        border-radius: 10px !important;
+        background: #ffffff !important;
+        overflow: visible !important;
+        box-shadow: none !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-native-asset-section.atlas-native-section-open > div,
+      .atlas-assets-viewport-root .atlas-native-asset-section.atlas-native-section-open > section {
+        position: static !important;
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        height: auto !important;
+        max-height: none !important;
+        margin: 0 !important;
+        overflow: visible !important;
+        transform: none !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-native-asset-section.atlas-native-section-open > div + div,
+      .atlas-assets-viewport-root .atlas-native-asset-section.atlas-native-section-open > section + section {
+        margin-top: 8px !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-native-asset-section.atlas-native-section-open button,
+      .atlas-assets-viewport-root .atlas-native-asset-section.atlas-native-section-open a {
+        position: static !important;
+        max-width: 100% !important;
+        white-space: normal !important;
+        transform: none !important;
+      }
+
       .atlas-assets-viewport-root .atlas-native-photos-manual-open > section[aria-label="Asset manuals"],
       .atlas-assets-viewport-root section[aria-label="Asset manuals"].atlas-native-section-open {
         min-width: 0 !important;
@@ -279,11 +347,14 @@ export default function AtlasAssetsViewportPolish() {
         .atlas-assets-viewport-root .atlas-assets-viewport-list {
           display: flex !important;
           flex-direction: column !important;
+          gap: 0 !important;
         }
 
         .atlas-assets-viewport-root .atlas-assets-search-row {
           flex: 0 0 auto !important;
           min-height: 0 !important;
+          height: auto !important;
+          max-height: 48px !important;
           margin: 0 0 6px !important;
           padding: 0 !important;
         }
@@ -293,6 +364,8 @@ export default function AtlasAssetsViewportPolish() {
           min-height: 0 !important;
           height: 100% !important;
           max-height: none !important;
+          margin-top: 0 !important;
+          padding-top: 0 !important;
           overflow: hidden !important;
           display: flex !important;
           flex-direction: column !important;
@@ -304,6 +377,8 @@ export default function AtlasAssetsViewportPolish() {
           min-height: 0 !important;
           height: 100% !important;
           max-height: none !important;
+          margin-top: 0 !important;
+          padding-top: 0 !important;
           overflow-x: hidden !important;
           overflow-y: auto !important;
           scrollbar-gutter: stable !important;
