@@ -216,8 +216,8 @@ export default function AtlasAssetsViewportPolish() {
 
         .atlas-assets-viewport-root .atlas-assets-viewport-grid {
           min-height: 0 !important;
-          height: calc(100% + 60px) !important;
-          max-height: calc(100% + 60px) !important;
+          height: calc(100% + 92px) !important;
+          max-height: calc(100% + 92px) !important;
           margin: -60px 0 0 !important;
           padding: 0 !important;
           align-items: stretch !important;
