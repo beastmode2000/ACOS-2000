@@ -274,6 +274,56 @@ function markAssetListSelection(data: PropertyUiData | null) {
   }
 }
 
+function markAssetDetailActions() {
+  const root = pageMain("Assets");
+  if (!root) return;
+  const drawer = root.querySelector<HTMLElement>(".atlas-asset-drawer");
+  if (!drawer) return;
+
+  const editing = drawer.classList.contains("atlas-asset-reference-editing");
+  const hero = drawer.querySelector<HTMLElement>(".atlas-asset-reference-hero");
+  const heading = hero?.querySelector<HTMLElement>(".atlas-asset-reference-heading");
+  if (!heading) return;
+
+  const nativeButtons = Array.from(drawer.querySelectorAll<HTMLButtonElement>("button")).filter(
+    (button) => !button.classList.contains("atlas-asset-inline-action"),
+  );
+  const editButton = nativeButtons.find((button) => normalized(button.textContent) === "edit asset");
+  const deleteButton = nativeButtons.find((button) => normalized(button.textContent) === "delete asset");
+
+  let host = heading.querySelector<HTMLElement>(":scope > .atlas-asset-inline-actions");
+  if (editing || (!editButton && !deleteButton)) {
+    host?.remove();
+    return;
+  }
+
+  if (!host) {
+    host = document.createElement("div");
+    host.className = "atlas-asset-inline-actions";
+    heading.appendChild(host);
+  }
+
+  host.innerHTML = "";
+
+  if (editButton) {
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "atlas-asset-inline-action atlas-asset-inline-edit";
+    edit.textContent = "Edit";
+    edit.addEventListener("click", () => editButton.click());
+    host.appendChild(edit);
+  }
+
+  if (deleteButton) {
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "atlas-asset-inline-action atlas-asset-inline-delete";
+    remove.textContent = "Delete";
+    remove.addEventListener("click", () => deleteButton.click());
+    host.appendChild(remove);
+  }
+}
+
 function clickMatchingWorkOrder(root: HTMLElement, workOrder: WorkOrderRecord) {
   const target = normalized(workOrder.title);
   if (!target) return;
@@ -409,10 +459,13 @@ function markWorkAssetLink() {
     .join("|");
   if (mirror.dataset.optionsSignature !== signature) {
     mirror.innerHTML = "";
-    for (const option of Array.from(nativeSelect.options)) mirror.appendChild(option.cloneNode(true));
+    for (const option of Array.from(nativeSelect.options)) {
+      mirror.appendChild(option.cloneNode(true));
+    }
     mirror.dataset.optionsSignature = signature;
   }
   mirror.value = nativeSelect.value;
+
   host.querySelector(".atlas-work-asset-suggestion")?.remove();
   const suggestion = suggestedAssetOption(nativeSelect, title);
   if (suggestion) {
@@ -431,6 +484,7 @@ function markWorkAssetLink() {
 function applyPolish(data: PropertyUiData | null) {
   polishSidebar();
   markAssetListSelection(data);
+  markAssetDetailActions();
   markAssetAnnualService(data);
   markWorkAssetLink();
 }
@@ -463,6 +517,7 @@ export default function AtlasServiceLinkPolish() {
     };
 
     schedule();
+
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
 
@@ -510,6 +565,39 @@ export default function AtlasServiceLinkPolish() {
         box-shadow: none !important;
       }
 
+      .atlas-asset-reference-drawer:not(.atlas-asset-reference-editing)
+        .atlas-asset-reference-native-title-row {
+        display: none !important;
+      }
+
+      .atlas-asset-inline-actions {
+        display: flex !important;
+        align-items: center !important;
+        gap: 7px !important;
+        margin-top: 8px !important;
+        flex-wrap: wrap !important;
+      }
+
+      .atlas-asset-inline-action {
+        min-height: 32px !important;
+        border-radius: 8px !important;
+        padding: 5px 11px !important;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        cursor: pointer !important;
+        background: #ffffff !important;
+      }
+
+      .atlas-asset-inline-edit {
+        border: 1px solid #b9c9d9 !important;
+        color: #17334f !important;
+      }
+
+      .atlas-asset-inline-delete {
+        border: 1px solid #edc6c6 !important;
+        color: #a13b3b !important;
+      }
+
       .atlas-assets-viewport-root .atlas-asset-list-card-polished {
         border: 1px solid #d8e1eb !important;
         background: #ffffff !important;
@@ -517,7 +605,9 @@ export default function AtlasServiceLinkPolish() {
         transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease !important;
       }
 
-      .atlas-assets-viewport-root .atlas-asset-list-card-polished > .atlas-gold-hover-card-accent {
+      .atlas-assets-viewport-root
+        .atlas-asset-list-card-polished
+        > .atlas-gold-hover-card-accent {
         display: none !important;
       }
 
@@ -527,7 +617,8 @@ export default function AtlasServiceLinkPolish() {
         box-shadow: inset 3px 0 0 #175cd3 !important;
       }
 
-      .atlas-assets-viewport-root .atlas-asset-list-card-bulk-selected:not(.atlas-asset-list-card-current) {
+      .atlas-assets-viewport-root
+        .atlas-asset-list-card-bulk-selected:not(.atlas-asset-list-card-current) {
         border-color: #d8e1eb !important;
         background: #ffffff !important;
         box-shadow: none !important;
@@ -675,6 +766,15 @@ export default function AtlasServiceLinkPolish() {
       }
 
       @media (max-width: 900px) {
+        .atlas-asset-inline-actions {
+          margin-top: 7px !important;
+        }
+
+        .atlas-asset-inline-action {
+          min-height: 36px !important;
+          padding: 6px 12px !important;
+        }
+
         .atlas-assets-viewport-root .atlas-asset-card-indicators {
           right: 7px !important;
           bottom: 7px !important;
