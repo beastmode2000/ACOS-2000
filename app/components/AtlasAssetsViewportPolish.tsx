@@ -40,59 +40,86 @@ function assetsListScrollContainer(
   return candidates[0] || null;
 }
 
+function nativeAssetListPanel(
+  root: HTMLElement,
+  search: HTMLInputElement | null,
+) {
+  if (!search) return null;
+
+  const fixedHeightCandidate = Array.from(
+    root.querySelectorAll<HTMLElement>("div, section, aside"),
+  ).find((element) => {
+    if (!element.contains(search)) return false;
+    const inline = element.getAttribute("style") || "";
+    return (
+      inline.includes("100dvh - 190px") ||
+      (inline.includes("position: sticky") && inline.includes("overflow-y: auto"))
+    );
+  });
+
+  if (fixedHeightCandidate) return fixedHeightCandidate;
+
+  let current = search.parentElement as HTMLElement | null;
+  while (current && current !== root) {
+    const style = window.getComputedStyle(current);
+    if (/auto|scroll/.test(style.overflowY)) return current;
+    current = current.parentElement;
+  }
+
+  return null;
+}
+
 function clearMeasuredHeight(element: HTMLElement | null) {
   if (!element) return;
   element.style.removeProperty("height");
   element.style.removeProperty("max-height");
   element.style.removeProperty("min-height");
+  element.style.removeProperty("padding-bottom");
+  element.style.removeProperty("scroll-padding-bottom");
+  element.style.removeProperty("align-self");
 }
 
 function syncListHeightToDetail(
   listPanel: HTMLElement | null,
+  nativeListPanel: HTMLElement | null,
   listScroll: HTMLElement | null,
   detailPanel: HTMLElement,
 ) {
-  if (!listPanel) return;
+  const target = nativeListPanel || listPanel;
+  if (!target) return;
 
   if (window.innerWidth <= 900) {
-    clearMeasuredHeight(listPanel);
+    clearMeasuredHeight(target);
+    if (listPanel && listPanel !== target) clearMeasuredHeight(listPanel);
     clearMeasuredHeight(listScroll);
-    for (const element of Array.from(
-      listPanel.querySelectorAll<HTMLElement>(
-        ".atlas-assets-list-direct-fill, .atlas-assets-list-fill-chain",
-      ),
-    )) {
-      clearMeasuredHeight(element);
-    }
     return;
   }
 
   const detailBottom = detailPanel.getBoundingClientRect().bottom;
-  const listTop = listPanel.getBoundingClientRect().top;
-  const listHeight = Math.max(240, Math.floor(detailBottom - listTop));
+  const targetTop = target.getBoundingClientRect().top;
+  const targetHeight = Math.max(240, Math.floor(detailBottom - targetTop));
 
-  listPanel.style.setProperty("height", `${listHeight}px`, "important");
-  listPanel.style.setProperty("max-height", `${listHeight}px`, "important");
-  listPanel.style.setProperty("min-height", "0", "important");
+  target.classList.add("atlas-assets-native-list-panel");
+  target.style.setProperty("height", `${targetHeight}px`, "important");
+  target.style.setProperty("max-height", `${targetHeight}px`, "important");
+  target.style.setProperty("min-height", "0", "important");
+  target.style.setProperty("padding-bottom", "0", "important");
+  target.style.setProperty("scroll-padding-bottom", "0", "important");
+  target.style.setProperty("align-self", "stretch", "important");
 
-  if (!listScroll) return;
-
-  const scrollTop = listScroll.getBoundingClientRect().top;
-  const scrollHeight = Math.max(160, Math.floor(detailBottom - scrollTop));
-
-  for (const element of Array.from(
-    listPanel.querySelectorAll<HTMLElement>(
-      ".atlas-assets-list-direct-fill, .atlas-assets-list-fill-chain",
-    ),
-  )) {
-    element.style.setProperty("min-height", "0", "important");
-    element.style.setProperty("height", "100%", "important");
-    element.style.setProperty("max-height", "none", "important");
+  if (listPanel && listPanel !== target) {
+    listPanel.style.setProperty("height", `${targetHeight}px`, "important");
+    listPanel.style.setProperty("max-height", `${targetHeight}px`, "important");
+    listPanel.style.setProperty("min-height", "0", "important");
   }
 
-  listScroll.style.setProperty("height", `${scrollHeight}px`, "important");
-  listScroll.style.setProperty("max-height", `${scrollHeight}px`, "important");
-  listScroll.style.setProperty("min-height", "0", "important");
+  if (listScroll && listScroll !== target) {
+    const scrollTop = listScroll.getBoundingClientRect().top;
+    const scrollHeight = Math.max(160, Math.floor(detailBottom - scrollTop));
+    listScroll.style.setProperty("height", `${scrollHeight}px`, "important");
+    listScroll.style.setProperty("max-height", `${scrollHeight}px`, "important");
+    listScroll.style.setProperty("min-height", "0", "important");
+  }
 }
 
 function markAssetsViewport() {
@@ -131,6 +158,7 @@ function markAssetsViewport() {
 
   let listPanel: HTMLElement | null = null;
   let listScroll: HTMLElement | null = null;
+  const nativeListPanel = nativeAssetListPanel(root, search);
 
   if (search) {
     listPanel = search.parentElement;
@@ -176,7 +204,7 @@ function markAssetsViewport() {
   }
   detailPanel.classList.add("atlas-assets-viewport-detail");
 
-  syncListHeightToDetail(listPanel, listScroll, detailPanel);
+  syncListHeightToDetail(listPanel, nativeListPanel, listScroll, detailPanel);
 
   const sortSelect = root.querySelector<HTMLSelectElement>(
     'select[aria-label="Sort assets alphabetically"]',
@@ -295,11 +323,20 @@ export default function AtlasAssetsViewportPolish() {
           max-height: 100% !important;
         }
 
-        .atlas-assets-viewport-root .atlas-assets-viewport-list {
+        .atlas-assets-viewport-root .atlas-assets-viewport-list,
+        .atlas-assets-viewport-root .atlas-assets-native-list-panel {
           display: flex !important;
           flex-direction: column !important;
           gap: 0 !important;
           padding-bottom: 0 !important;
+          scroll-padding-bottom: 0 !important;
+        }
+
+        .atlas-assets-viewport-root .atlas-assets-native-list-panel {
+          overflow-x: hidden !important;
+          overflow-y: auto !important;
+          overscroll-behavior: contain !important;
+          scrollbar-gutter: stable !important;
         }
 
         .atlas-assets-viewport-root .atlas-assets-search-row {
