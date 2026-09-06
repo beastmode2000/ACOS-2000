@@ -40,6 +40,61 @@ function assetsListScrollContainer(
   return candidates[0] || null;
 }
 
+function clearMeasuredHeight(element: HTMLElement | null) {
+  if (!element) return;
+  element.style.removeProperty("height");
+  element.style.removeProperty("max-height");
+  element.style.removeProperty("min-height");
+}
+
+function syncListHeightToDetail(
+  listPanel: HTMLElement | null,
+  listScroll: HTMLElement | null,
+  detailPanel: HTMLElement,
+) {
+  if (!listPanel) return;
+
+  if (window.innerWidth <= 900) {
+    clearMeasuredHeight(listPanel);
+    clearMeasuredHeight(listScroll);
+    for (const element of Array.from(
+      listPanel.querySelectorAll<HTMLElement>(
+        ".atlas-assets-list-direct-fill, .atlas-assets-list-fill-chain",
+      ),
+    )) {
+      clearMeasuredHeight(element);
+    }
+    return;
+  }
+
+  const detailBottom = detailPanel.getBoundingClientRect().bottom;
+  const listTop = listPanel.getBoundingClientRect().top;
+  const listHeight = Math.max(240, Math.floor(detailBottom - listTop));
+
+  listPanel.style.setProperty("height", `${listHeight}px`, "important");
+  listPanel.style.setProperty("max-height", `${listHeight}px`, "important");
+  listPanel.style.setProperty("min-height", "0", "important");
+
+  if (!listScroll) return;
+
+  const scrollTop = listScroll.getBoundingClientRect().top;
+  const scrollHeight = Math.max(160, Math.floor(detailBottom - scrollTop));
+
+  for (const element of Array.from(
+    listPanel.querySelectorAll<HTMLElement>(
+      ".atlas-assets-list-direct-fill, .atlas-assets-list-fill-chain",
+    ),
+  )) {
+    element.style.setProperty("min-height", "0", "important");
+    element.style.setProperty("height", "100%", "important");
+    element.style.setProperty("max-height", "none", "important");
+  }
+
+  listScroll.style.setProperty("height", `${scrollHeight}px`, "important");
+  listScroll.style.setProperty("max-height", `${scrollHeight}px`, "important");
+  listScroll.style.setProperty("min-height", "0", "important");
+}
+
 function markAssetsViewport() {
   const root = assetsMain();
   if (!root) return;
@@ -75,6 +130,8 @@ function markAssetsViewport() {
   );
 
   let listPanel: HTMLElement | null = null;
+  let listScroll: HTMLElement | null = null;
+
   if (search) {
     listPanel = search.parentElement;
     while (listPanel && listPanel.parentElement !== grid) {
@@ -100,7 +157,7 @@ function markAssetsViewport() {
         }
       }
 
-      const listScroll = assetsListScrollContainer(listPanel, searchRow);
+      listScroll = assetsListScrollContainer(listPanel, searchRow);
       if (listScroll) {
         listScroll.classList.add("atlas-assets-list-scroll");
 
@@ -118,6 +175,8 @@ function markAssetsViewport() {
     detailPanel = detailPanel.parentElement;
   }
   detailPanel.classList.add("atlas-assets-viewport-detail");
+
+  syncListHeightToDetail(listPanel, listScroll, detailPanel);
 
   const sortSelect = root.querySelector<HTMLSelectElement>(
     'select[aria-label="Sort assets alphabetically"]',
@@ -227,10 +286,13 @@ export default function AtlasAssetsViewportPolish() {
         .atlas-assets-viewport-root .atlas-assets-viewport-list,
         .atlas-assets-viewport-root .atlas-assets-viewport-detail {
           min-height: 0 !important;
-          height: 100% !important;
-          max-height: 100% !important;
           align-self: stretch !important;
           overflow: hidden !important;
+        }
+
+        .atlas-assets-viewport-root .atlas-assets-viewport-detail {
+          height: 100% !important;
+          max-height: 100% !important;
         }
 
         .atlas-assets-viewport-root .atlas-assets-viewport-list {
@@ -253,7 +315,6 @@ export default function AtlasAssetsViewportPolish() {
         .atlas-assets-viewport-root .atlas-assets-list-fill-chain {
           flex: 1 1 0 !important;
           min-height: 0 !important;
-          height: 100% !important;
           max-height: none !important;
           margin-top: 0 !important;
           margin-bottom: 0 !important;
@@ -266,10 +327,7 @@ export default function AtlasAssetsViewportPolish() {
 
         .atlas-assets-viewport-root .atlas-assets-list-scroll,
         .atlas-assets-viewport-root .atlas-polish-assets-list-pane {
-          flex: 1 1 0 !important;
           min-height: 0 !important;
-          height: 100% !important;
-          max-height: none !important;
           margin: 0 !important;
           padding-top: 0 !important;
           padding-bottom: 0 !important;
