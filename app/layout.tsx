@@ -9,7 +9,7 @@ import AtlasAssetsViewportPolish from "./components/AtlasAssetsViewportPolish";
 import AtlasWorkPolish from "./components/AtlasWorkPolish";
 import AtlasTeamPeoplePolish from "./components/AtlasTeamPeoplePolish";
 import AtlasOperationsPolish from "./components/AtlasOperationsPolish";
-import AtlasAnnualServiceAssetRepair from "./components/AtlasAnnualServiceAssetRepair";
+import AtlasServiceLinkPolish from "./components/AtlasServiceLinkPolish";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -57,7 +57,7 @@ export default function RootLayout({
         <AtlasWorkPolish />
         <AtlasTeamPeoplePolish />
         <AtlasOperationsPolish />
-        <AtlasAnnualServiceAssetRepair />
+        <AtlasServiceLinkPolish />
         {children}
       </body>
     </html>
