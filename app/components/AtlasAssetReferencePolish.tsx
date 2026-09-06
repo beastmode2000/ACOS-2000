@@ -135,7 +135,7 @@ function setNativeTab(drawer: HTMLElement, tab: "overview" | "work") {
 function clearNativeClasses(drawer: HTMLElement) {
   for (const element of Array.from(
     drawer.querySelectorAll<HTMLElement>(
-      ".atlas-native-asset-top, .atlas-native-asset-section, .atlas-native-photos-shell, .atlas-native-photo-child, .atlas-native-section-inner-title, .atlas-native-procedures, .atlas-native-asset-tabs-hidden, .atlas-asset-reference-inner-scroll",
+      ".atlas-native-asset-top, .atlas-native-asset-section, .atlas-native-photos-shell, .atlas-native-photo-child, .atlas-native-section-inner-title, .atlas-native-procedures, .atlas-native-asset-tabs-hidden, .atlas-native-section-host, .atlas-asset-reference-inner-scroll",
     ),
   )) {
     element.classList.remove(
@@ -148,6 +148,7 @@ function clearNativeClasses(drawer: HTMLElement) {
       "atlas-native-section-inner-title",
       "atlas-native-procedures",
       "atlas-native-asset-tabs-hidden",
+      "atlas-native-section-host",
       "atlas-asset-reference-inner-scroll",
     );
   }
@@ -159,6 +160,17 @@ function markNestedScrollContainers(drawer: HTMLElement) {
     if (!/auto|scroll/.test(style.overflowY)) continue;
     if (element.scrollHeight <= element.clientHeight + 4) continue;
     element.classList.add("atlas-asset-reference-inner-scroll");
+  }
+}
+
+function markSectionHosts(drawer: HTMLElement, section: HTMLElement | null) {
+  if (!section) return;
+  let node = section.parentElement;
+  let depth = 0;
+  while (node && node !== drawer && depth < 3) {
+    node.classList.add("atlas-native-section-host");
+    node = node.parentElement;
+    depth += 1;
   }
 }
 
@@ -207,12 +219,16 @@ function markNativeAssetLayout(drawer: HTMLElement, openSection: SecondarySectio
   for (const [key, section] of sections) {
     if (!section) continue;
     section.classList.add("atlas-native-asset-section");
-    if (key === openSection) section.classList.add("atlas-native-section-open");
+    if (key === openSection) {
+      section.classList.add("atlas-native-section-open");
+      markSectionHosts(drawer, section);
+    }
     section.querySelector<HTMLElement>("strong")?.classList.add("atlas-native-section-inner-title");
   }
 
   if (openSection === "manuals" && photoShell) {
     photoShell.classList.add("atlas-native-photos-manual-open");
+    markSectionHosts(drawer, photoShell);
   }
 }
 
@@ -806,6 +822,20 @@ function AssetReferenceStyles() {
         line-height: 1;
       }
 
+      .atlas-native-section-host {
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+        grid-auto-columns: minmax(0, 1fr) !important;
+        align-items: start !important;
+        overflow: visible !important;
+      }
+
       .atlas-native-asset-section {
         display: none !important;
         width: 100% !important;
@@ -821,6 +851,7 @@ function AssetReferenceStyles() {
 
       .atlas-native-asset-section.atlas-native-section-open {
         display: block !important;
+        grid-column: 1 / -1 !important;
       }
 
       .atlas-native-photos-shell {
@@ -838,6 +869,7 @@ function AssetReferenceStyles() {
 
       .atlas-native-photos-shell.atlas-native-photos-manual-open {
         display: block !important;
+        grid-column: 1 / -1 !important;
       }
 
       .atlas-native-photos-manual-open > .atlas-native-photo-child {
@@ -846,6 +878,9 @@ function AssetReferenceStyles() {
 
       .atlas-native-photos-manual-open > section[aria-label="Asset manuals"] {
         display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
         height: auto !important;
         max-height: none !important;
         margin: 6px 0 10px !important;
