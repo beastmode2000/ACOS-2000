@@ -2,6 +2,41 @@
 
 import { useEffect } from "react";
 
+type AssetRecord = {
+  id?: string;
+  name?: string;
+  status?: string;
+  category?: string;
+  locationId?: string;
+  make?: string;
+  model?: string;
+};
+
+type WorkOrderRecord = {
+  id?: string;
+  title?: string;
+  assetId?: string;
+  status?: string;
+  date?: string;
+  recurring?: boolean;
+  recurrenceUnit?: string;
+};
+
+type AtlasPayload = {
+  ok?: boolean;
+  assetRecords?: AssetRecord[];
+  serviceRecords?: WorkOrderRecord[];
+};
+
+type PropertyUiData = {
+  assets: AssetRecord[];
+  workOrders: WorkOrderRecord[];
+};
+
+const KNOWN_PROPERTIES = new Set(["2000", "6855", "3661", "hangar"]);
+const propertyCache = new Map<string, PropertyUiData>();
+const propertyLoads = new Map<string, Promise<PropertyUiData | null>>();
+
 function normalized(value: unknown) {
   return String(value || "")
     .toLowerCase()
@@ -17,7 +52,162 @@ function pageMain(title: string) {
   return (heading?.closest("main") as HTMLElement | null) || null;
 }
 
-function markAssetListSelection() {
+function currentPropertyId() {
+  const fromQuery = new URLSearchParams(window.location.search).get("propertyId");
+  if (fromQuery && KNOWN_PROPERTIES.has(fromQuery.toLowerCase())) {
+    return fromQuery.toLowerCase();
+  }
+
+  for (const select of Array.from(document.querySelectorAll<HTMLSelectElement>("select"))) {
+    const value = String(select.value || "").trim().toLowerCase();
+    if (!KNOWN_PROPERTIES.has(value)) continue;
+    const options = Array.from(select.options).map((option) =>
+      String(option.value || option.textContent || "").trim().toLowerCase(),
+    );
+    if (options.filter((item) => KNOWN_PROPERTIES.has(item)).length >= 2) {
+      return value;
+    }
+  }
+
+  const selectedButtons = Array.from(
+    document.querySelectorAll<HTMLButtonElement>(
+      'button[aria-pressed="true"], button[aria-current="true"], button[aria-selected="true"]',
+    ),
+  );
+  for (const button of selectedButtons) {
+    const value = normalized(button.textContent).replace(/\s+/g, "");
+    if (KNOWN_PROPERTIES.has(value)) return value;
+  }
+
+  return "";
+}
+
+async function loadPropertyData(propertyId: string) {
+  if (!propertyId) return null;
+  const cached = propertyCache.get(propertyId);
+  if (cached) return cached;
+
+  const existing = propertyLoads.get(propertyId);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    try {
+      const response = await fetch(
+        `/api/atlas?propertyId=${encodeURIComponent(propertyId)}`,
+        { cache: "no-store", credentials: "include" },
+      );
+      if (!response.ok) return null;
+      const payload = (await response.json().catch(() => ({}))) as AtlasPayload;
+      if (!payload?.ok) return null;
+      const data = {
+        assets: Array.isArray(payload.assetRecords) ? payload.assetRecords : [],
+        workOrders: Array.isArray(payload.serviceRecords) ? payload.serviceRecords : [],
+      };
+      propertyCache.set(propertyId, data);
+      return data;
+    } catch {
+      return null;
+    } finally {
+      propertyLoads.delete(propertyId);
+    }
+  })();
+
+  propertyLoads.set(propertyId, promise);
+  return promise;
+}
+
+function statusLabel(value: unknown) {
+  const status = normalized(value);
+  if (status === "online") return "Online";
+  if (status === "offline") return "Offline";
+  if (status === "seasonal") return "Seasonal";
+  return "Monitor";
+}
+
+function statusClass(value: unknown) {
+  return `atlas-asset-status-${normalized(statusLabel(value)) || "monitor"}`;
+}
+
+function isClosedWork(workOrder: WorkOrderRecord) {
+  return ["completed", "closed", "cancelled", "canceled"].includes(
+    normalized(workOrder.status),
+  );
+}
+
+function isAnnualWork(workOrder: WorkOrderRecord) {
+  const title = normalized(workOrder.title);
+  const unit = normalized(workOrder.recurrenceUnit);
+  return (
+    title.includes("annual") ||
+    title.includes("yearly") ||
+    ["year", "years", "annual", "annually", "yearly"].includes(unit)
+  );
+}
+
+function formatCompactDate(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const date = new Date(raw.length <= 10 ? `${raw}T12:00:00` : raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function uniqueAssetByName(data: PropertyUiData | null, name: string) {
+  if (!data) return null;
+  const target = normalized(name);
+  const matches = data.assets.filter((asset) => normalized(asset.name) === target);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function originalAssetStatus(card: HTMLElement) {
+  const texts = Array.from(card.querySelectorAll<HTMLElement>("span"))
+    .map((node) => normalized(node.textContent))
+    .filter(Boolean);
+  if (texts.includes("operational") || texts.includes("online")) return "Online";
+  if (texts.includes("out of service") || texts.includes("offline")) return "Offline";
+  if (texts.includes("seasonal")) return "Seasonal";
+  return "Monitor";
+}
+
+function ensureAssetCardIndicators(
+  card: HTMLElement,
+  asset: AssetRecord | null,
+  openCount: number,
+) {
+  let indicators = card.querySelector<HTMLElement>(".atlas-asset-card-indicators");
+  if (!indicators) {
+    indicators = document.createElement("div");
+    indicators.className = "atlas-asset-card-indicators";
+    card.appendChild(indicators);
+  }
+
+  const resolvedStatus = statusLabel(asset?.status || originalAssetStatus(card));
+  let status = indicators.querySelector<HTMLElement>(".atlas-asset-card-status");
+  if (!status) {
+    status = document.createElement("span");
+    status.className = "atlas-asset-card-status";
+    indicators.appendChild(status);
+  }
+  status.className = `atlas-asset-card-status ${statusClass(resolvedStatus)}`;
+  status.textContent = resolvedStatus;
+
+  let open = indicators.querySelector<HTMLElement>(".atlas-asset-card-open-work");
+  if (openCount > 0) {
+    if (!open) {
+      open = document.createElement("span");
+      open.className = "atlas-asset-card-open-work";
+      indicators.appendChild(open);
+    }
+    open.textContent = `${openCount} Open`;
+  } else {
+    open?.remove();
+  }
+}
+
+function markAssetListSelection(data: PropertyUiData | null) {
   const root = pageMain("Assets");
   if (!root) return;
 
@@ -35,18 +225,97 @@ function markAssetListSelection() {
   for (const card of Array.from(
     listRoot.querySelectorAll<HTMLElement>(".atlas-gold-hover-card"),
   )) {
-    const name = normalized(
-      card.querySelector<HTMLElement>("button strong")?.textContent,
-    );
+    const nameNode = card.querySelector<HTMLElement>("button strong");
+    const name = normalized(nameNode?.textContent);
+    if (!name) continue;
+
     const checked = Boolean(
       card.querySelector<HTMLInputElement>('input[type="checkbox"]:checked'),
     );
-    const current = Boolean(detailTitle && name && name === detailTitle);
+    const current = Boolean(detailTitle && name === detailTitle);
+    const asset = uniqueAssetByName(data, nameNode?.textContent || "");
+    const openCount = asset?.id
+      ? data?.workOrders.filter(
+          (workOrder) => workOrder.assetId === asset.id && !isClosedWork(workOrder),
+        ).length || 0
+      : 0;
 
     card.classList.add("atlas-asset-list-card-polished");
     card.classList.toggle("atlas-asset-list-card-current", current);
     card.classList.toggle("atlas-asset-list-card-bulk-selected", checked && !current);
+
+    nameNode?.classList.add("atlas-asset-list-name-polished");
+
+    const identity = nameNode?.parentElement || null;
+    const meta = identity
+      ? Array.from(identity.children).find(
+          (child) => child instanceof HTMLElement && child.tagName === "SPAN",
+        ) as HTMLElement | undefined
+      : undefined;
+    meta?.classList.add("atlas-asset-list-meta-polished");
+
+    const badgeRow = identity
+      ? Array.from(identity.children).find(
+          (child) => child instanceof HTMLElement && child.tagName === "DIV",
+        ) as HTMLElement | undefined
+      : undefined;
+    badgeRow?.classList.add("atlas-asset-list-native-badges");
+
+    ensureAssetCardIndicators(card, asset, openCount);
   }
+}
+
+function clickMatchingWorkOrder(root: HTMLElement, workOrder: WorkOrderRecord) {
+  const target = normalized(workOrder.title);
+  if (!target) return;
+  const button = Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
+    (candidate) => normalized(candidate.textContent).includes(target),
+  );
+  button?.click();
+}
+
+function markAssetAnnualService(data: PropertyUiData | null) {
+  const root = pageMain("Assets");
+  if (!root || !data) return;
+
+  const drawer = root.querySelector<HTMLElement>(".atlas-asset-drawer");
+  if (!drawer) return;
+
+  const titleNode = drawer.querySelector<HTMLElement>("h2, h3");
+  const selectedAsset = uniqueAssetByName(data, titleNode?.textContent || "");
+  if (!selectedAsset?.id) return;
+
+  const annual = data.workOrders
+    .filter(
+      (workOrder) =>
+        workOrder.assetId === selectedAsset.id &&
+        !isClosedWork(workOrder) &&
+        isAnnualWork(workOrder),
+    )
+    .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")))[0];
+
+  const existing = drawer.querySelector<HTMLElement>(".atlas-asset-next-service-strip");
+  if (!annual) {
+    existing?.remove();
+    return;
+  }
+
+  const host =
+    drawer.querySelector<HTMLElement>("[data-atlas-asset-reference-host]") || drawer;
+  let strip = existing;
+  if (!strip) {
+    strip = document.createElement("button");
+    strip.type = "button";
+    strip.className = "atlas-asset-next-service-strip";
+    if (host === drawer) drawer.insertBefore(strip, drawer.children[1] || null);
+    else host.insertBefore(strip, host.firstChild);
+  }
+
+  const due = formatCompactDate(annual.date);
+  strip.textContent = due
+    ? `${annual.title || "Annual Service"} · ${due}`
+    : annual.title || "Annual Service";
+  strip.onclick = () => clickMatchingWorkOrder(drawer, annual);
 }
 
 function findAssetSelect(panel: HTMLElement) {
@@ -91,10 +360,7 @@ function annualSubject(title: string) {
     .trim();
 }
 
-function suggestedAssetOption(
-  select: HTMLSelectElement,
-  title: string,
-) {
+function suggestedAssetOption(select: HTMLSelectElement, title: string) {
   if (select.value) return null;
 
   const titleText = normalized(title);
@@ -133,16 +399,13 @@ function markWorkAssetLink() {
   const nativeSelect = findAssetSelect(panel);
   if (!nativeSelect) return;
 
-  const title =
-    panel.querySelector<HTMLElement>("h2")?.textContent?.trim() || "Work Order";
+  const title = panel.querySelector<HTMLElement>("h2")?.textContent?.trim() || "Work Order";
   const summaryCard =
     panel.querySelector<HTMLElement>(".atlas-work-summary-card") ||
     panel.querySelector<HTMLElement>(".atlas-work-summary-header")?.parentElement ||
     panel;
 
-  let host = summaryCard.querySelector<HTMLElement>(
-    ":scope > .atlas-work-asset-quick-link",
-  );
+  let host = summaryCard.querySelector<HTMLElement>(":scope > .atlas-work-asset-quick-link");
 
   if (!host) {
     host = document.createElement("div");
@@ -163,9 +426,7 @@ function markWorkAssetLink() {
     summaryCard.appendChild(host);
   }
 
-  const mirror = host.querySelector<HTMLSelectElement>(
-    ".atlas-work-asset-quick-select",
-  );
+  const mirror = host.querySelector<HTMLSelectElement>(".atlas-work-asset-quick-select");
   if (!mirror) return;
 
   const signature = Array.from(nativeSelect.options)
@@ -196,20 +457,36 @@ function markWorkAssetLink() {
   }
 }
 
-function applyPolish() {
-  markAssetListSelection();
+function applyPolish(data: PropertyUiData | null) {
+  markAssetListSelection(data);
+  markAssetAnnualService(data);
   markWorkAssetLink();
 }
 
 export default function AtlasServiceLinkPolish() {
   useEffect(() => {
     let frame = 0;
+    let cancelled = false;
+    let activeProperty = "";
+    let activeData: PropertyUiData | null = null;
+
+    const refreshData = async () => {
+      const propertyId = currentPropertyId();
+      if (!propertyId || propertyId === activeProperty) return;
+      activeProperty = propertyId;
+      activeData = null;
+      const data = await loadPropertyData(propertyId);
+      if (cancelled || activeProperty !== propertyId) return;
+      activeData = data;
+      schedule();
+    };
 
     const schedule = () => {
       if (frame) return;
       frame = window.requestAnimationFrame(() => {
         frame = 0;
-        applyPolish();
+        applyPolish(activeData);
+        void refreshData();
       });
     };
 
@@ -218,15 +495,25 @@ export default function AtlasServiceLinkPolish() {
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
 
+    const handleDataChanged = () => {
+      if (activeProperty) propertyCache.delete(activeProperty);
+      activeProperty = "";
+      activeData = null;
+      schedule();
+    };
+
     document.addEventListener("click", schedule, true);
     document.addEventListener("change", schedule, true);
     window.addEventListener("resize", schedule);
+    window.addEventListener("atlas:data-changed", handleDataChanged as EventListener);
 
     return () => {
+      cancelled = true;
       observer.disconnect();
       document.removeEventListener("click", schedule, true);
       document.removeEventListener("change", schedule, true);
       window.removeEventListener("resize", schedule);
+      window.removeEventListener("atlas:data-changed", handleDataChanged as EventListener);
       if (frame) window.cancelAnimationFrame(frame);
     };
   }, []);
@@ -237,12 +524,19 @@ export default function AtlasServiceLinkPolish() {
         border-color: #d8e1eb !important;
         background: #ffffff !important;
         box-shadow: none !important;
+        transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease !important;
+      }
+
+      .atlas-assets-viewport-root
+        .atlas-asset-list-card-polished
+        > .atlas-gold-hover-card-accent {
+        display: none !important;
       }
 
       .atlas-assets-viewport-root .atlas-asset-list-card-current {
         border-color: #175cd3 !important;
         background: #f4f8fd !important;
-        box-shadow: 0 0 0 1px rgba(23, 92, 211, 0.14) !important;
+        box-shadow: 0 0 0 1px rgba(23, 92, 211, 0.22) !important;
       }
 
       .atlas-assets-viewport-root .atlas-asset-list-card-bulk-selected {
@@ -250,15 +544,118 @@ export default function AtlasServiceLinkPolish() {
         background: #fff9e8 !important;
       }
 
-      .atlas-work-asset-quick-link {
-        margin-top: 10px !important;
-        padding: 10px 12px !important;
+      .atlas-assets-viewport-root .atlas-asset-list-name-polished {
+        color: #13283d !important;
+        font-size: 13.5px !important;
+        font-weight: 700 !important;
+        line-height: 1.25 !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-asset-list-meta-polished {
+        color: #6b7d90 !important;
+        font-size: 11.5px !important;
+        line-height: 1.3 !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-asset-list-native-badges {
+        display: none !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-asset-card-indicators {
+        position: absolute !important;
+        right: 8px !important;
+        bottom: 8px !important;
+        z-index: 4 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 5px !important;
+        pointer-events: none !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-asset-card-status,
+      .atlas-assets-viewport-root .atlas-asset-card-open-work {
+        display: inline-flex !important;
+        align-items: center !important;
+        min-height: 20px !important;
+        border-radius: 999px !important;
+        padding: 2px 7px !important;
+        font-size: 10.5px !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+        white-space: nowrap !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-asset-card-status {
+        border: 1px solid #d7e0e8 !important;
+        background: #f7f9fb !important;
+        color: #536779 !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-asset-status-online {
+        border-color: #cae8d8 !important;
+        background: #f2faf6 !important;
+        color: #246b49 !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-asset-status-offline {
+        border-color: #efcece !important;
+        background: #fff5f5 !important;
+        color: #a23838 !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-asset-status-seasonal {
+        border-color: #e4dcc6 !important;
+        background: #fbf8ef !important;
+        color: #78622d !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-asset-card-open-work {
+        border: 1px solid #cfd9e4 !important;
+        background: #ffffff !important;
+        color: #175cd3 !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-asset-next-service-strip {
+        width: 100% !important;
+        min-height: 36px !important;
+        margin: 0 0 8px !important;
         border: 1px solid #d8e1eb !important;
-        border-radius: 10px !important;
+        border-radius: 9px !important;
+        background: #f8fafc !important;
+        color: #21384f !important;
+        padding: 7px 10px !important;
+        text-align: left !important;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        cursor: pointer !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-asset-next-service-strip:hover {
+        border-color: #afc2d5 !important;
+        background: #f3f7fb !important;
+      }
+
+      .atlas-assets-viewport-root [data-atlas-asset-reference-host],
+      .atlas-assets-viewport-root .atlas-asset-reference-content {
+        gap: 8px !important;
+      }
+
+      .atlas-assets-viewport-root .atlas-asset-reference-card,
+      .atlas-assets-viewport-root .atlas-asset-reference-content-panel {
+        margin-top: 0 !important;
+        margin-bottom: 8px !important;
+      }
+
+      .atlas-work-asset-quick-link {
+        margin-top: 8px !important;
+        padding: 8px 10px !important;
+        border: 1px solid #d8e1eb !important;
+        border-radius: 9px !important;
         background: #f8fafc !important;
         display: grid !important;
         grid-template-columns: auto minmax(180px, 1fr) auto !important;
-        gap: 8px !important;
+        gap: 7px !important;
         align-items: center !important;
       }
 
@@ -294,6 +691,23 @@ export default function AtlasServiceLinkPolish() {
       }
 
       @media (max-width: 900px) {
+        .atlas-assets-viewport-root .atlas-asset-card-indicators {
+          right: 7px !important;
+          bottom: 7px !important;
+          gap: 4px !important;
+        }
+
+        .atlas-assets-viewport-root .atlas-asset-card-status,
+        .atlas-assets-viewport-root .atlas-asset-card-open-work {
+          font-size: 10px !important;
+          padding: 2px 6px !important;
+        }
+
+        .atlas-assets-viewport-root .atlas-asset-next-service-strip {
+          min-height: 40px !important;
+          font-size: 12.5px !important;
+        }
+
         .atlas-work-asset-quick-link {
           grid-template-columns: 1fr !important;
           gap: 6px !important;
