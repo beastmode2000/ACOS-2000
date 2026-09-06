@@ -180,6 +180,24 @@ export default function AtlasAssetsViewportPolish() {
         display: none !important;
       }
 
+      .atlas-assets-viewport-root
+        .atlas-asset-reference-drawer:not(.atlas-asset-reference-editing)
+        > *:not(.atlas-asset-reference-native-title-row):not([data-atlas-asset-reference-host]):not(:has(.atlas-native-manual-visible)) {
+        display: none !important;
+      }
+
+      .atlas-assets-viewport-root
+        .atlas-asset-reference-drawer:not(.atlas-asset-reference-editing)
+        > *:has(.atlas-native-manual-visible) {
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+      }
+
       @media (min-width: 901px) {
         .atlas-assets-viewport-root .atlas-assets-viewport-shell {
           height: calc(100dvh - 96px) !important;
