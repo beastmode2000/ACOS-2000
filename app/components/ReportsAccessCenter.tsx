@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import AtlasOwnerReport from "./AtlasOwnerReport";
 
 type Row = Record<string, unknown>;
 type Role = "Master" | "Administrator" | "Manager" | "Employee" | "Vendor" | "Viewer";
@@ -468,8 +467,6 @@ export default function ReportsAccessCenter({ propertyId, data, colors, isMobile
 
       {centerSection === "reports" ? (
         <>
-          <AtlasOwnerReport propertyId={propertyId || String(data.workOrders.find((row) => row.propertyId || row.property_id)?.propertyId || data.workOrders.find((row) => row.propertyId || row.property_id)?.property_id || "2000")} workOrders={data.workOrders} colors={colors} isMobile={isMobile} />
-
           <section style={card}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
               <div>
