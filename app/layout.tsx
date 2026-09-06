@@ -8,6 +8,7 @@ import AtlasAssetReferencePolish from "./components/AtlasAssetReferencePolish";
 import AtlasAssetsViewportPolish from "./components/AtlasAssetsViewportPolish";
 import AtlasWorkPolish from "./components/AtlasWorkPolish";
 import AtlasTeamPeoplePolish from "./components/AtlasTeamPeoplePolish";
+import AtlasOperationsPolish from "./components/AtlasOperationsPolish";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -54,6 +55,7 @@ export default function RootLayout({
         <AtlasAssetsViewportPolish />
         <AtlasWorkPolish />
         <AtlasTeamPeoplePolish />
+        <AtlasOperationsPolish />
         {children}
       </body>
     </html>
