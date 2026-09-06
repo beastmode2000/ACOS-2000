@@ -49,12 +49,46 @@ type TeamPayload = {
   workHistory?: WorkHistoryItem[];
 };
 
+type AtlasWorkOrder = {
+  id?: string;
+  title?: string;
+  name?: string;
+  assignedTo?: string;
+  assigned_to?: string;
+  assignee?: string;
+  status?: string;
+  location?: string;
+  locationName?: string;
+  locationId?: string;
+  completedAt?: string;
+  completed_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+  date?: string;
+  item_date?: string;
+  propertyId?: string;
+  property_id?: string;
+};
+
+type AtlasPayload = {
+  serviceRecords?: AtlasWorkOrder[];
+  workOrders?: AtlasWorkOrder[];
+};
+
 type AddisonPayload = {
   ok?: boolean;
   addison?: {
     tasks?: Array<Record<string, unknown>>;
     history?: Array<Record<string, unknown>>;
   };
+};
+
+type PersonWorkRow = {
+  id: string;
+  title: string;
+  location: string;
+  source: string;
+  completedAt?: string;
 };
 
 const ACCESS_LABELS: Record<string, string> = {
@@ -118,6 +152,53 @@ function isCompleted(status: unknown) {
   return ["completed", "closed", "cancelled"].includes(normalized(status));
 }
 
+function isCompletedHistory(status: unknown) {
+  return ["completed", "closed"].includes(normalized(status));
+}
+
+function atlasAssignee(record: AtlasWorkOrder) {
+  return record.assignedTo || record.assigned_to || record.assignee || "";
+}
+
+function atlasLocation(record: AtlasWorkOrder) {
+  return record.locationName || record.location || record.locationId || "";
+}
+
+function atlasCompletedAt(record: AtlasWorkOrder) {
+  return (
+    record.completedAt ||
+    record.completed_at ||
+    record.updatedAt ||
+    record.updated_at ||
+    record.date ||
+    record.item_date ||
+    ""
+  );
+}
+
+function atlasPropertyMatches(record: AtlasWorkOrder, propertyId: string) {
+  const recordProperty = String(record.propertyId || record.property_id || "").trim();
+  return !recordProperty || recordProperty === propertyId;
+}
+
+function dedupeWorkRows(rows: PersonWorkRow[]) {
+  const seenIds = new Set<string>();
+  const seenFallbacks = new Set<string>();
+  return rows.filter((row) => {
+    const cleanId = normalized(row.id);
+    if (cleanId) {
+      if (seenIds.has(cleanId)) return false;
+      seenIds.add(cleanId);
+    }
+
+    const fallback = `${normalized(row.title)}|${normalized(row.location)}`;
+    if (!fallback.replace("|", "")) return true;
+    if (seenFallbacks.has(fallback)) return false;
+    seenFallbacks.add(fallback);
+    return true;
+  });
+}
+
 function displayDate(value: unknown) {
   const text = String(value || "").trim();
   if (!text) return "Completed";
@@ -160,6 +241,7 @@ export default function AtlasTeamPeoplePolish() {
   const [nativePeople, setNativePeople] = useState<HTMLElement | null>(null);
   const [propertyId, setPropertyId] = useState("2000");
   const [payload, setPayload] = useState<TeamPayload | null>(null);
+  const [atlasPayload, setAtlasPayload] = useState<AtlasPayload | null>(null);
   const [addisonPayload, setAddisonPayload] = useState<AddisonPayload | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [search, setSearch] = useState("");
@@ -232,12 +314,37 @@ export default function AtlasTeamPeoplePolish() {
     }
   };
 
+  const loadAtlasWork = async (nextPropertyId: string) => {
+    try {
+      const response = await fetch(
+        `/api/atlas?propertyId=${encodeURIComponent(nextPropertyId)}`,
+        {
+          cache: "no-store",
+          credentials: "include",
+        },
+      );
+      const data = (await response.json().catch(() => ({}))) as AtlasPayload;
+      if (response.ok) setAtlasPayload(data);
+      else setAtlasPayload(null);
+    } catch {
+      setAtlasPayload(null);
+    }
+  };
+
   useEffect(() => {
     void loadTeam();
     const refresh = () => void loadTeam();
     window.addEventListener("atlas:data-changed", refresh as EventListener);
     return () => window.removeEventListener("atlas:data-changed", refresh as EventListener);
   }, []);
+
+  useEffect(() => {
+    setAtlasPayload(null);
+    void loadAtlasWork(propertyId);
+    const refresh = () => void loadAtlasWork(propertyId);
+    window.addEventListener("atlas:data-changed", refresh as EventListener);
+    return () => window.removeEventListener("atlas:data-changed", refresh as EventListener);
+  }, [propertyId]);
 
   useEffect(() => {
     if (propertyId !== "2000") {
@@ -262,6 +369,11 @@ export default function AtlasTeamPeoplePolish() {
       cancelled = true;
     };
   }, [propertyId]);
+
+  const atlasWorkOrders = useMemo(
+    () => atlasPayload?.serviceRecords || atlasPayload?.workOrders || [],
+    [atlasPayload],
+  );
 
   const members = useMemo(() => {
     const query = normalized(search);
@@ -288,47 +400,79 @@ export default function AtlasTeamPeoplePolish() {
 
   const selected = members.find((member) => member.id === selectedId) || null;
 
-  const selectedOpenWork = useMemo(() => {
-    if (!selected) return [];
-    const rows = (payload?.workLists || [])
+  const openWorkForMember = (member: TeamMember) => {
+    const atlasRows: PersonWorkRow[] = atlasWorkOrders
+      .filter((record) => atlasPropertyMatches(record, propertyId))
+      .filter((record) => memberMatchesAssignee(member, atlasAssignee(record)))
+      .filter((record) => !isCompleted(record.status))
+      .map((record) => ({
+        id: `work-order-${String(record.id || `${record.title || record.name || "work"}-${record.date || record.item_date || ""}`)}`,
+        title: String(record.title || record.name || "Untitled work order"),
+        location: atlasLocation(record),
+        source: "Work Order",
+      }));
+
+    const teamRows: PersonWorkRow[] = (payload?.workLists || [])
       .filter(
         (list) =>
           !list.propertyIds?.length || list.propertyIds.includes(propertyId),
       )
       .flatMap((list) =>
         (list.tasks || [])
-          .filter((item) => memberMatchesAssignee(selected, item.assignee))
+          .filter((item) => memberMatchesAssignee(member, item.assignee))
           .filter((item) => !isCompleted(item.status))
           .map((item) => ({
-            id: `${list.id || "list"}-${item.id || item.title || "task"}`,
+            id: `team-${list.id || "list"}-${item.id || item.title || "task"}`,
             title: item.title || "Untitled task",
             location: item.location || "",
             source: list.name || "Assignment",
           })),
       );
 
-    if (/^addison(?:\s|$)/i.test(selected.name) && propertyId === "2000") {
-      const addisonRows = (addisonPayload?.addison?.tasks || [])
-        .filter((item) => !isCompleted((item.taskMeta as Record<string, unknown> | undefined)?.status || item.status))
-        .map((item) => ({
-          id: `addison-${String(item.id || item.title || "task")}`,
-          title: String(item.title || "Untitled task"),
-          location: String(item.locationName || item.locationId || ""),
-          source: "Addison Work",
-        }));
-      return [...addisonRows, ...rows].filter(
-        (item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index,
-      );
-    }
+    const addisonRows: PersonWorkRow[] =
+      /^addison(?:\s|$)/i.test(member.name) && propertyId === "2000"
+        ? (addisonPayload?.addison?.tasks || [])
+            .filter(
+              (item) =>
+                !isCompleted(
+                  (item.taskMeta as Record<string, unknown> | undefined)?.status ||
+                    item.status,
+                ),
+            )
+            .map((item) => ({
+              id: `addison-${String(item.id || item.title || "task")}`,
+              title: String(item.title || "Untitled task"),
+              location: String(item.locationName || item.locationId || ""),
+              source: "Addison Work",
+            }))
+        : [];
 
-    return rows;
-  }, [selected, payload, propertyId, addisonPayload]);
+    return dedupeWorkRows([...atlasRows, ...teamRows, ...addisonRows]);
+  };
+
+  const selectedOpenWork = useMemo(
+    () => (selected ? openWorkForMember(selected) : []),
+    [selected, atlasWorkOrders, payload, propertyId, addisonPayload],
+  );
 
   const selectedHistory = useMemo(() => {
     if (!selected) return [];
     const memberId = normalized(selected.id);
     const memberName = normalized(selected.name);
-    const shared = (payload?.workHistory || [])
+
+    const atlasCompleted: PersonWorkRow[] = atlasWorkOrders
+      .filter((record) => atlasPropertyMatches(record, propertyId))
+      .filter((record) => memberMatchesAssignee(selected, atlasAssignee(record)))
+      .filter((record) => isCompletedHistory(record.status))
+      .map((record) => ({
+        id: `work-order-${String(record.id || `${record.title || record.name || "work"}-${atlasCompletedAt(record)}`)}`,
+        title: String(record.title || record.name || "Completed work"),
+        location: atlasLocation(record),
+        source: "Work Order",
+        completedAt: atlasCompletedAt(record),
+      }));
+
+    const shared: PersonWorkRow[] = (payload?.workHistory || [])
       .filter(
         (item) =>
           (!item.propertyId || item.propertyId === propertyId) &&
@@ -336,14 +480,14 @@ export default function AtlasTeamPeoplePolish() {
             normalized(item.employeeName) === memberName),
       )
       .map((item) => ({
-        id: String(item.id || `${item.taskTitle}-${item.completedAt}`),
+        id: `team-history-${String(item.id || `${item.taskTitle}-${item.completedAt}`)}`,
         title: item.taskTitle || "Completed work",
         location: item.location || "",
         source: item.listName || "Team Work",
         completedAt: item.completedAt || "",
       }));
 
-    const addison =
+    const addison: PersonWorkRow[] =
       /^addison(?:\s|$)/i.test(selected.name) && propertyId === "2000"
         ? (addisonPayload?.addison?.history || []).map((item) => ({
             id: `addison-history-${String(item.id || item.taskId || item.title || "item")}`,
@@ -354,32 +498,18 @@ export default function AtlasTeamPeoplePolish() {
           }))
         : [];
 
-    return [...shared, ...addison]
-      .filter(
-        (item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index,
-      )
-      .sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)));
-  }, [selected, payload, propertyId, addisonPayload]);
+    return dedupeWorkRows([...atlasCompleted, ...shared, ...addison]).sort((a, b) =>
+      String(b.completedAt || "").localeCompare(String(a.completedAt || "")),
+    );
+  }, [selected, atlasWorkOrders, payload, propertyId, addisonPayload]);
 
   const openCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const member of members) {
-      let count = 0;
-      for (const list of payload?.workLists || []) {
-        if (list.propertyIds?.length && !list.propertyIds.includes(propertyId)) continue;
-        count += (list.tasks || []).filter(
-          (task) => memberMatchesAssignee(member, task.assignee) && !isCompleted(task.status),
-        ).length;
-      }
-      if (/^addison(?:\s|$)/i.test(member.name) && propertyId === "2000") {
-        count += (addisonPayload?.addison?.tasks || []).filter(
-          (item) => !isCompleted((item.taskMeta as Record<string, unknown> | undefined)?.status || item.status),
-        ).length;
-      }
-      counts.set(member.id, count);
+      counts.set(member.id, openWorkForMember(member).length);
     }
     return counts;
-  }, [members, payload, propertyId, addisonPayload]);
+  }, [members, atlasWorkOrders, payload, propertyId, addisonPayload]);
 
   const responsibilities = useMemo(
     () =>
