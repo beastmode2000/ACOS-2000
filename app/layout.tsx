@@ -13,6 +13,7 @@ import AtlasAssetsViewportPolish from "./components/AtlasAssetsViewportPolish";
 import AtlasWorkPolish from "./components/AtlasWorkPolish";
 import AtlasDashboardPolish from "./components/AtlasDashboardPolish";
 import AtlasMobileDashboardPolish from "./components/AtlasMobileDashboardPolish";
+import AtlasDayOffControl from "./components/AtlasDayOffControl";
 import AtlasVendorScrollbarPolish from "./components/AtlasVendorScrollbarPolish";
 import AtlasTeamPeoplePolish from "./components/AtlasTeamPeoplePolish";
 import AtlasOperationsPolish from "./components/AtlasOperationsPolish";
@@ -68,6 +69,7 @@ export default function RootLayout({
         <AtlasWorkPolish />
         <AtlasDashboardPolish />
         <AtlasMobileDashboardPolish />
+        <AtlasDayOffControl />
         <AtlasVendorScrollbarPolish />
         <AtlasTeamPeoplePolish />
         <AtlasOperationsPolish />
