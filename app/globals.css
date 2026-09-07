@@ -607,3 +607,26 @@ a:focus-visible {
     transition: none;
   }
 }
+
+/* Keep the Vendor search/count header visually separate from the scrolling list. */
+@media (min-width: 901px) {
+  div:has(> input[aria-label="Search vendors"]) {
+    position: sticky !important;
+    top: -10px !important;
+    z-index: 60 !important;
+    margin-top: -10px !important;
+    padding-top: 10px !important;
+    padding-bottom: 8px !important;
+    background: #ffffff !important;
+    box-shadow: 0 8px 0 #ffffff;
+    isolation: isolate;
+  }
+
+  div:has(> input[aria-label="Search vendors"])::before {
+    position: absolute;
+    z-index: -1;
+    inset: 0 -4px -8px;
+    background: #ffffff;
+    content: "";
+  }
+}
