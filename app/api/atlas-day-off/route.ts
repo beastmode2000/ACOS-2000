@@ -7,6 +7,23 @@ export const dynamic = "force-dynamic";
 type DayOffScope = "person" | "team";
 type DayOffKind = "Holiday" | "PTO" | "Off";
 
+type DayOffRow = {
+  id: string;
+  property_id?: string;
+  off_date?: string;
+  kind?: string;
+  scope?: string;
+  person?: string;
+  title?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type WorkOrderRow = {
+  id: string;
+  assigned_to?: string | null;
+};
+
 function getSql() {
   const connectionString =
     process.env.DATABASE_URL ||
@@ -85,7 +102,7 @@ async function isDayOff(
   date: string,
   person: string,
 ) {
-  const rows = await sql`
+  const rows = (await sql`
     SELECT id
     FROM atlas_day_offs
     WHERE property_id = ${propertyId}
@@ -95,7 +112,8 @@ async function isDayOff(
         OR (scope = 'person' AND lower(person) = lower(${person}))
       )
     LIMIT 1
-  `;
+  `) as unknown as Array<{ id: string }>;
+
   return rows.length > 0;
 }
 
@@ -127,7 +145,7 @@ export async function GET(request: Request) {
     const propertyId = cleanText(url.searchParams.get("propertyId"), 80) || "2000";
     const date = dateKey(url.searchParams.get("date"));
 
-    const rows = date
+    const rows = (date
       ? await sql`
           SELECT id, property_id, off_date, kind, scope, person, title, created_at, updated_at
           FROM atlas_day_offs
@@ -142,7 +160,7 @@ export async function GET(request: Request) {
             AND off_date >= CURRENT_DATE
           ORDER BY off_date ASC, scope DESC, person ASC
           LIMIT 60
-        `;
+        `) as unknown as DayOffRow[];
 
     return NextResponse.json({ ok: true, dayOffs: rows });
   } catch (error) {
@@ -225,7 +243,7 @@ export async function POST(request: Request) {
         property_id = EXCLUDED.property_id
     `;
 
-    const affected = scope === "team"
+    const affected = (scope === "team"
       ? await sql`
           SELECT id, assigned_to
           FROM atlas_work_orders
@@ -242,11 +260,11 @@ export async function POST(request: Request) {
             AND recurring = true
             AND COALESCE(due_date_value, date) = ${date}::date
             AND lower(COALESCE(assigned_to, '')) = lower(${person})
-        `;
+        `) as unknown as WorkOrderRow[];
 
     let moved = 0;
 
-    for (const row of affected as Array<{ id: string; assigned_to?: string | null }>) {
+    for (const row of affected) {
       const assignedTo = cleanText(row.assigned_to, 120) || person || "Nick";
       const nextDate = await nextWorkingDate(sql, propertyId, date, assignedTo);
 
