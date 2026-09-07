@@ -19,9 +19,11 @@ function hiddenMainPhotoSection(drawer: HTMLElement) {
 
 function findSectionButton(section: HTMLElement | null, labels: string[]) {
   if (!section) return null;
-  return Array.from(section.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
-    labels.includes(normalized(button.textContent)),
-  ) || null;
+  return (
+    Array.from(section.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      labels.includes(normalized(button.textContent)),
+    ) || null
+  );
 }
 
 function editMainPhoto(drawer: HTMLElement) {
@@ -40,8 +42,26 @@ function deleteMainPhoto(drawer: HTMLElement) {
   findSectionButton(section, ["remove", "delete"])?.click();
 }
 
+function ensureHeaderThumb(drawer: HTMLElement) {
+  let thumb = drawer.querySelector<HTMLElement>(".atlas-location-detail-thumb");
+  if (thumb) return thumb;
+
+  const heading = drawer.querySelector<HTMLElement>("h3");
+  const titleBlock = heading?.parentElement as HTMLElement | null;
+  const titleRow = titleBlock?.parentElement as HTMLElement | null;
+  if (!heading || !titleBlock || !titleRow) return null;
+
+  thumb = document.createElement("div");
+  thumb.className = "atlas-location-detail-thumb atlas-location-main-photo-control";
+  thumb.textContent = (heading.textContent || "LO").trim().slice(0, 2).toUpperCase();
+  titleRow.insertBefore(thumb, titleBlock);
+  return thumb;
+}
+
 function syncDeleteButton(thumb: HTMLElement, drawer: HTMLElement, hasPhoto: boolean) {
-  let deleteButton = thumb.querySelector<HTMLButtonElement>(":scope > .atlas-location-main-photo-delete");
+  let deleteButton = thumb.querySelector<HTMLButtonElement>(
+    ":scope > .atlas-location-main-photo-delete",
+  );
 
   if (!hasPhoto) {
     deleteButton?.remove();
@@ -69,15 +89,18 @@ function activateMainPhotoControl(root: HTMLElement) {
   const drawer = detailPanel?.querySelector<HTMLElement>('div[tabindex="0"]');
   if (!drawer) return;
 
-  const thumb = drawer.querySelector<HTMLElement>(".atlas-location-detail-thumb");
   const section = hiddenMainPhotoSection(drawer);
-  if (!thumb || !section) return;
+  if (!section) return;
 
   section.classList.add("atlas-location-main-photo-section-hidden");
+
+  const thumb = ensureHeaderThumb(drawer);
+  if (!thumb) return;
 
   const image = section.querySelector<HTMLImageElement>(".atlas-location-main-photo-image");
   const photoUrl = image?.currentSrc || image?.src || "";
   const hasPhoto = Boolean(photoUrl);
+  const headingText = drawer.querySelector<HTMLElement>("h3")?.textContent || "LO";
 
   thumb.classList.add("atlas-location-main-photo-control");
   thumb.tabIndex = 0;
@@ -90,9 +113,18 @@ function activateMainPhotoControl(root: HTMLElement) {
   thumb.dataset.atlasMainPhotoState = hasPhoto ? "photo" : "empty";
 
   if (hasPhoto) {
-    thumb.style.setProperty("--atlas-authoritative-main-photo", `url("${photoUrl.replace(/"/g, "%22")}")`);
+    thumb.textContent = "";
+    thumb.style.setProperty(
+      "--atlas-authoritative-main-photo",
+      `url("${photoUrl.replace(/"/g, "%22")}")`,
+    );
   } else {
     thumb.style.removeProperty("--atlas-authoritative-main-photo");
+    const deleteButton = thumb.querySelector<HTMLElement>(
+      ":scope > .atlas-location-main-photo-delete",
+    );
+    thumb.textContent = headingText.trim().slice(0, 2).toUpperCase();
+    if (deleteButton) thumb.appendChild(deleteButton);
   }
 
   syncDeleteButton(thumb, drawer, hasPhoto);
@@ -147,10 +179,25 @@ export default function AtlasLocationMainPhotoControl() {
         display: none !important;
       }
 
-      .atlas-location-main-photo-control {
+      .atlas-location-detail-thumb.atlas-location-main-photo-control {
         position: relative !important;
+        width: 76px !important;
+        height: 76px !important;
+        min-width: 76px !important;
+        min-height: 76px !important;
+        flex: 0 0 76px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        border: 1px solid #d5dee8 !important;
+        border-radius: 16px !important;
+        background-color: #f4f7fb !important;
+        color: #60748a !important;
+        font-size: 14px !important;
+        font-weight: 900 !important;
         cursor: pointer !important;
         overflow: hidden !important;
+        box-sizing: border-box !important;
         transition: border-color 140ms ease, box-shadow 140ms ease !important;
       }
 
@@ -242,6 +289,16 @@ export default function AtlasLocationMainPhotoControl() {
         line-height: 1 !important;
         cursor: pointer !important;
         box-shadow: 0 1px 4px rgba(11, 44, 67, 0.22) !important;
+      }
+
+      @media (max-width: 900px) {
+        .atlas-location-detail-thumb.atlas-location-main-photo-control {
+          width: 68px !important;
+          height: 68px !important;
+          min-width: 68px !important;
+          min-height: 68px !important;
+          flex-basis: 68px !important;
+        }
       }
     `}</style>
   );
