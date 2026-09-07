@@ -50,14 +50,6 @@ function mainFor(title: string) {
   return (heading?.closest("main") as HTMLElement | null) || null;
 }
 
-function dashboardIsVisible() {
-  const command = document.querySelector<HTMLElement>(".atlas-command-dashboard");
-  if (!command) return false;
-  const style = window.getComputedStyle(command);
-  const rect = command.getBoundingClientRect();
-  return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
-}
-
 function calendarIsVisible() {
   const root = mainFor("calendar");
   if (!root) return false;
@@ -102,7 +94,7 @@ export default function AtlasDayOffControl() {
 
       const nextPropertyId = activePropertyIdFromDom();
       setPropertyId((current) => (current === nextPropertyId ? current : nextPropertyId));
-      setShowLauncher(dashboardIsVisible() || calendarIsVisible());
+      setShowLauncher(calendarIsVisible());
 
       if (nextPropertyId !== lastPropertyId) {
         lastPropertyId = nextPropertyId;
