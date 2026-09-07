@@ -332,7 +332,7 @@ export default function AtlasVendorsWorkspace(props: any) {
 
   return (
     <ListDrawerLayout
-      eyebrow="Property Records"
+      eyebrow=""
       title="Vendors"
       isMobile={isMobile}
       drawerResetKey={selectedVendorId || "vendor-new"}
@@ -340,21 +340,22 @@ export default function AtlasVendorsWorkspace(props: any) {
         isMobile
           ? { minWidth: 0, overflowX: "hidden" }
           : {
-              gridTemplateColumns: "minmax(300px, 340px) minmax(0, 1fr)",
+              gridTemplateColumns: "minmax(270px, 34%) minmax(0, 66%)",
               gap: 12,
               alignItems: "start",
+              overflow: "visible",
             }
       }
       listPanelStyleOverride={
         isMobile
-          ? { minWidth: 0, overflowX: "hidden" }
+          ? { minWidth: 0, overflowX: "hidden", padding: 0 }
           : {
               minWidth: 0,
-              height: "calc(100dvh - 190px)",
-              maxHeight: "calc(100dvh - 190px)",
+              maxHeight: "calc(100vh - 190px)",
               overflowY: "auto",
               overflowX: "hidden",
-              padding: 10,
+              paddingRight: 6,
+              alignSelf: "start",
             }
       }
       drawerStyleOverride={
