@@ -31,6 +31,20 @@ function markDashboard(root: HTMLElement) {
   if (!command) return;
   command.classList.add("atlas-dashboard-polish-command");
 
+  const firstChild = command.firstElementChild as HTMLElement | null;
+  firstChild?.classList.add("atlas-dashboard-polish-primary");
+
+  const layoutGrid = command.querySelector<HTMLElement>(".atlas-dashboard-layout-grid");
+  if (layoutGrid) {
+    layoutGrid.classList.add("atlas-dashboard-polish-grid");
+    for (const child of Array.from(layoutGrid.children)) {
+      if (child instanceof HTMLElement) child.classList.add("atlas-dashboard-polish-widget");
+    }
+  }
+
+  const weather = command.querySelector<HTMLElement>("#atlas-dashboard-weather");
+  weather?.classList.add("atlas-dashboard-polish-weather");
+
   for (const element of Array.from(command.querySelectorAll<HTMLElement>("section, details"))) {
     const heading = firstHeadingText(element);
     const body = normalized(element.textContent);
@@ -50,6 +64,9 @@ function markDashboard(root: HTMLElement) {
     }
     if (heading === "vendor visit" || body.startsWith("quick logvendor visit")) {
       element.classList.add("atlas-dashboard-polish-vendor");
+    }
+    if (body.includes("weather") || body.includes("irrigation")) {
+      element.classList.add("atlas-dashboard-polish-weather-section");
     }
   }
 
@@ -111,30 +128,62 @@ export default function AtlasDashboardPolish() {
 
   return (
     <style jsx global>{`
-      .atlas-dashboard-polish-command {
-        gap: 8px !important;
-        padding-bottom: 8px !important;
+      .atlas-dashboard-polish-root {
+        overflow-x: hidden !important;
       }
 
+      .atlas-dashboard-polish-command {
+        width: 100% !important;
+        max-width: none !important;
+        gap: 10px !important;
+        padding-bottom: 12px !important;
+      }
+
+      .atlas-dashboard-polish-primary,
+      .atlas-dashboard-polish-widget,
       .atlas-dashboard-polish-command > section,
       .atlas-dashboard-polish-command > details,
       .atlas-dashboard-polish-command .atlas-dashboard-polish-work,
       .atlas-dashboard-polish-command .atlas-dashboard-polish-remember,
       .atlas-dashboard-polish-command .atlas-dashboard-polish-vendor {
-        border-radius: 10px !important;
+        border-radius: 12px !important;
+        box-shadow: none !important;
+        border-color: #dce4ec !important;
+      }
+
+      .atlas-dashboard-polish-primary {
+        margin: 0 !important;
+      }
+
+      .atlas-dashboard-polish-grid {
+        gap: 10px !important;
+        align-items: start !important;
+      }
+
+      .atlas-dashboard-polish-widget {
+        min-width: 0 !important;
+        overflow: hidden !important;
+      }
+
+      .atlas-dashboard-polish-widget > section,
+      .atlas-dashboard-polish-widget > article,
+      .atlas-dashboard-polish-widget > div {
         box-shadow: none !important;
       }
 
       .atlas-dashboard-polish-remember {
-        padding: 9px 10px !important;
+        padding: 10px 11px !important;
       }
 
       .atlas-dashboard-polish-remember h2 {
         font-size: 16px !important;
+        margin-bottom: 4px !important;
       }
 
       .atlas-dashboard-polish-work {
         padding: 10px !important;
+        border: 1px solid #dce4ec !important;
+        background: #ffffff !important;
       }
 
       .atlas-dashboard-polish-work h2,
@@ -146,12 +195,13 @@ export default function AtlasDashboardPolish() {
       .atlas-dashboard-polish-person-lane {
         padding: 8px !important;
         border-radius: 10px !important;
+        border: 1px solid #e1e7ee !important;
         box-shadow: none !important;
         background: #fbfcfe !important;
       }
 
       .atlas-dashboard-polish-person-lane > div:first-child strong {
-        font-size: 16px !important;
+        font-size: 15px !important;
       }
 
       .atlas-dashboard-polish-person-lane button,
@@ -165,6 +215,12 @@ export default function AtlasDashboardPolish() {
         box-shadow: none !important;
       }
 
+      .atlas-dashboard-polish-person-lane button[class*="atlas-gold-hover-card"] {
+        border-radius: 8px !important;
+        padding-top: 6px !important;
+        padding-bottom: 6px !important;
+      }
+
       .atlas-dashboard-polish-lane-scroll {
         scrollbar-gutter: stable;
         overscroll-behavior: contain;
@@ -173,6 +229,7 @@ export default function AtlasDashboardPolish() {
 
       .atlas-dashboard-polish-quick-add {
         background: #fff !important;
+        border-radius: 9px !important;
       }
 
       .atlas-dashboard-polish-recent {
@@ -180,15 +237,28 @@ export default function AtlasDashboardPolish() {
       }
 
       .atlas-dashboard-polish-recent summary {
-        min-height: 34px !important;
+        min-height: 32px !important;
       }
 
       .atlas-dashboard-polish-vendor {
-        padding: 9px 10px !important;
+        padding: 10px !important;
       }
 
-      .atlas-dashboard-polish-command .atlas-dashboard-layout-grid {
-        gap: 8px !important;
+      .atlas-dashboard-polish-weather,
+      .atlas-dashboard-polish-weather-section {
+        box-shadow: none !important;
+        border-radius: 12px !important;
+      }
+
+      .atlas-dashboard-polish-weather {
+        margin: 0 !important;
+      }
+
+      .atlas-dashboard-polish-command input,
+      .atlas-dashboard-polish-command select,
+      .atlas-dashboard-polish-command textarea,
+      .atlas-dashboard-polish-command button {
+        box-shadow: none !important;
       }
 
       .atlas-work-viewport-polish .atlas-work-split-grid {
@@ -230,13 +300,35 @@ export default function AtlasDashboardPolish() {
       }
 
       @media (min-width: 901px) {
+        .atlas-dashboard-polish-root {
+          padding-left: 10px !important;
+          padding-right: 10px !important;
+        }
+
         .atlas-dashboard-polish-command {
-          min-height: calc(100dvh - 118px);
+          min-height: calc(100dvh - 112px);
+        }
+
+        .atlas-dashboard-polish-primary {
+          padding: 10px !important;
+        }
+
+        .atlas-dashboard-polish-work {
+          grid-column: 1 / -1 !important;
+        }
+
+        .atlas-dashboard-polish-vendor {
+          grid-column: span 4 !important;
+        }
+
+        .atlas-dashboard-polish-weather,
+        .atlas-dashboard-polish-weather-section {
+          grid-column: span 8 !important;
         }
 
         .atlas-dashboard-polish-lane-scroll {
-          height: clamp(360px, calc(100dvh - 410px), 660px) !important;
-          max-height: clamp(360px, calc(100dvh - 410px), 660px) !important;
+          height: clamp(390px, calc(100dvh - 370px), 700px) !important;
+          max-height: clamp(390px, calc(100dvh - 370px), 700px) !important;
         }
 
         .atlas-work-viewport-polish .atlas-work-split-grid {
@@ -257,7 +349,11 @@ export default function AtlasDashboardPolish() {
 
       @media (max-width: 900px) {
         .atlas-dashboard-polish-command {
-          gap: 7px !important;
+          gap: 8px !important;
+        }
+
+        .atlas-dashboard-polish-grid {
+          gap: 8px !important;
         }
 
         .atlas-dashboard-polish-lane-scroll {
