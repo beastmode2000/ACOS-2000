@@ -53,37 +53,48 @@ function mainFor(title: string) {
 function ensureLaunchButton(root: HTMLElement, onOpen: () => void) {
   if (root.querySelector(".atlas-day-off-launch")) return;
 
-  const dashboardBar = root.querySelector<HTMLElement>(".atlas-dashboard-command-actions");
   const heading = root.querySelector<HTMLElement>("h1");
   const headingRow = heading?.parentElement as HTMLElement | null;
-  const host = dashboardBar || headingRow;
-  if (!host) return;
+  if (!headingRow) return;
 
+  const isDashboard = Boolean(root.querySelector(".atlas-command-dashboard"));
   const button = document.createElement("button");
   button.type = "button";
-  button.className = dashboardBar
-    ? "atlas-dashboard-command-action atlas-day-off-launch"
+  button.className = isDashboard
+    ? "atlas-day-off-launch atlas-day-off-dashboard-button"
     : "atlas-day-off-launch atlas-day-off-calendar-button";
   button.textContent = "Day Off";
   button.addEventListener("click", onOpen);
-  host.appendChild(button);
+  headingRow.appendChild(button);
 }
 
 function ensureTodayIndicator(root: HTMLElement, records: DayOffRecord[]) {
-  root.querySelector(".atlas-day-off-today")?.remove();
-  if (!records.length) return;
+  const existing = root.querySelector<HTMLElement>(".atlas-day-off-today");
 
-  const bar = root.querySelector<HTMLElement>(".atlas-dashboard-command-bar");
-  if (!bar) return;
+  if (!records.length) {
+    existing?.remove();
+    return;
+  }
 
-  const indicator = document.createElement("div");
-  indicator.className = "atlas-day-off-today";
+  const heading = root.querySelector<HTMLElement>("h1");
+  const headingRow = heading?.parentElement as HTMLElement | null;
+  if (!headingRow) return;
+
   const labels = records.map((record) => {
     if (record.scope === "team") return record.title || "Holiday / Off";
     return record.title || `${record.person || "Staff"} Off`;
   });
-  indicator.textContent = labels.join(" · ");
-  bar.insertBefore(indicator, bar.firstChild);
+  const text = labels.join(" · ");
+
+  if (existing) {
+    if (existing.textContent !== text) existing.textContent = text;
+    return;
+  }
+
+  const indicator = document.createElement("div");
+  indicator.className = "atlas-day-off-today";
+  indicator.textContent = text;
+  headingRow.appendChild(indicator);
 }
 
 export default function AtlasDayOffControl() {
@@ -294,6 +305,7 @@ export default function AtlasDayOffControl() {
       ) : null}
 
       <style jsx global>{`
+        .atlas-day-off-dashboard-button,
         .atlas-day-off-calendar-button {
           min-height: 34px !important;
           padding: 6px 11px !important;
@@ -306,6 +318,18 @@ export default function AtlasDayOffControl() {
           font-size: 12px !important;
           font-weight: 800 !important;
           cursor: pointer !important;
+          box-shadow: none !important;
+        }
+
+        .atlas-day-off-dashboard-button {
+          border-color: #0b2c43 !important;
+          background: #0b2c43 !important;
+          color: #ffffff !important;
+        }
+
+        .atlas-day-off-dashboard-button:hover,
+        .atlas-day-off-calendar-button:hover {
+          border-color: #c99a3d !important;
         }
 
         .atlas-day-off-today {
@@ -314,6 +338,7 @@ export default function AtlasDayOffControl() {
           display: flex !important;
           align-items: center !important;
           padding: 5px 9px !important;
+          margin-left: 8px !important;
           border: 1px solid #f0c36a !important;
           border-radius: 9px !important;
           background: #fff8e8 !important;
@@ -466,7 +491,8 @@ export default function AtlasDayOffControl() {
           }
 
           .atlas-day-off-today {
-            width: 100% !important;
+            width: auto !important;
+            max-width: 100% !important;
             white-space: normal !important;
           }
         }
