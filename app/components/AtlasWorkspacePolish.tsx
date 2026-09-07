@@ -78,6 +78,19 @@ function polishNotes(root: HTMLElement) {
   for (const textarea of Array.from(root.querySelectorAll<HTMLTextAreaElement>("textarea"))) {
     textarea.classList.add("atlas-polish-note-editor");
   }
+
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>("button"))) {
+    const value = normalized(button.textContent).replace(/^\+\s*/, "");
+    if (value === "add note" || value === "new note") {
+      button.classList.add("atlas-polish-note-primary");
+    }
+    if (value === "save" || value === "save note") {
+      button.classList.add("atlas-polish-note-save");
+    }
+    if (value === "delete" || value === "delete note") {
+      button.classList.add("atlas-polish-note-delete");
+    }
+  }
 }
 
 function polishDocuments(root: HTMLElement) {
@@ -154,19 +167,35 @@ export default function AtlasWorkspacePolish() {
 
       .atlas-polish-notes-root section,
       .atlas-polish-notes-root article {
-        padding-top: 10px !important;
-        padding-bottom: 10px !important;
+        padding-top: 8px !important;
+        padding-bottom: 8px !important;
+      }
+
+      .atlas-polish-notes-root button {
+        box-shadow: none !important;
       }
 
       .atlas-polish-notes-search {
-        min-height: 38px !important;
+        min-height: 36px !important;
+        background: #fff !important;
       }
 
       .atlas-polish-note-editor {
-        min-height: 180px !important;
+        min-height: 150px !important;
         line-height: 1.5 !important;
-        padding: 12px !important;
+        padding: 11px !important;
         background: #fff !important;
+      }
+
+      .atlas-polish-note-primary,
+      .atlas-polish-note-save {
+        min-height: 32px !important;
+        padding: 5px 9px !important;
+      }
+
+      .atlas-polish-note-delete {
+        min-height: 30px !important;
+        padding: 4px 8px !important;
       }
 
       .atlas-polish-documents-root img {
@@ -180,7 +209,14 @@ export default function AtlasWorkspacePolish() {
 
       @media (min-width: 901px) {
         .atlas-polish-notes-list-pane,
-        .atlas-polish-notes-detail-pane,
+        .atlas-polish-notes-detail-pane {
+          height: calc(100dvh - 150px) !important;
+          max-height: calc(100dvh - 150px) !important;
+          min-height: 0 !important;
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+        }
+
         .atlas-polish-documents-list-pane,
         .atlas-polish-documents-detail-pane {
           max-height: calc(100dvh - 150px) !important;
@@ -189,7 +225,7 @@ export default function AtlasWorkspacePolish() {
 
       @media (max-width: 900px) {
         .atlas-polish-note-editor {
-          min-height: 150px !important;
+          min-height: 140px !important;
         }
       }
     `}</style>
