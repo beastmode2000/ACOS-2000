@@ -25,14 +25,120 @@ function firstHeadingText(element: HTMLElement) {
   return normalized(heading?.textContent || "");
 }
 
+function directGridChild(element: HTMLElement, grid: HTMLElement | null) {
+  if (!grid) return null;
+  let current: HTMLElement | null = element;
+  while (current && current.parentElement !== grid) current = current.parentElement;
+  return current?.parentElement === grid ? current : null;
+}
+
+function findButton(root: HTMLElement, phrases: string[]) {
+  return Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find((button) => {
+    const text = normalized(button.textContent);
+    return phrases.some((phrase) => text === phrase || text.includes(phrase));
+  });
+}
+
+function extractCount(root: HTMLElement, labels: string[]) {
+  for (const element of Array.from(root.querySelectorAll<HTMLElement>("span, div, button, small"))) {
+    const text = normalized(element.textContent);
+    if (!text || text.length > 90) continue;
+    if (!labels.some((label) => text.includes(label))) continue;
+
+    const strong = element.querySelector<HTMLElement>("strong, b");
+    const strongText = String(strong?.textContent || "");
+    if (/\d/.test(strongText)) return Number(strongText.replace(/[^0-9]/g, ""));
+
+    const match = text.match(/(?:^|\s)(\d{1,4})(?:\s|$)/);
+    if (match) return Number(match[1]);
+  }
+  return null;
+}
+
+function makeProxyButton(root: HTMLElement, label: string, phrases: string[]) {
+  const target = findButton(root, phrases);
+  if (!target) return null;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "atlas-dashboard-command-action";
+  button.textContent = label;
+  button.addEventListener("click", () => target.click());
+  return button;
+}
+
+function ensureCommandBar(command: HTMLElement) {
+  let bar = command.querySelector<HTMLElement>(":scope > .atlas-dashboard-command-bar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.className = "atlas-dashboard-command-bar";
+    command.insertBefore(bar, command.firstChild);
+  }
+
+  const status = document.createElement("div");
+  status.className = "atlas-dashboard-command-status";
+
+  const statusDefinitions: Array<[string, string[]]> = [
+    ["Open Work", ["open work", "open"]],
+    ["Overdue", ["overdue"]],
+    ["Today", ["today", "due today"]],
+    ["Upcoming", ["upcoming", "due soon"]],
+    ["Requests", ["requests", "request"]],
+  ];
+
+  for (const [label, phrases] of statusDefinitions) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "atlas-dashboard-command-status-item";
+
+    const labelNode = document.createElement("span");
+    labelNode.textContent = label;
+    item.appendChild(labelNode);
+
+    const value = extractCount(command, phrases);
+    if (value !== null) {
+      const valueNode = document.createElement("strong");
+      valueNode.textContent = String(value);
+      item.appendChild(valueNode);
+    }
+
+    item.addEventListener("click", () => {
+      const target = findButton(command, phrases);
+      if (target && target !== item) target.click();
+    });
+    status.appendChild(item);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "atlas-dashboard-command-actions";
+
+  const actionDefinitions: Array<[string, string[]]> = [
+    ["Add Work", ["add work", "new work", "+ work"]],
+    ["Note", ["add note", "new note", "remember it", "quick note"]],
+    ["Vendor", ["vendor visit", "quick log"]],
+    ["Reminder", ["add reminder", "new reminder", "reminder"]],
+  ];
+
+  for (const [label, phrases] of actionDefinitions) {
+    const button = makeProxyButton(command, label, phrases);
+    if (button) actions.appendChild(button);
+  }
+
+  bar.replaceChildren(status, actions);
+}
+
 function markDashboard(root: HTMLElement) {
   root.classList.add("atlas-dashboard-polish-root");
   const command = root.querySelector<HTMLElement>(".atlas-command-dashboard");
   if (!command) return;
   command.classList.add("atlas-dashboard-polish-command");
 
-  const firstChild = command.firstElementChild as HTMLElement | null;
-  firstChild?.classList.add("atlas-dashboard-polish-primary");
+  ensureCommandBar(command);
+
+  const primary = Array.from(command.children).find(
+    (child) => child instanceof HTMLElement && !child.classList.contains("atlas-dashboard-command-bar"),
+  ) as HTMLElement | undefined;
+  primary?.classList.add("atlas-dashboard-polish-primary");
 
   const layoutGrid = command.querySelector<HTMLElement>(".atlas-dashboard-layout-grid");
   if (layoutGrid) {
@@ -43,30 +149,51 @@ function markDashboard(root: HTMLElement) {
   }
 
   const weather = command.querySelector<HTMLElement>("#atlas-dashboard-weather");
-  weather?.classList.add("atlas-dashboard-polish-weather");
+  if (weather) {
+    weather.classList.add("atlas-dashboard-polish-weather");
+    directGridChild(weather, layoutGrid)?.classList.add("atlas-dashboard-polish-weather-widget");
+  }
 
   for (const element of Array.from(command.querySelectorAll<HTMLElement>("section, details"))) {
     const heading = firstHeadingText(element);
     const body = normalized(element.textContent);
+    const widget = directGridChild(element, layoutGrid);
 
     if (heading === "remember it") {
       element.classList.add("atlas-dashboard-polish-remember");
+      widget?.classList.add("atlas-dashboard-polish-remember-widget");
     }
+
     if (heading === "work lists" || body.startsWith("workwork lists")) {
       element.classList.add("atlas-dashboard-polish-work");
+      widget?.classList.add("atlas-dashboard-polish-work-widget");
     }
-    if (heading === "updates from the last 7 days" || body.includes("updates from the last 7 days")) {
+
+    if (
+      heading === "updates from the last 7 days" ||
+      body.includes("updates from the last 7 days") ||
+      body.includes("recent activity")
+    ) {
       element.classList.add("atlas-dashboard-polish-recent");
+      widget?.classList.add("atlas-dashboard-polish-recent-widget");
       if (element instanceof HTMLDetailsElement && !element.dataset.atlasPolishDefaulted) {
         element.open = false;
         element.dataset.atlasPolishDefaulted = "true";
       }
     }
+
     if (heading === "vendor visit" || body.startsWith("quick logvendor visit")) {
       element.classList.add("atlas-dashboard-polish-vendor");
+      widget?.classList.add("atlas-dashboard-polish-vendor-widget");
     }
+
     if (body.includes("weather") || body.includes("irrigation")) {
       element.classList.add("atlas-dashboard-polish-weather-section");
+      widget?.classList.add("atlas-dashboard-polish-weather-widget");
+    }
+
+    if (body.includes("request") || body.includes("problem") || body.includes("blocked")) {
+      widget?.classList.add("atlas-dashboard-polish-attention-widget");
     }
   }
 
@@ -90,6 +217,20 @@ function markDashboard(root: HTMLElement) {
       if (normalized(input.placeholder).includes("add work")) {
         input.classList.add("atlas-dashboard-polish-quick-add");
       }
+    }
+  }
+
+  for (const element of Array.from(command.querySelectorAll<HTMLElement>("p, small"))) {
+    const text = normalized(element.textContent);
+    if (!text || text.length > 160) continue;
+    if (
+      text.includes("use this") ||
+      text.includes("everyone assigned") ||
+      text.includes("quick way to") ||
+      text.includes("shows the same") ||
+      text.includes("this section")
+    ) {
+      element.classList.add("atlas-dashboard-polish-explanatory");
     }
   }
 }
@@ -139,6 +280,65 @@ export default function AtlasDashboardPolish() {
         padding-bottom: 12px !important;
       }
 
+      .atlas-dashboard-command-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-width: 0;
+        padding: 8px 9px;
+        border: 1px solid #dce4ec;
+        border-radius: 12px;
+        background: #ffffff;
+      }
+
+      .atlas-dashboard-command-status,
+      .atlas-dashboard-command-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+
+      .atlas-dashboard-command-status-item,
+      .atlas-dashboard-command-action {
+        min-height: 32px;
+        padding: 5px 9px;
+        border: 1px solid #dce4ec;
+        border-radius: 9px;
+        background: #ffffff;
+        color: #0b2c43;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 800;
+        cursor: pointer;
+        box-shadow: none !important;
+      }
+
+      .atlas-dashboard-command-status-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .atlas-dashboard-command-status-item strong {
+        font-size: 13px;
+        color: #0b1e33;
+      }
+
+      .atlas-dashboard-command-status-item:hover,
+      .atlas-dashboard-command-action:hover {
+        border-color: #c99a3d;
+        background: #fffaf0;
+      }
+
+      .atlas-dashboard-command-action {
+        background: #0b2c43;
+        border-color: #0b2c43;
+        color: #ffffff;
+      }
+
       .atlas-dashboard-polish-primary,
       .atlas-dashboard-polish-widget,
       .atlas-dashboard-polish-command > section,
@@ -163,7 +363,15 @@ export default function AtlasDashboardPolish() {
       .atlas-dashboard-polish-widget {
         min-width: 0 !important;
         overflow: hidden !important;
+        order: 30;
       }
+
+      .atlas-dashboard-polish-work-widget { order: 1 !important; }
+      .atlas-dashboard-polish-attention-widget { order: 2 !important; }
+      .atlas-dashboard-polish-remember-widget { order: 3 !important; }
+      .atlas-dashboard-polish-weather-widget { order: 20 !important; }
+      .atlas-dashboard-polish-vendor-widget { order: 21 !important; }
+      .atlas-dashboard-polish-recent-widget { order: 50 !important; }
 
       .atlas-dashboard-polish-widget > section,
       .atlas-dashboard-polish-widget > article,
@@ -233,15 +441,19 @@ export default function AtlasDashboardPolish() {
       }
 
       .atlas-dashboard-polish-recent {
-        padding: 9px 10px !important;
+        padding: 8px 9px !important;
+        max-height: 180px !important;
+        overflow-y: auto !important;
       }
 
       .atlas-dashboard-polish-recent summary {
-        min-height: 32px !important;
+        min-height: 30px !important;
       }
 
       .atlas-dashboard-polish-vendor {
-        padding: 10px !important;
+        padding: 9px !important;
+        max-height: 170px !important;
+        overflow: hidden !important;
       }
 
       .atlas-dashboard-polish-weather,
@@ -252,6 +464,12 @@ export default function AtlasDashboardPolish() {
 
       .atlas-dashboard-polish-weather {
         margin: 0 !important;
+        max-height: 220px !important;
+        overflow: hidden !important;
+      }
+
+      .atlas-dashboard-polish-explanatory {
+        display: none !important;
       }
 
       .atlas-dashboard-polish-command input,
@@ -313,22 +531,28 @@ export default function AtlasDashboardPolish() {
           padding: 10px !important;
         }
 
+        .atlas-dashboard-polish-work-widget,
         .atlas-dashboard-polish-work {
           grid-column: 1 / -1 !important;
         }
 
-        .atlas-dashboard-polish-vendor {
-          grid-column: span 4 !important;
-        }
+        .atlas-dashboard-polish-attention-widget { grid-column: span 6 !important; }
+        .atlas-dashboard-polish-remember-widget { grid-column: span 6 !important; }
+        .atlas-dashboard-polish-vendor-widget { grid-column: span 4 !important; }
 
+        .atlas-dashboard-polish-weather-widget,
         .atlas-dashboard-polish-weather,
         .atlas-dashboard-polish-weather-section {
           grid-column: span 8 !important;
         }
 
+        .atlas-dashboard-polish-recent-widget {
+          grid-column: 1 / -1 !important;
+        }
+
         .atlas-dashboard-polish-lane-scroll {
-          height: clamp(390px, calc(100dvh - 370px), 700px) !important;
-          max-height: clamp(390px, calc(100dvh - 370px), 700px) !important;
+          height: clamp(330px, calc(100dvh - 390px), 620px) !important;
+          max-height: clamp(330px, calc(100dvh - 390px), 620px) !important;
         }
 
         .atlas-work-viewport-polish .atlas-work-split-grid {
@@ -348,6 +572,22 @@ export default function AtlasDashboardPolish() {
       }
 
       @media (max-width: 900px) {
+        .atlas-dashboard-command-bar {
+          align-items: stretch;
+          flex-direction: column;
+          padding: 8px;
+        }
+
+        .atlas-dashboard-command-status,
+        .atlas-dashboard-command-actions {
+          width: 100%;
+        }
+
+        .atlas-dashboard-command-status-item,
+        .atlas-dashboard-command-action {
+          flex: 1 1 auto;
+        }
+
         .atlas-dashboard-polish-command {
           gap: 8px !important;
         }
@@ -363,6 +603,12 @@ export default function AtlasDashboardPolish() {
 
         .atlas-dashboard-polish-person-lane {
           padding: 8px !important;
+        }
+
+        .atlas-dashboard-polish-weather,
+        .atlas-dashboard-polish-vendor,
+        .atlas-dashboard-polish-recent {
+          max-height: none !important;
         }
 
         .atlas-work-viewport-polish .atlas-work-split-grid {
