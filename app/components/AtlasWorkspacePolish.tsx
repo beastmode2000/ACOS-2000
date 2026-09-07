@@ -99,6 +99,42 @@ function markExplanatoryText(root: HTMLElement) {
   }
 }
 
+function polishLocations(root: HTMLElement) {
+  root.classList.add("atlas-polish-locations-root");
+
+  for (const label of Array.from(root.querySelectorAll<HTMLLabelElement>("label"))) {
+    const labelText = Array.from(label.querySelectorAll<HTMLElement>("span"))
+      .map((node) => normalized(node.textContent))
+      .find(Boolean);
+    if (labelText === "description") {
+      label.classList.add("atlas-polish-location-description");
+    }
+  }
+
+  const detailPanel = root.querySelector<HTMLElement>("[data-atlas-detail-panel]");
+  const drawer = detailPanel?.querySelector<HTMLElement>('div[tabindex="0"]');
+  if (!drawer) return;
+
+  const infoBlock = drawer.firstElementChild as HTMLElement | null;
+  if (!infoBlock) return;
+
+  const directParagraphs = Array.from(infoBlock.children).filter(
+    (child): child is HTMLParagraphElement => child instanceof HTMLParagraphElement,
+  );
+
+  if (directParagraphs.length >= 2) {
+    directParagraphs[0].classList.add("atlas-polish-location-description");
+    return;
+  }
+
+  const relationWords = /\b(next to|adjacent|near|beside|across from|between|located|location is|by the|off the|under|above|below)\b/i;
+  for (const paragraph of directParagraphs) {
+    if (relationWords.test(paragraph.textContent || "")) {
+      paragraph.classList.add("atlas-polish-location-description");
+    }
+  }
+}
+
 function markScrollablePanes(root: HTMLElement, prefix: string) {
   const candidates = Array.from(root.querySelectorAll<HTMLElement>("div, section")).filter((element) => {
     const rect = element.getBoundingClientRect();
@@ -168,6 +204,9 @@ export default function AtlasWorkspacePolish() {
       const documents = pageMain("documents");
       if (documents) polishDocuments(documents);
 
+      const locations = pageMain("locations");
+      if (locations) polishLocations(locations);
+
       for (const title of [
         "dashboard",
         "notes",
@@ -209,7 +248,8 @@ export default function AtlasWorkspacePolish() {
       }
 
       .atlas-polish-empty-secondary,
-      .atlas-polish-explanatory-text {
+      .atlas-polish-explanatory-text,
+      .atlas-polish-location-description {
         display: none !important;
       }
 
