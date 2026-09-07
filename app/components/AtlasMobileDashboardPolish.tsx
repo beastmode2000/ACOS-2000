@@ -6,34 +6,29 @@ function normalized(value: unknown) {
   return String(value || "").trim().toLowerCase();
 }
 
-function dashboardMain() {
-  const heading = Array.from(document.querySelectorAll<HTMLElement>("h1")).find(
-    (node) => normalized(node.textContent) === "dashboard",
-  );
-  return (heading?.closest("main") as HTMLElement | null) || null;
-}
-
 function markMobileDashboard() {
   if (window.innerWidth > 900) return;
-  const root = dashboardMain();
-  if (!root) return;
 
-  root.classList.add("atlas-mobile-dashboard-polish-root");
+  const command = document.querySelector<HTMLElement>(".atlas-command-dashboard");
+  if (!command) return;
 
-  const command = root.querySelector<HTMLElement>(".atlas-command-dashboard");
-  command?.classList.add("atlas-mobile-dashboard-command");
+  command.classList.add("atlas-mobile-dashboard-command");
 
-  const weather = root.querySelector<HTMLElement>("#atlas-dashboard-weather");
+  const root = (command.closest("main") as HTMLElement | null) || command.parentElement;
+  root?.classList.add("atlas-mobile-dashboard-polish-root");
+
+  const weather = command.querySelector<HTMLElement>("#atlas-dashboard-weather");
   weather?.classList.add("atlas-mobile-dashboard-weather");
 
-  for (const section of Array.from(root.querySelectorAll<HTMLElement>("section"))) {
+  for (const section of Array.from(command.querySelectorAll<HTMLElement>("section"))) {
     const text = normalized(section.textContent);
     if (text.startsWith("quick logvendor visit") || text.includes("quick logvendor visit")) {
       section.classList.add("atlas-mobile-dashboard-quick-log");
     }
   }
 
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>("button"))) {
+  const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("button"));
+  for (const button of buttons) {
     if (normalized(button.textContent) !== "+") continue;
     const style = window.getComputedStyle(button);
     if (style.position === "fixed" || style.position === "absolute") {
@@ -70,19 +65,47 @@ export default function AtlasMobileDashboardPolish() {
   return (
     <style jsx global>{`
       @media (max-width: 900px) {
+        html,
+        body,
         .atlas-mobile-dashboard-polish-root {
           overflow-x: hidden !important;
         }
 
+        .atlas-command-dashboard,
         .atlas-mobile-dashboard-command {
-          width: calc(100% + 28px) !important;
-          max-width: none !important;
-          margin-left: -14px !important;
-          margin-right: -14px !important;
+          position: relative !important;
+          left: 50% !important;
+          width: calc(100vw - 24px) !important;
+          max-width: calc(100vw - 24px) !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          transform: translateX(-50%) !important;
+          box-sizing: border-box !important;
           gap: 10px !important;
           padding-bottom: 118px !important;
         }
 
+        .atlas-command-dashboard .atlas-dashboard-layout-grid,
+        .atlas-mobile-dashboard-command .atlas-dashboard-layout-grid {
+          width: 100% !important;
+          max-width: none !important;
+          gap: 10px !important;
+          grid-template-columns: minmax(0, 1fr) !important;
+        }
+
+        .atlas-command-dashboard .atlas-dashboard-layout-grid > *,
+        .atlas-mobile-dashboard-command .atlas-dashboard-layout-grid > * {
+          grid-column: 1 / -1 !important;
+          width: 100% !important;
+          max-width: none !important;
+          min-width: 0 !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          box-sizing: border-box !important;
+        }
+
+        .atlas-command-dashboard > section,
+        .atlas-command-dashboard > details,
         .atlas-mobile-dashboard-command > section,
         .atlas-mobile-dashboard-command > details {
           width: 100% !important;
@@ -90,18 +113,13 @@ export default function AtlasMobileDashboardPolish() {
           margin-left: 0 !important;
           margin-right: 0 !important;
           border-radius: 16px !important;
+          box-sizing: border-box !important;
         }
 
         .atlas-mobile-dashboard-quick-log {
-          padding: 12px 12px 13px !important;
+          padding: 12px !important;
           margin-bottom: 0 !important;
           border-radius: 16px !important;
-        }
-
-        .atlas-mobile-dashboard-quick-log h2,
-        .atlas-mobile-dashboard-quick-log h3,
-        .atlas-mobile-dashboard-quick-log strong {
-          margin-top: 0 !important;
         }
 
         .atlas-mobile-dashboard-quick-log input,
@@ -119,87 +137,85 @@ export default function AtlasMobileDashboardPolish() {
           padding-bottom: 7px !important;
         }
 
-        .atlas-mobile-dashboard-weather,
-        #atlas-dashboard-weather.atlas-weather-experience {
-          margin-top: 0 !important;
-          margin-bottom: 0 !important;
-          padding: 14px 12px 14px !important;
+        #atlas-dashboard-weather.atlas-weather-experience,
+        .atlas-mobile-dashboard-weather {
+          width: 100% !important;
+          max-width: none !important;
+          margin: 0 !important;
+          padding: 14px 12px !important;
           border-radius: 16px !important;
           min-height: 0 !important;
+          box-sizing: border-box !important;
         }
 
-        .atlas-mobile-dashboard-weather .atlas-weather-main-row {
+        .atlas-mobile-dashboard-weather .atlas-weather-main-row,
+        #atlas-dashboard-weather .atlas-weather-main-row {
           gap: 10px !important;
           margin: 0 !important;
         }
 
-        .atlas-mobile-dashboard-weather .atlas-weather-current {
+        .atlas-mobile-dashboard-weather .atlas-weather-current,
+        #atlas-dashboard-weather .atlas-weather-current {
           padding: 0 !important;
           min-height: 0 !important;
         }
 
-        .atlas-mobile-dashboard-weather .atlas-weather-kicker {
+        .atlas-mobile-dashboard-weather .atlas-weather-kicker,
+        #atlas-dashboard-weather .atlas-weather-kicker {
           font-size: 11px !important;
           letter-spacing: 0.15em !important;
           margin-bottom: 8px !important;
         }
 
-        .atlas-mobile-dashboard-weather .atlas-weather-current-row {
+        .atlas-mobile-dashboard-weather .atlas-weather-current-row,
+        #atlas-dashboard-weather .atlas-weather-current-row {
           gap: 10px !important;
           align-items: center !important;
         }
 
-        .atlas-mobile-dashboard-weather .atlas-weather-current-glyph {
+        .atlas-mobile-dashboard-weather .atlas-weather-current-glyph,
+        #atlas-dashboard-weather .atlas-weather-current-glyph {
           width: 58px !important;
           height: 58px !important;
           min-width: 58px !important;
           border-radius: 14px !important;
         }
 
-        .atlas-mobile-dashboard-weather .atlas-weather-current-temp {
+        .atlas-mobile-dashboard-weather .atlas-weather-current-temp,
+        #atlas-dashboard-weather .atlas-weather-current-temp {
           font-size: 48px !important;
           line-height: 0.95 !important;
         }
 
-        .atlas-mobile-dashboard-weather .atlas-weather-current-label {
+        .atlas-mobile-dashboard-weather .atlas-weather-current-label,
+        #atlas-dashboard-weather .atlas-weather-current-label {
           font-size: 16px !important;
           margin-top: 3px !important;
         }
 
-        .atlas-mobile-dashboard-weather .atlas-weather-days {
+        .atlas-mobile-dashboard-weather .atlas-weather-days,
+        #atlas-dashboard-weather .atlas-weather-days {
           gap: 8px !important;
           margin-top: 12px !important;
           padding: 0 !important;
         }
 
-        .atlas-mobile-dashboard-weather .atlas-weather-day {
-          min-height: 108px !important;
-          padding: 9px 8px !important;
+        .atlas-mobile-dashboard-weather .atlas-weather-day,
+        #atlas-dashboard-weather .atlas-weather-day {
+          min-height: 104px !important;
+          padding: 8px !important;
           border-radius: 14px !important;
-        }
-
-        .atlas-mobile-dashboard-weather .atlas-weather-day strong {
-          font-size: 13px !important;
-        }
-
-        .atlas-mobile-dashboard-weather .atlas-weather-day span,
-        .atlas-mobile-dashboard-weather .atlas-weather-day small {
-          line-height: 1.2 !important;
-        }
-
-        .atlas-mobile-dashboard-weather > div:not(.atlas-weather-ambient):not(.atlas-weather-main-row),
-        .atlas-mobile-dashboard-weather .atlas-weather-main-row ~ div {
-          margin-top: 10px !important;
         }
 
         .atlas-mobile-dashboard-weather article,
         .atlas-mobile-dashboard-weather section,
-        .atlas-mobile-dashboard-weather .atlas-weather-main-row ~ div > div {
+        #atlas-dashboard-weather article,
+        #atlas-dashboard-weather section {
           border-radius: 14px !important;
         }
 
         .atlas-mobile-dashboard-fab {
-          right: 18px !important;
+          right: 16px !important;
           bottom: 102px !important;
           width: 58px !important;
           height: 58px !important;
