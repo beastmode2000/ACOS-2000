@@ -88,6 +88,22 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const propertyId = cleanPropertyId(url.searchParams.get("propertyId"));
+    const scope = cleanText(url.searchParams.get("scope"), 80);
+
+    if (scope === "main-photos") {
+      const rows = (await sql`
+        SELECT id, property_id, location_name, spec_key, file_url, file_name,
+               content_type, attachment_kind, created_at
+        FROM atlas_location_spec_attachments
+        WHERE property_id = ${propertyId}
+          AND attachment_kind = 'image'
+          AND spec_key LIKE 'location-main-%'
+        ORDER BY created_at DESC
+      `) as AttachmentRow[];
+
+      return NextResponse.json({ ok: true, attachments: rows.map(normalizeRow) });
+    }
+
     const locationName = cleanText(url.searchParams.get("locationName"), 220);
     const specKey = cleanText(url.searchParams.get("specKey"), 240);
 
@@ -156,6 +172,54 @@ export async function POST(request: Request) {
     console.error("Location specification attachment save failed:", error);
     return NextResponse.json(
       { ok: false, error: "Atlas could not save the specification attachment." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const sql = getSql();
+    await ensureTable(sql);
+
+    const body = (await request.json()) as Record<string, unknown>;
+    const id = cleanText(body.id, 220);
+    const propertyId = cleanPropertyId(body.propertyId);
+    const fileUrl = cleanText(body.url, 2000);
+    const fileName = cleanText(body.name, 500) || "Attachment";
+    const contentType = cleanText(body.contentType, 180);
+    const kind: AttachmentKind = body.kind === "image" ? "image" : "document";
+
+    if (!id || !fileUrl || !isSafeUrl(fileUrl)) {
+      return NextResponse.json(
+        { ok: false, error: "Attachment id and a valid uploaded file are required." },
+        { status: 400 },
+      );
+    }
+
+    const rows = (await sql`
+      UPDATE atlas_location_spec_attachments
+      SET file_url = ${fileUrl},
+          file_name = ${fileName},
+          content_type = ${contentType},
+          attachment_kind = ${kind}
+      WHERE id = ${id} AND property_id = ${propertyId}
+      RETURNING id, property_id, location_name, spec_key, file_url, file_name,
+                content_type, attachment_kind, created_at
+    `) as AttachmentRow[];
+
+    if (!rows.length) {
+      return NextResponse.json(
+        { ok: false, error: "Attachment was not found." },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json({ ok: true, attachment: normalizeRow(rows[0]) });
+  } catch (error) {
+    console.error("Location specification attachment update failed:", error);
+    return NextResponse.json(
+      { ok: false, error: "Atlas could not update the specification attachment." },
       { status: 500 },
     );
   }
