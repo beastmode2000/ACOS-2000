@@ -1,133 +1,14 @@
 "use client";
 
-import React, {
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { upload } from "@vercel/blob/client";
-import AtlasCalendar from "./AtlasCalendar";
-import AtlasRoutines from "./AtlasRoutines";
-import AtlasTeamWork from "./AtlasTeamWork";
-import { AtlasWorkOrders } from "./AtlasWorkOrders";
-import AtlasInsightsTimeline from "./AtlasInsightsTimeline";
-import ReportsAccessCenter from "./ReportsAccessCenter";
+import React from "react";
+import { Field } from "./AtlasUiPrimitives";
+import { colors } from "../lib/atlas-page-config";
+import type { AssetRecord, VendorRecord } from "../lib/atlas-types";
 import {
-  Field,
-  SelectField,
-  StatCard,
-  AtlasMiniMark,
-  SectionHeader,
-} from "./AtlasUiPrimitives";
-
-import {
-  WORKLINK_LOGOS,
-  colors,
-  screens,
-  logoCandidates,
-  storageKeys,
-} from "../lib/atlas-page-config";
-import type { AtlasScreen } from "../lib/atlas-page-config";
-import { searchAtlas } from "../lib/atlas-search";
-import AskAtlasWorkspace from "./ai/AskAtlasWorkspace";
-import RelationshipPanel from "./ai/RelationshipPanel";
-import ActionApprovalCard from "./ai/ActionApprovalCard";
-import AskAtlasWeeklyMaintenancePlanner, {
-  type WeeklyMaintenancePlanItem,
-} from "./ai/AskAtlasWeeklyMaintenancePlanner";
-import AtlasIntelligenceRecommendations from "./ai/AtlasIntelligenceRecommendations";
-import DocumentIntelligencePanel from "./ai/DocumentIntelligencePanel";
-import PhotoIntelligencePanel from "./ai/PhotoIntelligencePanel";
-import AtlasGroupedSearchResults from "./ai/AtlasGroupedSearchResults";
-import AtlasNotifications from "./AtlasNotifications";
-import AtlasPortfolioCenter from "./AtlasPortfolioCenter";
-import AtlasParts from "./AtlasParts";
-import AtlasAddisonWork from "./AtlasAddisonWork";
-import AtlasTasks from "./AtlasTasks";
-import AtlasDashboardWorkspace from "./AtlasDashboardWorkspace";
-import AtlasLocationsWorkspace from "./AtlasLocationsWorkspace";
-import AtlasAssetsWorkspace from "./AtlasAssetsWorkspace";
-import { findRelatedRecords } from "../lib/ai/relationship-engine";
-import {
-  planAssistantAction,
-  type PendingAssistantAction,
-} from "../lib/ai/action-planner";
-
-import type {
-  Screen,
-  Status,
-  ServiceStatus,
-  WorkOrderPriority,
-  WorkOrderRecurrenceUnit,
-  WorkSeason,
-  Priority,
-  PartStatus,
-  UploadedFileRecord,
-  LocationRecord,
-  MapDetailBox,
-  MapLabelRecord,
-  VendorRecord,
-  ContactRecord,
-  AssetRecord,
-  ServiceRecord,
-  ProcedureRecord,
-  RequestStatus,
-  OwnerRequestRecord,
-  IntakeTargetKind,
-  FastIntakeKind,
-  FastIntakeSaveMode,
-  InboxStatus,
-  InboxReviewDraft,
-  InboxItemRecord,
-  DocumentRecord,
-  ManualCategory,
-  ManualRecord,
-  PartRecord,
-  WorkLinkRecord,
-  QrKind,
-  QrRecord,
-  CalendarColorName,
-  CalendarRepeat,
-  CalendarReminder,
-  CalendarLinkType,
-  CalendarSource,
-  CalendarColor,
-  CalendarItem,
-  WorkPlanDay,
-  WorkPlanTask,
-  PhotoRecord,
-  WeatherDay,
-  AtlasApiPayload,
-  AtlasTable,
-  SearchResult,
-  ManualCandidate,
-} from "../lib/atlas-types";
-import {
-  closeSymbol, PHOTO_TIMELINE_TAGS, atlasOperationsTemplates, atlasProperties, dashboardWidgetDefinitions, dashboardDefaultGrid, legacySizeColumns, makeDailyForemanWidgets,
-  normalizeDashboardWidgets, builtInDashboardLayouts, loadDashboardRoutineItems, todayLogStorageKeys, dashboardRoutineStorageKeys, atlasMoreToolsScreens, atlasPrimaryNavigationSections, localISODate,
-  todayISO, addDays, uid, normalizeMapDetailBoxes, slugify, blankCalendarItem, clampPercent, formatDate,
-  monthName, isServiceStatus, isPriority, isWorkOrderRecurrenceUnit, seasonForDate, recurrenceLabel, nextRecurrenceDate, readStoredArray,
-  readAllStoredArrays, saveStoredArray, normalizePhotoRecord, photoSource, mergePhotoRecords, cachePhotoRecords, readCachedPhoto, deleteCachedPhoto,
-  persistPhotoRecords, readFileDataUrl, fileToUploadedRecord, imageUrlsFromClipboardText, importImageUrlAsFile, normalizeImageFile, mergeUploadedFiles, normalizeAsset,
-  assetLocationIds, assetHasLocation, normalizeLocationName, normalizeVendor, normalizeContact, blankContact, normalizeService, normalizeProcedure,
-  normalizeCalendar, mergeCalendarItemRecords, normalizePart, normalizeDocument, mergeDocuments, byName, mergeLocationRecords, byTitle,
-  badgeStyle, weatherText, weatherIcon, weatherGlyph, irrigationAdvice, weatherDayPlanning, categoryToColorId, calendarPlainColors,
-  repeatOptions, reminderOptions, linkTypeOptions, standardCalendarCategoryLabels, plainColor, colorNameFromLegacyColorId, defaultCalendarColors, mergeCalendarColors,
-  getUsHolidays, getJewishHolidays, calendarDateValue, isRecurringInstanceOnDate, getWeekCells, fallbackLocations, defaultMapLabels, fallbackVendors,
-  confirmedAssetCatalog, fallbackAssets, fallbackWorkOrders, fallbackProcedures, fallbackCalendar, fallbackParts, defaultWorkLinks, documents,
-  manualCategories, seaDooManualUrl, cleanManualOpenUrl, defaultManuals, inferManualCategory, blankManual, normalizeManualRecord, ListDrawerLayout,
-  CreatableRelationshipField,
-} from "./AtlasAppFoundation";
-import AtlasContacts from "./AtlasContacts";
-import AtlasWeather from "./AtlasWeather";
-import type {
-  AtlasCurrentUser, AtlasCalendarItem, AssistantTurn, PhotoTimelineTag, PhotoTimelineProjectCategory, PhotoTimelineMeta, ProjectTimelineEntry, PhotoTimelineProject,
-  WorkEffort, AtlasTaskMeta, TaskListFilter, AtlasBacklogItem, AtlasVehicleCare, AtlasSeasonalItem, AtlasDaySession, AtlasOperationsTemplate,
-  AtlasAssetRecord, LocationCustomDetail, AtlasLocationRecord, WorkChecklistItem, TodayLogEntry, DashboardRoutineItem, DashboardWidgetId, DashboardWidgetSetting,
-  DashboardSavedLayout, DashboardWidgetDropTarget, WorkCompletionEntry, AtlasServiceRecord,
+  badgeStyle,
+  formatDate,
+  ListDrawerLayout,
+  uid,
 } from "./AtlasAppFoundation";
 
 type VendorContactCard = {
@@ -138,31 +19,42 @@ type VendorContactCard = {
   officePhone: string;
   cellPhone: string;
   email: string;
-  contactType: "Office" | "Owner" | "Manager" | "Sales" | "Service" | "Installation" | "Technician" | "Billing" | "Emergency" | "Other";
+  contactType:
+    | "Office"
+    | "Owner"
+    | "Manager"
+    | "Sales"
+    | "Service"
+    | "Installation"
+    | "Technician"
+    | "Billing"
+    | "Emergency"
+    | "Other";
   primary: boolean;
   preferredMethod: "Office" | "Cell" | "Email";
   notes: string;
   inactive?: boolean;
 };
 
-const vendorContactTypes: VendorContactCard["contactType"][] = [
+const vendorDepartmentTypes: VendorContactCard["contactType"][] = [
   "Office",
-  "Owner",
-  "Manager",
-  "Sales",
   "Service",
-  "Installation",
   "Technician",
   "Billing",
+  "Sales",
+  "Installation",
+  "Manager",
+  "Owner",
   "Emergency",
   "Other",
 ];
 
 export default function AtlasVendorsWorkspace(props: any) {
-  const [mobileFieldDetailsOpen, setMobileFieldDetailsOpen] = React.useState(false);
   const [vendorSearch, setVendorSearch] = React.useState("");
+  const [vendorEditing, setVendorEditing] = React.useState(false);
   const [showInactiveContacts, setShowInactiveContacts] = React.useState(false);
   const [editingVendorContactId, setEditingVendorContactId] = React.useState("");
+
   const {
     addLinkedPhotoFiles,
     addVendor,
@@ -180,7 +72,6 @@ export default function AtlasVendorsWorkspace(props: any) {
     editorHeaderStyle,
     eyebrowStyle,
     filteredVendors,
-    formGridStyle,
     goldButtonStyle,
     imageFilesFromPasteEvent,
     isMobile,
@@ -206,29 +97,31 @@ export default function AtlasVendorsWorkspace(props: any) {
     setSelectedTaskId,
     setSelectedVendorId,
     setTasksView,
-    setVendorRecords,
     stackStyle,
     taskDetails,
     updateVendor,
-    vendorDetailHeaderStyle,
     vendorLogoFor,
     vendorLogoImageStyle,
-    vendorLogoLargeStyle,
     vendorLogoThumbStyle,
-    workPlanTasks
+    workPlanTasks,
   } = props;
+
   const selectedVendorLogo = selectedVendor.id
     ? vendorLogoFor(selectedVendor.id)
     : undefined;
+
   React.useEffect(() => {
-    setMobileFieldDetailsOpen(false);
+    setVendorEditing(false);
     setShowInactiveContacts(false);
     setEditingVendorContactId("");
   }, [selectedVendorId]);
 
   const selectedVendorPhotos = selectedVendor.id
-    ? linkedImageFilesFor("Vendor", selectedVendor.id)
+    ? linkedImageFilesFor("Vendor", selectedVendor.id).filter(
+        (file: any) => !/vendor\s*logo/i.test(String(file?.name || "")),
+      )
     : [];
+
   const vendorContacts: VendorContactCard[] = Array.isArray(selectedVendor.contacts)
     ? selectedVendor.contacts
     : [];
@@ -242,7 +135,7 @@ export default function AtlasVendorsWorkspace(props: any) {
     updateVendor({ contacts });
   };
 
-  const addVendorContact = () => {
+  const addVendorDepartment = () => {
     const contact: VendorContactCard = {
       id: uid("vendor-contact"),
       name: "",
@@ -251,9 +144,9 @@ export default function AtlasVendorsWorkspace(props: any) {
       officePhone: "",
       cellPhone: "",
       email: "",
-      contactType: "Technician",
+      contactType: "Office",
       primary: vendorContacts.length === 0,
-      preferredMethod: "Cell",
+      preferredMethod: "Office",
       notes: "",
       inactive: false,
     };
@@ -279,10 +172,7 @@ export default function AtlasVendorsWorkspace(props: any) {
     }
 
     const activeContacts = next.filter((contact) => !contact.inactive);
-    if (
-      activeContacts.length &&
-      !activeContacts.some((contact) => contact.primary)
-    ) {
+    if (activeContacts.length && !activeContacts.some((contact) => contact.primary)) {
       const firstActiveId = activeContacts[0].id;
       next = next.map((contact) =>
         contact.id === firstActiveId ? { ...contact, primary: true } : contact,
@@ -293,14 +183,12 @@ export default function AtlasVendorsWorkspace(props: any) {
   };
 
   const deleteVendorContact = (contactId: string) => {
-    if (!window.confirm("Delete this vendor contact?")) return;
+    if (!window.confirm("Delete this vendor department/contact?")) return;
     if (editingVendorContactId === contactId) setEditingVendorContactId("");
+
     let next = vendorContacts.filter((contact) => contact.id !== contactId);
     const activeContacts = next.filter((contact) => !contact.inactive);
-    if (
-      activeContacts.length &&
-      !activeContacts.some((contact) => contact.primary)
-    ) {
+    if (activeContacts.length && !activeContacts.some((contact) => contact.primary)) {
       const firstActiveId = activeContacts[0].id;
       next = next.map((contact) =>
         contact.id === firstActiveId ? { ...contact, primary: true } : contact,
@@ -308,6 +196,7 @@ export default function AtlasVendorsWorkspace(props: any) {
     }
     updateVendorContacts(next);
   };
+
   const relatedVendorAssets: AssetRecord[] = selectedVendor.id
     ? [...(assetRecords as AssetRecord[])]
         .filter((asset) => asset.vendorIds.includes(selectedVendor.id))
@@ -315,6 +204,7 @@ export default function AtlasVendorsWorkspace(props: any) {
           String(a.name || "").localeCompare(String(b.name || "")),
         )
     : [];
+
   const relatedVendorWorkOrders = selectedVendor.id
     ? [...serviceRecords]
         .filter((record) => record.vendorId === selectedVendor.id)
@@ -322,21 +212,29 @@ export default function AtlasVendorsWorkspace(props: any) {
           String(
             b.serviceHistory?.[0]?.completedAt ||
               b.lastCompletedDate ||
-              b.date,
+              b.date ||
+              "",
           ).localeCompare(
             String(
               a.serviceHistory?.[0]?.completedAt ||
                 a.lastCompletedDate ||
-                a.date,
+                a.date ||
+                "",
             ),
           ),
         )
     : [];
+
   const relatedVendorTasks = selectedVendor.id
     ? workPlanTasks
         .filter((task) => taskDetails(task.id).vendorId === selectedVendor.id)
-        .sort((a, b) => String(taskDetails(a.id).dueDate || "9999-12-31").localeCompare(String(taskDetails(b.id).dueDate || "9999-12-31")))
+        .sort((a, b) =>
+          String(taskDetails(a.id).dueDate || "9999-12-31").localeCompare(
+            String(taskDetails(b.id).dueDate || "9999-12-31"),
+          ),
+        )
     : [];
+
   const lastVendorVisit =
     relatedVendorWorkOrders.find((record) => record.status === "Completed") ||
     relatedVendorWorkOrders[0];
@@ -351,27 +249,17 @@ export default function AtlasVendorsWorkspace(props: any) {
           : 0),
     0,
   );
-  const vendorOpenWorkCount = relatedVendorWorkOrders.filter(
-    (record) => record.status !== "Completed",
-  ).length;
-  const vendorOpenTaskCount = relatedVendorTasks.filter(
-    (task) => taskDetails(task.id).status !== "Completed",
-  ).length;
-  const vendorLastVisitDate = lastVendorVisit
-    ? String(
-        lastVendorVisit.serviceHistory?.[0]?.completedAt ||
-          lastVendorVisit.lastCompletedDate ||
-          lastVendorVisit.date ||
-          "",
-      ).slice(0, 10)
-    : "";
 
   const visibleVendors = filteredVendors.filter((vendor: VendorRecord) => {
     const query = vendorSearch.trim().toLowerCase();
     if (!query) return true;
-    const contacts = Array.isArray((vendor as VendorRecord & { contacts?: VendorContactCard[] }).contacts)
+
+    const contacts = Array.isArray(
+      (vendor as VendorRecord & { contacts?: VendorContactCard[] }).contacts,
+    )
       ? (vendor as VendorRecord & { contacts?: VendorContactCard[] }).contacts || []
       : [];
+
     return [
       vendor.name,
       vendor.category,
@@ -394,6 +282,54 @@ export default function AtlasVendorsWorkspace(props: any) {
       .includes(query);
   });
 
+  const infoCard = (label: string, value?: string, href?: string) => {
+    const cleanValue = String(value || "").trim();
+    if (!cleanValue) return null;
+    return (
+      <div
+        style={{
+          border: `1px solid ${colors.line}`,
+          borderRadius: 10,
+          background: "#FFFFFF",
+          padding: "9px 10px",
+          minWidth: 0,
+        }}
+      >
+        <span style={{ ...mutedSmallStyle, display: "block", marginBottom: 3 }}>
+          {label}
+        </span>
+        {href ? (
+          <a
+            href={href}
+            target={href.startsWith("http") ? "_blank" : undefined}
+            rel={href.startsWith("http") ? "noreferrer" : undefined}
+            style={{
+              color: colors.navy,
+              fontWeight: 800,
+              textDecoration: "none",
+              overflowWrap: "anywhere",
+            }}
+          >
+            {cleanValue}
+          </a>
+        ) : (
+          <strong
+            style={{
+              color: colors.navy,
+              display: "block",
+              overflowWrap: "anywhere",
+            }}
+          >
+            {cleanValue}
+          </strong>
+        )}
+      </div>
+    );
+  };
+
+  const selectedLogoSrc =
+    selectedVendorLogo?.dataUrl || selectedVendorLogo?.url || "";
+
   return (
     <ListDrawerLayout
       eyebrow="Property Records"
@@ -412,10 +348,26 @@ export default function AtlasVendorsWorkspace(props: any) {
       listPanelStyleOverride={
         isMobile
           ? { minWidth: 0, overflowX: "hidden" }
-          : { minWidth: 0, padding: 10 }
+          : {
+              minWidth: 0,
+              height: "calc(100dvh - 190px)",
+              maxHeight: "calc(100dvh - 190px)",
+              overflowY: "auto",
+              overflowX: "hidden",
+              padding: 10,
+            }
       }
       drawerStyleOverride={
-        isMobile ? { minWidth: 0, overflowX: "hidden" } : { minWidth: 0 }
+        isMobile
+          ? { minWidth: 0, overflowX: "hidden" }
+          : {
+              minWidth: 0,
+              height: "calc(100dvh - 190px)",
+              maxHeight: "calc(100dvh - 190px)",
+              overflowY: "auto",
+              overflowX: "hidden",
+              paddingBottom: 18,
+            }
       }
       right={
         <button type="button" onClick={() => addVendor()} style={goldButtonStyle}>
@@ -482,9 +434,11 @@ export default function AtlasVendorsWorkspace(props: any) {
               ) : null}
             </div>
           </div>
-          {visibleVendors.map((vendor) => {
+
+          {visibleVendors.map((vendor: VendorRecord) => {
             const logo = vendorLogoFor(vendor.id);
             const logoSrc = logo?.dataUrl || logo?.url || "";
+
             return (
               <button
                 key={vendor.id}
@@ -497,9 +451,7 @@ export default function AtlasVendorsWorkspace(props: any) {
                   minHeight: 0,
                   borderRadius: 10,
                   borderColor:
-                    vendor.id === selectedVendor.id
-                      ? colors.gold
-                      : colors.line,
+                    vendor.id === selectedVendor.id ? colors.gold : colors.line,
                   background:
                     vendor.id === selectedVendor.id ? "#F4F8FD" : "#FFFFFF",
                   boxShadow: "none",
@@ -519,15 +471,12 @@ export default function AtlasVendorsWorkspace(props: any) {
                   </div>
                   <div style={{ minWidth: 0 }}>
                     <strong>{vendor.name}</strong>
-                    <p style={mutedSmallStyle}>{vendor.category}</p>
-                    <p style={mutedSmallStyle}>
-                      {[vendor.phone, vendor.email]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                    {Array.isArray((vendor as VendorRecord & { contacts?: VendorContactCard[] }).contacts) && (vendor as VendorRecord & { contacts?: VendorContactCard[] }).contacts!.length ? (
+                    {vendor.category ? (
+                      <p style={mutedSmallStyle}>{vendor.category}</p>
+                    ) : null}
+                    {[vendor.phone, vendor.email].filter(Boolean).length ? (
                       <p style={mutedSmallStyle}>
-                        {(vendor as VendorRecord & { contacts?: VendorContactCard[] }).contacts!.length} contact{(vendor as VendorRecord & { contacts?: VendorContactCard[] }).contacts!.length === 1 ? "" : "s"}
+                        {[vendor.phone, vendor.email].filter(Boolean).join(" · ")}
                       </p>
                     ) : null}
                   </div>
@@ -535,6 +484,7 @@ export default function AtlasVendorsWorkspace(props: any) {
               </button>
             );
           })}
+
           {!visibleVendors.length ? (
             <div style={noticeStyle}>No vendors match this search.</div>
           ) : null}
@@ -543,7 +493,7 @@ export default function AtlasVendorsWorkspace(props: any) {
       drawer={
         selectedVendor.id ? (
           <div
-            style={stackStyle}
+            style={{ ...stackStyle, gap: 10, minWidth: 0 }}
             tabIndex={0}
             onPaste={(event) => {
               const files = imageFilesFromPasteEvent(event);
@@ -558,321 +508,532 @@ export default function AtlasVendorsWorkspace(props: any) {
               );
             }}
           >
-            <div style={vendorDetailHeaderStyle}>
-              <div style={vendorLogoLargeStyle}>
-                {selectedVendorLogo?.dataUrl || selectedVendorLogo?.url ? (
-                  <img
-                    src={selectedVendorLogo.dataUrl || selectedVendorLogo.url}
-                    alt={`${selectedVendor.name} logo`}
-                    style={vendorLogoImageStyle}
-                  />
-                ) : (
-                  <span>{selectedVendor.name.slice(0, 2).toUpperCase()}</span>
-                )}
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <h3 style={editorHeaderStyle}>
-                  {selectedVendor.name.trim() || "Vendor"}
-                </h3>
-                <p style={mutedSmallStyle}>
-                  {selectedVendor.category || "Uncategorized"}
-                </p>
-                <p style={mutedSmallStyle}>
-                  Last recorded visit:{" "}
-                  {lastVendorVisit
-                    ? formatDate(
-                        String(
-                          lastVendorVisit.serviceHistory?.[0]?.completedAt ||
-                            lastVendorVisit.lastCompletedDate ||
-                            lastVendorVisit.date,
-                        ).slice(0, 10),
-                      )
-                    : "No visit recorded"}
-                </p>
-              </div>
-              <div style={buttonRowStyle}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    void pasteLinkedPhoto(
-                      "Vendor",
-                      selectedVendor.id,
-                      selectedVendor.name,
-                      "Vendor Logo",
-                    )
-                  }
-                  style={secondaryButtonStyle}
+            <section
+              style={{
+                border: `1px solid ${colors.line}`,
+                borderRadius: 14,
+                background: "#FFFFFF",
+                padding: isMobile ? 11 : 13,
+                minWidth: 0,
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "64px minmax(0,1fr)"
+                    : "76px minmax(0,1fr) auto",
+                  gap: 12,
+                  alignItems: "center",
+                  minWidth: 0,
+                }}
+              >
+                <div
+                  style={{
+                    width: isMobile ? 64 : 76,
+                    height: isMobile ? 64 : 76,
+                    borderRadius: 12,
+                    border: `1px solid ${colors.line}`,
+                    background: "#FFFFFF",
+                    display: "grid",
+                    placeItems: "center",
+                    overflow: "hidden",
+                    color: colors.navy,
+                    fontWeight: 900,
+                    flex: "0 0 auto",
+                  }}
                 >
-                  Paste Logo
-                </button>
-                <label style={compactUploadButtonStyle}>
-                  Choose Logo
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) => {
-                      void addLinkedPhotoFiles(
-                        "Vendor",
-                        selectedVendor.id,
-                        selectedVendor.name,
-                        event.currentTarget.files,
-                        "Vendor Logo",
-                      );
-                      event.currentTarget.value = "";
+                  {selectedLogoSrc ? (
+                    <img
+                      src={selectedLogoSrc}
+                      alt={`${selectedVendor.name} logo`}
+                      style={{
+                        ...vendorLogoImageStyle,
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                        padding: 6,
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  ) : (
+                    <span>{selectedVendor.name.slice(0, 2).toUpperCase()}</span>
+                  )}
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <h3
+                    style={{
+                      ...editorHeaderStyle,
+                      margin: 0,
+                      overflowWrap: "anywhere",
                     }}
-                    style={{ display: "none" }}
-                  />
-                </label>
-                <label style={compactUploadButtonStyle}>
-                  Take Logo Photo
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={(event) => {
-                      void addLinkedPhotoFiles(
-                        "Vendor",
-                        selectedVendor.id,
-                        selectedVendor.name,
-                        event.currentTarget.files,
-                        "Vendor Logo",
-                      );
-                      event.currentTarget.value = "";
-                    }}
-                    style={{ display: "none" }}
-                  />
-                </label>
-                {selectedVendorLogo ? (
-                  <button
-                    type="button"
-                    onClick={() => void deleteLinkedImage(selectedVendorLogo)}
-                    style={dangerButtonStyle}
                   >
-                    Delete Logo
-                  </button>
-                ) : null}
-              </div>
-            </div>
-
-            <section style={detailSectionStyle}>
-              <div style={eyebrowStyle}>Vendor Information</div>
-              <div style={formGridStyle}>
-                <Field
-                  label="Name"
-                  value={selectedVendor.name}
-                  onChange={(value) => updateVendor({ name: value })}
-                />
-                <Field
-                  label="Category"
-                  value={selectedVendor.category}
-                  onChange={(value) => updateVendor({ category: value })}
-                />
-                <Field
-                  label="Phone"
-                  value={selectedVendor.phone ?? ""}
-                  onChange={(value) => updateVendor({ phone: value })}
-                />
-                <Field
-                  label="Email"
-                  value={selectedVendor.email ?? ""}
-                  onChange={(value) => updateVendor({ email: value })}
-                />
-                <Field
-                  label="Website"
-                  value={selectedVendor.website ?? ""}
-                  onChange={(value) => updateVendor({ website: value })}
-                />
-                <Field
-                  label="Notes"
-                  value={selectedVendor.notes}
-                  onChange={(value) => updateVendor({ notes: value })}
-                  multiline
-                />
-              </div>
-
-              <div style={{ borderTop: `1px solid ${colors.line}`, marginTop: 14, paddingTop: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <div>
-                    <div style={eyebrowStyle}>Contacts</div>
-                    <strong style={{ color: colors.navy }}>
-                      {activeVendorContacts.length} active
-                    </strong>
-                  </div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {inactiveVendorContacts.length ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowInactiveContacts((current) => !current)}
-                        style={secondaryButtonStyle}
-                      >
-                        {showInactiveContacts
-                          ? "Hide inactive"
-                          : `Show inactive (${inactiveVendorContacts.length})`}
-                      </button>
-                    ) : null}
-                    <button type="button" onClick={addVendorContact} style={secondaryButtonStyle}>
-                      Add Contact
-                    </button>
+                    {selectedVendor.name.trim() || "Vendor"}
+                  </h3>
+                  {selectedVendor.category ? (
+                    <div style={{ ...mutedSmallStyle, marginTop: 3 }}>
+                      {selectedVendor.category}
+                    </div>
+                  ) : null}
+                  <div style={{ ...mutedSmallStyle, marginTop: 4 }}>
+                    {lastVendorVisit
+                      ? `Last visit ${formatDate(
+                          String(
+                            lastVendorVisit.serviceHistory?.[0]?.completedAt ||
+                              lastVendorVisit.lastCompletedDate ||
+                              lastVendorVisit.date ||
+                              "",
+                          ).slice(0, 10),
+                        )}`
+                      : "No visit recorded"}
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    flexWrap: "wrap",
+                    justifyContent: isMobile ? "flex-start" : "flex-end",
+                    gridColumn: isMobile ? "1 / -1" : undefined,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setVendorEditing((current) => !current)}
+                    style={secondaryButtonStyle}
+                  >
+                    {vendorEditing ? "Done" : "Edit"}
+                  </button>
+                  {isRecordDirty("vendor", selectedVendor.id) ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void saveDirtyRecord(
+                          "vendors",
+                          selectedVendor,
+                          "vendor",
+                          selectedVendor.id,
+                        )
+                      }
+                      style={goldButtonStyle}
+                    >
+                      Save Vendor
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              {vendorEditing ? (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    flexWrap: "wrap",
+                    marginTop: 10,
+                    paddingTop: 10,
+                    borderTop: `1px solid ${colors.line}`,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void pasteLinkedPhoto(
+                        "Vendor",
+                        selectedVendor.id,
+                        selectedVendor.name,
+                        "Vendor Logo",
+                      )
+                    }
+                    style={secondaryButtonStyle}
+                  >
+                    Paste Logo
+                  </button>
+                  <label style={compactUploadButtonStyle}>
+                    Choose Logo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => {
+                        void addLinkedPhotoFiles(
+                          "Vendor",
+                          selectedVendor.id,
+                          selectedVendor.name,
+                          event.currentTarget.files,
+                          "Vendor Logo",
+                        );
+                        event.currentTarget.value = "";
+                      }}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                  {selectedVendorLogo ? (
+                    <button
+                      type="button"
+                      onClick={() => void deleteLinkedImage(selectedVendorLogo)}
+                      style={dangerButtonStyle}
+                    >
+                      Remove Logo
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </section>
+
+            <section style={detailSectionStyle}>
+              <div style={detailSectionHeaderStyle}>
+                <div>
+                  <div style={eyebrowStyle}>Vendor Information</div>
+                  <strong>Company details</strong>
+                </div>
+                {!vendorEditing && (selectedVendor.phone || selectedVendor.email) ? (
+                  <div style={buttonRowStyle}>
+                    {selectedVendor.phone ? (
+                      <a
+                        href={`tel:${String(selectedVendor.phone).replace(/[^+\d]/g, "")}`}
+                        style={{ ...secondaryButtonStyle, textDecoration: "none" }}
+                      >
+                        Call
+                      </a>
+                    ) : null}
+                    {selectedVendor.email ? (
+                      <a
+                        href={`mailto:${selectedVendor.email}`}
+                        style={{ ...secondaryButtonStyle, textDecoration: "none" }}
+                      >
+                        Email
+                      </a>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
+              {vendorEditing ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(2,minmax(0,1fr))",
+                    gap: 9,
+                  }}
+                >
+                  <Field
+                    label="Name"
+                    value={selectedVendor.name}
+                    onChange={(value) => updateVendor({ name: value })}
+                  />
+                  <Field
+                    label="Category"
+                    value={selectedVendor.category}
+                    onChange={(value) => updateVendor({ category: value })}
+                  />
+                  <Field
+                    label="Main Phone"
+                    value={selectedVendor.phone ?? ""}
+                    onChange={(value) => updateVendor({ phone: value })}
+                  />
+                  <Field
+                    label="Main Email"
+                    value={selectedVendor.email ?? ""}
+                    onChange={(value) => updateVendor({ email: value })}
+                  />
+                  <Field
+                    label="Website"
+                    value={selectedVendor.website ?? ""}
+                    onChange={(value) => updateVendor({ website: value })}
+                  />
+                  <Field
+                    label="Notes"
+                    value={selectedVendor.notes ?? ""}
+                    onChange={(value) => updateVendor({ notes: value })}
+                    multiline
+                  />
+                </div>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: isMobile
+                        ? "1fr"
+                        : "repeat(2,minmax(0,1fr))",
+                      gap: 8,
+                    }}
+                  >
+                    {infoCard("Main Phone", selectedVendor.phone, selectedVendor.phone ? `tel:${String(selectedVendor.phone).replace(/[^+\d]/g, "")}` : undefined)}
+                    {infoCard("Main Email", selectedVendor.email, selectedVendor.email ? `mailto:${selectedVendor.email}` : undefined)}
+                    {infoCard(
+                      "Website",
+                      selectedVendor.website,
+                      selectedVendor.website
+                        ? /^https?:\/\//i.test(selectedVendor.website)
+                          ? selectedVendor.website
+                          : `https://${selectedVendor.website}`
+                        : undefined,
+                    )}
+                    {infoCard("Category", selectedVendor.category)}
+                  </div>
+                  {selectedVendor.notes ? (
+                    <div
+                      style={{
+                        borderTop: `1px solid ${colors.line}`,
+                        marginTop: 10,
+                        paddingTop: 10,
+                        whiteSpace: "pre-wrap",
+                        color: colors.text,
+                      }}
+                    >
+                      {selectedVendor.notes}
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </section>
+
+            <section style={detailSectionStyle}>
+              <div style={detailSectionHeaderStyle}>
+                <div>
+                  <div style={eyebrowStyle}>Departments & Contacts</div>
+                  <strong>
+                    {activeVendorContacts.length} active
+                  </strong>
+                </div>
+                <div style={buttonRowStyle}>
+                  {inactiveVendorContacts.length ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowInactiveContacts((current) => !current)}
+                      style={secondaryButtonStyle}
+                    >
+                      {showInactiveContacts
+                        ? "Hide inactive"
+                        : `Inactive (${inactiveVendorContacts.length})`}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={addVendorDepartment}
+                    style={goldButtonStyle}
+                  >
+                    + Add Department
+                  </button>
+                </div>
+              </div>
+
+              {visibleVendorContacts.length ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(2,minmax(0,1fr))",
+                    gap: 9,
+                  }}
+                >
                   {visibleVendorContacts.map((contact) => {
                     const cell = String(contact.cellPhone || contact.phone || "").trim();
                     const officePhone = String(contact.officePhone || "").trim();
                     const email = String(contact.email || "").trim();
                     const role = String(contact.role || "").trim();
                     const notes = String(contact.notes || "").trim();
+                    const name = String(contact.name || "").trim();
                     const isEditing = editingVendorContactId === contact.id;
-                    const hasContactActions = Boolean(cell || officePhone || email);
+
                     return (
-                      <section
+                      <article
                         key={contact.id}
                         style={{
-                          border: `1px solid ${contact.primary ? colors.gold : colors.line}`,
+                          border: `1px solid ${
+                            contact.primary ? colors.gold : colors.line
+                          }`,
                           borderRadius: 12,
-                          background: contact.primary ? "#FFF9EC" : "#FFFFFF",
-                          padding: isMobile ? 10 : 12,
+                          background: contact.inactive
+                            ? "#F8FAFC"
+                            : contact.primary
+                              ? "#FFFDF6"
+                              : "#FFFFFF",
+                          padding: 10,
                           minWidth: 0,
-                          opacity: contact.inactive ? 0.68 : 1,
+                          opacity: contact.inactive ? 0.7 : 1,
                         }}
                       >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                            gap: 8,
+                          }}
+                        >
                           <div style={{ minWidth: 0 }}>
-                            <strong style={{ display: "block", color: colors.navy, overflowWrap: "anywhere" }}>
-                              {contact.name.trim() || (isEditing ? "New Contact" : contact.contactType)}
-                            </strong>
-                            {[contact.contactType, role].filter(Boolean).length ? (
-                              <span style={mutedSmallStyle}>
-                                {[contact.contactType, role].filter(Boolean).join(" · ")}
-                              </span>
-                            ) : null}
-                          </div>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                            {contact.primary ? <span style={badgeStyle("Preferred")}>Primary</span> : null}
-                            {contact.inactive ? <span style={badgeStyle("Monitor")}>Inactive</span> : null}
-                            {!isEditing ? (
-                              <button
-                                type="button"
-                                onClick={() => setEditingVendorContactId(contact.id)}
-                                style={secondaryButtonStyle}
-                              >
-                                Edit
-                              </button>
-                            ) : null}
-                          </div>
-                        </div>
-
-                        {!isEditing ? (
-                          <>
-                            {hasContactActions && !contact.inactive ? (
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
-                                {cell ? <a href={`tel:${cell.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Call Cell</a> : null}
-                                {cell ? <a href={`sms:${cell.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Text</a> : null}
-                                {officePhone ? <a href={`tel:${officePhone.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>Call Office</a> : null}
-                                {email ? <a href={`mailto:${email}`} style={secondaryButtonStyle}>Email</a> : null}
-                              </div>
-                            ) : null}
-
-                            {(officePhone || cell || email || notes) ? (
-                              <div
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <strong
                                 style={{
-                                  display: "grid",
-                                  gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))",
-                                  gap: 7,
-                                  marginTop: 10,
+                                  color: colors.navy,
+                                  fontSize: 13,
+                                  overflowWrap: "anywhere",
                                 }}
                               >
-                                {officePhone ? (
-                                  <div style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: "7px 8px", background: "#FFFFFF" }}>
-                                    <span style={{ ...mutedSmallStyle, display: "block" }}>Office</span>
-                                    <strong style={{ color: colors.navy, overflowWrap: "anywhere" }}>{officePhone}</strong>
-                                  </div>
-                                ) : null}
-                                {cell ? (
-                                  <div style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: "7px 8px", background: "#FFFFFF" }}>
-                                    <span style={{ ...mutedSmallStyle, display: "block" }}>Cell</span>
-                                    <strong style={{ color: colors.navy, overflowWrap: "anywhere" }}>{cell}</strong>
-                                  </div>
-                                ) : null}
-                                {email ? (
-                                  <div style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: "7px 8px", background: "#FFFFFF" }}>
-                                    <span style={{ ...mutedSmallStyle, display: "block" }}>Email</span>
-                                    <strong style={{ color: colors.navy, overflowWrap: "anywhere" }}>{email}</strong>
-                                  </div>
-                                ) : null}
-                                {notes ? (
-                                  <div
-                                    style={{
-                                      border: `1px solid ${colors.line}`,
-                                      borderRadius: 9,
-                                      padding: "7px 8px",
-                                      background: "#FFFFFF",
-                                      gridColumn: isMobile ? "auto" : "1 / -1",
-                                    }}
-                                  >
-                                    <span style={{ ...mutedSmallStyle, display: "block" }}>Notes</span>
-                                    <div style={{ color: colors.text, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{notes}</div>
-                                  </div>
-                                ) : null}
+                                {contact.contactType}
+                              </strong>
+                              {contact.primary ? (
+                                <span style={badgeStyle("Preferred")}>Primary</span>
+                              ) : null}
+                              {contact.inactive ? (
+                                <span style={badgeStyle("Monitor")}>Inactive</span>
+                              ) : null}
+                            </div>
+                            {(name || role) ? (
+                              <div style={{ ...mutedSmallStyle, marginTop: 3 }}>
+                                {[name, role].filter(Boolean).join(" · ")}
                               </div>
                             ) : null}
+                          </div>
 
-                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-                              <button
-                                type="button"
-                                onClick={() => updateVendorContact(contact.id, { inactive: !contact.inactive })}
-                                style={secondaryButtonStyle}
-                              >
-                                {contact.inactive ? "Restore" : "Archive"}
-                              </button>
-                              <button type="button" onClick={() => deleteVendorContact(contact.id)} style={dangerButtonStyle}>
-                                Delete Contact
-                              </button>
-                            </div>
-                          </>
-                        ) : (
+                          {!isEditing ? (
+                            <button
+                              type="button"
+                              onClick={() => setEditingVendorContactId(contact.id)}
+                              style={{
+                                ...secondaryButtonStyle,
+                                minHeight: 30,
+                                padding: "4px 8px",
+                              }}
+                            >
+                              Edit
+                            </button>
+                          ) : null}
+                        </div>
+
+                        {isEditing ? (
                           <>
-                            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}>
-                              <Field label="Name" value={contact.name} onChange={(name) => updateVendorContact(contact.id, { name })} />
-                              <Field label="Role / Title" value={contact.role} onChange={(role) => updateVendorContact(contact.id, { role })} />
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: isMobile
+                                  ? "1fr"
+                                  : "repeat(2,minmax(0,1fr))",
+                                gap: 8,
+                                marginTop: 10,
+                              }}
+                            >
                               <label style={{ display: "grid", gap: 5 }}>
-                                <span style={mutedSmallStyle}>Contact Type</span>
+                                <span style={mutedSmallStyle}>Department</span>
                                 <select
                                   value={contact.contactType}
-                                  onChange={(event) => updateVendorContact(contact.id, { contactType: event.currentTarget.value as VendorContactCard["contactType"] })}
-                                  style={{ width: "100%", minWidth: 0, minHeight: 40, border: `1px solid ${colors.line}`, borderRadius: 9, padding: "7px 9px", background: "#FFFFFF", color: colors.text }}
+                                  onChange={(event) =>
+                                    updateVendorContact(contact.id, {
+                                      contactType: event.currentTarget
+                                        .value as VendorContactCard["contactType"],
+                                    })
+                                  }
+                                  style={{
+                                    width: "100%",
+                                    minWidth: 0,
+                                    minHeight: 40,
+                                    border: `1px solid ${colors.line}`,
+                                    borderRadius: 9,
+                                    padding: "7px 9px",
+                                    background: "#FFFFFF",
+                                    color: colors.text,
+                                  }}
                                 >
-                                  {vendorContactTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                                  {vendorDepartmentTypes.map((type) => (
+                                    <option key={type} value={type}>
+                                      {type}
+                                    </option>
+                                  ))}
                                 </select>
                               </label>
-                              <label style={{ display: "grid", gap: 5 }}>
-                                <span style={mutedSmallStyle}>Preferred Contact</span>
-                                <select
-                                  value={contact.preferredMethod}
-                                  onChange={(event) => updateVendorContact(contact.id, { preferredMethod: event.currentTarget.value as VendorContactCard["preferredMethod"] })}
-                                  style={{ width: "100%", minWidth: 0, minHeight: 40, border: `1px solid ${colors.line}`, borderRadius: 9, padding: "7px 9px", background: "#FFFFFF", color: colors.text }}
-                                >
-                                  <option value="Cell">Cell</option>
-                                  <option value="Office">Office</option>
-                                  <option value="Email">Email</option>
-                                </select>
-                              </label>
-                              <Field label="Office Phone" value={contact.officePhone} onChange={(officePhone) => updateVendorContact(contact.id, { officePhone })} />
-                              <Field label="Cell Phone" value={contact.cellPhone || contact.phone} onChange={(cellPhone) => updateVendorContact(contact.id, { cellPhone, phone: cellPhone })} />
-                              <Field label="Email" value={contact.email} onChange={(email) => updateVendorContact(contact.id, { email })} />
-                              <Field label="Notes" value={contact.notes} onChange={(notes) => updateVendorContact(contact.id, { notes })} multiline />
+                              <Field
+                                label="Contact Name"
+                                value={contact.name}
+                                onChange={(value) =>
+                                  updateVendorContact(contact.id, { name: value })
+                                }
+                              />
+                              <Field
+                                label="Role / Title"
+                                value={contact.role}
+                                onChange={(value) =>
+                                  updateVendorContact(contact.id, { role: value })
+                                }
+                              />
+                              <Field
+                                label="Office Phone"
+                                value={contact.officePhone}
+                                onChange={(value) =>
+                                  updateVendorContact(contact.id, {
+                                    officePhone: value,
+                                  })
+                                }
+                              />
+                              <Field
+                                label="Cell Phone"
+                                value={contact.cellPhone || contact.phone}
+                                onChange={(value) =>
+                                  updateVendorContact(contact.id, {
+                                    cellPhone: value,
+                                    phone: value,
+                                  })
+                                }
+                              />
+                              <Field
+                                label="Email"
+                                value={contact.email}
+                                onChange={(value) =>
+                                  updateVendorContact(contact.id, { email: value })
+                                }
+                              />
+                              <Field
+                                label="Notes"
+                                value={contact.notes}
+                                onChange={(value) =>
+                                  updateVendorContact(contact.id, { notes: value })
+                                }
+                                multiline
+                              />
                             </div>
 
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                              <label style={{ display: "inline-flex", alignItems: "center", gap: 7, color: colors.navy, fontWeight: 800, cursor: contact.inactive ? "default" : "pointer", opacity: contact.inactive ? 0.55 : 1 }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: 8,
+                                flexWrap: "wrap",
+                                marginTop: 9,
+                              }}
+                            >
+                              <label
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  color: colors.navy,
+                                  fontWeight: 800,
+                                }}
+                              >
                                 <input
                                   type="checkbox"
                                   checked={contact.primary}
                                   disabled={Boolean(contact.inactive)}
-                                  onChange={(event) => updateVendorContact(contact.id, { primary: event.currentTarget.checked })}
+                                  onChange={(event) =>
+                                    updateVendorContact(contact.id, {
+                                      primary: event.currentTarget.checked,
+                                    })
+                                  }
                                 />
-                                Primary contact
+                                Primary
                               </label>
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                 <button
@@ -884,63 +1045,92 @@ export default function AtlasVendorsWorkspace(props: any) {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => updateVendorContact(contact.id, { inactive: !contact.inactive })}
+                                  onClick={() =>
+                                    updateVendorContact(contact.id, {
+                                      inactive: !contact.inactive,
+                                    })
+                                  }
                                   style={secondaryButtonStyle}
                                 >
                                   {contact.inactive ? "Restore" : "Archive"}
                                 </button>
-                                <button type="button" onClick={() => deleteVendorContact(contact.id)} style={dangerButtonStyle}>
-                                  Delete Contact
+                                <button
+                                  type="button"
+                                  onClick={() => deleteVendorContact(contact.id)}
+                                  style={dangerButtonStyle}
+                                >
+                                  Delete
                                 </button>
                               </div>
                             </div>
                           </>
+                        ) : (
+                          <>
+                            {(officePhone || cell || email) ? (
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: isMobile
+                                    ? "1fr"
+                                    : "repeat(2,minmax(0,1fr))",
+                                  gap: 6,
+                                  marginTop: 9,
+                                }}
+                              >
+                                {officePhone
+                                  ? infoCard(
+                                      "Office",
+                                      officePhone,
+                                      `tel:${officePhone.replace(/[^+\d]/g, "")}`,
+                                    )
+                                  : null}
+                                {cell
+                                  ? infoCard(
+                                      "Cell",
+                                      cell,
+                                      `tel:${cell.replace(/[^+\d]/g, "")}`,
+                                    )
+                                  : null}
+                                {email
+                                  ? infoCard("Email", email, `mailto:${email}`)
+                                  : null}
+                              </div>
+                            ) : null}
+                            {notes ? (
+                              <div
+                                style={{
+                                  ...mutedSmallStyle,
+                                  borderTop: `1px solid ${colors.line}`,
+                                  marginTop: 8,
+                                  paddingTop: 8,
+                                  whiteSpace: "pre-wrap",
+                                }}
+                              >
+                                {notes}
+                              </div>
+                            ) : null}
+                          </>
                         )}
-                      </section>
+                      </article>
                     );
                   })}
-                  {!activeVendorContacts.length && !showInactiveContacts ? (
-                    <div style={noticeStyle}>
-                      {inactiveVendorContacts.length
-                        ? "No active contacts."
-                        : "No individual contacts saved."}
-                    </div>
-                  ) : null}
                 </div>
-              </div>
-
-              <div style={buttonRowStyle}>
-                {isRecordDirty("vendor", selectedVendor.id) ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void saveDirtyRecord(
-                        "vendors",
-                        selectedVendor,
-                        "vendor",
-                        selectedVendor.id,
-                      )
-                    }
-                    style={goldButtonStyle}
-                  >
-                    Save Vendor
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => void deleteVendorRecord(selectedVendor)}
-                  style={dangerButtonStyle}
-                >
-                  Delete Vendor
-                </button>
-              </div>
+              ) : (
+                <div style={noticeStyle}>
+                  No departments or contacts saved. Add only the departments this
+                  vendor actually uses.
+                </div>
+              )}
             </section>
 
             <section
-              style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#F8FAFC", padding: 10 }}
-              aria-label="Vendor relationships"
+              style={{
+                border: `1px solid ${colors.line}`,
+                borderRadius: 12,
+                background: "#F8FAFC",
+                padding: 10,
+              }}
             >
-              <div style={{ ...eyebrowStyle, marginBottom: 7 }}>Linked Records</div>
               <div
                 style={{
                   display: "grid",
@@ -952,157 +1142,23 @@ export default function AtlasVendorsWorkspace(props: any) {
               >
                 {[
                   ["Assets", relatedVendorAssets.length],
-                  ["Work", relatedVendorWorkOrders.length],
+                  ["Open Work", relatedVendorWorkOrders.filter((record) => record.status !== "Completed").length],
                   ["Tasks", relatedVendorTasks.length],
-                  ["Photos", selectedVendorPhotos.length],
-                ].map(([label, count]) => (
-                  <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: "7px 8px" }}>
-                    <span style={{ ...mutedSmallStyle, display: "block" }}>{label}</span>
-                    <strong style={{ color: colors.navy, fontSize: 15 }}>{count}</strong>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {relatedVendorWorkOrders.length ? (
-              <section
-                style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10 }}
-                aria-label="Vendor recent activity"
-              >
-                <div style={{ ...eyebrowStyle, marginBottom: 7 }}>Recent Activity</div>
-                <div style={{ display: "grid", gap: 6 }}>
-                  {relatedVendorWorkOrders.slice(0, 3).map((entry: any, index: number) => (
-                    <div key={String(entry.id || index)} style={{ borderLeft: `3px solid ${colors.gold}`, paddingLeft: 8 }}>
-                      <strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>
-                        {entry.title || "Vendor work"}
-                      </strong>
-                      <span style={mutedSmallStyle}>
-                        {entry.lastCompletedDate || entry.date
-                          ? formatDate(entry.lastCompletedDate || entry.date)
-                          : "Date not recorded"}
-                        {entry.status ? ` · ${entry.status}` : ""}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-
-            {isMobile ? (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(4,minmax(0,1fr))",
-                  gap: 6,
-                }}
-              >
-                {selectedVendor.phone ? (
-                  <a
-                    href={`tel:${selectedVendor.phone}`}
-                    style={{
-                      ...secondaryButtonStyle,
-                      minHeight: 42,
-                      padding: "7px 4px",
-                      textDecoration: "none",
-                      justifyContent: "center",
-                    }}
-                  >
-                    Call
-                  </a>
-                ) : (
-                  <button type="button" disabled style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px", opacity: .45 }}>
-                    Call
-                  </button>
-                )}
-                {selectedVendor.email ? (
-                  <a
-                    href={`mailto:${selectedVendor.email}`}
-                    style={{
-                      ...secondaryButtonStyle,
-                      minHeight: 42,
-                      padding: "7px 4px",
-                      textDecoration: "none",
-                      justifyContent: "center",
-                    }}
-                  >
-                    Email
-                  </a>
-                ) : (
-                  <button type="button" disabled style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px", opacity: .45 }}>
-                    Email
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const open = relatedVendorWorkOrders.find((record) => record.status !== "Completed");
-                    if (open) setSelectedServiceId(open.id);
-                    setScreen("history");
-                  }}
-                  style={{ ...secondaryButtonStyle, minHeight: 42, padding: "7px 4px" }}
-                >
-                  Work
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMobileFieldDetailsOpen((current) => !current)}
-                  aria-expanded={mobileFieldDetailsOpen}
-                  style={{
-                    ...secondaryButtonStyle,
-                    minHeight: 42,
-                    padding: "7px 4px",
-                    borderColor: mobileFieldDetailsOpen ? colors.gold : colors.line,
-                    background: mobileFieldDetailsOpen ? "#FFF8E6" : "#FFFFFF",
-                  }}
-                >
-                  {mobileFieldDetailsOpen ? "Less" : "More"}
-                </button>
-              </div>
-            ) : null}
-
-            <section style={detailSectionStyle}>
-              <div style={detailSectionHeaderStyle}>
-                <div>
-                  <div style={eyebrowStyle}>Vendor Snapshot</div>
-                  <strong>Service relationship</strong>
-                </div>
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "repeat(2, minmax(0, 1fr))"
-                    : "repeat(5, minmax(0, 1fr))",
-                  gap: 8,
-                }}
-              >
-                {[
-                  ["Last visit", vendorLastVisitDate ? formatDate(vendorLastVisitDate) : "None"],
-                  ["Completed visits", vendorCompletedVisitCount],
-                  ["Open work", vendorOpenWorkCount],
-                  ["Linked assets", relatedVendorAssets.length],
-                  ["Open tasks", vendorOpenTaskCount],
+                  ["Visits", vendorCompletedVisitCount],
                 ].map(([label, value]) => (
                   <div
                     key={String(label)}
                     style={{
                       border: `1px solid ${colors.line}`,
                       borderRadius: 9,
-                      padding: "8px 9px",
                       background: "#FFFFFF",
-                      minWidth: 0,
+                      padding: "7px 8px",
                     }}
                   >
-                    <small style={mutedSmallStyle}>{label}</small>
-                    <strong
-                      style={{
-                        display: "block",
-                        marginTop: 3,
-                        color: colors.navy,
-                        fontSize: 15,
-                        overflowWrap: "anywhere",
-                      }}
-                    >
+                    <span style={{ ...mutedSmallStyle, display: "block" }}>
+                      {label}
+                    </span>
+                    <strong style={{ color: colors.navy, fontSize: 15 }}>
                       {value}
                     </strong>
                   </div>
@@ -1110,48 +1166,96 @@ export default function AtlasVendorsWorkspace(props: any) {
               </div>
             </section>
 
-            {(!isMobile || mobileFieldDetailsOpen) ? (
-            <>
-            <section style={detailSectionStyle}>
-              <div style={detailSectionHeaderStyle}>
-                <div>
-                  <div style={eyebrowStyle}>Photos</div>
-                  <strong>{selectedVendorPhotos.length} attached</strong>
-                </div>
-                <div style={buttonRowStyle}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void pasteLinkedPhoto(
-                        "Vendor",
-                        selectedVendor.id,
-                        selectedVendor.name,
-                      )
-                    }
-                    style={secondaryButtonStyle}
-                  >
-                    Paste Image
-                  </button>
-                  <label style={compactUploadButtonStyle}>
-                    Take Photo
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(event) => {
-                        void addLinkedPhotoFiles(
+            {selectedVendorPhotos.length ? (
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Photos</div>
+                    <strong>{selectedVendorPhotos.length} attached</strong>
+                  </div>
+                  <div style={buttonRowStyle}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void pasteLinkedPhoto(
                           "Vendor",
                           selectedVendor.id,
                           selectedVendor.name,
-                          event.currentTarget.files,
-                        );
-                        event.currentTarget.value = "";
+                        )
+                      }
+                      style={secondaryButtonStyle}
+                    >
+                      Paste Image
+                    </button>
+                    <label style={compactUploadButtonStyle}>
+                      Add Photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(event) => {
+                          void addLinkedPhotoFiles(
+                            "Vendor",
+                            selectedVendor.id,
+                            selectedVendor.name,
+                            event.currentTarget.files,
+                          );
+                          event.currentTarget.value = "";
+                        }}
+                        style={{ display: "none" }}
+                      />
+                    </label>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gap: 5 }}>
+                  {selectedVendorPhotos.map((file) => (
+                    <div
+                      key={file.id}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(0,1fr) auto",
+                        gap: 8,
+                        alignItems: "center",
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 9,
+                        padding: "6px 8px",
                       }}
-                      style={{ display: "none" }}
-                    />
-                  </label>
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openUploadedFile(file)}
+                        style={{
+                          border: 0,
+                          background: "transparent",
+                          padding: 0,
+                          textAlign: "left",
+                          color: colors.navy,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {file.name}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void deleteLinkedImage(file)}
+                        style={photoDeleteButtonStyle}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : vendorEditing ? (
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Photos</div>
+                    <strong>No photos attached</strong>
+                  </div>
                   <label style={compactUploadButtonStyle}>
-                    Choose from Library
+                    Add Photo
                     <input
                       type="file"
                       accept="image/*"
@@ -1169,214 +1273,70 @@ export default function AtlasVendorsWorkspace(props: any) {
                     />
                   </label>
                 </div>
-              </div>
+              </section>
+            ) : null}
 
-              {selectedVendorPhotos.length ? (
-                <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card }}>
-                  <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Photos ({selectedVendorPhotos.length})</summary>
-                  <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
-                  {selectedVendorPhotos.map((file) => (
-                    <div key={file.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 8, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
-                      <button
-                        type="button"
-                        onClick={() => openUploadedFile(file)}
-                        style={{ border: 0, padding: 0, background: "transparent", color: colors.navy, textAlign: "left", fontWeight: 800, cursor: "pointer" }}
-                      >
-                        {file.name}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void deleteLinkedImage(file)}
-                        style={photoDeleteButtonStyle}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ))}
+            {relatedVendorWorkOrders.length ? (
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Service & Visit History</div>
+                    <strong>
+                      {vendorCompletedVisitCount} completed visit
+                      {vendorCompletedVisitCount === 1 ? "" : "s"}
+                    </strong>
                   </div>
-                </details>
-              ) : null}
-            </section>
-
-            <section style={detailSectionStyle}>
-              <div style={detailSectionHeaderStyle}>
-                <div>
-                  <div style={eyebrowStyle}>Service & Visit History</div>
-                  <strong>{vendorCompletedVisitCount} completed visit{vendorCompletedVisitCount === 1 ? "" : "s"}</strong>
                 </div>
-              </div>
-              {relatedVendorWorkOrders.length ? (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {relatedVendorWorkOrders.map((record) => {
-                    const completedEntries = Array.isArray(record.serviceHistory)
-                      ? record.serviceHistory
-                      : [];
-                    const latestCompletion = completedEntries[0];
-                    const checklist = Array.isArray(latestCompletion?.checklist)
-                      ? latestCompletion.checklist
-                      : Array.isArray(record.checklist)
-                        ? record.checklist
-                        : [];
-                    const passCount = checklist.filter(
-                      (item: any) =>
-                        item.completed === true ||
-                        /^\[PASS\]/i.test(String(item.text || "")),
-                    ).length;
-                    const flagCount = checklist.filter((item: any) =>
-                      /^\[FLAG\]/i.test(String(item.text || "")),
-                    ).length;
-                    const failCount = checklist.filter((item: any) =>
-                      /^\[FAIL\]/i.test(String(item.text || "")),
-                    ).length;
-                    const photos = Array.isArray(latestCompletion?.photos)
-                      ? latestCompletion.photos
-                      : Array.isArray(record.photos)
-                        ? record.photos
-                        : [];
-                    const documents = Array.isArray(latestCompletion?.documents)
-                      ? latestCompletion.documents
-                      : Array.isArray(record.documents)
-                        ? record.documents
-                        : [];
+                <div style={{ display: "grid", gap: 7 }}>
+                  {relatedVendorWorkOrders.slice(0, 8).map((record) => {
                     const serviceDate = String(
-                      latestCompletion?.completedAt ||
+                      record.serviceHistory?.[0]?.completedAt ||
                         record.lastCompletedDate ||
                         record.date ||
                         "",
                     ).slice(0, 10);
-                    const serviceNotes = String(
-                      latestCompletion?.notes || record.notes || "",
-                    ).trim();
 
                     return (
-                      <div
+                      <button
                         key={record.id}
+                        type="button"
+                        className="atlas-gold-hover-card"
+                        onClick={() => {
+                          setSelectedServiceId(record.id);
+                          setScreen("history");
+                        }}
                         style={{
+                          ...compactLinkedRowStyle,
+                          width: "100%",
                           border: `1px solid ${colors.line}`,
                           borderRadius: 10,
-                          padding: 9,
-                          background: "#FFFFFF",
+                          padding: "8px 9px",
                         }}
                       >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedServiceId(record.id);
-                            setScreen("history");
-                          }}
-                          style={{
-                            ...compactLinkedRowStyle,
-                            width: "100%",
-                            border: 0,
-                            padding: 0,
-                            background: "transparent",
-                          }}
-                        >
-                          <span>
-                            <strong>{record.title}</strong>
-                            <small style={mutedSmallStyle}>
-                              {serviceDate ? formatDate(serviceDate) : "No service date"}
-                              {record.assetId
-                                ? ` · ${assetName(record.assetId)}`
-                                : ""}
-                            </small>
-                          </span>
-                          <span style={badgeStyle(record.status)}>
-                            {record.status}
-                          </span>
-                        </button>
-
-                        {checklist.length || photos.length || documents.length || serviceNotes ? (
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: 6,
-                              marginTop: 7,
-                            }}
-                          >
-                            {checklist.length ? (
-                              <span style={mutedSmallStyle}>
-                                {passCount}/{checklist.length} passed
-                                {flagCount ? ` · ${flagCount} flagged` : ""}
-                                {failCount ? ` · ${failCount} failed` : ""}
-                              </span>
-                            ) : null}
-                            {photos.length ? (
-                              <span style={mutedSmallStyle}>
-                                {photos.length} photo{photos.length === 1 ? "" : "s"}
-                              </span>
-                            ) : null}
-                            {documents.length ? (
-                              <span style={mutedSmallStyle}>
-                                {documents.length} document{documents.length === 1 ? "" : "s"}
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : null}
-
-                        {serviceNotes ? (
-                          <p
-                            style={{
-                              ...mutedSmallStyle,
-                              marginTop: 6,
-                              marginBottom: 0,
-                              whiteSpace: "pre-wrap",
-                            }}
-                          >
-                            {serviceNotes}
-                          </p>
-                        ) : null}
-
-                        {completedEntries.length > 1 ? (
-                          <details style={{ marginTop: 7 }}>
-                            <summary
-                              style={{
-                                cursor: "pointer",
-                                color: colors.navy,
-                                fontSize: 12,
-                                fontWeight: 800,
-                              }}
-                            >
-                              Previous visits ({completedEntries.length - 1})
-                            </summary>
-                            <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
-                              {completedEntries.slice(1).map((entry: any) => (
-                                <div
-                                  key={entry.id}
-                                  style={{
-                                    ...mutedSmallStyle,
-                                    padding: "5px 7px",
-                                    borderRadius: 7,
-                                    background: "#F8FAFC",
-                                  }}
-                                >
-                                  {formatDate(String(entry.completedAt || "").slice(0, 10))}
-                                  {entry.notes ? ` · ${String(entry.notes)}` : ""}
-                                </div>
-                              ))}
-                            </div>
-                          </details>
-                        ) : null}
-                      </div>
+                        <span>
+                          <strong>{record.title}</strong>
+                          <small style={mutedSmallStyle}>
+                            {serviceDate ? formatDate(serviceDate) : "No service date"}
+                            {record.assetId ? ` · ${assetName(record.assetId)}` : ""}
+                          </small>
+                        </span>
+                        <span style={badgeStyle(record.status)}>{record.status}</span>
+                      </button>
                     );
                   })}
                 </div>
-              ) : (
-                <p style={mutedSmallStyle}>
-                  No visits or work orders are linked to this vendor.
-                </p>
-              )}
-            </section>
+              </section>
+            ) : null}
 
-            <section style={detailSectionStyle}>
-              <div style={eyebrowStyle}>Related Assets</div>
-              {relatedVendorAssets.length ? (
+            {relatedVendorAssets.length ? (
+              <section style={detailSectionStyle}>
+                <div style={eyebrowStyle}>Related Assets</div>
                 <div style={compactLinkedListStyle}>
                   {relatedVendorAssets.map((asset) => (
                     <button
                       key={asset.id}
                       type="button"
+                      className="atlas-gold-hover-card"
                       onClick={() => {
                         setSelectedAssetId(asset.id);
                         setScreen("assets");
@@ -1385,34 +1345,80 @@ export default function AtlasVendorsWorkspace(props: any) {
                     >
                       <span>
                         <strong>{asset.name}</strong>
+                        <small style={mutedSmallStyle}>{asset.category}</small>
+                      </span>
+                      <span style={badgeStyle(asset.status)}>{asset.status}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {relatedVendorTasks.length ? (
+              <section style={detailSectionStyle}>
+                <div style={detailSectionHeaderStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>Related Tasks</div>
+                    <strong>{relatedVendorTasks.length} linked</strong>
+                  </div>
+                </div>
+                <div style={compactLinkedListStyle}>
+                  {relatedVendorTasks.map((task) => (
+                    <button
+                      key={`vendor-task-${task.id}`}
+                      type="button"
+                      className="atlas-gold-hover-card"
+                      onClick={() => {
+                        setSelectedTaskId(task.id);
+                        setTasksView("tasks");
+                        setScreen("planner");
+                      }}
+                      style={{ ...compactLinkedRowStyle, width: "100%" }}
+                    >
+                      <span>
+                        <strong>{task.title}</strong>
                         <small style={mutedSmallStyle}>
-                          {asset.category}
+                          {taskDetails(task.id).dueDate
+                            ? formatDate(taskDetails(task.id).dueDate)
+                            : "No due date"}
                         </small>
                       </span>
-                      <span style={badgeStyle(asset.status)}>
-                        {asset.status}
+                      <span style={badgeStyle(taskDetails(task.id).status)}>
+                        {taskDetails(task.id).status}
                       </span>
                     </button>
                   ))}
                 </div>
-              ) : (
-                <p style={mutedSmallStyle}>
-                  No assets currently list this vendor.
-                </p>
-              )}
-            </section>
+              </section>
+            ) : null}
 
-            <section style={detailSectionStyle}><div style={detailSectionHeaderStyle}><div><div style={eyebrowStyle}>Related Tasks</div><strong>{relatedVendorTasks.length} linked</strong></div></div>{relatedVendorTasks.length ? <div style={compactLinkedListStyle}>{relatedVendorTasks.map((task) => <button key={`vendor-task-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>{taskDetails(task.id).dueDate ? formatDate(taskDetails(task.id).dueDate) : "No due date"}</small></span><span style={badgeStyle(taskDetails(task.id).status)}>{taskDetails(task.id).status}</span></button>)}</div> : <p style={mutedSmallStyle}>No Tasks are linked to this vendor.</p>}</section>
             {renderLinkedDocuments("Vendor", selectedVendor.id)}
-            </>
+
+            {vendorEditing ? (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 7,
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => void deleteVendorRecord(selectedVendor)}
+                  style={dangerButtonStyle}
+                >
+                  Delete Vendor
+                </button>
+              </div>
             ) : null}
           </div>
         ) : (
           <div style={noticeStyle}>
             <strong>Select a vendor.</strong>
             <p style={mutedSmallStyle}>
-              Open a vendor to see contact information, logo, photos, related
-              assets, and documents.
+              Open a vendor to see company information, departments, contacts,
+              related assets, and documents.
             </p>
           </div>
         )
