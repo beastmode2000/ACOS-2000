@@ -6,46 +6,100 @@ function normalized(value: unknown) {
   return String(value || "").trim().toLowerCase();
 }
 
-function looksLikeSidebar(element: HTMLElement) {
-  const text = normalized(element.textContent);
-  if (!text.includes("knowledge") || !text.includes("more tools")) return false;
-
+function isVisible(element: HTMLElement) {
   const rect = element.getBoundingClientRect();
-  if (rect.width < 180 || rect.width > 420 || rect.height < 260) return false;
+  const style = window.getComputedStyle(element);
 
-  return true;
+  return (
+    rect.width > 0 &&
+    rect.height > 0 &&
+    style.display !== "none" &&
+    style.visibility !== "hidden"
+  );
 }
 
-function markSidebarScroller() {
-  const candidates = Array.from(
-    document.querySelectorAll<HTMLElement>("aside, nav, div"),
-  ).filter((element) => {
-    if (!looksLikeSidebar(element)) return false;
+function isLeftSidebarArea(element: HTMLElement) {
+  if (!isVisible(element)) return false;
 
-    const style = window.getComputedStyle(element);
-    const scrollable = /auto|scroll/.test(style.overflowY) || element.scrollHeight > element.clientHeight + 8;
+  const rect = element.getBoundingClientRect();
+  if (rect.left > 40) return false;
+  if (rect.width < 180 || rect.width > 440) return false;
+  if (rect.height < 240) return false;
 
-    return scrollable;
-  });
+  const text = normalized(element.textContent);
+  const hasAtlasNavigationText = [
+    "dashboard",
+    "work",
+    "calendar",
+    "assets",
+    "locations",
+    "knowledge",
+    "manuals",
+    "more tools",
+    "garage",
+    "pool & spa",
+    "dock & waterfront",
+  ].some((label) => text.includes(label));
 
-  if (!candidates.length) return;
+  if (hasAtlasNavigationText) return true;
 
-  candidates.sort((a, b) => {
-    const aArea = a.getBoundingClientRect().width * a.getBoundingClientRect().height;
-    const bArea = b.getBoundingClientRect().width * b.getBoundingClientRect().height;
-    return aArea - bArea;
-  });
+  const style = window.getComputedStyle(element);
+  const background = style.backgroundColor.replace(/\s+/g, "");
 
-  candidates[0]?.classList.add("atlas-sidebar-scrollbar-hidden");
+  return (
+    background === "rgb(8,28,51)" ||
+    background === "rgb(9,31,53)" ||
+    background === "rgb(11,30,51)" ||
+    background === "rgb(11,44,67)"
+  );
+}
+
+function isScrollable(element: HTMLElement) {
+  const style = window.getComputedStyle(element);
+
+  return (
+    /auto|scroll/.test(style.overflowY) ||
+    element.scrollHeight > element.clientHeight + 4
+  );
+}
+
+function markSidebarScrollers() {
+  const elements = Array.from(
+    document.querySelectorAll<HTMLElement>("aside, nav, div, section"),
+  );
+
+  const sidebarRoots = elements.filter(isLeftSidebarArea);
+
+  for (const root of sidebarRoots) {
+    root.classList.add("atlas-sidebar-shell");
+
+    if (isScrollable(root)) {
+      root.classList.add("atlas-sidebar-scrollbar-hidden");
+    }
+
+    for (const child of Array.from(
+      root.querySelectorAll<HTMLElement>("aside, nav, div, section"),
+    )) {
+      if (!isVisible(child)) continue;
+
+      const rect = child.getBoundingClientRect();
+      if (rect.left > 40 || rect.width < 140 || rect.width > 440) continue;
+
+      if (isScrollable(child)) {
+        child.classList.add("atlas-sidebar-scrollbar-hidden");
+      }
+    }
+  }
 }
 
 export default function AtlasSidebarScrollbarPolish() {
   useEffect(() => {
     let frame = 0;
+    let interval = 0;
 
     const apply = () => {
       frame = 0;
-      markSidebarScroller();
+      markSidebarScrollers();
     };
 
     const schedule = () => {
@@ -59,24 +113,45 @@ export default function AtlasSidebarScrollbarPolish() {
       childList: true,
       subtree: true,
       attributes: true,
+      attributeFilter: ["class", "style", "hidden"],
     });
 
+    const onNavigation = () => {
+      schedule();
+      window.setTimeout(schedule, 0);
+      window.setTimeout(schedule, 80);
+      window.setTimeout(schedule, 250);
+    };
+
+    document.addEventListener("click", onNavigation, true);
     window.addEventListener("resize", schedule);
+    window.addEventListener("popstate", onNavigation);
+    window.addEventListener("atlas:data-changed", onNavigation as EventListener);
+
+    interval = window.setInterval(schedule, 1000);
 
     return () => {
       observer.disconnect();
+      document.removeEventListener("click", onNavigation, true);
       window.removeEventListener("resize", schedule);
+      window.removeEventListener("popstate", onNavigation);
+      window.removeEventListener("atlas:data-changed", onNavigation as EventListener);
+      window.clearInterval(interval);
       if (frame) window.cancelAnimationFrame(frame);
     };
   }, []);
 
   return (
     <style jsx global>{`
+      .atlas-sidebar-shell,
+      .atlas-sidebar-shell *,
       .atlas-sidebar-scrollbar-hidden {
         scrollbar-width: none !important;
         -ms-overflow-style: none !important;
       }
 
+      .atlas-sidebar-shell::-webkit-scrollbar,
+      .atlas-sidebar-shell *::-webkit-scrollbar,
       .atlas-sidebar-scrollbar-hidden::-webkit-scrollbar {
         width: 0 !important;
         height: 0 !important;
