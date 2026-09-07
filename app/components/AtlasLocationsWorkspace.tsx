@@ -216,6 +216,9 @@ export default function AtlasLocationsWorkspace(props: any) {
   const locationSourceRecords: AtlasLocationRecord[] = (isSeanMarineUser ? seanVisibleLocationRecords : locations) as AtlasLocationRecord[];
   const locationAssetSourceRecords: AtlasAssetRecord[] = (isSeanMarineUser ? seanVisibleAssetRecords : assetRecords) as AtlasAssetRecord[];
   const locationWorkSourceRecords: AtlasServiceRecord[] = (isSeanMarineUser ? staffVisibleServiceRecords : serviceRecords) as AtlasServiceRecord[];
+  const locationDetailPanelRef = useRef<HTMLDivElement | null>(null);
+  const locationRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const locationTypeAheadRef = useRef({ value: "", typedAt: 0, matchIndex: -1 });
   const locationAssetCount = (locationId: string) =>
     locationAssetSourceRecords.filter((asset) => assetHasLocation(asset, locationId)).length;
   const locationWorkCount = (locationId: string) => {
@@ -502,6 +505,55 @@ export default function AtlasLocationsWorkspace(props: any) {
     return path;
   })();
 
+  useLayoutEffect(() => {
+    const detailScroller = locationDetailPanelRef.current?.parentElement;
+    if (!detailScroller) return;
+    detailScroller.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [selectedLocationId]);
+
+  useEffect(() => {
+    const handleLocationTypeAhead = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey || event.key.length !== 1) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.matches("input, textarea, select") ||
+        target?.isContentEditable
+      ) return;
+
+      const character = event.key.toLowerCase();
+      if (!/[a-z0-9]/.test(character)) return;
+      const now = Date.now();
+      const previous = locationTypeAheadRef.current;
+      const repeatedSingleCharacter =
+        now - previous.typedAt < 800 &&
+        previous.value.length === 1 &&
+        previous.value === character;
+      const value =
+        now - previous.typedAt < 800 && !repeatedSingleCharacter
+          ? `${previous.value}${character}`
+          : character;
+      const matches = locationRows.filter(({ location }) =>
+        location.name.trim().toLowerCase().startsWith(value),
+      );
+      if (!matches.length) {
+        locationTypeAheadRef.current = { value, typedAt: now, matchIndex: -1 };
+        return;
+      }
+      const matchIndex = repeatedSingleCharacter
+        ? (previous.matchIndex + 1) % matches.length
+        : 0;
+      const match = matches[matchIndex];
+      locationRowRefs.current[match.location.id]?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+      locationTypeAheadRef.current = { value, typedAt: now, matchIndex };
+    };
+
+    window.addEventListener("keydown", handleLocationTypeAhead);
+    return () => window.removeEventListener("keydown", handleLocationTypeAhead);
+  }, [locationRows]);
+
   return (
     <ListDrawerLayout
       eyebrow=""
@@ -514,9 +566,52 @@ export default function AtlasLocationsWorkspace(props: any) {
         setLocationEditorOpen(false);
       }}
       mobileDrawerTitle={selectedLocation.name || "Location Details"}
-      gridStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
-      listPanelStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden", padding: 0 } : undefined}
-      drawerStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
+      gridStyleOverride={
+        isMobile
+          ? { minWidth: 0, overflowX: "hidden" }
+          : {
+              gridTemplateColumns: "minmax(270px, 34%) minmax(0, 66%)",
+              gap: 12,
+              alignItems: "start",
+              overflow: "visible",
+            }
+      }
+      listPanelStyleOverride={
+        isMobile
+          ? { minWidth: 0, overflowX: "hidden", padding: 0 }
+          : {
+              minWidth: 0,
+              height: "calc(100dvh - 190px)",
+              maxHeight: "calc(100dvh - 190px)",
+              overflowY: "auto",
+              overflowX: "hidden",
+              paddingRight: 6,
+              alignSelf: "start",
+            }
+      }
+      drawerStyleOverride={
+        isMobile
+          ? { minWidth: 0, overflowX: "hidden" }
+          : {
+              position: "sticky",
+              top: 8,
+              width: "100%",
+              minWidth: 0,
+              boxSizing: "border-box",
+              height: "calc(100dvh - 190px)",
+              maxHeight: "calc(100dvh - 190px)",
+              minHeight: 0,
+              overflowY: "auto",
+              overflowX: "hidden",
+              overscrollBehavior: "contain",
+              scrollbarGutter: "stable",
+              scrollPaddingTop: 8,
+              scrollPaddingBottom: 28,
+              paddingBottom: 20,
+              alignSelf: "start",
+              zIndex: 2,
+            }
+      }
       right={
         <>
           <button
@@ -532,7 +627,7 @@ export default function AtlasLocationsWorkspace(props: any) {
         </>
       }
       list={
-        <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+        <div style={{ display: "grid", gap: 7, minWidth: 0 }}>
           {false && <>
           <div
             style={{
@@ -898,19 +993,21 @@ export default function AtlasLocationsWorkspace(props: any) {
             ) : null}
           </div>
 
-          <div style={{ ...listStyle, gap: 7 }}>
+          <div style={{ ...listStyle, gap: 6 }}>
             {locationRows.map(({ location, depth, hasChildren }) => {
               const selected = location.id === selectedLocation.id;
               const hovered = locationHoveredId === location.id;
               const assetCount = locationAssetCount(location.id);
               const workCount = locationWorkCount(location.id);
-              const photoCount = locationPhotoCount(location.id);
-              const documentCount = locationDocumentCount(location.id);
               const collapsed = collapsedLocationIds.has(location.id);
 
               return (
                 <div
                   key={location.id}
+                  ref={(node) => {
+                    locationRowRefs.current[location.id] = node;
+                  }}
+                  className="atlas-gold-hover-card"
                   onMouseEnter={() => setLocationHoveredId(location.id)}
                   onMouseLeave={() => setLocationHoveredId("")}
                   style={{
@@ -921,14 +1018,14 @@ export default function AtlasLocationsWorkspace(props: any) {
                     border: `1px solid ${
                       selected || hovered ? colors.gold : colors.line
                     }`,
-                    borderRadius: 14,
-                    background: selected ? "#FFF9EC" : colors.card,
+                    borderRadius: 12,
+                    background: "#FFFFFF",
                     boxShadow: hovered
-                      ? "0 12px 28px rgba(15, 42, 67, 0.13), 0 0 0 1px rgba(201, 154, 61, 0.12)"
+                      ? "0 8px 18px rgba(15, 42, 67, 0.10), 0 0 0 1px rgba(201, 154, 61, 0.12)"
                       : selected
-                        ? "0 8px 20px rgba(15, 42, 67, 0.10)"
-                        : "0 3px 10px rgba(15, 42, 67, 0.04)",
-                    transform: hovered ? "translateY(-2px)" : "translateY(0)",
+                        ? "0 5px 14px rgba(15, 42, 67, 0.08)"
+                        : "none",
+                    transform: "none",
                     transition:
                       "transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
                     overflow: "hidden",
@@ -946,14 +1043,15 @@ export default function AtlasLocationsWorkspace(props: any) {
                       background: "transparent",
                       color: colors.navy,
                       display: "grid",
-                      gridTemplateColumns: "auto auto minmax(0, 1fr)",
+                      gridTemplateColumns: "32px minmax(0, 1fr)",
                       gap: 8,
                       alignItems: "center",
                       minWidth: 0,
-                      padding: isMobile ? "10px 9px" : "11px 10px",
+                      minHeight: 64,
+                      padding: isMobile ? "7px 8px" : "7px 9px",
                       paddingLeft:
-                        (isMobile ? 9 : 10) +
-                        Math.min(depth, 5) * (isMobile ? 12 : 16),
+                        (isMobile ? 8 : 9) +
+                        Math.min(depth, 5) * (isMobile ? 8 : 10),
                       textAlign: "left",
                       cursor: "pointer",
                     }}
@@ -970,14 +1068,14 @@ export default function AtlasLocationsWorkspace(props: any) {
                         });
                       }}
                       style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: 7,
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
                         border: `1px solid ${colors.line}`,
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        background: colors.panel,
+                        background: selected ? "#FFF8E5" : colors.panel,
                         fontSize: 12,
                         flex: "0 0 auto",
                         visibility: hasChildren ? "visible" : "hidden",
@@ -993,26 +1091,12 @@ export default function AtlasLocationsWorkspace(props: any) {
                           overflow: "hidden",
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
+                          fontSize: 13,
+                          lineHeight: 1.2,
                         }}
                       >
                         {location.name || "New Location"}
                       </strong>
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          marginTop: 4,
-                          border: `1px solid ${colors.line}`,
-                          borderRadius: 999,
-                          background: colors.panel,
-                          color: colors.navy,
-                          padding: "3px 6px",
-                          fontSize: 8,
-                          fontWeight: 850,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {location.type || "Location"}
-                      </span>
                       <small
                         style={{
                           ...mutedSmallStyle,
@@ -1020,18 +1104,10 @@ export default function AtlasLocationsWorkspace(props: any) {
                           overflow: "hidden",
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
+                          marginTop: 3,
                         }}
                       >
-                        {locationPath(location)}
-                      </small>
-                      <small
-                        style={{
-                          ...mutedSmallStyle,
-                          display: "block",
-                          marginTop: 2,
-                        }}
-                      >
-                        {[location.type || "General", `Level ${locationDepth(location) + 1}`]
+                        {[location.type || "Location", depth ? locationPath(location) : "Top level"]
                           .filter(Boolean)
                           .join(" · ")}
                       </small>
@@ -1040,18 +1116,12 @@ export default function AtlasLocationsWorkspace(props: any) {
                           display: "flex",
                           flexWrap: "wrap",
                           gap: 5,
-                          marginTop: 5,
+                          marginTop: 4,
                         }}
                       >
-                        <small style={badgeStyle("Monitor")}>{assetCount} assets</small>
+                        {assetCount ? <small style={badgeStyle("Monitor")}>{assetCount} assets</small> : null}
                         {workCount ? (
                           <small style={badgeStyle("Open")}>{workCount} work</small>
-                        ) : null}
-                        {photoCount ? (
-                          <small style={badgeStyle("Completed")}>{photoCount} photos</small>
-                        ) : null}
-                        {documentCount ? (
-                          <small style={badgeStyle("Scheduled")}>{documentCount} docs</small>
                         ) : null}
                       </span>
                     </span>
@@ -1060,9 +1130,10 @@ export default function AtlasLocationsWorkspace(props: any) {
                   <div
                     style={{
                       display: hovered || selected ? "grid" : "none",
+                      gridTemplateColumns: "repeat(2, auto)",
                       alignContent: "center",
                       gap: 4,
-                      padding: "6px 7px 6px 0",
+                      padding: "5px 6px 5px 0",
                     }}
                   >
                     <button
@@ -1076,7 +1147,7 @@ export default function AtlasLocationsWorkspace(props: any) {
                       style={{
                         ...secondaryButtonStyle,
                         minWidth: 32,
-                        minHeight: 28,
+                        minHeight: 26,
                         padding: "3px 7px",
                       }}
                     >
@@ -1093,7 +1164,7 @@ export default function AtlasLocationsWorkspace(props: any) {
                       style={{
                         ...secondaryButtonStyle,
                         minWidth: 32,
-                        minHeight: 28,
+                        minHeight: 26,
                         padding: "3px 7px",
                       }}
                     >
@@ -1118,7 +1189,8 @@ export default function AtlasLocationsWorkspace(props: any) {
       drawer={
         selectedLocation.id ? (
           <div
-            style={{ ...stackStyle, minWidth: 0, overflowX: "hidden" }}
+            ref={locationDetailPanelRef}
+            style={{ ...stackStyle, gap: 8, minWidth: 0, overflowX: "hidden" }}
             tabIndex={0}
             onScroll={() => {
               setAssetPanelScrolling(true);
@@ -1558,6 +1630,7 @@ export default function AtlasLocationsWorkspace(props: any) {
               )}
             </div>
 
+            {locationPhotos.length || locationEditorOpen ? (
             <section style={detailSectionStyle}>
               <div style={detailSectionHeaderStyle}>
                 <div>
@@ -1699,12 +1772,16 @@ export default function AtlasLocationsWorkspace(props: any) {
                 </div>
               )}
             </section>
+            ) : null}
 
+            {locationTasks.length ? (
             <section style={detailSectionStyle}>
               <div style={detailSectionHeaderStyle}><div><div style={eyebrowStyle}>Tasks At This Location</div><strong>{locationTasks.length} related</strong></div><button type="button" onClick={() => { setTaskListFilter("today"); setTasksView("tasks"); setScreen("planner"); }} style={secondaryButtonStyle}>Open Tasks</button></div>
-              {locationTasks.length ? <div style={compactLinkedListStyle}>{locationTasks.slice(0, 12).map((task) => <button key={`location-task-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>{taskDetails(task.id).dueDate ? formatDate(taskDetails(task.id).dueDate) : "No due date"}</small></span><span style={badgeStyle(taskDetails(task.id).status)}>{taskDetails(task.id).status}</span></button>)}</div> : <p style={mutedSmallStyle}>No Tasks are linked to this location.</p>}
+              <div style={compactLinkedListStyle}>{locationTasks.slice(0, 12).map((task) => <button key={`location-task-${task.id}`} type="button" className="atlas-gold-hover-card" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>{taskDetails(task.id).dueDate ? formatDate(taskDetails(task.id).dueDate) : "No due date"}</small></span><span style={badgeStyle(taskDetails(task.id).status)}>{taskDetails(task.id).status}</span></button>)}</div>
             </section>
+            ) : null}
 
+            {locationAssets.length || locationEditorOpen ? (
             <section style={detailSectionStyle}>
               <div style={detailSectionHeaderStyle}>
                 <div>
@@ -1748,6 +1825,7 @@ export default function AtlasLocationsWorkspace(props: any) {
                     <div key={asset.id} style={assetFileListRowStyle}>
                       <button
                         type="button"
+                        className="atlas-gold-hover-card"
                         onClick={() => {
                           setSelectedAssetId(asset.id);
                           setScreen("assets");
@@ -1803,7 +1881,9 @@ export default function AtlasLocationsWorkspace(props: any) {
                 </p>
               )}
             </section>
+            ) : null}
 
+            {locationHistory.length ? (
             <section style={detailSectionStyle}>
               <div style={detailSectionHeaderStyle}>
                 <div>
@@ -1822,6 +1902,7 @@ export default function AtlasLocationsWorkspace(props: any) {
                     <button
                       key={entry.id}
                       type="button"
+                      className="atlas-gold-hover-card"
                       onClick={() => {
                         setSelectedServiceId(entry.workOrderId);
                         setScreen("history");
@@ -1857,8 +1938,11 @@ export default function AtlasLocationsWorkspace(props: any) {
                 <p style={mutedSmallStyle}>No work history is linked yet.</p>
               )}
             </section>
+            ) : null}
 
-            {renderLinkedDocuments("Location", selectedLocation.id)}
+            {locationDocuments.length || locationEditorOpen
+              ? renderLinkedDocuments("Location", selectedLocation.id)
+              : null}
           </div>
         ) : (
           <div style={noticeStyle}>
