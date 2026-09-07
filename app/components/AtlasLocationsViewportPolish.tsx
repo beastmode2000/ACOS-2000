@@ -13,62 +13,67 @@ function locationsMain() {
   return (heading?.closest("main") as HTMLElement | null) || null;
 }
 
+function clearLegacyViewportClasses(root: HTMLElement) {
+  const legacyClasses = [
+    "atlas-locations-viewport-grid",
+    "atlas-locations-viewport-list",
+    "atlas-locations-viewport-detail",
+    "atlas-locations-viewport-header",
+    "atlas-locations-viewport-shell",
+  ];
+
+  for (const className of legacyClasses) {
+    for (const element of Array.from(
+      root.querySelectorAll<HTMLElement>(`.${className}`),
+    )) {
+      element.classList.remove(className);
+    }
+  }
+}
+
 function markLocationsViewport() {
   const root = locationsMain();
   if (!root) return;
 
   root.classList.add("atlas-locations-viewport-root");
+  clearLegacyViewportClasses(root);
+
+  const shell = root.querySelector<HTMLElement>(".atlas-location-workspace-shell");
+  const columns = root.querySelector<HTMLElement>(".atlas-location-workspace-columns");
+  const listPanel = root.querySelector<HTMLElement>(".atlas-location-list-panel");
+  const drawerPanel = root.querySelector<HTMLElement>(".atlas-location-drawer-panel");
+  const drawer = root.querySelector<HTMLElement>(".atlas-location-drawer-polish");
+
+  if (!shell || !columns || !listPanel || !drawerPanel || !drawer) return;
+
+  shell.classList.add("atlas-locations-assets-shell");
+  columns.classList.add("atlas-locations-assets-columns");
+  listPanel.classList.add("atlas-locations-assets-list");
+  drawerPanel.classList.add("atlas-locations-assets-detail");
+  drawer.classList.add("atlas-locations-assets-drawer");
+
+  const header = columns.previousElementSibling as HTMLElement | null;
+  if (header && header.parentElement === columns.parentElement) {
+    header.classList.add("atlas-locations-assets-header");
+  }
 
   const search = root.querySelector<HTMLInputElement>(
     'input[placeholder*="Search locations" i]',
   );
-  if (!search) return;
-
-  search.classList.add("atlas-locations-compact-search");
-
-  let grid: HTMLElement | null = search.parentElement;
-  while (grid && grid !== root) {
-    const style = window.getComputedStyle(grid);
-    if (style.display === "grid" && grid.children.length >= 2) break;
-    grid = grid.parentElement;
-  }
-  if (!grid || grid === root) return;
-
-  grid.classList.add("atlas-locations-viewport-grid");
-
-  let listPanel: HTMLElement | null = search.parentElement;
-  while (listPanel && listPanel.parentElement !== grid) {
-    listPanel = listPanel.parentElement;
-  }
-  if (!listPanel) return;
-  listPanel.classList.add("atlas-locations-viewport-list");
-
-  const detailPanel = Array.from(grid.children).find(
-    (child) => child instanceof HTMLElement && child !== listPanel,
-  ) as HTMLElement | undefined;
-  detailPanel?.classList.add("atlas-locations-viewport-detail");
-
-  const header = grid.previousElementSibling as HTMLElement | null;
-  if (header && header.parentElement === grid.parentElement) {
-    header.classList.add("atlas-locations-viewport-header");
-  }
-
-  const shell = grid.parentElement as HTMLElement | null;
-  shell?.classList.add("atlas-locations-viewport-shell");
+  search?.classList.add("atlas-locations-assets-search");
 
   const addLocation = Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
     (button) => normalized(button.textContent) === "add location",
   );
-  const editLocation = detailPanel
-    ? Array.from(detailPanel.querySelectorAll<HTMLButtonElement>("button")).find(
-        (button) => normalized(button.textContent) === "edit",
-      )
-    : undefined;
+  const editLocation = Array.from(drawer.querySelectorAll<HTMLButtonElement>("button")).find(
+    (button) => normalized(button.textContent) === "edit",
+  );
 
   if (addLocation && editLocation?.parentElement) {
-    addLocation.classList.add("atlas-locations-add-button");
     const actionRow = editLocation.parentElement;
-    actionRow.classList.add("atlas-locations-detail-actions");
+    actionRow.classList.add("atlas-locations-assets-actions");
+    addLocation.classList.add("atlas-locations-assets-add");
+
     if (addLocation.parentElement !== actionRow) {
       actionRow.insertBefore(addLocation, editLocation);
     }
@@ -77,9 +82,12 @@ function markLocationsViewport() {
   for (const card of Array.from(
     listPanel.querySelectorAll<HTMLElement>(".atlas-gold-hover-card"),
   )) {
-    card.classList.add("atlas-location-compact-row");
-    const button = card.querySelector<HTMLButtonElement>("button");
-    button?.classList.add("atlas-location-compact-main");
+    card.classList.add("atlas-locations-assets-row");
+
+    const mainButton = Array.from(card.children).find(
+      (child) => child instanceof HTMLButtonElement,
+    ) as HTMLButtonElement | undefined;
+    mainButton?.classList.add("atlas-locations-assets-row-main");
   }
 }
 
@@ -97,6 +105,7 @@ export default function AtlasLocationsViewportPolish() {
     };
 
     schedule();
+
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", schedule);
@@ -111,71 +120,93 @@ export default function AtlasLocationsViewportPolish() {
   return (
     <style jsx global>{`
       @media (min-width: 901px) {
-        .atlas-locations-viewport-root .atlas-locations-viewport-shell {
+        .atlas-locations-viewport-root .atlas-locations-assets-shell {
+          margin-top: 0 !important;
+          padding: 4px 16px 6px !important;
           height: calc(100dvh - 96px) !important;
           min-height: calc(100dvh - 96px) !important;
           max-height: calc(100dvh - 96px) !important;
-          display: grid !important;
-          grid-template-rows: minmax(0, 1fr) !important;
-          align-content: stretch !important;
-          padding: 4px 16px 6px !important;
           overflow: hidden !important;
+          box-sizing: border-box !important;
         }
 
-        .atlas-locations-viewport-root .atlas-locations-viewport-header {
+        .atlas-locations-viewport-root .atlas-locations-assets-header {
           display: none !important;
         }
 
-        .atlas-locations-viewport-root .atlas-locations-viewport-grid {
-          min-height: 0 !important;
-          height: calc(100% + 92px) !important;
-          max-height: calc(100% + 92px) !important;
-          margin: -60px 0 0 !important;
-          padding: 0 !important;
+        .atlas-locations-viewport-root .atlas-locations-assets-columns {
+          grid-template-columns: minmax(270px, 34%) minmax(0, 66%) !important;
+          gap: 12px !important;
           align-items: stretch !important;
+          width: 100% !important;
+          height: 100% !important;
+          min-height: 0 !important;
+          max-height: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
           overflow: hidden !important;
         }
 
-        .atlas-locations-viewport-root .atlas-locations-viewport-list,
-        .atlas-locations-viewport-root .atlas-locations-viewport-detail {
+        .atlas-locations-viewport-root .atlas-locations-assets-list,
+        .atlas-locations-viewport-root .atlas-locations-assets-detail {
+          min-width: 0 !important;
           min-height: 0 !important;
           height: 100% !important;
           max-height: 100% !important;
           align-self: stretch !important;
           overflow-x: hidden !important;
-          overflow-y: auto !important;
-          overscroll-behavior: contain !important;
-          scrollbar-gutter: stable !important;
         }
 
-        .atlas-locations-viewport-root .atlas-locations-compact-search {
-          min-height: 32px !important;
+        .atlas-locations-viewport-root .atlas-locations-assets-list {
+          overflow-y: auto !important;
+          padding-right: 6px !important;
+          scrollbar-gutter: stable !important;
+          overscroll-behavior: contain !important;
+        }
+
+        .atlas-locations-viewport-root .atlas-locations-assets-detail {
+          overflow: hidden !important;
+        }
+
+        .atlas-locations-viewport-root .atlas-locations-assets-drawer {
+          min-height: 0 !important;
+          height: 100% !important;
+          max-height: 100% !important;
+          overflow-x: hidden !important;
+          overflow-y: auto !important;
+          scrollbar-gutter: stable !important;
+          overscroll-behavior: contain !important;
+        }
+
+        .atlas-locations-viewport-root .atlas-locations-assets-search {
           height: 32px !important;
+          min-height: 32px !important;
           padding: 5px 9px !important;
           font-size: 12px !important;
         }
 
-        .atlas-locations-viewport-root .atlas-location-compact-row {
+        .atlas-locations-viewport-root .atlas-locations-assets-row {
           min-height: 0 !important;
           border-radius: 12px !important;
           box-shadow: none !important;
+          overflow: hidden !important;
         }
 
-        .atlas-locations-viewport-root .atlas-location-compact-main {
+        .atlas-locations-viewport-root .atlas-locations-assets-row-main {
+          display: grid !important;
+          grid-template-columns: 32px minmax(0, 1fr) !important;
+          align-items: center !important;
           min-height: 58px !important;
           height: 58px !important;
           padding-top: 6px !important;
           padding-bottom: 6px !important;
         }
 
-        .atlas-locations-viewport-root
-          .atlas-location-compact-main
-          > span:last-child
-          > span:last-child {
-          display: none !important;
+        .atlas-locations-viewport-root .atlas-location-list-card-meta-hidden {
+          display: initial !important;
         }
 
-        .atlas-locations-viewport-root .atlas-locations-detail-actions {
+        .atlas-locations-viewport-root .atlas-locations-assets-actions {
           display: flex !important;
           align-items: center !important;
           justify-content: flex-end !important;
@@ -183,7 +214,7 @@ export default function AtlasLocationsViewportPolish() {
           flex-wrap: wrap !important;
         }
 
-        .atlas-locations-viewport-root .atlas-locations-add-button {
+        .atlas-locations-viewport-root .atlas-locations-assets-add {
           min-height: 34px !important;
           height: 34px !important;
           padding: 6px 12px !important;
@@ -192,14 +223,14 @@ export default function AtlasLocationsViewportPolish() {
       }
 
       @media (max-width: 900px) {
-        .atlas-locations-viewport-root .atlas-locations-viewport-shell,
-        .atlas-locations-viewport-root .atlas-locations-viewport-grid,
-        .atlas-locations-viewport-root .atlas-locations-viewport-list,
-        .atlas-locations-viewport-root .atlas-locations-viewport-detail {
+        .atlas-locations-viewport-root .atlas-locations-assets-shell,
+        .atlas-locations-viewport-root .atlas-locations-assets-columns,
+        .atlas-locations-viewport-root .atlas-locations-assets-list,
+        .atlas-locations-viewport-root .atlas-locations-assets-detail,
+        .atlas-locations-viewport-root .atlas-locations-assets-drawer {
           min-height: 0 !important;
           height: auto !important;
           max-height: none !important;
-          overflow: visible !important;
         }
       }
     `}</style>
