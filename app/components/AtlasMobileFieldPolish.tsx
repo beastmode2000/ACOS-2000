@@ -54,14 +54,24 @@ function visibleScreenTitle() {
   return normalized(headings[0]?.textContent);
 }
 
+function isMobileFieldControl(control: HTMLElement) {
+  return Boolean(
+    control.closest(
+      ".atlas-mobile-field-bottom-nav, .atlas-mobile-field-more-overlay",
+    ),
+  );
+}
+
 function navigationControls() {
   const scoped = Array.from(
     document.querySelectorAll<HTMLElement>("aside button, aside a, nav button, nav a"),
-  );
+  ).filter((control) => !isMobileFieldControl(control));
 
   if (scoped.length) return scoped;
 
-  return Array.from(document.querySelectorAll<HTMLElement>("button, a"));
+  return Array.from(document.querySelectorAll<HTMLElement>("button, a")).filter(
+    (control) => !isMobileFieldControl(control),
+  );
 }
 
 function findNavigationControl(item: NavItem) {
