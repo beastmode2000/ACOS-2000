@@ -67,6 +67,12 @@ function markLocationsViewport() {
       (child) => child instanceof HTMLButtonElement,
     ) as HTMLButtonElement | undefined;
     mainButton?.classList.add("atlas-locations-assets-row-main");
+
+    for (const badge of Array.from(card.querySelectorAll<HTMLElement>("small"))) {
+      if (!/^\d+\s+(assets?|work)$/i.test(String(badge.textContent || "").trim())) continue;
+      const badgeRow = badge.parentElement as HTMLElement | null;
+      badgeRow?.style.setProperty("display", "none", "important");
+    }
   }
 }
 
@@ -174,20 +180,6 @@ export default function AtlasLocationsViewportPolish() {
           padding-bottom: 5px !important;
           box-sizing: border-box !important;
           overflow: hidden !important;
-        }
-
-        .atlas-locations-viewport-root
-          .atlas-locations-assets-row-main
-          > span:last-child
-          > small.atlas-location-list-card-meta-hidden {
-          display: block !important;
-        }
-
-        .atlas-locations-viewport-root
-          .atlas-locations-assets-row-main
-          > span:last-child
-          > span.atlas-location-list-card-meta-hidden {
-          display: none !important;
         }
 
         .atlas-locations-viewport-root .atlas-locations-assets-row-main strong,
