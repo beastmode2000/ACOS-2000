@@ -5,6 +5,7 @@ import AtlasLocationsPolish from "./components/AtlasLocationsPolish";
 import AtlasLocationsViewportPolish from "./components/AtlasLocationsViewportPolish";
 import AtlasLocationDetailPolish from "./components/AtlasLocationDetailPolish";
 import AtlasLocationPhotoEditor from "./components/AtlasLocationPhotoEditor";
+import AtlasLocationMainPhotoControl from "./components/AtlasLocationMainPhotoControl";
 import AtlasPropertyVisibility from "./components/AtlasPropertyVisibility";
 import AtlasWorkspacePolish from "./components/AtlasWorkspacePolish";
 import AtlasAssetReferencePolish from "./components/AtlasAssetReferencePolish";
@@ -59,6 +60,7 @@ export default function RootLayout({
         <AtlasLocationsViewportPolish />
         <AtlasLocationDetailPolish />
         <AtlasLocationPhotoEditor />
+        <AtlasLocationMainPhotoControl />
         <AtlasPropertyVisibility />
         <AtlasWorkspacePolish />
         <AtlasAssetReferencePolish />
