@@ -8,6 +8,7 @@ import AtlasAssetReferencePolish from "./components/AtlasAssetReferencePolish";
 import AtlasAssetsViewportPolish from "./components/AtlasAssetsViewportPolish";
 import AtlasWorkPolish from "./components/AtlasWorkPolish";
 import AtlasDashboardPolish from "./components/AtlasDashboardPolish";
+import AtlasVendorScrollbarPolish from "./components/AtlasVendorScrollbarPolish";
 import AtlasTeamPeoplePolish from "./components/AtlasTeamPeoplePolish";
 import AtlasOperationsPolish from "./components/AtlasOperationsPolish";
 import AtlasServiceLinkPolish from "./components/AtlasServiceLinkPolish";
@@ -57,6 +58,7 @@ export default function RootLayout({
         <AtlasAssetsViewportPolish />
         <AtlasWorkPolish />
         <AtlasDashboardPolish />
+        <AtlasVendorScrollbarPolish />
         <AtlasTeamPeoplePolish />
         <AtlasOperationsPolish />
         <AtlasServiceLinkPolish />
