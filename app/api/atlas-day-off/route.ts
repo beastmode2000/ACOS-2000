@@ -55,7 +55,11 @@ function weekday(date: string) {
 }
 
 function safeIdPart(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "all";
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80) || "all";
 }
 
 async function ensureTables(sql: ReturnType<typeof neon>) {
@@ -127,7 +131,11 @@ async function nextWorkingDate(
 
   for (let attempt = 0; attempt < 21; attempt += 1) {
     const day = weekday(candidate);
-    if (day !== 0 && day !== 6 && !(await isDayOff(sql, propertyId, candidate, person))) {
+    if (
+      day !== 0 &&
+      day !== 6 &&
+      !(await isDayOff(sql, propertyId, candidate, person))
+    ) {
       return candidate;
     }
     candidate = addDays(candidate, 1);
@@ -188,14 +196,28 @@ export async function POST(request: Request) {
     const suppliedTitle = cleanText(body.title, 180);
 
     if (!date) {
-      return NextResponse.json({ ok: false, error: "A valid date is required." }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "A valid date is required." },
+        { status: 400 },
+      );
     }
 
     if (scope === "person" && !person) {
-      return NextResponse.json({ ok: false, error: "Choose who is off." }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Choose who is off." },
+        { status: 400 },
+      );
     }
 
-    const title = suppliedTitle || (kind === "Holiday" ? "Holiday / Off" : kind === "PTO" ? `${person} PTO` : scope === "team" ? "Property / Team Off" : `${person} Off`);
+    const title =
+      suppliedTitle ||
+      (kind === "Holiday"
+        ? "Holiday / Off"
+        : kind === "PTO"
+          ? `${person} PTO`
+          : scope === "team"
+            ? "Property / Team Off"
+            : `${person} Off`);
     const id = `day-off-${propertyId}-${date}-${scope}-${safeIdPart(person)}`;
 
     await sql`
@@ -213,7 +235,10 @@ export async function POST(request: Request) {
     `;
 
     const calendarId = `calendar-${id}`;
-    const calendarNotes = scope === "team" ? "Day off scope: Property / team" : `Day off scope: ${person}`;
+    const calendarNotes =
+      scope === "team"
+        ? "Day off scope: Property / team"
+        : `Day off scope: ${person}`;
 
     await sql`
       INSERT INTO atlas_calendar_items (
@@ -248,16 +273,14 @@ export async function POST(request: Request) {
           SELECT id, assigned_to
           FROM atlas_work_orders
           WHERE property_id = ${propertyId}
-            AND status <> 'Completed'
-            AND recurring = true
+            AND COALESCE(status, '') NOT IN ('Completed', 'Cancelled')
             AND COALESCE(due_date_value, date) = ${date}::date
         `
       : await sql`
           SELECT id, assigned_to
           FROM atlas_work_orders
           WHERE property_id = ${propertyId}
-            AND status <> 'Completed'
-            AND recurring = true
+            AND COALESCE(status, '') NOT IN ('Completed', 'Cancelled')
             AND COALESCE(due_date_value, date) = ${date}::date
             AND lower(COALESCE(assigned_to, '')) = lower(${person})
         `) as unknown as WorkOrderRow[];
@@ -266,22 +289,22 @@ export async function POST(request: Request) {
 
     for (const row of affected) {
       const assignedTo = cleanText(row.assigned_to, 120) || person || "Nick";
-      const nextDate = await nextWorkingDate(sql, propertyId, date, assignedTo);
+      const nextDate = await nextWorkingDate(
+        sql,
+        propertyId,
+        date,
+        assignedTo,
+      );
 
       await sql`
         UPDATE atlas_work_orders
         SET
           date = ${nextDate}::date,
-          due_date_value = CASE
-            WHEN due_date_value IS NULL OR due_date_value = ${date}::date
-              THEN ${nextDate}::date
-            ELSE due_date_value
-          END,
+          due_date_value = ${nextDate}::date,
           updated_at = NOW()
         WHERE property_id = ${propertyId}
           AND id = ${row.id}
-          AND status <> 'Completed'
-          AND recurring = true
+          AND COALESCE(status, '') NOT IN ('Completed', 'Cancelled')
           AND COALESCE(due_date_value, date) = ${date}::date
       `;
 
@@ -291,6 +314,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       dayOff: { id, propertyId, date, kind, scope, person, title },
+      movedWork: moved,
       movedRecurringWork: moved,
     });
   } catch (error) {
@@ -312,7 +336,10 @@ export async function DELETE(request: Request) {
     const id = cleanText(body.id, 260);
 
     if (!id) {
-      return NextResponse.json({ ok: false, error: "Day-off id is required." }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Day-off id is required." },
+        { status: 400 },
+      );
     }
 
     await sql`
