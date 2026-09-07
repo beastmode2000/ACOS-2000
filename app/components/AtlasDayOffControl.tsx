@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 type DayOffRecord = {
   id: string;
@@ -58,9 +59,32 @@ function calendarIsVisible() {
   return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
 }
 
+function calendarToolbarHost() {
+  const root = mainFor("calendar");
+  if (!root) return null;
+
+  const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>("button"));
+  const todayButton = buttons.find((button) => normalized(button.textContent) === "today");
+  if (!todayButton) return null;
+
+  let node: HTMLElement | null = todayButton.parentElement;
+  for (let depth = 0; node && depth < 4; depth += 1, node = node.parentElement) {
+    const labels = Array.from(node.querySelectorAll<HTMLButtonElement>("button")).map((button) =>
+      normalized(button.textContent),
+    );
+    if (labels.includes("previous") && labels.includes("today") && labels.includes("next")) {
+      node.classList.add("atlas-day-off-toolbar-host");
+      return node;
+    }
+  }
+
+  return todayButton.parentElement;
+}
+
 export default function AtlasDayOffControl() {
   const [open, setOpen] = useState(false);
   const [showLauncher, setShowLauncher] = useState(false);
+  const [launcherHost, setLauncherHost] = useState<HTMLElement | null>(null);
   const [propertyId, setPropertyId] = useState("2000");
   const [date, setDate] = useState(localDateKey());
   const [kind, setKind] = useState<"Holiday" | "PTO" | "Off">("Holiday");
@@ -93,8 +117,10 @@ export default function AtlasDayOffControl() {
       frame = 0;
 
       const nextPropertyId = activePropertyIdFromDom();
+      const calendarVisible = calendarIsVisible();
       setPropertyId((current) => (current === nextPropertyId ? current : nextPropertyId));
-      setShowLauncher(calendarIsVisible());
+      setShowLauncher(calendarVisible);
+      setLauncherHost(calendarVisible ? calendarToolbarHost() : null);
 
       if (nextPropertyId !== lastPropertyId) {
         lastPropertyId = nextPropertyId;
@@ -222,23 +248,25 @@ export default function AtlasDayOffControl() {
     })
     .join(" · ");
 
+  const launcher = showLauncher ? (
+    <div className="atlas-day-off-toolbar-wrap">
+      {todayLabel ? (
+        <div className="atlas-day-off-toolbar-status">{todayLabel}</div>
+      ) : null}
+
+      <button
+        type="button"
+        className="atlas-day-off-toolbar-button"
+        onClick={openEditor}
+      >
+        Day Off
+      </button>
+    </div>
+  ) : null;
+
   return (
     <>
-      {showLauncher ? (
-        <div className="atlas-day-off-floating-wrap">
-          {todayLabel ? (
-            <div className="atlas-day-off-floating-status">{todayLabel}</div>
-          ) : null}
-
-          <button
-            type="button"
-            className="atlas-day-off-floating-button"
-            onClick={openEditor}
-          >
-            Day Off
-          </button>
-        </div>
-      ) : null}
+      {launcher && launcherHost ? createPortal(launcher, launcherHost) : null}
 
       {open ? (
         <div
@@ -372,23 +400,25 @@ export default function AtlasDayOffControl() {
       ) : null}
 
       <style jsx global>{`
-        .atlas-day-off-floating-wrap {
-          position: fixed !important;
-          top: 82px !important;
-          right: 22px !important;
-          z-index: 9000 !important;
+        .atlas-day-off-toolbar-host {
           display: flex !important;
           align-items: center !important;
+          flex-wrap: wrap !important;
           gap: 7px !important;
-          pointer-events: none !important;
         }
 
-        .atlas-day-off-floating-button,
-        .atlas-day-off-floating-status {
+        .atlas-day-off-toolbar-wrap {
+          position: static !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          gap: 7px !important;
+          flex: 0 0 auto !important;
+          margin: 0 !important;
+          padding: 0 !important;
           pointer-events: auto !important;
         }
 
-        .atlas-day-off-floating-button {
+        .atlas-day-off-toolbar-button {
           min-height: 36px !important;
           padding: 7px 12px !important;
           border: 1px solid #0b2c43 !important;
@@ -399,16 +429,16 @@ export default function AtlasDayOffControl() {
           font-size: 12px !important;
           font-weight: 900 !important;
           cursor: pointer !important;
-          box-shadow: 0 4px 12px rgba(11, 44, 67, 0.16) !important;
+          box-shadow: none !important;
         }
 
-        .atlas-day-off-floating-button:hover {
+        .atlas-day-off-toolbar-button:hover {
           border-color: #c99a3d !important;
         }
 
-        .atlas-day-off-floating-status {
+        .atlas-day-off-toolbar-status {
           min-height: 32px !important;
-          display: flex !important;
+          display: inline-flex !important;
           align-items: center !important;
           padding: 5px 9px !important;
           border: 1px solid #f0c36a !important;
@@ -417,7 +447,8 @@ export default function AtlasDayOffControl() {
           color: #7a4b00 !important;
           font-size: 11px !important;
           font-weight: 900 !important;
-          box-shadow: 0 2px 8px rgba(122, 75, 0, 0.08) !important;
+          box-shadow: none !important;
+          white-space: nowrap !important;
         }
 
         .atlas-day-off-overlay {
@@ -550,18 +581,26 @@ export default function AtlasDayOffControl() {
         }
 
         @media (max-width: 900px) {
-          .atlas-day-off-floating-wrap {
-            top: auto !important;
-            right: 12px !important;
-            bottom: 76px !important;
-            max-width: calc(100vw - 24px) !important;
-            align-items: flex-end !important;
-            flex-direction: column !important;
+          .atlas-day-off-toolbar-host {
+            gap: 5px !important;
           }
 
-          .atlas-day-off-floating-status {
-            max-width: min(320px, calc(100vw - 24px)) !important;
-            white-space: normal !important;
+          .atlas-day-off-toolbar-wrap {
+            gap: 5px !important;
+          }
+
+          .atlas-day-off-toolbar-button,
+          .atlas-day-off-toolbar-status {
+            min-height: 36px !important;
+            height: 36px !important;
+            padding: 6px 10px !important;
+          }
+
+          .atlas-day-off-toolbar-status {
+            max-width: 150px !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
           }
 
           .atlas-day-off-overlay {
