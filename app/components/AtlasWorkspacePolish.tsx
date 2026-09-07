@@ -51,6 +51,54 @@ function markEmptySecondarySections(root: HTMLElement) {
   }
 }
 
+function markExplanatoryText(root: HTMLElement) {
+  const exactPhrases = [
+    "assets remain separate records; this only assigns their physical location.",
+    "open work linked to this asset.",
+    "open work linked to this location.",
+    "choose the immediate physical area above this location.",
+    "add only the information this location needs",
+    "no assets are assigned to this location.",
+    "no work history is linked yet.",
+    "no immediate location issues are recorded.",
+    "assets are assigned here, but no location documents are linked yet.",
+    "open a location to see its information, photos, and assets.",
+    "select a location.",
+    "add the first location photo",
+    "paste an image, use add photo, or drop an image into this panel.",
+    "assets remain separate records",
+    "this only assigns their physical location.",
+    "use this to",
+    "choose or type",
+  ];
+
+  const startsWithPhrases = [
+    "open work linked to",
+    "assets remain separate records",
+    "choose the immediate physical area",
+    "add only the information",
+    "no immediate location issues",
+    "atlas will not move or delete",
+  ];
+
+  for (const element of Array.from(
+    root.querySelectorAll<HTMLElement>("p, small, span, div"),
+  )) {
+    if (element.children.length > 0) continue;
+    if (element.closest("button, label, option")) continue;
+    const text = normalized(element.textContent);
+    if (!text || text.length > 180) continue;
+
+    const exact = exactPhrases.some(
+      (phrase) => text === phrase || text.includes(phrase),
+    );
+    const startsWith = startsWithPhrases.some((phrase) => text.startsWith(phrase));
+    if (!exact && !startsWith) continue;
+
+    element.classList.add("atlas-polish-explanatory-text");
+  }
+}
+
 function markScrollablePanes(root: HTMLElement, prefix: string) {
   const candidates = Array.from(root.querySelectorAll<HTMLElement>("div, section")).filter((element) => {
     const rect = element.getBoundingClientRect();
@@ -119,6 +167,22 @@ export default function AtlasWorkspacePolish() {
 
       const documents = pageMain("documents");
       if (documents) polishDocuments(documents);
+
+      for (const title of [
+        "dashboard",
+        "notes",
+        "work",
+        "assets",
+        "locations",
+        "calendar",
+        "contacts",
+        "vendors",
+        "team",
+        "owner report",
+      ]) {
+        const root = pageMain(title);
+        if (root) markExplanatoryText(root);
+      }
     };
 
     const schedule = () => {
@@ -144,7 +208,8 @@ export default function AtlasWorkspacePolish() {
         --atlas-workspace-border: #dce4ec;
       }
 
-      .atlas-polish-empty-secondary {
+      .atlas-polish-empty-secondary,
+      .atlas-polish-explanatory-text {
         display: none !important;
       }
 
