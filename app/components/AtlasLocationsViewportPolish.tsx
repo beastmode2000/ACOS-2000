@@ -176,8 +176,18 @@ export default function AtlasLocationsViewportPolish() {
           overflow: hidden !important;
         }
 
-        .atlas-locations-viewport-root .atlas-location-list-card-meta-hidden {
-          display: initial !important;
+        .atlas-locations-viewport-root
+          .atlas-locations-assets-row-main
+          > span:last-child
+          > small.atlas-location-list-card-meta-hidden {
+          display: block !important;
+        }
+
+        .atlas-locations-viewport-root
+          .atlas-locations-assets-row-main
+          > span:last-child
+          > span.atlas-location-list-card-meta-hidden {
+          display: none !important;
         }
 
         .atlas-locations-viewport-root .atlas-locations-assets-row-main strong,
