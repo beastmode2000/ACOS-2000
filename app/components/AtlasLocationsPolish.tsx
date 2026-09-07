@@ -14,6 +14,97 @@ type Attachment = {
   kind: "image" | "document";
 };
 
+type LocationPresentationMeta = {
+  id: string;
+  name: string;
+  photoUrl: string;
+  assets: number;
+  openWork: number;
+  photos: number;
+  documents: number;
+};
+
+function normalized(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function activePropertyIdFromDom() {
+  const selects = Array.from(document.querySelectorAll<HTMLSelectElement>("select"));
+  const propertySelect = selects.find((select) => {
+    const values = Array.from(select.options).map((option) => String(option.value || ""));
+    return values.includes("2000") && values.some((value) => value === "4725" || value === "6855" || value === "3661" || value.toLowerCase() === "hangar");
+  });
+  return String(propertySelect?.value || "2000");
+}
+
+function fileImageSource(file: any) {
+  const dataUrl = String(file?.dataUrl || "");
+  const url = String(file?.url || "");
+  const type = String(file?.type || file?.contentType || "").toLowerCase();
+  if (dataUrl.startsWith("data:image/")) return dataUrl;
+  if (url && (type.startsWith("image/") || /\.(png|jpe?g|gif|webp|heic|heif)(\?|$)/i.test(url))) return url;
+  return "";
+}
+
+async function loadLocationPresentationMeta(propertyId: string) {
+  const encoded = encodeURIComponent(propertyId);
+  const [atlasResponse, documentsResponse] = await Promise.all([
+    fetch(`/api/atlas?propertyId=${encoded}&locationUi=${Date.now()}`, { cache: "no-store" }),
+    fetch(`/api/atlas-documents?propertyId=${encoded}`, { cache: "no-store" }),
+  ]);
+
+  if (!atlasResponse.ok) throw new Error(`Atlas API returned ${atlasResponse.status}`);
+  if (!documentsResponse.ok) throw new Error(`Document API returned ${documentsResponse.status}`);
+
+  const atlas = await atlasResponse.json();
+  const documentPayload = await documentsResponse.json();
+  const locations = Array.isArray(atlas?.locations) ? atlas.locations : [];
+  const assets = Array.isArray(atlas?.assetRecords) ? atlas.assetRecords : [];
+  const services = Array.isArray(atlas?.serviceRecords) ? atlas.serviceRecords : [];
+  const documents = Array.isArray(documentPayload?.documents) ? documentPayload.documents : [];
+
+  const result = new Map<string, LocationPresentationMeta>();
+
+  for (const location of locations) {
+    const id = String(location?.id || "");
+    const name = String(location?.name || "").trim();
+    if (!id || !name) continue;
+
+    const locationDocuments = documents.filter(
+      (document: any) =>
+        normalized(document?.targetType) === "location" &&
+        String(document?.targetId || "") === id,
+    );
+    const imageFiles = locationDocuments.flatMap((document: any) =>
+      (Array.isArray(document?.files) ? document.files : [])
+        .map((file: any) => ({ file, source: fileImageSource(file) }))
+        .filter((entry: any) => Boolean(entry.source)),
+    );
+    const locationAssets = assets.filter((asset: any) => {
+      const primary = String(asset?.locationId || "");
+      const linked = Array.isArray(asset?.locationIds) ? asset.locationIds.map(String) : [];
+      return primary === id || linked.includes(id);
+    });
+    const assetIds = new Set(locationAssets.map((asset: any) => String(asset?.id || "")));
+    const openWork = services.filter((service: any) => {
+      if (normalized(service?.status) === "completed") return false;
+      return String(service?.locationId || "") === id || assetIds.has(String(service?.assetId || ""));
+    }).length;
+
+    result.set(normalized(name), {
+      id,
+      name,
+      photoUrl: imageFiles[0]?.source || "",
+      assets: locationAssets.length,
+      openWork,
+      photos: imageFiles.length,
+      documents: locationDocuments.length,
+    });
+  }
+
+  return result;
+}
+
 function isSpec(value: string) {
   return SPEC_MARKERS.some((marker) => value.includes(marker));
 }
@@ -292,7 +383,11 @@ function sectionHasNoUsefulRecords(section: HTMLElement) {
   return false;
 }
 
-function markBusyLocationChrome(drawer: HTMLElement, listPanel: HTMLElement | null) {
+function markBusyLocationChrome(
+  drawer: HTMLElement,
+  listPanel: HTMLElement | null,
+  presentationMeta: Map<string, LocationPresentationMeta>,
+) {
   for (const button of Array.from(drawer.querySelectorAll<HTMLButtonElement>("button"))) {
     const text = button.textContent?.trim() || "";
     if (text === "+ Sub-location" || text === "+ Sub") {
@@ -343,6 +438,64 @@ function markBusyLocationChrome(drawer: HTMLElement, listPanel: HTMLElement | nu
     }
   }
 
+  const roomName = drawer.querySelector("h3")?.textContent?.trim() || "";
+  const selectedMeta = presentationMeta.get(normalized(roomName));
+  const infoBlock = drawer.firstElementChild as HTMLElement | null;
+  if (infoBlock) {
+    infoBlock.classList.add("atlas-location-info-card-clean");
+
+    const heading = infoBlock.querySelector<HTMLElement>("h3");
+    const titleBlock = heading?.parentElement as HTMLElement | null;
+    const titleRow = titleBlock?.parentElement as HTMLElement | null;
+    if (heading && titleBlock && titleRow) {
+      let thumbnail = titleRow.querySelector<HTMLElement>(".atlas-location-detail-thumb");
+      if (!thumbnail) {
+        thumbnail = document.createElement("div");
+        thumbnail.className = "atlas-location-detail-thumb";
+        titleRow.insertBefore(thumbnail, titleBlock);
+      }
+      if (selectedMeta?.photoUrl) {
+        thumbnail.style.backgroundImage = `url(${selectedMeta.photoUrl})`;
+        thumbnail.textContent = "";
+      } else {
+        thumbnail.style.backgroundImage = "";
+        thumbnail.textContent = roomName.slice(0, 2).toUpperCase();
+      }
+    }
+
+    const headerRow = Array.from(infoBlock.children).find(
+      (child) => child instanceof HTMLElement && child.querySelector("h3"),
+    ) as HTMLElement | undefined;
+    let summary = infoBlock.querySelector<HTMLElement>(".atlas-location-summary-clean");
+    if (!summary) {
+      summary = document.createElement("div");
+      summary.className = "atlas-location-summary-clean";
+      if (headerRow?.nextSibling) infoBlock.insertBefore(summary, headerRow.nextSibling);
+      else infoBlock.appendChild(summary);
+    }
+    const values = selectedMeta
+      ? [
+          ["Assets", selectedMeta.assets],
+          ["Open work", selectedMeta.openWork],
+          ["Photos", selectedMeta.photos],
+          ["Documents", selectedMeta.documents],
+        ]
+      : [];
+    summary.replaceChildren(
+      ...values.map(([label, value]) => {
+        const item = document.createElement("div");
+        item.className = "atlas-location-summary-item";
+        const labelNode = document.createElement("span");
+        labelNode.textContent = String(label);
+        const valueNode = document.createElement("strong");
+        valueNode.textContent = String(value);
+        item.append(labelNode, valueNode);
+        return item;
+      }),
+    );
+    summary.style.display = values.length ? "grid" : "none";
+  }
+
   if (!listPanel) return;
 
   for (const button of Array.from(listPanel.querySelectorAll<HTMLButtonElement>("button"))) {
@@ -359,15 +512,42 @@ function markBusyLocationChrome(drawer: HTMLElement, listPanel: HTMLElement | nu
     button.classList.add("atlas-location-list-card-main");
     wrapper.classList.add("atlas-location-list-card-clean");
 
-    for (const child of Array.from(button.children) as HTMLElement[]) {
-      if (!child.contains(titleNode)) child.classList.add("atlas-location-list-card-meta-hidden");
-    }
-    const titleContainer = titleNode.parentElement;
-    if (titleContainer) {
-      for (const child of Array.from(titleContainer.children) as HTMLElement[]) {
-        if (child !== titleNode) child.classList.add("atlas-location-list-card-meta-hidden");
+    const meta = presentationMeta.get(normalized(title));
+    const titleContainer = titleNode.parentElement as HTMLElement | null;
+    const lead = button.firstElementChild as HTMLElement | null;
+
+    if (lead) {
+      lead.classList.add("atlas-location-list-thumb");
+      const hierarchyControl = Boolean(lead.getAttribute("aria-label"));
+      if (meta?.photoUrl) {
+        lead.style.setProperty("visibility", "visible", "important");
+        lead.style.setProperty("background-image", `url(${JSON.stringify(meta.photoUrl).slice(1, -1)})`, "important");
+        lead.style.setProperty("background-size", "cover", "important");
+        lead.style.setProperty("background-position", "center", "important");
+        if (hierarchyControl) {
+          lead.style.setProperty("color", "#ffffff", "important");
+          lead.style.setProperty("text-shadow", "0 1px 3px rgba(0,0,0,.9)", "important");
+          lead.style.setProperty("font-weight", "950", "important");
+        } else {
+          lead.textContent = "";
+        }
+      } else if (!hierarchyControl) {
+        lead.style.setProperty("visibility", "visible", "important");
+        lead.style.removeProperty("background-image");
+        lead.textContent = title.slice(0, 2).toUpperCase();
       }
     }
+
+    if (titleContainer) {
+      titleContainer.classList.add("atlas-location-list-copy");
+      for (const child of Array.from(titleContainer.children) as HTMLElement[]) {
+        const text = normalized(child.textContent);
+        if (/^\d+\s+(assets?|work)$/.test(text) || (/assets?/.test(text) && /work/.test(text))) {
+          child.classList.add("atlas-location-list-counts-hidden");
+        }
+      }
+    }
+
   }
 
   for (const section of Array.from(listPanel.querySelectorAll<HTMLElement>("section"))) {
@@ -409,9 +589,41 @@ function markBusyLocationChrome(drawer: HTMLElement, listPanel: HTMLElement | nu
 export default function AtlasLocationsPolish() {
   useEffect(() => {
     let frame = 0;
+    let loadedPropertyId = "";
+    let loadingPropertyId = "";
+    let presentationMeta = new Map<string, LocationPresentationMeta>();
+
+    const schedule = () => {
+      if (!frame) frame = window.requestAnimationFrame(apply);
+    };
+
+    const refreshPresentationMeta = (propertyId: string) => {
+      if (!propertyId || loadedPropertyId === propertyId || loadingPropertyId === propertyId) return;
+      loadingPropertyId = propertyId;
+      void loadLocationPresentationMeta(propertyId)
+        .then((next) => {
+          if (loadingPropertyId !== propertyId) return;
+          presentationMeta = next;
+          loadedPropertyId = propertyId;
+        })
+        .catch(() => {
+          if (loadingPropertyId === propertyId) loadedPropertyId = propertyId;
+        })
+        .finally(() => {
+          if (loadingPropertyId === propertyId) loadingPropertyId = "";
+          schedule();
+        });
+    };
 
     const apply = () => {
       frame = 0;
+      const propertyId = activePropertyIdFromDom();
+      if (propertyId !== loadedPropertyId) {
+        if (loadingPropertyId && loadingPropertyId !== propertyId) loadingPropertyId = "";
+        presentationMeta = new Map();
+        refreshPresentationMeta(propertyId);
+      }
+
       const drawers = Array.from(document.querySelectorAll<HTMLElement>('div[tabindex="0"]'));
 
       for (const drawer of drawers) {
@@ -427,7 +639,7 @@ export default function AtlasLocationsPolish() {
           listPanel.classList.add("atlas-location-list-panel", "atlas-location-independent-scroll");
         }
 
-        markBusyLocationChrome(drawer, listPanel);
+        markBusyLocationChrome(drawer, listPanel, presentationMeta);
 
         const specCards: HTMLElement[] = [];
         for (const valueNode of Array.from(drawer.querySelectorAll<HTMLElement>("strong"))) {
@@ -459,10 +671,6 @@ export default function AtlasLocationsPolish() {
           textarea.parentElement?.parentElement?.classList.add("atlas-location-spec-edit-list");
         }
       }
-    };
-
-    const schedule = () => {
-      if (!frame) frame = window.requestAnimationFrame(apply);
     };
 
     schedule();
@@ -523,7 +731,7 @@ export default function AtlasLocationsPolish() {
       .atlas-location-hidden-list-summary,
       .atlas-location-hidden-hint,
       .atlas-location-hidden-empty-secondary,
-      .atlas-location-list-card-meta-hidden {
+      .atlas-location-list-counts-hidden {
         display: none !important;
       }
       .atlas-location-add-row-compact {
@@ -545,19 +753,72 @@ export default function AtlasLocationsPolish() {
         transform: none !important;
       }
       .atlas-location-list-card-main {
-        display: block !important;
-        min-height: 0 !important;
-        padding: 10px 12px !important;
-        text-align: left !important;
+        min-width: 0 !important;
       }
-      .atlas-location-list-card-main strong {
+      .atlas-location-list-copy {
+        min-width: 0 !important;
+      }
+      .atlas-location-list-copy > strong,
+      .atlas-location-list-copy > small {
         display: block !important;
-        font-size: 14px !important;
-        line-height: 1.3 !important;
-        color: #0b2c43 !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
         white-space: nowrap !important;
+      }
+      .atlas-location-list-copy > strong {
+        font-size: 13px !important;
+        line-height: 1.2 !important;
+        color: #0b2c43 !important;
+      }
+      .atlas-location-list-thumb {
+        background-repeat: no-repeat !important;
+      }
+      .atlas-location-info-card-clean {
+        border: 1px solid #d9e2eb !important;
+        border-radius: 12px !important;
+        background: #ffffff !important;
+        padding: 10px 11px !important;
+        box-shadow: none !important;
+      }
+      .atlas-location-detail-thumb {
+        width: 52px;
+        height: 52px;
+        flex: 0 0 52px;
+        border: 1px solid #d9e2eb;
+        border-radius: 11px;
+        background-color: #f6f8fb;
+        background-size: cover;
+        background-position: center;
+        display: grid;
+        place-items: center;
+        color: #607086;
+        font-size: 11px;
+        font-weight: 900;
+        overflow: hidden;
+      }
+      .atlas-location-summary-clean {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 7px;
+        margin-top: 10px;
+      }
+      .atlas-location-summary-item {
+        min-width: 0;
+        border: 1px solid #d9e2eb;
+        border-radius: 9px;
+        background: #f6f8fb;
+        padding: 7px 8px;
+      }
+      .atlas-location-summary-item span {
+        display: block;
+        color: #607086;
+        font-size: 10px;
+        font-weight: 800;
+      }
+      .atlas-location-summary-item strong {
+        display: block;
+        margin-top: 2px;
+        color: #0b1e33;
+        font-size: 13px;
       }
       .atlas-location-equipment-section {
         margin-top: 10px !important;
@@ -652,9 +913,8 @@ export default function AtlasLocationsPolish() {
         .atlas-location-spec-value { font-size:12px !important; line-height:1.5 !important; }
         .atlas-spec-files { grid-template-columns:minmax(0,1fr); }
         .atlas-location-spec-edit-row { grid-template-columns:minmax(0,1fr) !important; }
-        .atlas-location-list-card-main {
-          padding: 10px !important;
-        }
+        .atlas-location-summary-clean { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .atlas-location-detail-thumb { width: 46px; height: 46px; flex-basis: 46px; }
       }
     `}</style>
   );
