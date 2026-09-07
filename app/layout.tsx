@@ -8,16 +8,20 @@ import AtlasLocationPhotoEditor from "./components/AtlasLocationPhotoEditor";
 import AtlasLocationMainPhotoControl from "./components/AtlasLocationMainPhotoControl";
 import AtlasPropertyVisibility from "./components/AtlasPropertyVisibility";
 import AtlasWorkspacePolish from "./components/AtlasWorkspacePolish";
+import AtlasKnowledgePolish from "./components/AtlasKnowledgePolish";
 import AtlasAssetReferencePolish from "./components/AtlasAssetReferencePolish";
 import AtlasAssetsViewportPolish from "./components/AtlasAssetsViewportPolish";
+import AtlasDepartmentAssetPhotoPolish from "./components/AtlasDepartmentAssetPhotoPolish";
 import AtlasWorkPolish from "./components/AtlasWorkPolish";
 import AtlasWorkWeekWrap from "./components/AtlasWorkWeekWrap";
 import AtlasDashboardPolish from "./components/AtlasDashboardPolish";
 import AtlasMobileDashboardPolish from "./components/AtlasMobileDashboardPolish";
 import AtlasDayOffControl from "./components/AtlasDayOffControl";
+import AtlasSharedTeamList from "./components/AtlasSharedTeamList";
 import AtlasVendorScrollbarPolish from "./components/AtlasVendorScrollbarPolish";
 import AtlasTeamPeoplePolish from "./components/AtlasTeamPeoplePolish";
 import AtlasOperationsPolish from "./components/AtlasOperationsPolish";
+import AtlasOwnerReportHeaderPolish from "./components/AtlasOwnerReportHeaderPolish";
 import AtlasServiceLinkPolish from "./components/AtlasServiceLinkPolish";
 
 export const metadata: Metadata = {
@@ -65,16 +69,20 @@ export default function RootLayout({
         <AtlasLocationMainPhotoControl />
         <AtlasPropertyVisibility />
         <AtlasWorkspacePolish />
+        <AtlasKnowledgePolish />
         <AtlasAssetReferencePolish />
         <AtlasAssetsViewportPolish />
+        <AtlasDepartmentAssetPhotoPolish />
         <AtlasWorkPolish />
         <AtlasWorkWeekWrap />
         <AtlasDashboardPolish />
         <AtlasMobileDashboardPolish />
         <AtlasDayOffControl />
+        <AtlasSharedTeamList />
         <AtlasVendorScrollbarPolish />
         <AtlasTeamPeoplePolish />
         <AtlasOperationsPolish />
+        <AtlasOwnerReportHeaderPolish />
         <AtlasServiceLinkPolish />
         {children}
       </body>
