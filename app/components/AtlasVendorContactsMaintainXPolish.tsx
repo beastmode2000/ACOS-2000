@@ -254,14 +254,17 @@ export default function AtlasVendorContactsMaintainXPolish() {
       attributeFilter: ["class", "style", "hidden", "src", "alt"],
     });
 
-    document.addEventListener("change", isolateContactSelectChange);
+    // Stop vendor-contact select changes at <body>, after React has handled the
+    // controlled select but before older document-level Atlas change listeners
+    // can interpret the change as navigation and send the app to a 404 route.
+    document.body.addEventListener("change", isolateContactSelectChange);
     document.addEventListener("click", schedule, true);
     window.addEventListener("resize", schedule);
     window.addEventListener("popstate", schedule);
 
     return () => {
       observer.disconnect();
-      document.removeEventListener("change", isolateContactSelectChange);
+      document.body.removeEventListener("change", isolateContactSelectChange);
       document.removeEventListener("click", schedule, true);
       window.removeEventListener("resize", schedule);
       window.removeEventListener("popstate", schedule);
