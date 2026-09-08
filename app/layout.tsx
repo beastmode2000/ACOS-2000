@@ -16,6 +16,7 @@ import AtlasWorkPolish from "./components/AtlasWorkPolish";
 import AtlasWorkEditorCleanup from "./components/AtlasWorkEditorCleanup";
 import AtlasWorkWeekWrap from "./components/AtlasWorkWeekWrap";
 import AtlasDashboardPolish from "./components/AtlasDashboardPolish";
+import AtlasDashboardUpcomingWork from "./components/AtlasDashboardUpcomingWork";
 import AtlasDashboardNoteActionsPolish from "./components/AtlasDashboardNoteActionsPolish";
 import AtlasHydrawiseWeatherLink from "./components/AtlasHydrawiseWeatherLink";
 import AtlasPhotoPastePolish from "./components/AtlasPhotoPastePolish";
@@ -24,9 +25,11 @@ import AtlasMobileFieldPolish from "./components/AtlasMobileFieldPolish";
 import AtlasDayOffControl from "./components/AtlasDayOffControl";
 import AtlasSharedTeamList from "./components/AtlasSharedTeamList";
 import AtlasVendorScrollbarPolish from "./components/AtlasVendorScrollbarPolish";
+import AtlasVendorContactsPersistence from "./components/AtlasVendorContactsPersistence";
 import AtlasVendorContactsMaintainXPolish from "./components/AtlasVendorContactsMaintainXPolish";
 import AtlasSidebarScrollbarPolish from "./components/AtlasSidebarScrollbarPolish";
 import AtlasTeamPeoplePolish from "./components/AtlasTeamPeoplePolish";
+import AtlasTeamWorkActions from "./components/AtlasTeamWorkActions";
 import AtlasTeamInviteActions from "./components/AtlasTeamInviteActions";
 import AtlasTeamHeaderCleanup from "./components/AtlasTeamHeaderCleanup";
 import AtlasHouseMaintenancePolish from "./components/AtlasHouseMaintenancePolish";
@@ -87,6 +90,7 @@ export default function RootLayout({
         <AtlasWorkEditorCleanup />
         <AtlasWorkWeekWrap />
         <AtlasDashboardPolish />
+        <AtlasDashboardUpcomingWork />
         <AtlasDashboardNoteActionsPolish />
         <AtlasHydrawiseWeatherLink />
         <AtlasPhotoPastePolish />
@@ -95,9 +99,11 @@ export default function RootLayout({
         <AtlasDayOffControl />
         <AtlasSharedTeamList />
         <AtlasVendorScrollbarPolish />
+        <AtlasVendorContactsPersistence />
         <AtlasVendorContactsMaintainXPolish />
         <AtlasSidebarScrollbarPolish />
         <AtlasTeamPeoplePolish />
+        <AtlasTeamWorkActions />
         <AtlasTeamInviteActions />
         <AtlasTeamHeaderCleanup />
         <AtlasHouseMaintenancePolish />
