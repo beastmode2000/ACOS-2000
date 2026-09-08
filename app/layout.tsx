@@ -26,6 +26,7 @@ import AtlasVendorScrollbarPolish from "./components/AtlasVendorScrollbarPolish"
 import AtlasVendorContactsPersistence from "./components/AtlasVendorContactsPersistence";
 import AtlasVendorContactsMaintainXPolish from "./components/AtlasVendorContactsMaintainXPolish";
 import AtlasWorkCompletionSpeed from "./components/AtlasWorkCompletionSpeed";
+import AtlasWorkflowReliability from "./components/AtlasWorkflowReliability";
 import AtlasTeamPeoplePolish from "./components/AtlasTeamPeoplePolish";
 import AtlasTeamWorkActions from "./components/AtlasTeamWorkActions";
 import AtlasTeamInviteActions from "./components/AtlasTeamInviteActions";
@@ -98,6 +99,7 @@ export default function RootLayout({
         <AtlasVendorScrollbarPolish />
         <AtlasVendorContactsMaintainXPolish />
         <AtlasWorkCompletionSpeed />
+        <AtlasWorkflowReliability />
         <AtlasTeamPeoplePolish />
         <AtlasTeamWorkActions />
         <AtlasTeamInviteActions />
