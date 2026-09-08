@@ -24,8 +24,7 @@ function findEditWorkCard(panel: HTMLElement) {
     const hasTitleInput = Array.from(current.querySelectorAll<HTMLInputElement>("input")).some(
       (input) => input.type !== "hidden" && String(input.value || "").trim().length > 0,
     );
-    const hasSelect = Boolean(current.querySelector("select"));
-    if (hasTitleInput && hasSelect) return current;
+    if (hasTitleInput) return current;
     current = current.parentElement;
   }
 
@@ -50,6 +49,33 @@ function markAssetField(editor: HTMLElement) {
   }
 }
 
+function removeHeaderClutter(panel: HTMLElement, editor: HTMLElement) {
+  for (const quickLink of Array.from(panel.querySelectorAll<HTMLElement>(".atlas-work-asset-quick-link"))) {
+    quickLink.remove();
+  }
+
+  const editMarker = Array.from(editor.querySelectorAll<HTMLElement>("div, span, strong, h2, h3, h4")).find(
+    (node) => normalized(node.textContent) === "edit work",
+  );
+  const markerRect = editMarker?.getBoundingClientRect();
+
+  for (const element of Array.from(editor.querySelectorAll<HTMLElement>("button,span,div"))) {
+    if (element === editMarker || element.contains(editMarker || null)) continue;
+    if (element.querySelector("input,select,textarea")) continue;
+
+    const label = normalized(element.textContent);
+    if (!["scan", "scan asset", "scan qr"].includes(label)) continue;
+
+    if (!markerRect) {
+      element.remove();
+      continue;
+    }
+
+    const rect = element.getBoundingClientRect();
+    if (Math.abs(rect.top - markerRect.top) <= 110) element.remove();
+  }
+}
+
 function cleanWorkEditor() {
   const root = workMain();
   if (!root) return;
@@ -57,12 +83,13 @@ function cleanWorkEditor() {
   const panel = root.querySelector<HTMLElement>("[data-atlas-work-detail-panel]");
   if (!panel) return;
 
+  for (const quickLink of Array.from(panel.querySelectorAll<HTMLElement>(".atlas-work-asset-quick-link"))) {
+    quickLink.remove();
+  }
+
   const editor = findEditWorkCard(panel);
   const editing = Boolean(editor);
   panel.classList.toggle("atlas-work-editor-cleanup-active", editing);
-
-  const quickLink = panel.querySelector<HTMLElement>(".atlas-work-asset-quick-link");
-  quickLink?.classList.toggle("atlas-work-editor-quick-link-hidden", editing);
 
   if (!editor) return;
   editor.classList.add("atlas-work-editor-clean-card");
@@ -72,13 +99,7 @@ function cleanWorkEditor() {
   );
   marker?.parentElement?.classList.add("atlas-work-editor-clean-header");
 
-  for (const button of Array.from(editor.querySelectorAll<HTMLButtonElement>("button"))) {
-    const label = normalized(button.textContent);
-    if (label === "scan" || label === "scan asset" || label === "scan qr") {
-      button.classList.add("atlas-work-editor-scan-hidden");
-    }
-  }
-
+  removeHeaderClutter(panel, editor);
   markAssetField(editor);
 }
 
@@ -101,47 +122,49 @@ export default function AtlasWorkEditorCleanup() {
     observer.observe(document.body, {
       childList: true,
       subtree: true,
-      attributes: true,
-      attributeFilter: ["class", "style", "hidden"],
     });
 
     document.addEventListener("click", schedule, true);
     window.addEventListener("resize", schedule);
+    window.addEventListener("atlas:data-changed", schedule as EventListener);
 
     return () => {
       observer.disconnect();
       document.removeEventListener("click", schedule, true);
       window.removeEventListener("resize", schedule);
+      window.removeEventListener("atlas:data-changed", schedule as EventListener);
       if (frame) window.cancelAnimationFrame(frame);
     };
   }, []);
 
   return (
     <style jsx global>{`
-      .atlas-work-editor-cleanup-active > .atlas-work-summary-card,
-      .atlas-work-editor-cleanup-active .atlas-work-summary-card {
-        display: none !important;
-      }
-
-      .atlas-work-editor-quick-link-hidden,
-      .atlas-work-editor-scan-hidden {
+      .atlas-work-polish-root .atlas-work-asset-quick-link {
         display: none !important;
       }
 
       .atlas-work-editor-clean-card {
-        overflow: visible !important;
+        overflow-x: hidden !important;
+        min-width: 0 !important;
+      }
+
+      .atlas-work-editor-clean-card > * {
+        max-width: 100% !important;
+        min-width: 0 !important;
       }
 
       .atlas-work-editor-clean-header {
         display: flex !important;
         align-items: center !important;
         justify-content: space-between !important;
-        gap: 12px !important;
+        gap: 10px !important;
         flex-wrap: wrap !important;
+        min-width: 0 !important;
       }
 
       .atlas-work-editor-clean-header > * {
         min-width: 0 !important;
+        max-width: 100% !important;
       }
 
       .atlas-work-editor-asset-field-clean {
@@ -152,11 +175,13 @@ export default function AtlasWorkEditorCleanup() {
         margin: 0 !important;
         min-height: 0 !important;
         width: 100% !important;
+        max-width: 100% !important;
       }
 
       .atlas-work-editor-asset-field-clean select {
         width: 100% !important;
         min-width: 0 !important;
+        max-width: 100% !important;
       }
 
       @media (max-width: 760px) {
@@ -164,9 +189,8 @@ export default function AtlasWorkEditorCleanup() {
           align-items: stretch !important;
         }
 
-        .atlas-work-editor-clean-header > div:last-child {
+        .atlas-work-editor-clean-header > * {
           width: 100% !important;
-          justify-content: flex-start !important;
         }
       }
     `}</style>
