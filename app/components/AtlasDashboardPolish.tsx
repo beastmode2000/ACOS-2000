@@ -75,6 +75,8 @@ function ensureCommandBar(command: HTMLElement) {
     command.insertBefore(bar, command.firstChild);
   }
 
+  if (bar.dataset.atlasDashboardCommandReady === "true") return;
+
   const status = document.createElement("div");
   status.className = "atlas-dashboard-command-status";
 
@@ -125,6 +127,7 @@ function ensureCommandBar(command: HTMLElement) {
   }
 
   bar.replaceChildren(status, actions);
+  bar.dataset.atlasDashboardCommandReady = "true";
 }
 
 function markDashboard(root: HTMLElement) {
