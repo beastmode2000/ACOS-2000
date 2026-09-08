@@ -18,6 +18,7 @@ import AtlasWorkWeekWrap from "./components/AtlasWorkWeekWrap";
 import AtlasDashboardPolish from "./components/AtlasDashboardPolish";
 import AtlasDashboardNoteActionsPolish from "./components/AtlasDashboardNoteActionsPolish";
 import AtlasHydrawiseWeatherLink from "./components/AtlasHydrawiseWeatherLink";
+import AtlasPhotoPastePolish from "./components/AtlasPhotoPastePolish";
 import AtlasMobileDashboardPolish from "./components/AtlasMobileDashboardPolish";
 import AtlasMobileFieldPolish from "./components/AtlasMobileFieldPolish";
 import AtlasDayOffControl from "./components/AtlasDayOffControl";
@@ -85,6 +86,7 @@ export default function RootLayout({
         <AtlasDashboardPolish />
         <AtlasDashboardNoteActionsPolish />
         <AtlasHydrawiseWeatherLink />
+        <AtlasPhotoPastePolish />
         <AtlasMobileDashboardPolish />
         <AtlasMobileFieldPolish />
         <AtlasDayOffControl />
