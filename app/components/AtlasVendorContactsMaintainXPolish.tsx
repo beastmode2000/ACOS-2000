@@ -25,10 +25,27 @@ function textButton(root: ParentNode, labels: string[]) {
 }
 
 function contactSection(root: HTMLElement) {
-  const marker = Array.from(root.querySelectorAll<HTMLElement>("div, strong, h2, h3, h4")).find(
-    (node) => normalized(node.textContent) === "departments contacts",
-  );
-  return marker?.closest<HTMLElement>("section") || null;
+  const existing = root.querySelector<HTMLElement>("section.atlas-vendor-contacts-maintainx");
+  if (existing) return existing;
+
+  const addButton = Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find((button) => {
+    const value = normalized(button.textContent).replace(/^\+\s*/, "");
+    return value === "add department" || value === "add contact";
+  });
+  const byButton = addButton?.closest<HTMLElement>("section") || null;
+  if (byButton) return byButton;
+
+  const marker = Array.from(root.querySelectorAll<HTMLElement>("div, strong, h2, h3, h4")).find((node) => {
+    const value = normalized(node.textContent);
+    return value === "departments contacts" || value === "contacts";
+  });
+  const byMarker = marker?.closest<HTMLElement>("section") || null;
+  if (!byMarker) return null;
+
+  const text = normalized(byMarker.textContent);
+  return text.includes("active") || text.includes("add contact") || text.includes("add department")
+    ? byMarker
+    : null;
 }
 
 function fieldLabelText(input: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) {
@@ -43,6 +60,36 @@ function contactNameInput(article: HTMLElement) {
     const label = fieldLabelText(input);
     return label === "contact name" || label === "full name";
   });
+}
+
+function contactDisplayName(article: HTMLElement) {
+  const candidates = Array.from(article.querySelectorAll<HTMLElement>("div, span, strong"))
+    .map((node) => String(node.textContent || "").trim())
+    .filter(Boolean)
+    .filter((value) => !["Primary", "Inactive", "Edit", "Office", "Service", "Technician", "Billing", "Sales", "Installation", "Manager", "Owner", "Emergency", "Other"].includes(value));
+
+  const withRoleSeparator = candidates.find((value) => value.includes(" · "));
+  if (withRoleSeparator) return withRoleSeparator.split(" · ")[0].trim();
+  return candidates.find((value) => value.length <= 80) || "Contact";
+}
+
+function ensureCompactAvatar(article: HTMLElement) {
+  if (article.classList.contains("atlas-vendor-contact-modal-card")) return;
+
+  const header = article.firstElementChild;
+  if (!(header instanceof HTMLElement)) return;
+
+  let avatar = header.querySelector<HTMLElement>(":scope > .atlas-vendor-contact-card-avatar");
+  if (!avatar) {
+    avatar = document.createElement("span");
+    avatar.className = "atlas-vendor-contact-card-avatar";
+    avatar.setAttribute("aria-hidden", "true");
+    header.insertBefore(avatar, header.firstChild);
+  }
+
+  const name = contactDisplayName(article);
+  avatar.textContent = name.slice(0, 1).toUpperCase() || "C";
+  header.classList.add("atlas-vendor-contact-card-header");
 }
 
 function renameFieldLabels(article: HTMLElement) {
@@ -63,6 +110,9 @@ function renameFieldLabels(article: HTMLElement) {
 function ensureModalChrome(article: HTMLElement) {
   renameFieldLabels(article);
 
+  const compactAvatar = article.querySelector<HTMLElement>(".atlas-vendor-contact-card-avatar");
+  compactAvatar?.remove();
+
   const nameInput = contactNameInput(article);
   const name = String(nameInput?.value || "").trim();
   const initial = name.slice(0, 1).toUpperCase() || "C";
@@ -80,7 +130,7 @@ function ensureModalChrome(article: HTMLElement) {
         <div class="atlas-vendor-contact-modal-avatar" aria-hidden="true"></div>
         <div>
           <div class="atlas-vendor-contact-modal-kicker">Contact Info</div>
-          <div class="atlas-vendor-contact-modal-subtitle">${"Person at this vendor"}</div>
+          <div class="atlas-vendor-contact-modal-subtitle">Person at this vendor</div>
         </div>
       </div>
     `;
@@ -111,11 +161,12 @@ function ensureModalChrome(article: HTMLElement) {
     done.classList.add("atlas-vendor-contact-save");
   }
 
-  const archive = textButton(article, ["Archive", "Restore"]);
-  archive?.classList.add("atlas-vendor-contact-secondary-action");
-
-  const remove = textButton(article, ["Delete"]);
-  remove?.classList.add("atlas-vendor-contact-delete-action");
+  textButton(article, ["Archive", "Restore"])?.classList.add(
+    "atlas-vendor-contact-secondary-action",
+  );
+  textButton(article, ["Delete"])?.classList.add(
+    "atlas-vendor-contact-delete-action",
+  );
 
   if (nameInput && nameInput.dataset.atlasVendorContactInitialBound !== "true") {
     nameInput.dataset.atlasVendorContactInitialBound = "true";
@@ -176,8 +227,8 @@ function polishVendorContacts() {
   }
 
   for (const button of Array.from(section.querySelectorAll<HTMLButtonElement>("button"))) {
-    const label = normalized(button.textContent);
-    if (label === "add department") {
+    const label = normalized(button.textContent).replace(/^\+\s*/, "");
+    if (label === "add department" || label === "add contact") {
       button.textContent = "+ Add Contact";
       button.classList.add("atlas-vendor-add-contact");
     }
@@ -194,12 +245,10 @@ function polishVendorContacts() {
   for (const article of Array.from(section.querySelectorAll<HTMLElement>("article"))) {
     article.classList.add("atlas-vendor-contact-card");
 
-    const editing = Boolean(
-      Array.from(article.querySelectorAll<HTMLButtonElement>("button")).some((button) => {
-        const label = normalized(button.textContent);
-        return label === "done" || label === "save contact";
-      }),
-    );
+    const editing = Array.from(article.querySelectorAll<HTMLButtonElement>("button")).some((button) => {
+      const label = normalized(button.textContent);
+      return label === "done" || label === "save contact";
+    });
 
     article.classList.toggle("atlas-vendor-contact-modal-card", editing);
 
@@ -208,6 +257,7 @@ function polishVendorContacts() {
       ensureModalChrome(article);
     } else {
       article.querySelector(":scope > .atlas-vendor-contact-modal-chrome")?.remove();
+      ensureCompactAvatar(article);
     }
   }
 
@@ -261,11 +311,39 @@ export default function AtlasVendorContactsMaintainXPolish() {
       }
 
       .atlas-vendor-contact-card {
-        transition: border-color 120ms ease, box-shadow 120ms ease !important;
+        transition:
+          border-color 120ms ease,
+          box-shadow 120ms ease !important;
+      }
+
+      .atlas-vendor-contact-card:not(.atlas-vendor-contact-modal-card) {
+        border-radius: 14px !important;
+        background: #ffffff !important;
+        box-shadow: none !important;
       }
 
       .atlas-vendor-contact-card:not(.atlas-vendor-contact-modal-card):hover {
         border-color: #b9c9d8 !important;
+        box-shadow: 0 4px 16px rgba(8, 28, 51, 0.06) !important;
+      }
+
+      .atlas-vendor-contact-card-header {
+        display: grid !important;
+        grid-template-columns: 46px minmax(0, 1fr) auto !important;
+        align-items: center !important;
+        gap: 10px !important;
+      }
+
+      .atlas-vendor-contact-card-avatar {
+        width: 46px !important;
+        height: 46px !important;
+        border-radius: 999px !important;
+        display: grid !important;
+        place-items: center !important;
+        background: #e7f1f7 !important;
+        color: #0b2c43 !important;
+        font-size: 18px !important;
+        font-weight: 850 !important;
       }
 
       .atlas-vendor-contact-modal-backdrop {
@@ -406,6 +484,17 @@ export default function AtlasVendorContactsMaintainXPolish() {
       }
 
       @media (max-width: 760px) {
+        .atlas-vendor-contact-card-header {
+          grid-template-columns: 42px minmax(0, 1fr) auto !important;
+          gap: 8px !important;
+        }
+
+        .atlas-vendor-contact-card-avatar {
+          width: 42px !important;
+          height: 42px !important;
+          font-size: 17px !important;
+        }
+
         .atlas-vendor-contact-modal-card {
           top: 8px !important;
           left: 8px !important;
