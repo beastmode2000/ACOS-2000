@@ -12,35 +12,19 @@ function normalized(value: unknown) {
     .trim();
 }
 
-function dashboardMain() {
-  const heading = Array.from(document.querySelectorAll<HTMLElement>("main h1")).find(
-    (node) => normalized(node.textContent) === "dashboard",
+function irrigationCard() {
+  const weather = document.querySelector<HTMLElement>("#atlas-dashboard-weather");
+  if (!weather) return null;
+
+  return (
+    Array.from(
+      weather.querySelectorAll<HTMLElement>(".atlas-weather-operation-card"),
+    ).find((card) =>
+      Array.from(card.querySelectorAll<HTMLElement>("strong, b")).some(
+        (label) => normalized(label.textContent) === "irrigation",
+      ),
+    ) || null
   );
-  return (heading?.closest("main") as HTMLElement | null) || null;
-}
-
-function irrigationCard(root: HTMLElement) {
-  const marker = Array.from(root.querySelectorAll<HTMLElement>("strong, h2, h3, div, span")).find(
-    (node) => normalized(node.textContent) === "irrigation",
-  );
-  if (!marker) return null;
-
-  let current: HTMLElement | null = marker;
-  for (let depth = 0; current && current !== root && depth < 6; depth += 1) {
-    const rect = current.getBoundingClientRect();
-    const text = normalized(current.textContent);
-    if (
-      rect.width > 260 &&
-      rect.height >= 48 &&
-      rect.height <= 130 &&
-      text.includes("irrigation")
-    ) {
-      return current;
-    }
-    current = current.parentElement;
-  }
-
-  return marker.parentElement;
 }
 
 function openHydrawise(event?: Event) {
@@ -49,18 +33,44 @@ function openHydrawise(event?: Event) {
   window.open(HYDRAWISE_URL, "_blank", "noopener,noreferrer");
 }
 
+function handleHydrawiseKeydown(event: KeyboardEvent) {
+  if (event.key === "Enter" || event.key === " ") {
+    openHydrawise(event);
+  }
+}
+
+function clearHydrawiseCard(card: HTMLElement) {
+  card.removeEventListener("click", openHydrawise);
+  card.removeEventListener("keydown", handleHydrawiseKeydown);
+  delete card.dataset.atlasHydrawiseBound;
+  card.classList.remove("atlas-hydrawise-irrigation-card");
+  card.removeAttribute("role");
+  card.removeAttribute("tabindex");
+  card.removeAttribute("aria-label");
+  card.querySelector<HTMLElement>("[data-atlas-hydrawise-link]")?.remove();
+}
+
 export default function AtlasHydrawiseWeatherLink() {
   useEffect(() => {
     let frame = 0;
+    let activeCard: HTMLElement | null = null;
 
     const apply = () => {
       frame = 0;
 
-      const root = dashboardMain();
-      if (!root) return;
+      const card = irrigationCard();
+      if (!card) {
+        if (activeCard && document.body.contains(activeCard)) {
+          clearHydrawiseCard(activeCard);
+        }
+        activeCard = null;
+        return;
+      }
 
-      const card = irrigationCard(root);
-      if (!card) return;
+      if (activeCard && activeCard !== card) {
+        clearHydrawiseCard(activeCard);
+      }
+      activeCard = card;
 
       card.classList.add("atlas-hydrawise-irrigation-card");
       card.setAttribute("role", "button");
@@ -70,9 +80,7 @@ export default function AtlasHydrawiseWeatherLink() {
       if (card.dataset.atlasHydrawiseBound !== "true") {
         card.dataset.atlasHydrawiseBound = "true";
         card.addEventListener("click", openHydrawise);
-        card.addEventListener("keydown", (event) => {
-          if (event.key === "Enter" || event.key === " ") openHydrawise(event);
-        });
+        card.addEventListener("keydown", handleHydrawiseKeydown);
       }
 
       let action = card.querySelector<HTMLElement>("[data-atlas-hydrawise-link]");
@@ -96,45 +104,42 @@ export default function AtlasHydrawiseWeatherLink() {
     observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener("click", schedule, true);
     window.addEventListener("resize", schedule);
+    window.addEventListener("popstate", schedule);
 
     return () => {
       observer.disconnect();
       document.removeEventListener("click", schedule, true);
       window.removeEventListener("resize", schedule);
+      window.removeEventListener("popstate", schedule);
       if (frame) window.cancelAnimationFrame(frame);
-      document.querySelectorAll<HTMLElement>("[data-atlas-hydrawise-link]").forEach((node) => node.remove());
-      document.querySelectorAll<HTMLElement>("[data-atlas-hydrawise-bound='true']").forEach((node) => {
-        node.removeEventListener("click", openHydrawise);
-        delete node.dataset.atlasHydrawiseBound;
-        node.classList.remove("atlas-hydrawise-irrigation-card");
-        node.removeAttribute("role");
-        node.removeAttribute("tabindex");
-        node.removeAttribute("aria-label");
-      });
+      if (activeCard) clearHydrawiseCard(activeCard);
     };
   }, []);
 
   return (
     <style jsx global>{`
-      .atlas-hydrawise-irrigation-card {
+      #atlas-dashboard-weather .atlas-hydrawise-irrigation-card {
         position: relative !important;
         cursor: pointer !important;
         padding-right: 126px !important;
-        transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease !important;
+        transition:
+          border-color 120ms ease,
+          background 120ms ease,
+          box-shadow 120ms ease !important;
       }
 
-      .atlas-hydrawise-irrigation-card:hover {
+      #atlas-dashboard-weather .atlas-hydrawise-irrigation-card:hover {
         border-color: #9db9ce !important;
         background: #f8fbfd !important;
         box-shadow: 0 2px 10px rgba(11, 44, 67, 0.06) !important;
       }
 
-      .atlas-hydrawise-irrigation-card:focus-visible {
+      #atlas-dashboard-weather .atlas-hydrawise-irrigation-card:focus-visible {
         outline: 2px solid #c9972e !important;
         outline-offset: 2px !important;
       }
 
-      .atlas-hydrawise-irrigation-action {
+      #atlas-dashboard-weather .atlas-hydrawise-irrigation-action {
         position: absolute !important;
         right: 12px !important;
         top: 50% !important;
@@ -156,11 +161,11 @@ export default function AtlasHydrawiseWeatherLink() {
       }
 
       @media (max-width: 760px) {
-        .atlas-hydrawise-irrigation-card {
+        #atlas-dashboard-weather .atlas-hydrawise-irrigation-card {
           padding-right: 102px !important;
         }
 
-        .atlas-hydrawise-irrigation-action {
+        #atlas-dashboard-weather .atlas-hydrawise-irrigation-action {
           right: 9px !important;
           min-height: 28px !important;
           padding: 4px 7px !important;
