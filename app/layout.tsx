@@ -27,6 +27,7 @@ import AtlasVendorScrollbarPolish from "./components/AtlasVendorScrollbarPolish"
 import AtlasVendorContactsMaintainXPolish from "./components/AtlasVendorContactsMaintainXPolish";
 import AtlasSidebarScrollbarPolish from "./components/AtlasSidebarScrollbarPolish";
 import AtlasTeamPeoplePolish from "./components/AtlasTeamPeoplePolish";
+import AtlasTeamInviteActions from "./components/AtlasTeamInviteActions";
 import AtlasHouseMaintenancePolish from "./components/AtlasHouseMaintenancePolish";
 import AtlasOperationsPolish from "./components/AtlasOperationsPolish";
 import AtlasOwnerReportHeaderPolish from "./components/AtlasOwnerReportHeaderPolish";
@@ -96,6 +97,7 @@ export default function RootLayout({
         <AtlasVendorContactsMaintainXPolish />
         <AtlasSidebarScrollbarPolish />
         <AtlasTeamPeoplePolish />
+        <AtlasTeamInviteActions />
         <AtlasHouseMaintenancePolish />
         <AtlasOperationsPolish />
         <AtlasOwnerReportHeaderPolish />
