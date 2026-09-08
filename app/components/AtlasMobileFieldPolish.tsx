@@ -81,7 +81,33 @@ function findNavigationControl(item: NavItem) {
   });
 }
 
+function findWorkListBackControl() {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>("main button, main a"),
+  ).find((control) => {
+    if (!isVisible(control)) return false;
+    const text = normalized(control.textContent);
+    return text === "← work" || text === "←work";
+  });
+}
+
+function availableMoreItems() {
+  const controls = navigationControls();
+  const labels = controls.map((control) => normalized(control.textContent));
+  return MORE_NAV.filter((item) =>
+    item.aliases.some((alias) => labels.includes(normalized(alias))),
+  );
+}
+
 function navigateTo(item: NavItem) {
+  if (item.label === "Work") {
+    const backToWork = findWorkListBackControl();
+    if (backToWork) {
+      backToWork.click();
+      return true;
+    }
+  }
+
   const control = findNavigationControl(item);
   if (!control) return false;
 
@@ -202,14 +228,26 @@ export default function AtlasMobileFieldPolish() {
       if (!frame) frame = window.requestAnimationFrame(apply);
     };
 
+    const handleTopMenu = (event: MouseEvent) => {
+      if (window.innerWidth > 900) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const control = target.closest<HTMLElement>("button, a");
+      if (!control || isMobileFieldControl(control)) return;
+      if (normalized(control.textContent) !== "menu") return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      setAvailableMore(availableMoreItems());
+      setMoreOpen(true);
+    };
+
     schedule();
 
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, {
       childList: true,
       subtree: true,
-      attributes: true,
-      attributeFilter: ["class", "style", "hidden", "aria-hidden"],
     });
 
     const saveScroll = () => {
@@ -218,6 +256,7 @@ export default function AtlasMobileFieldPolish() {
       }
     };
 
+    document.addEventListener("click", handleTopMenu, true);
     window.addEventListener("resize", schedule);
     window.addEventListener("scroll", saveScroll, { passive: true });
     window.addEventListener("popstate", schedule);
@@ -225,6 +264,7 @@ export default function AtlasMobileFieldPolish() {
 
     return () => {
       observer.disconnect();
+      document.removeEventListener("click", handleTopMenu, true);
       window.removeEventListener("resize", schedule);
       window.removeEventListener("scroll", saveScroll);
       window.removeEventListener("popstate", schedule);
@@ -234,8 +274,7 @@ export default function AtlasMobileFieldPolish() {
   }, []);
 
   const openMore = () => {
-    const available = MORE_NAV.filter((item) => Boolean(findNavigationControl(item)));
-    setAvailableMore(available);
+    setAvailableMore(availableMoreItems());
     setMoreOpen(true);
   };
 
@@ -254,6 +293,7 @@ export default function AtlasMobileFieldPolish() {
               data-active={active ? "true" : "false"}
               onClick={() => {
                 setMoreOpen(false);
+                setScreen(normalized(item.label));
                 navigateTo(item);
               }}
             >
@@ -496,10 +536,22 @@ export default function AtlasMobileFieldPolish() {
           }
 
           .atlas-mobile-dashboard-fab,
-          .atlas-week-wrap-launch,
           .atlas-day-off-floating-wrap,
           .atlas-shared-list-launch {
             bottom: calc(82px + env(safe-area-inset-bottom)) !important;
+          }
+
+          .atlas-week-wrap-launch {
+            left: 16px !important;
+            right: 90px !important;
+            width: auto !important;
+            max-width: calc(100vw - 106px) !important;
+            bottom: calc(82px + env(safe-area-inset-bottom)) !important;
+          }
+
+          .atlas-mobile-dashboard-fab {
+            left: auto !important;
+            right: 16px !important;
           }
         }
       `}</style>
