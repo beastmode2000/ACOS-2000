@@ -67,6 +67,24 @@ function listMatches(person: string, assignedTo: string[]) {
   return values.some((value) => nameMatches(person, value));
 }
 
+function canPreview(request: NextRequest) {
+  const email = normalized(request.headers.get("x-atlas-user-email"));
+  const role = normalized(request.headers.get("x-atlas-user-role"));
+  let permissions: Record<string, unknown> = {};
+  try {
+    permissions = JSON.parse(request.headers.get("x-atlas-permissions") || "{}");
+  } catch {
+    permissions = {};
+  }
+  return (
+    !email ||
+    email === "nthornton87@yahoo.com" ||
+    role === "master" ||
+    role === "administrator" ||
+    permissions.manageUsers === true
+  );
+}
+
 async function ensureSharedTables(sql: ReturnType<typeof neon>) {
   await sql`
     CREATE TABLE IF NOT EXISTS atlas_shared_lists (
@@ -108,6 +126,16 @@ async function memberForToken(sql: ReturnType<typeof neon>, token: string) {
     SELECT id, name, role, active, property_ids
     FROM atlas_team_access
     WHERE field_token_hash = ${hash}
+    LIMIT 1
+  `) as unknown as TeamRow[];
+  return rows[0] || null;
+}
+
+async function memberForId(sql: ReturnType<typeof neon>, memberId: string) {
+  const rows = (await sql`
+    SELECT id, name, role, active, property_ids
+    FROM atlas_team_access
+    WHERE id = ${memberId}
     LIMIT 1
   `) as unknown as TeamRow[];
   return rows[0] || null;
@@ -157,19 +185,27 @@ async function loadWork(sql: ReturnType<typeof neon>, member: TeamRow) {
 export async function GET(request: NextRequest) {
   try {
     const token = String(request.nextUrl.searchParams.get("token") || "").trim();
-    if (!token) {
+    const memberId = String(request.nextUrl.searchParams.get("memberId") || "").trim();
+    const preview = Boolean(memberId);
+    if (!token && !memberId) {
       return NextResponse.json({ ok: false, error: "Missing work link." }, { status: 400 });
+    }
+    if (preview && !canPreview(request)) {
+      return NextResponse.json({ ok: false, error: "Admin access is required to preview employee work." }, { status: 403 });
     }
 
     const sql = getSql();
-    const member = await memberForToken(sql, token);
+    const member = preview
+      ? await memberForId(sql, memberId)
+      : await memberForToken(sql, token);
     if (!member || member.active === false) {
-      return NextResponse.json({ ok: false, error: "This work link is no longer active." }, { status: 403 });
+      return NextResponse.json({ ok: false, error: "This work view is no longer active." }, { status: 403 });
     }
 
     const work = await loadWork(sql, member);
     return NextResponse.json({
       ok: true,
+      preview,
       member: {
         id: member.id,
         name: member.name,
