@@ -16,6 +16,7 @@ import AtlasWorkPolish from "./components/AtlasWorkPolish";
 import AtlasWorkWeekWrap from "./components/AtlasWorkWeekWrap";
 import AtlasDashboardPolish from "./components/AtlasDashboardPolish";
 import AtlasDashboardNoteActionsPolish from "./components/AtlasDashboardNoteActionsPolish";
+import AtlasHydrawiseWeatherLink from "./components/AtlasHydrawiseWeatherLink";
 import AtlasMobileDashboardPolish from "./components/AtlasMobileDashboardPolish";
 import AtlasMobileFieldPolish from "./components/AtlasMobileFieldPolish";
 import AtlasDayOffControl from "./components/AtlasDayOffControl";
@@ -23,6 +24,7 @@ import AtlasSharedTeamList from "./components/AtlasSharedTeamList";
 import AtlasVendorScrollbarPolish from "./components/AtlasVendorScrollbarPolish";
 import AtlasSidebarScrollbarPolish from "./components/AtlasSidebarScrollbarPolish";
 import AtlasTeamPeoplePolish from "./components/AtlasTeamPeoplePolish";
+import AtlasHouseMaintenancePolish from "./components/AtlasHouseMaintenancePolish";
 import AtlasOperationsPolish from "./components/AtlasOperationsPolish";
 import AtlasOwnerReportHeaderPolish from "./components/AtlasOwnerReportHeaderPolish";
 import AtlasServiceLinkPolish from "./components/AtlasServiceLinkPolish";
@@ -80,6 +82,7 @@ export default function RootLayout({
         <AtlasWorkWeekWrap />
         <AtlasDashboardPolish />
         <AtlasDashboardNoteActionsPolish />
+        <AtlasHydrawiseWeatherLink />
         <AtlasMobileDashboardPolish />
         <AtlasMobileFieldPolish />
         <AtlasDayOffControl />
@@ -87,6 +90,7 @@ export default function RootLayout({
         <AtlasVendorScrollbarPolish />
         <AtlasSidebarScrollbarPolish />
         <AtlasTeamPeoplePolish />
+        <AtlasHouseMaintenancePolish />
         <AtlasOperationsPolish />
         <AtlasOwnerReportHeaderPolish />
         <AtlasServiceLinkPolish />
