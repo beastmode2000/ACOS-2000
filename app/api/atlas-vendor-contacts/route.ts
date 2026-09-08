@@ -23,7 +23,10 @@ function cleanText(value: unknown, max = 220) {
 function cleanContacts(value: unknown) {
   if (!Array.isArray(value)) return [] as ContactRecord[];
   return value
-    .filter((item): item is ContactRecord => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+    .filter(
+      (item): item is ContactRecord =>
+        Boolean(item && typeof item === "object" && !Array.isArray(item)),
+    )
     .map((item) => ({ ...item }))
     .slice(0, 100);
 }
@@ -40,22 +43,58 @@ async function ensureTable(sql: ReturnType<typeof neon>) {
   `;
 }
 
+async function resolveVendorProperty(
+  sql: ReturnType<typeof neon>,
+  vendorId: string,
+  requestedPropertyId: string,
+) {
+  const exactRows = (await sql`
+    SELECT property_id
+    FROM atlas_vendors
+    WHERE id = ${vendorId} AND property_id = ${requestedPropertyId}
+    LIMIT 1
+  `) as unknown as Array<{ property_id?: string }>;
+
+  if (exactRows.length) return requestedPropertyId;
+
+  const fallbackRows = (await sql`
+    SELECT property_id
+    FROM atlas_vendors
+    WHERE id = ${vendorId}
+    ORDER BY CASE WHEN property_id = ${requestedPropertyId} THEN 0 ELSE 1 END
+    LIMIT 1
+  `) as unknown as Array<{ property_id?: string }>;
+
+  return cleanText(fallbackRows[0]?.property_id, 80) || requestedPropertyId;
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const propertyId = cleanText(request.nextUrl.searchParams.get("propertyId"), 80) || "2000";
+    const requestedPropertyId =
+      cleanText(request.nextUrl.searchParams.get("propertyId"), 80) || "2000";
     const vendorId = cleanText(request.nextUrl.searchParams.get("vendorId"), 220);
     const sql = getSql();
     await ensureTable(sql);
 
     if (vendorId) {
+      const propertyId = await resolveVendorProperty(
+        sql,
+        vendorId,
+        requestedPropertyId,
+      );
       const rows = (await sql`
         SELECT vendor_id, contacts, updated_at
         FROM atlas_vendor_contact_sets
         WHERE property_id = ${propertyId} AND vendor_id = ${vendorId}
         LIMIT 1
-      `) as unknown as Array<{ vendor_id: string; contacts: ContactRecord[]; updated_at: string }>;
+      `) as unknown as Array<{
+        vendor_id: string;
+        contacts: ContactRecord[];
+        updated_at: string;
+      }>;
       return NextResponse.json({
         ok: true,
+        propertyId,
         vendorId,
         contacts: cleanContacts(rows[0]?.contacts),
         updatedAt: rows[0]?.updated_at || null,
@@ -65,14 +104,22 @@ export async function GET(request: NextRequest) {
     const rows = (await sql`
       SELECT vendor_id, contacts, updated_at
       FROM atlas_vendor_contact_sets
-      WHERE property_id = ${propertyId}
+      WHERE property_id = ${requestedPropertyId}
       ORDER BY updated_at DESC
-    `) as unknown as Array<{ vendor_id: string; contacts: ContactRecord[]; updated_at: string }>;
+    `) as unknown as Array<{
+      vendor_id: string;
+      contacts: ContactRecord[];
+      updated_at: string;
+    }>;
 
     const contactsByVendor = Object.fromEntries(
       rows.map((row) => [row.vendor_id, cleanContacts(row.contacts)]),
     );
-    return NextResponse.json({ ok: true, propertyId, contactsByVendor });
+    return NextResponse.json({
+      ok: true,
+      propertyId: requestedPropertyId,
+      contactsByVendor,
+    });
   } catch (error) {
     console.error("Atlas vendor contact read failed:", error);
     return NextResponse.json(
@@ -85,15 +132,24 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as Record<string, unknown>;
-    const propertyId = cleanText(body.propertyId, 80) || "2000";
+    const requestedPropertyId = cleanText(body.propertyId, 80) || "2000";
     const vendorId = cleanText(body.vendorId, 220);
     const contacts = cleanContacts(body.contacts);
     if (!vendorId) {
-      return NextResponse.json({ ok: false, error: "Vendor is required." }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Vendor is required." },
+        { status: 400 },
+      );
     }
 
     const sql = getSql();
     await ensureTable(sql);
+
+    const propertyId = await resolveVendorProperty(
+      sql,
+      vendorId,
+      requestedPropertyId,
+    );
 
     const vendorRows = (await sql`
       SELECT id
@@ -101,15 +157,31 @@ export async function POST(request: NextRequest) {
       WHERE id = ${vendorId} AND property_id = ${propertyId}
       LIMIT 1
     `) as unknown as Array<{ id: string }>;
+
     if (!vendorRows.length) {
-      return NextResponse.json({ ok: false, error: "Vendor was not found for this property." }, { status: 404 });
+      return NextResponse.json(
+        { ok: false, error: "Vendor was not found." },
+        { status: 404 },
+      );
     }
 
     await sql`
-      INSERT INTO atlas_vendor_contact_sets (property_id, vendor_id, contacts, updated_at)
-      VALUES (${propertyId}, ${vendorId}, ${JSON.stringify(contacts)}::jsonb, NOW())
+      INSERT INTO atlas_vendor_contact_sets (
+        property_id,
+        vendor_id,
+        contacts,
+        updated_at
+      )
+      VALUES (
+        ${propertyId},
+        ${vendorId},
+        ${JSON.stringify(contacts)}::jsonb,
+        NOW()
+      )
       ON CONFLICT (property_id, vendor_id)
-      DO UPDATE SET contacts = EXCLUDED.contacts, updated_at = NOW()
+      DO UPDATE SET
+        contacts = EXCLUDED.contacts,
+        updated_at = NOW()
     `;
 
     const verifyRows = (await sql`
@@ -127,7 +199,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ ok: true, vendorId, contacts: saved });
+    return NextResponse.json({
+      ok: true,
+      propertyId,
+      vendorId,
+      contacts: saved,
+    });
   } catch (error) {
     console.error("Atlas vendor contact save failed:", error);
     return NextResponse.json(
