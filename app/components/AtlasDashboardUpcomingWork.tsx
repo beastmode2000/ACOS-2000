@@ -27,46 +27,107 @@ function normalized(value: unknown) {
 }
 
 function currentPropertyId() {
-  const labelled = document.querySelector<HTMLSelectElement>('select[aria-label="Active property"]');
+  const labelled = document.querySelector<HTMLSelectElement>(
+    'select[aria-label="Active property"]',
+  );
   if (labelled?.value) return labelled.value;
-  const candidate = Array.from(document.querySelectorAll<HTMLSelectElement>("select")).find((select) =>
+  const candidate = Array.from(
+    document.querySelectorAll<HTMLSelectElement>("select"),
+  ).find((select) =>
     Array.from(select.options).some((option) => option.value === "2000"),
   );
   return candidate?.value || "2000";
 }
 
 function findDashboardMain() {
-  const headings = Array.from(document.querySelectorAll<HTMLElement>("main h1, main h2"));
-  const dashboardHeading = headings.find((node) => normalized(node.textContent) === "dashboard");
-  return (dashboardHeading?.closest("main") as HTMLElement | null) || null;
+  const mains = Array.from(document.querySelectorAll<HTMLElement>("main")).filter(
+    (main) => main.offsetParent !== null,
+  );
+
+  const exact = mains.find((main) =>
+    Array.from(main.querySelectorAll<HTMLElement>("h1, h2, h3")).some(
+      (node) => normalized(node.textContent) === "dashboard",
+    ),
+  );
+  if (exact) return exact;
+
+  return (
+    mains.find((main) => {
+      const text = normalized(main.textContent);
+      return (
+        text.includes("today") &&
+        text.includes("work") &&
+        (text.includes("remember") ||
+          text.includes("weather") ||
+          text.includes("irrigation"))
+      );
+    }) || null
+  );
 }
 
-function directLabel(section: HTMLElement) {
-  const candidates = Array.from(section.querySelectorAll<HTMLElement>("h2, h3, h4, strong"));
+function directLabel(element: HTMLElement) {
+  const own = normalized(element.getAttribute("aria-label"));
+  if (own) return own;
+  const candidates = Array.from(
+    element.querySelectorAll<HTMLElement>("h2, h3, h4, strong"),
+  );
   return candidates.map((node) => normalized(node.textContent)).find(Boolean) || "";
 }
 
 function findAddisonLane(root: HTMLElement) {
-  return Array.from(root.querySelectorAll<HTMLElement>("section")).find((section) => {
-    const label = directLabel(section);
-    if (label === "addison" || label === "addison's list" || label === "addison work") return true;
-    const text = normalized(section.textContent);
-    return (
-      (text.includes("addison") && text.includes("list")) ||
-      (text.includes("addison") && text.includes("work"))
-    ) && section.querySelectorAll("section").length === 0;
-  }) || null;
+  const candidates = Array.from(
+    root.querySelectorAll<HTMLElement>("section, article, [data-atlas-dashboard-card]"),
+  );
+  return (
+    candidates.find((section) => {
+      const label = directLabel(section);
+      if (
+        label === "addison" ||
+        label === "addison's list" ||
+        label === "addison work" ||
+        label === "addison work list"
+      ) {
+        return true;
+      }
+      const text = normalized(section.textContent);
+      return (
+        text.length < 4000 &&
+        ((text.includes("addison") && text.includes("list")) ||
+          (text.includes("addison") && text.includes("work")))
+      );
+    }) || null
+  );
 }
 
 function findTodayWorkSection(root: HTMLElement) {
-  return Array.from(root.querySelectorAll<HTMLElement>("section")).find((section) => {
-    const label = directLabel(section);
-    return label === "today's work" || label === "todays work" || label === "today";
-  }) || null;
+  const candidates = Array.from(
+    root.querySelectorAll<HTMLElement>("section, article, [data-atlas-dashboard-card]"),
+  );
+  return (
+    candidates.find((section) => {
+      const label = directLabel(section);
+      if (
+        label === "today's work" ||
+        label === "todays work" ||
+        label === "today"
+      ) {
+        return true;
+      }
+      const text = normalized(section.textContent);
+      return text.length < 5000 && text.includes("today") && text.includes("work");
+    }) || null
+  );
 }
 
 function isComplete(status: unknown) {
-  return ["completed", "closed", "cancelled", "canceled", "skipped", "moved to work"].includes(normalized(status));
+  return [
+    "completed",
+    "closed",
+    "cancelled",
+    "canceled",
+    "skipped",
+    "moved to work",
+  ].includes(normalized(status));
 }
 
 function dateKey(value: unknown) {
@@ -92,12 +153,18 @@ function workDueDate(record: WorkRow) {
 
 function workAssignee(record: WorkRow) {
   return String(
-    record.assignedTo || record.assigned_to || record.assignee || record.assignedPerson || "",
+    record.assignedTo ||
+      record.assigned_to ||
+      record.assignee ||
+      record.assignedPerson ||
+      "",
   ).trim();
 }
 
 function workTitle(record: WorkRow) {
-  return String(record.title || record.name || record.taskTitle || "Untitled work").trim();
+  return String(
+    record.title || record.name || record.taskTitle || "Untitled work",
+  ).trim();
 }
 
 function priorityOf(record: WorkRow) {
@@ -110,8 +177,15 @@ function memberMatches(name: string, assignment: string) {
   if (!full || !assigned) return false;
   const first = full.split(/\s+/)[0] || full;
   if (assigned === full || assigned === first) return true;
-  if (full.startsWith(`${assigned} `) || assigned.startsWith(`${first} `)) return true;
-  if (first === "patrick" && (assigned === "pat" || assigned.startsWith("pat "))) return true;
+  if (full.startsWith(`${assigned} `) || assigned.startsWith(`${first} `)) {
+    return true;
+  }
+  if (
+    first === "patrick" &&
+    (assigned === "pat" || assigned.startsWith("pat "))
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -126,7 +200,11 @@ function displayName(name: string) {
 function formatDue(value: string) {
   const date = new Date(`${value}T12:00:00`);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function priorityWeight(value: string) {
@@ -138,8 +216,12 @@ function priorityWeight(value: string) {
 }
 
 function openWorkPage() {
-  const button = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((candidate) =>
-    normalized(candidate.textContent) === "work" && candidate.offsetParent !== null,
+  const button = Array.from(
+    document.querySelectorAll<HTMLButtonElement>("button"),
+  ).find(
+    (candidate) =>
+      normalized(candidate.textContent) === "work" &&
+      candidate.offsetParent !== null,
   );
   if (button) {
     button.click();
@@ -167,18 +249,29 @@ export default function AtlasDashboardUpcomingWork() {
       }
 
       const nextProperty = currentPropertyId();
-      setPropertyId((current) => current === nextProperty ? current : nextProperty);
+      setPropertyId((current) =>
+        current === nextProperty ? current : nextProperty,
+      );
 
       const addisonLane = findAddisonLane(root);
-      let nextHost = root.querySelector<HTMLElement>("[data-atlas-upcoming-work-host]");
+      let nextHost = root.querySelector<HTMLElement>(
+        "[data-atlas-upcoming-work-host]",
+      );
       if (!nextHost) {
         nextHost = document.createElement("div");
         nextHost.dataset.atlasUpcomingWorkHost = "true";
-        if (addisonLane?.parentElement) addisonLane.parentElement.insertBefore(nextHost, addisonLane);
-        else {
+        if (addisonLane?.parentElement) {
+          addisonLane.parentElement.insertBefore(nextHost, addisonLane);
+        } else {
           const todaySection = findTodayWorkSection(root);
-          if (todaySection?.parentElement) todaySection.parentElement.insertBefore(nextHost, todaySection.nextSibling);
-          else root.appendChild(nextHost);
+          if (todaySection?.parentElement) {
+            todaySection.parentElement.insertBefore(
+              nextHost,
+              todaySection.nextSibling,
+            );
+          } else {
+            root.appendChild(nextHost);
+          }
         }
       }
 
@@ -186,7 +279,7 @@ export default function AtlasDashboardUpcomingWork() {
         addisonLane.dataset.atlasDashboardLegacyAddison = "true";
         addisonLane.style.setProperty("display", "none", "important");
       }
-      setHost((current) => current === nextHost ? current : nextHost);
+      setHost((current) => (current === nextHost ? current : nextHost));
     };
     const schedule = () => {
       if (!frame) frame = window.requestAnimationFrame(apply);
@@ -203,10 +296,12 @@ export default function AtlasDashboardUpcomingWork() {
       document.removeEventListener("change", schedule, true);
       window.removeEventListener("resize", schedule);
       if (frame) window.cancelAnimationFrame(frame);
-      document.querySelectorAll<HTMLElement>("[data-atlas-dashboard-legacy-addison]").forEach((node) => {
-        node.style.removeProperty("display");
-        delete node.dataset.atlasDashboardLegacyAddison;
-      });
+      document
+        .querySelectorAll<HTMLElement>("[data-atlas-dashboard-legacy-addison]")
+        .forEach((node) => {
+          node.style.removeProperty("display");
+          delete node.dataset.atlasDashboardLegacyAddison;
+        });
     };
   }, []);
 
@@ -218,15 +313,24 @@ export default function AtlasDashboardUpcomingWork() {
 
     const load = async () => {
       const [teamResponse, atlasResponse, sharedResponse] = await Promise.all([
-        fetch("/api/atlas-team", { cache: "no-store", credentials: "include" }),
-        fetch(`/api/atlas?propertyId=${encodeURIComponent(propertyId)}&t=${Date.now()}`, {
+        fetch("/api/atlas-team", {
           cache: "no-store",
           credentials: "include",
         }),
-        fetch(`/api/atlas-shared-list?propertyId=${encodeURIComponent(propertyId)}&t=${Date.now()}`, {
-          cache: "no-store",
-          credentials: "include",
-        }),
+        fetch(
+          `/api/atlas?propertyId=${encodeURIComponent(propertyId)}&t=${Date.now()}`,
+          {
+            cache: "no-store",
+            credentials: "include",
+          },
+        ),
+        fetch(
+          `/api/atlas-shared-list?propertyId=${encodeURIComponent(propertyId)}&t=${Date.now()}`,
+          {
+            cache: "no-store",
+            credentials: "include",
+          },
+        ),
       ]);
       if (cancelled) return;
 
@@ -235,13 +339,29 @@ export default function AtlasDashboardUpcomingWork() {
       const shared = await sharedResponse.json().catch(() => ({}));
       if (cancelled) return;
 
-      const activeMembers = (Array.isArray(team?.members) ? team.members : [])
+      const activeMembers = (
+        Array.isArray(team?.members) ? team.members : []
+      )
         .filter((member: TeamMember) => member?.active !== false)
-        .filter((member: TeamMember) => !member.propertyIds?.length || member.propertyIds.includes(propertyId))
+        .filter(
+          (member: TeamMember) =>
+            !member.propertyIds?.length ||
+            member.propertyIds.includes(propertyId),
+        )
         .filter((member: TeamMember) => normalized(member.role) !== "master")
-        .filter((member: TeamMember) => normalized(member.name) !== "nick" && !normalized(member.name).startsWith("nick "));
+        .filter(
+          (member: TeamMember) =>
+            normalized(member.name) !== "nick" &&
+            !normalized(member.name).startsWith("nick "),
+        );
       setMembers(activeMembers);
-      setWorkRows(Array.isArray(atlas?.serviceRecords) ? atlas.serviceRecords : Array.isArray(atlas?.workOrders) ? atlas.workOrders : []);
+      setWorkRows(
+        Array.isArray(atlas?.serviceRecords)
+          ? atlas.serviceRecords
+          : Array.isArray(atlas?.workOrders)
+            ? atlas.workOrders
+            : [],
+      );
       setSharedRows(Array.isArray(shared?.items) ? shared.items : []);
     };
 
@@ -250,7 +370,10 @@ export default function AtlasDashboardUpcomingWork() {
     window.addEventListener("atlas:data-changed", refresh as EventListener);
     return () => {
       cancelled = true;
-      window.removeEventListener("atlas:data-changed", refresh as EventListener);
+      window.removeEventListener(
+        "atlas:data-changed",
+        refresh as EventListener,
+      );
     };
   }, [propertyId]);
 
@@ -261,7 +384,14 @@ export default function AtlasDashboardUpcomingWork() {
       unique.set(member.id, member);
     }
     return [...unique.values()].sort((a, b) => {
-      const rank = (name: string) => /^addison(?:\s|$)/i.test(name) ? 0 : /^sean(?:\s|$)/i.test(name) ? 1 : /^patrick(?:\s|$)|^pat(?:\s|$)/i.test(name) ? 2 : 3;
+      const rank = (name: string) =>
+        /^addison(?:\s|$)/i.test(name)
+          ? 0
+          : /^sean(?:\s|$)/i.test(name)
+            ? 1
+            : /^patrick(?:\s|$)|^pat(?:\s|$)/i.test(name)
+              ? 2
+              : 3;
       const difference = rank(a.name) - rank(b.name);
       return difference || a.name.localeCompare(b.name);
     });
@@ -269,7 +399,9 @@ export default function AtlasDashboardUpcomingWork() {
 
   const upcoming = useMemo(() => {
     const today = new Date();
-    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const todayKey = `${today.getFullYear()}-${String(
+      today.getMonth() + 1,
+    ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     const rows: UpcomingRow[] = [];
 
     for (const record of workRows) {
@@ -293,7 +425,9 @@ export default function AtlasDashboardUpcomingWork() {
       rows.push({
         id: `list-${String(record.id || `${workTitle(record)}-${dueDate}`)}`,
         title: workTitle(record),
-        assignee: String(record.assigned_to || record.assignedTo || "").trim(),
+        assignee: String(
+          record.assigned_to || record.assignedTo || "",
+        ).trim(),
         dueDate,
         priority: priorityOf(record),
         source: "Team List",
@@ -302,14 +436,25 @@ export default function AtlasDashboardUpcomingWork() {
 
     const deduped = new Map<string, UpcomingRow>();
     for (const row of rows) {
-      const key = `${normalized(row.title)}|${row.dueDate}|${normalized(row.assignee)}`;
+      const key = `${normalized(row.title)}|${row.dueDate}|${normalized(
+        row.assignee,
+      )}`;
       const existing = deduped.get(key);
-      if (!existing || existing.source === "Team List") deduped.set(key, row);
+      if (!existing || existing.source === "Team List") {
+        deduped.set(key, row);
+      }
     }
 
     return [...deduped.values()]
-      .filter((row) => person === "All" || memberMatches(person, row.assignee))
-      .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || priorityWeight(a.priority) - priorityWeight(b.priority) || a.title.localeCompare(b.title))
+      .filter(
+        (row) => person === "All" || memberMatches(person, row.assignee),
+      )
+      .sort(
+        (a, b) =>
+          a.dueDate.localeCompare(b.dueDate) ||
+          priorityWeight(a.priority) - priorityWeight(b.priority) ||
+          a.title.localeCompare(b.title),
+      )
       .slice(0, 7);
   }, [workRows, sharedRows, person]);
 
@@ -322,11 +467,22 @@ export default function AtlasDashboardUpcomingWork() {
           <strong>Upcoming Work</strong>
           <span>Next scheduled work after today</span>
         </div>
-        <button type="button" onClick={openWorkPage}>View All Work</button>
+        <button type="button" onClick={openWorkPage}>
+          View All Work
+        </button>
       </div>
 
-      <div className="atlas-upcoming-work-filters" aria-label="Filter upcoming work by employee">
-        <button type="button" data-active={person === "All"} onClick={() => setPerson("All")}>All</button>
+      <div
+        className="atlas-upcoming-work-filters"
+        aria-label="Filter upcoming work by employee"
+      >
+        <button
+          type="button"
+          data-active={person === "All"}
+          onClick={() => setPerson("All")}
+        >
+          All
+        </button>
         {filterMembers.map((member) => (
           <button
             type="button"
@@ -340,21 +496,34 @@ export default function AtlasDashboardUpcomingWork() {
       </div>
 
       <div className="atlas-upcoming-work-list">
-        {upcoming.length ? upcoming.map((row) => (
-          <button type="button" className="atlas-upcoming-work-row" key={row.id} onClick={openWorkPage}>
-            <span className="atlas-upcoming-work-copy">
-              <strong>{row.title}</strong>
-              <small>{row.assignee || "Unassigned"}</small>
-            </span>
-            <span className="atlas-upcoming-work-date">{formatDue(row.dueDate)}</span>
-          </button>
-        )) : (
-          <div className="atlas-upcoming-work-empty">No upcoming scheduled work for this filter.</div>
+        {upcoming.length ? (
+          upcoming.map((row) => (
+            <button
+              type="button"
+              className="atlas-upcoming-work-row"
+              key={row.id}
+              onClick={openWorkPage}
+            >
+              <span className="atlas-upcoming-work-copy">
+                <strong>{row.title}</strong>
+                <small>{row.assignee || "Unassigned"}</small>
+              </span>
+              <span className="atlas-upcoming-work-date">
+                {formatDue(row.dueDate)}
+              </span>
+            </button>
+          ))
+        ) : (
+          <div className="atlas-upcoming-work-empty">
+            No upcoming scheduled work for this filter.
+          </div>
         )}
       </div>
 
       <style jsx global>{`
-        [data-atlas-upcoming-work-host] { min-width: 0; }
+        [data-atlas-upcoming-work-host] {
+          min-width: 0;
+        }
         .atlas-upcoming-work-card {
           background: #fff;
           border: 1px solid #dbe4ec;
@@ -365,10 +534,26 @@ export default function AtlasDashboardUpcomingWork() {
           min-width: 0;
           box-shadow: none;
         }
-        .atlas-upcoming-work-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-        .atlas-upcoming-work-head > div { display: grid; gap: 2px; min-width: 0; }
-        .atlas-upcoming-work-head strong { color: #0b3153; font-size: 15px; }
-        .atlas-upcoming-work-head span { color: #758492; font-size: 10px; font-weight: 700; }
+        .atlas-upcoming-work-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+        .atlas-upcoming-work-head > div {
+          display: grid;
+          gap: 2px;
+          min-width: 0;
+        }
+        .atlas-upcoming-work-head strong {
+          color: #0b3153;
+          font-size: 15px;
+        }
+        .atlas-upcoming-work-head span {
+          color: #758492;
+          font-size: 10px;
+          font-weight: 700;
+        }
         .atlas-upcoming-work-head button {
           border: 1px solid #d7e0e8;
           background: #f8fafc;
@@ -381,7 +566,13 @@ export default function AtlasDashboardUpcomingWork() {
           cursor: pointer;
           white-space: nowrap;
         }
-        .atlas-upcoming-work-filters { display: flex; gap: 5px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 1px; }
+        .atlas-upcoming-work-filters {
+          display: flex;
+          gap: 5px;
+          overflow-x: auto;
+          scrollbar-width: thin;
+          padding-bottom: 1px;
+        }
         .atlas-upcoming-work-filters button {
           border: 1px solid #dbe4ec;
           background: #fff;
@@ -394,8 +585,15 @@ export default function AtlasDashboardUpcomingWork() {
           cursor: pointer;
           white-space: nowrap;
         }
-        .atlas-upcoming-work-filters button[data-active="true"] { background: #0b3153; border-color: #0b3153; color: #fff; }
-        .atlas-upcoming-work-list { display: grid; border-top: 1px solid #edf1f4; }
+        .atlas-upcoming-work-filters button[data-active="true"] {
+          background: #0b3153;
+          border-color: #0b3153;
+          color: #fff;
+        }
+        .atlas-upcoming-work-list {
+          display: grid;
+          border-top: 1px solid #edf1f4;
+        }
         .atlas-upcoming-work-row {
           width: 100%;
           border: 0;
@@ -410,15 +608,46 @@ export default function AtlasDashboardUpcomingWork() {
           font: inherit;
           cursor: pointer;
         }
-        .atlas-upcoming-work-copy { display: grid; gap: 2px; min-width: 0; }
-        .atlas-upcoming-work-copy strong { color: #1c2936; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .atlas-upcoming-work-copy small { color: #7a8895; font-size: 9px; font-weight: 750; }
-        .atlas-upcoming-work-date { flex: 0 0 auto; color: #536577; font-size: 9px; font-weight: 850; }
-        .atlas-upcoming-work-empty { color: #798896; font-size: 11px; font-weight: 700; padding: 13px 2px 5px; }
+        .atlas-upcoming-work-copy {
+          display: grid;
+          gap: 2px;
+          min-width: 0;
+        }
+        .atlas-upcoming-work-copy strong {
+          color: #1c2936;
+          font-size: 12px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .atlas-upcoming-work-copy small {
+          color: #7a8895;
+          font-size: 9px;
+          font-weight: 750;
+        }
+        .atlas-upcoming-work-date {
+          flex: 0 0 auto;
+          color: #536577;
+          font-size: 9px;
+          font-weight: 850;
+        }
+        .atlas-upcoming-work-empty {
+          color: #798896;
+          font-size: 11px;
+          font-weight: 700;
+          padding: 13px 2px 5px;
+        }
         @media (max-width: 720px) {
-          .atlas-upcoming-work-card { padding: 11px; border-radius: 13px; }
-          .atlas-upcoming-work-head span { display: none; }
-          .atlas-upcoming-work-row { padding: 10px 1px; }
+          .atlas-upcoming-work-card {
+            padding: 11px;
+            border-radius: 13px;
+          }
+          .atlas-upcoming-work-head span {
+            display: none;
+          }
+          .atlas-upcoming-work-row {
+            padding: 10px 1px;
+          }
         }
       `}</style>
     </section>,
