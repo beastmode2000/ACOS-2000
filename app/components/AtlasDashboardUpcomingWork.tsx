@@ -31,90 +31,48 @@ function currentPropertyId() {
     'select[aria-label="Active property"]',
   );
   if (labelled?.value) return labelled.value;
+
   const candidate = Array.from(
     document.querySelectorAll<HTMLSelectElement>("select"),
   ).find((select) =>
     Array.from(select.options).some((option) => option.value === "2000"),
   );
+
   return candidate?.value || "2000";
 }
 
-function findDashboardMain() {
-  const mains = Array.from(document.querySelectorAll<HTMLElement>("main")).filter(
-    (main) => main.offsetParent !== null,
+function visibleButton(label: string) {
+  const wanted = normalized(label);
+  return (
+    Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) =>
+        button.offsetParent !== null && normalized(button.textContent) === wanted,
+    ) || null
   );
+}
 
-  const exact = mains.find((main) =>
-    Array.from(main.querySelectorAll<HTMLElement>("h1, h2, h3")).some(
-      (node) => normalized(node.textContent) === "dashboard",
-    ),
-  );
-  if (exact) return exact;
+function findNativeDashboardWorkSection() {
+  const daily = visibleButton("Nick + Addison");
+  const dailySection = daily?.closest("section") as HTMLElement | null;
+  if (dailySection) return dailySection;
+
+  const sections = Array.from(
+    document.querySelectorAll<HTMLElement>("main section, section"),
+  ).filter((section) => section.offsetParent !== null);
 
   return (
-    mains.find((main) => {
-      const text = normalized(main.textContent);
-      return (
-        text.includes("today") &&
-        text.includes("work") &&
-        (text.includes("remember") ||
-          text.includes("weather") ||
-          text.includes("irrigation"))
+    sections.find((section) => {
+      const buttonLabels = new Set(
+        Array.from(section.querySelectorAll<HTMLButtonElement>("button"))
+          .filter((button) => button.offsetParent !== null)
+          .map((button) => normalized(button.textContent)),
       );
-    }) || null
-  );
-}
-
-function directLabel(element: HTMLElement) {
-  const own = normalized(element.getAttribute("aria-label"));
-  if (own) return own;
-  const candidates = Array.from(
-    element.querySelectorAll<HTMLElement>("h2, h3, h4, strong"),
-  );
-  return candidates.map((node) => normalized(node.textContent)).find(Boolean) || "";
-}
-
-function findAddisonLane(root: HTMLElement) {
-  const candidates = Array.from(
-    root.querySelectorAll<HTMLElement>("section, article, [data-atlas-dashboard-card]"),
-  );
-  return (
-    candidates.find((section) => {
-      const label = directLabel(section);
-      if (
-        label === "addison" ||
-        label === "addison's list" ||
-        label === "addison work" ||
-        label === "addison work list"
-      ) {
-        return true;
-      }
-      const text = normalized(section.textContent);
       return (
-        text.length < 4000 &&
-        ((text.includes("addison") && text.includes("list")) ||
-          (text.includes("addison") && text.includes("work")))
+        buttonLabels.has("everyone") &&
+        buttonLabels.has("sean") &&
+        buttonLabels.has("pat") &&
+        (buttonLabels.has("nick + addison") || buttonLabels.has("daily"))
       );
-    }) || null
-  );
-}
-
-function findTodayWorkSection(root: HTMLElement) {
-  const candidates = Array.from(
-    root.querySelectorAll<HTMLElement>("section, article, [data-atlas-dashboard-card]"),
-  );
-  return (
-    candidates.find((section) => {
-      const label = directLabel(section);
-      if (
-        label === "today's work" ||
-        label === "todays work" ||
-        label === "today"
-      ) {
-        return true;
-      }
-      const text = normalized(section.textContent);
-      return text.length < 5000 && text.includes("today") && text.includes("work");
     }) || null
   );
 }
@@ -175,14 +133,15 @@ function memberMatches(name: string, assignment: string) {
   const full = normalized(name);
   const assigned = normalized(assignment);
   if (!full || !assigned) return false;
+
   const first = full.split(/\s+/)[0] || full;
   if (assigned === full || assigned === first) return true;
   if (full.startsWith(`${assigned} `) || assigned.startsWith(`${first} `)) {
     return true;
   }
   if (
-    first === "patrick" &&
-    (assigned === "pat" || assigned.startsWith("pat "))
+    (first === "patrick" || first === "pat") &&
+    (assigned === "pat" || assigned.startsWith("pat ") || assigned.includes("pat's crew"))
   ) {
     return true;
   }
@@ -191,7 +150,7 @@ function memberMatches(name: string, assignment: string) {
 
 function displayName(name: string) {
   const clean = name.trim();
-  if (/^patrick(?:\s|$)/i.test(clean)) return "Pat";
+  if (/^patrick(?:\s|$)|^pat(?:\s|$)/i.test(clean)) return "Pat";
   if (/^sean(?:\s|$)/i.test(clean)) return "Sean";
   if (/^addison(?:\s|$)/i.test(clean)) return "Addison";
   return clean.split(/\s+/)[0] || clean;
@@ -223,10 +182,12 @@ function openWorkPage() {
       normalized(candidate.textContent) === "work" &&
       candidate.offsetParent !== null,
   );
+
   if (button) {
     button.click();
     return;
   }
+
   window.location.assign("/?section=work");
 }
 
@@ -240,10 +201,23 @@ export default function AtlasDashboardUpcomingWork() {
 
   useEffect(() => {
     let frame = 0;
+
+    const restoreWrongTargets = (keep?: HTMLElement | null) => {
+      document
+        .querySelectorAll<HTMLElement>("[data-atlas-dashboard-legacy-work]")
+        .forEach((node) => {
+          if (keep && node === keep) return;
+          node.style.removeProperty("display");
+          delete node.dataset.atlasDashboardLegacyWork;
+        });
+    };
+
     const apply = () => {
       frame = 0;
-      const root = findDashboardMain();
-      if (!root) {
+      const legacy = findNativeDashboardWorkSection();
+
+      if (!legacy?.parentElement) {
+        restoreWrongTargets();
         setHost(null);
         return;
       }
@@ -253,55 +227,50 @@ export default function AtlasDashboardUpcomingWork() {
         current === nextProperty ? current : nextProperty,
       );
 
-      const addisonLane = findAddisonLane(root);
-      let nextHost = root.querySelector<HTMLElement>(
-        "[data-atlas-upcoming-work-host]",
+      restoreWrongTargets(legacy);
+
+      const parent = legacy.parentElement;
+      let nextHost = parent.querySelector<HTMLElement>(
+        ":scope > [data-atlas-upcoming-work-host]",
       );
+
       if (!nextHost) {
         nextHost = document.createElement("div");
         nextHost.dataset.atlasUpcomingWorkHost = "true";
-        if (addisonLane?.parentElement) {
-          addisonLane.parentElement.insertBefore(nextHost, addisonLane);
-        } else {
-          const todaySection = findTodayWorkSection(root);
-          if (todaySection?.parentElement) {
-            todaySection.parentElement.insertBefore(
-              nextHost,
-              todaySection.nextSibling,
-            );
-          } else {
-            root.appendChild(nextHost);
-          }
-        }
+        parent.insertBefore(nextHost, legacy);
+      } else if (nextHost.nextElementSibling !== legacy) {
+        parent.insertBefore(nextHost, legacy);
       }
 
-      if (addisonLane && !addisonLane.contains(nextHost)) {
-        addisonLane.dataset.atlasDashboardLegacyAddison = "true";
-        addisonLane.style.setProperty("display", "none", "important");
-      }
+      legacy.dataset.atlasDashboardLegacyWork = "true";
+      legacy.style.setProperty("display", "none", "important");
       setHost((current) => (current === nextHost ? current : nextHost));
     };
+
     const schedule = () => {
       if (!frame) frame = window.requestAnimationFrame(apply);
     };
+
     schedule();
     const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
     document.addEventListener("click", schedule, true);
     document.addEventListener("change", schedule, true);
     window.addEventListener("resize", schedule);
+    window.addEventListener("popstate", schedule);
+
     return () => {
       observer.disconnect();
       document.removeEventListener("click", schedule, true);
       document.removeEventListener("change", schedule, true);
       window.removeEventListener("resize", schedule);
+      window.removeEventListener("popstate", schedule);
       if (frame) window.cancelAnimationFrame(frame);
-      document
-        .querySelectorAll<HTMLElement>("[data-atlas-dashboard-legacy-addison]")
-        .forEach((node) => {
-          node.style.removeProperty("display");
-          delete node.dataset.atlasDashboardLegacyAddison;
-        });
+      restoreWrongTargets();
     };
   }, []);
 
@@ -332,6 +301,7 @@ export default function AtlasDashboardUpcomingWork() {
           },
         ),
       ]);
+
       if (cancelled) return;
 
       const team = await teamResponse.json().catch(() => ({}));
@@ -354,6 +324,7 @@ export default function AtlasDashboardUpcomingWork() {
             normalized(member.name) !== "nick" &&
             !normalized(member.name).startsWith("nick "),
         );
+
       setMembers(activeMembers);
       setWorkRows(
         Array.isArray(atlas?.serviceRecords)
@@ -368,6 +339,7 @@ export default function AtlasDashboardUpcomingWork() {
     void load().catch(() => {});
     const refresh = () => void load().catch(() => {});
     window.addEventListener("atlas:data-changed", refresh as EventListener);
+
     return () => {
       cancelled = true;
       window.removeEventListener(
@@ -383,6 +355,7 @@ export default function AtlasDashboardUpcomingWork() {
       if (!member?.id || !member?.name) continue;
       unique.set(member.id, member);
     }
+
     return [...unique.values()].sort((a, b) => {
       const rank = (name: string) =>
         /^addison(?:\s|$)/i.test(name)
