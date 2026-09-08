@@ -230,9 +230,12 @@ export default function AtlasVendorContactsMaintainXPolish() {
       if (!target.closest('[role="dialog"]')) return;
 
       const label = labelForSelect(target);
-      if (label !== "contact for" && label !== "contact type") return;
+      if (
+        label !== "contact for" &&
+        label !== "contact type" &&
+        label !== "preferred contact"
+      ) return;
 
-      event.preventDefault();
       event.stopPropagation();
       if (typeof event.stopImmediatePropagation === "function") {
         event.stopImmediatePropagation();
