@@ -75,6 +75,7 @@ export default function RootLayout({
       </head>
 
       <body>
+        <AtlasVendorContactsPersistence />
         <AtlasLocationsPolish />
         <AtlasLocationsViewportPolish />
         <AtlasLocationDetailPolish />
@@ -99,7 +100,6 @@ export default function RootLayout({
         <AtlasDayOffControl />
         <AtlasSharedTeamList />
         <AtlasVendorScrollbarPolish />
-        <AtlasVendorContactsPersistence />
         <AtlasVendorContactsMaintainXPolish />
         <AtlasSidebarScrollbarPolish />
         <AtlasTeamPeoplePolish />
