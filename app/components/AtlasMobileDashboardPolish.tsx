@@ -53,11 +53,9 @@ export default function AtlasMobileDashboardPolish() {
     schedule();
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener("resize", schedule);
 
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", schedule);
       if (frame) window.cancelAnimationFrame(frame);
     };
   }, []);
@@ -68,18 +66,21 @@ export default function AtlasMobileDashboardPolish() {
         html,
         body,
         .atlas-mobile-dashboard-polish-root {
-          overflow-x: hidden !important;
+          overflow-x: clip !important;
+          max-width: 100% !important;
         }
 
         .atlas-command-dashboard,
         .atlas-mobile-dashboard-command {
           position: relative !important;
-          left: 50% !important;
-          width: calc(100vw - 24px) !important;
-          max-width: calc(100vw - 24px) !important;
+          left: auto !important;
+          right: auto !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
           margin-left: 0 !important;
           margin-right: 0 !important;
-          transform: translateX(-50%) !important;
+          transform: none !important;
           box-sizing: border-box !important;
           gap: 10px !important;
           padding-bottom: 118px !important;
@@ -88,7 +89,8 @@ export default function AtlasMobileDashboardPolish() {
         .atlas-command-dashboard .atlas-dashboard-layout-grid,
         .atlas-mobile-dashboard-command .atlas-dashboard-layout-grid {
           width: 100% !important;
-          max-width: none !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
           gap: 10px !important;
           grid-template-columns: minmax(0, 1fr) !important;
         }
@@ -97,7 +99,7 @@ export default function AtlasMobileDashboardPolish() {
         .atlas-mobile-dashboard-command .atlas-dashboard-layout-grid > * {
           grid-column: 1 / -1 !important;
           width: 100% !important;
-          max-width: none !important;
+          max-width: 100% !important;
           min-width: 0 !important;
           margin-left: 0 !important;
           margin-right: 0 !important;
@@ -109,7 +111,8 @@ export default function AtlasMobileDashboardPolish() {
         .atlas-mobile-dashboard-command > section,
         .atlas-mobile-dashboard-command > details {
           width: 100% !important;
-          max-width: none !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
           margin-left: 0 !important;
           margin-right: 0 !important;
           border-radius: 16px !important;
@@ -140,24 +143,28 @@ export default function AtlasMobileDashboardPolish() {
         #atlas-dashboard-weather.atlas-weather-experience,
         .atlas-mobile-dashboard-weather {
           width: 100% !important;
-          max-width: none !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
           margin: 0 !important;
           padding: 14px 12px !important;
           border-radius: 16px !important;
           min-height: 0 !important;
           box-sizing: border-box !important;
+          overflow: hidden !important;
         }
 
         .atlas-mobile-dashboard-weather .atlas-weather-main-row,
         #atlas-dashboard-weather .atlas-weather-main-row {
           gap: 10px !important;
           margin: 0 !important;
+          min-width: 0 !important;
         }
 
         .atlas-mobile-dashboard-weather .atlas-weather-current,
         #atlas-dashboard-weather .atlas-weather-current {
           padding: 0 !important;
           min-height: 0 !important;
+          min-width: 0 !important;
         }
 
         .atlas-mobile-dashboard-weather .atlas-weather-kicker,
@@ -171,6 +178,7 @@ export default function AtlasMobileDashboardPolish() {
         #atlas-dashboard-weather .atlas-weather-current-row {
           gap: 10px !important;
           align-items: center !important;
+          min-width: 0 !important;
         }
 
         .atlas-mobile-dashboard-weather .atlas-weather-current-glyph,
@@ -198,6 +206,9 @@ export default function AtlasMobileDashboardPolish() {
           gap: 8px !important;
           margin-top: 12px !important;
           padding: 0 !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
+          overscroll-behavior-inline: contain !important;
         }
 
         .atlas-mobile-dashboard-weather .atlas-weather-day,
@@ -212,6 +223,7 @@ export default function AtlasMobileDashboardPolish() {
         #atlas-dashboard-weather article,
         #atlas-dashboard-weather section {
           border-radius: 14px !important;
+          max-width: 100% !important;
         }
 
         .atlas-mobile-dashboard-fab {
