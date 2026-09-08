@@ -35,6 +35,76 @@ function isDepartmentNavigationTarget(target: EventTarget | null) {
   return DEPARTMENT_LABELS.some((label) => text === label || text.startsWith(`${label} `));
 }
 
+function dashboardNavigationTarget() {
+  return (
+    Array.from(document.querySelectorAll<HTMLElement>("button, a, [role='button']")).find(
+      (node) =>
+        !node.closest("[data-atlas-house-maintenance-host]") &&
+        normalized(node.textContent) === "dashboard" &&
+        node.offsetParent !== null,
+    ) || null
+  );
+}
+
+function exitHouseMaintenance() {
+  clearLegacyDepartmentTakeover();
+  const dashboard = dashboardNavigationTarget();
+  if (dashboard) {
+    dashboard.click();
+    return;
+  }
+  window.location.assign("/?section=dashboard");
+}
+
+function ensureHouseEscapeControl() {
+  document
+    .querySelectorAll<HTMLElement>("[data-atlas-house-maintenance-host]")
+    .forEach((host) => {
+      if (host.querySelector(":scope > [data-atlas-house-exit-control]")) return;
+
+      const wrapper = document.createElement("div");
+      wrapper.dataset.atlasHouseExitControl = "true";
+      wrapper.style.display = "flex";
+      wrapper.style.justifyContent = "flex-end";
+      wrapper.style.alignItems = "center";
+      wrapper.style.gap = "8px";
+      wrapper.style.marginBottom = "8px";
+
+      const back = document.createElement("button");
+      back.type = "button";
+      back.textContent = "Back to Dashboard";
+      back.setAttribute("aria-label", "Exit House and Maintenance and return to Dashboard");
+      back.style.minHeight = "32px";
+      back.style.padding = "5px 10px";
+      back.style.borderRadius = "9px";
+      back.style.border = "1px solid #D8E0E8";
+      back.style.background = "#FFFFFF";
+      back.style.color = "#17324D";
+      back.style.fontWeight = "800";
+      back.style.cursor = "pointer";
+      back.addEventListener("click", exitHouseMaintenance);
+
+      const close = document.createElement("button");
+      close.type = "button";
+      close.textContent = "×";
+      close.setAttribute("aria-label", "Close House and Maintenance");
+      close.style.width = "32px";
+      close.style.height = "32px";
+      close.style.borderRadius = "9px";
+      close.style.border = "1px solid #D8E0E8";
+      close.style.background = "#FFFFFF";
+      close.style.color = "#17324D";
+      close.style.fontSize = "20px";
+      close.style.lineHeight = "1";
+      close.style.fontWeight = "700";
+      close.style.cursor = "pointer";
+      close.addEventListener("click", exitHouseMaintenance);
+
+      wrapper.append(back, close);
+      host.prepend(wrapper);
+    });
+}
+
 function clearLegacyDepartmentTakeover() {
   for (const main of Array.from(document.querySelectorAll<HTMLElement>("main"))) {
     main.classList.remove("atlas-house-maintenance-active");
@@ -58,8 +128,6 @@ function clearLegacyDepartmentTakeover() {
 }
 
 function ensureVisibleAtlasMain() {
-  clearLegacyDepartmentTakeover();
-
   const mains = Array.from(document.querySelectorAll<HTMLElement>("main"));
   for (const main of mains) {
     const rect = main.getBoundingClientRect();
@@ -87,6 +155,7 @@ export default function AtlasNavigationSafety() {
     const repair = () => {
       frame = 0;
       ensureVisibleAtlasMain();
+      ensureHouseEscapeControl();
     };
 
     const scheduleRepair = () => {
@@ -94,7 +163,6 @@ export default function AtlasNavigationSafety() {
     };
 
     const repairSequence = () => {
-      clearLegacyDepartmentTakeover();
       scheduleRepair();
       window.setTimeout(scheduleRepair, 0);
       window.setTimeout(scheduleRepair, 50);
@@ -103,14 +171,20 @@ export default function AtlasNavigationSafety() {
     };
 
     const onClick = (event: MouseEvent) => {
-      if (isDepartmentNavigationTarget(event.target)) {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      if (target.closest("[data-atlas-house-exit-control]")) return;
+
+      if (isDepartmentNavigationTarget(target)) {
         repairSequence();
         return;
       }
 
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (target.closest("aside, nav")) repairSequence();
+      if (target.closest("aside, nav")) {
+        clearLegacyDepartmentTakeover();
+        repairSequence();
+      }
     };
 
     repairSequence();
@@ -118,8 +192,11 @@ export default function AtlasNavigationSafety() {
     window.addEventListener("popstate", repairSequence);
 
     const observer = new MutationObserver(() => {
-      if (document.querySelector("main.atlas-house-maintenance-active")) {
-        repairSequence();
+      if (
+        document.querySelector("main.atlas-house-maintenance-active") ||
+        document.querySelector("[data-atlas-house-maintenance-host]")
+      ) {
+        scheduleRepair();
       }
     });
     observer.observe(document.body, {
