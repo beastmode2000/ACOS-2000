@@ -16,6 +16,7 @@ import AtlasWorkPolish from "./components/AtlasWorkPolish";
 import AtlasWorkEditorCleanup from "./components/AtlasWorkEditorCleanup";
 import AtlasWorkWeekWrap from "./components/AtlasWorkWeekWrap";
 import AtlasDashboardNoteActionsPolish from "./components/AtlasDashboardNoteActionsPolish";
+import AtlasDashboardUpcomingWork from "./components/AtlasDashboardUpcomingWork";
 import AtlasHydrawiseWeatherLink from "./components/AtlasHydrawiseWeatherLink";
 import AtlasPhotoPastePolish from "./components/AtlasPhotoPastePolish";
 import AtlasMobileDashboardPolish from "./components/AtlasMobileDashboardPolish";
@@ -32,6 +33,7 @@ import AtlasTeamWorkActions from "./components/AtlasTeamWorkActions";
 import AtlasTeamInviteActions from "./components/AtlasTeamInviteActions";
 import AtlasTeamHeaderCleanup from "./components/AtlasTeamHeaderCleanup";
 import AtlasHouseMaintenancePolish from "./components/AtlasHouseMaintenancePolish";
+import AtlasNavigationSafety from "./components/AtlasNavigationSafety";
 import AtlasOperationsPolish from "./components/AtlasOperationsPolish";
 import AtlasOwnerReportHeaderPolish from "./components/AtlasOwnerReportHeaderPolish";
 import AtlasServiceLinkPolish from "./components/AtlasServiceLinkPolish";
@@ -90,6 +92,7 @@ export default function RootLayout({
         <AtlasWorkEditorCleanup />
         <AtlasWorkWeekWrap />
         <AtlasDashboardNoteActionsPolish />
+        <AtlasDashboardUpcomingWork />
         <AtlasHydrawiseWeatherLink />
         <AtlasPhotoPastePolish />
         <AtlasMobileDashboardPolish />
@@ -105,6 +108,7 @@ export default function RootLayout({
         <AtlasTeamInviteActions />
         <AtlasTeamHeaderCleanup />
         <AtlasHouseMaintenancePolish />
+        <AtlasNavigationSafety />
         <AtlasOperationsPolish />
         <AtlasOwnerReportHeaderPolish />
         <AtlasServiceLinkPolish />
