@@ -24,6 +24,7 @@ import AtlasMobileFieldPolish from "./components/AtlasMobileFieldPolish";
 import AtlasDayOffControl from "./components/AtlasDayOffControl";
 import AtlasSharedTeamList from "./components/AtlasSharedTeamList";
 import AtlasVendorScrollbarPolish from "./components/AtlasVendorScrollbarPolish";
+import AtlasVendorContactsMaintainXPolish from "./components/AtlasVendorContactsMaintainXPolish";
 import AtlasSidebarScrollbarPolish from "./components/AtlasSidebarScrollbarPolish";
 import AtlasTeamPeoplePolish from "./components/AtlasTeamPeoplePolish";
 import AtlasHouseMaintenancePolish from "./components/AtlasHouseMaintenancePolish";
@@ -92,6 +93,7 @@ export default function RootLayout({
         <AtlasDayOffControl />
         <AtlasSharedTeamList />
         <AtlasVendorScrollbarPolish />
+        <AtlasVendorContactsMaintainXPolish />
         <AtlasSidebarScrollbarPolish />
         <AtlasTeamPeoplePolish />
         <AtlasHouseMaintenancePolish />
