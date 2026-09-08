@@ -37,27 +37,26 @@ function removeDuplicateVendorInitial(root: HTMLElement) {
   const logo = headerSection.querySelector<HTMLImageElement>('img[alt$=" logo"]');
   if (!logo) return;
 
-  const logoBox = logo.parentElement;
-  if (!(logoBox instanceof HTMLElement)) return;
-  const logoRect = logoBox.getBoundingClientRect();
+  const vendorName = String(
+    headerSection.querySelector<HTMLElement>("h3")?.textContent || "",
+  ).trim();
+  const expectedInitials = vendorName.slice(0, 2).toLowerCase();
+  if (!expectedInitials) return;
 
   for (const candidate of Array.from(headerSection.querySelectorAll<HTMLElement>("div, span"))) {
-    if (candidate === logoBox || candidate.contains(logo) || logoBox.contains(candidate)) continue;
+    if (candidate.contains(logo)) continue;
     if (candidate.querySelector("img, h1, h2, h3, h4, button, input, select, textarea, a")) continue;
 
-    const text = String(candidate.textContent || "").trim();
-    if (!/^[a-z0-9]{1,2}$/i.test(text)) continue;
+    const text = String(candidate.textContent || "").trim().toLowerCase();
+    if (text !== expectedInitials) continue;
 
-    const rect = candidate.getBoundingClientRect();
-    const sameRow = Math.abs(rect.top - logoRect.top) <= 18;
-    const nextToLogo = rect.left >= logoRect.right - 6 && rect.left <= logoRect.right + 140;
-    const boxSized = rect.width >= 28 && rect.width <= 100 && rect.height >= 28 && rect.height <= 100;
-
-    if (sameRow && nextToLogo && boxSized) {
-      candidate.classList.add("atlas-vendor-duplicate-initial-hidden");
-      candidate.style.setProperty("display", "none", "important");
-      candidate.setAttribute("aria-hidden", "true");
-    }
+    candidate.classList.add("atlas-vendor-duplicate-initial-hidden");
+    candidate.style.setProperty("display", "none", "important");
+    candidate.style.setProperty("width", "0", "important");
+    candidate.style.setProperty("min-width", "0", "important");
+    candidate.style.setProperty("margin", "0", "important");
+    candidate.style.setProperty("padding", "0", "important");
+    candidate.setAttribute("aria-hidden", "true");
   }
 }
 
@@ -117,6 +116,30 @@ function compactVendorHeader(root: HTMLElement) {
   }
 }
 
+function extendVendorPanels(root: HTMLElement) {
+  if (window.matchMedia("(max-width: 899px)").matches) return;
+
+  const listPanel = root.querySelector<HTMLElement>("[data-atlas-record-list]");
+  const detailPanel = root.querySelector<HTMLElement>("[data-atlas-detail-panel]");
+  if (!listPanel || !detailPanel) return;
+
+  const availableHeight = "calc(100dvh - 145px)";
+
+  for (const panel of [listPanel, detailPanel]) {
+    panel.style.setProperty("height", availableHeight, "important");
+    panel.style.setProperty("max-height", availableHeight, "important");
+    panel.style.setProperty("min-height", "0", "important");
+    panel.style.setProperty("overflow-y", "auto", "important");
+  }
+
+  const grid = listPanel.parentElement;
+  if (grid instanceof HTMLElement && grid.contains(detailPanel)) {
+    grid.style.setProperty("height", availableHeight, "important");
+    grid.style.setProperty("min-height", "0", "important");
+    grid.style.setProperty("align-items", "stretch", "important");
+  }
+}
+
 function removeRedundantVendorDetailLabels(root: HTMLElement) {
   for (const node of Array.from(root.querySelectorAll<HTMLElement>("div, strong, span"))) {
     const text = normalized(node.textContent);
@@ -153,6 +176,7 @@ function polishVendorPage() {
   const root = visibleVendorMain();
   if (!root) return;
   compactVendorHeader(root);
+  extendVendorPanels(root);
   removeDuplicateVendorInitial(root);
   removeRedundantVendorDetailLabels(root);
   renameContactType(root);
