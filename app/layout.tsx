@@ -15,8 +15,6 @@ import AtlasDepartmentAssetPhotoPolish from "./components/AtlasDepartmentAssetPh
 import AtlasWorkPolish from "./components/AtlasWorkPolish";
 import AtlasWorkEditorCleanup from "./components/AtlasWorkEditorCleanup";
 import AtlasWorkWeekWrap from "./components/AtlasWorkWeekWrap";
-import AtlasDashboardPolish from "./components/AtlasDashboardPolish";
-import AtlasDashboardUpcomingWork from "./components/AtlasDashboardUpcomingWork";
 import AtlasDashboardNoteActionsPolish from "./components/AtlasDashboardNoteActionsPolish";
 import AtlasHydrawiseWeatherLink from "./components/AtlasHydrawiseWeatherLink";
 import AtlasPhotoPastePolish from "./components/AtlasPhotoPastePolish";
@@ -90,8 +88,6 @@ export default function RootLayout({
         <AtlasWorkPolish />
         <AtlasWorkEditorCleanup />
         <AtlasWorkWeekWrap />
-        <AtlasDashboardPolish />
-        <AtlasDashboardUpcomingWork />
         <AtlasDashboardNoteActionsPolish />
         <AtlasHydrawiseWeatherLink />
         <AtlasPhotoPastePolish />
