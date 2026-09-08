@@ -118,15 +118,13 @@ function navigateTo(item: NavItem) {
 function markMobileShell() {
   if (window.innerWidth > 900) return;
 
-  const all = Array.from(
-    document.querySelectorAll<HTMLElement>("aside, nav, div, section"),
-  );
-
-  const sidebarCandidates = all.filter((element) => {
-    if (!isVisible(element)) return false;
+  const sidebarCandidates = Array.from(
+    document.querySelectorAll<HTMLElement>("aside, nav"),
+  ).filter((element) => {
+    if (!isVisible(element) || isMobileFieldControl(element)) return false;
 
     const rect = element.getBoundingClientRect();
-    if (rect.left > 48 || rect.width < 180 || rect.width > 430 || rect.height < 300) {
+    if (rect.left > 48 || rect.width < 160 || rect.width > 460 || rect.height < 240) {
       return false;
     }
 
@@ -138,13 +136,12 @@ function markMobileShell() {
   });
 
   sidebarCandidates.sort((a, b) => {
-    const aArea = a.getBoundingClientRect().width * a.getBoundingClientRect().height;
-    const bArea = b.getBoundingClientRect().width * b.getBoundingClientRect().height;
-    return aArea - bArea;
+    const aRect = a.getBoundingClientRect();
+    const bRect = b.getBoundingClientRect();
+    return bRect.width * bRect.height - aRect.width * aRect.height;
   });
 
   const sidebar = sidebarCandidates[0] || null;
-
   if (sidebar) {
     sidebar.classList.add("atlas-mobile-field-sidebar-hidden");
     sidebar.parentElement?.classList.add("atlas-mobile-field-shell");
@@ -153,6 +150,7 @@ function markMobileShell() {
   for (const main of Array.from(document.querySelectorAll<HTMLElement>("main"))) {
     if (!isVisible(main)) continue;
     main.classList.add("atlas-mobile-field-main");
+    main.parentElement?.classList.add("atlas-mobile-field-shell");
   }
 
   for (const search of Array.from(
@@ -364,10 +362,12 @@ export default function AtlasMobileFieldPolish() {
           .atlas-mobile-field-shell {
             display: block !important;
             grid-template-columns: minmax(0, 1fr) !important;
-            width: 100% !important;
-            max-width: 100% !important;
+            width: 100vw !important;
+            max-width: 100vw !important;
+            min-width: 0 !important;
             margin: 0 !important;
             padding: 0 !important;
+            box-sizing: border-box !important;
           }
 
           .atlas-mobile-field-main,
@@ -375,8 +375,9 @@ export default function AtlasMobileFieldPolish() {
           .atlas-mobile-dashboard-command {
             position: relative !important;
             left: auto !important;
-            width: 100% !important;
-            max-width: 100% !important;
+            right: auto !important;
+            width: 100vw !important;
+            max-width: 100vw !important;
             min-width: 0 !important;
             margin-left: 0 !important;
             margin-right: 0 !important;
