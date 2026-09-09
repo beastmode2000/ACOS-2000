@@ -365,17 +365,14 @@ export default function AtlasDashboardUpcomingWork() {
 
   const employeeOptions = useMemo(() => {
     const names = new Map<string, string>();
-    const add = (name: unknown) => {
-      const clean = String(name || "").trim();
+
+    members.forEach((member) => {
+      const clean = String(member.name || "").trim();
       if (!clean) return;
       if (/^nick(?:\s|$)/i.test(clean)) return;
       const key = normalized(clean);
       if (!names.has(key)) names.set(key, clean);
-    };
-
-    add("Addison");
-    members.forEach((member) => add(member.name));
-    workRows.forEach((record) => add(workAssignee(record)));
+    });
 
     return [...names.values()].sort((a, b) => {
       const rank = (name: string) =>
@@ -388,7 +385,7 @@ export default function AtlasDashboardUpcomingWork() {
               : 3;
       return rank(a) - rank(b) || a.localeCompare(b);
     });
-  }, [members, workRows]);
+  }, [members]);
 
   const customRows = useMemo(() => {
     const now = new Date();
@@ -420,16 +417,17 @@ export default function AtlasDashboardUpcomingWork() {
 
   const selector = (
     <div className="atlas-secondary-work-switcher" aria-label="Choose secondary work list">
-      {employeeOptions.map((name) => (
-        <button
-          type="button"
-          key={name}
-          data-active={mode === name}
-          onClick={() => setMode(name)}
-        >
-          {displayName(name)}
-        </button>
-      ))}
+      <select
+        aria-label="Choose employee work list"
+        defaultValue="Addison"
+        onChange={(event) => setMode(event.target.value)}
+      >
+        {employeeOptions.map((name) => (
+          <option key={name} value={name}>
+            {displayName(name)}
+          </option>
+        ))}
+      </select>
       <button
         type="button"
         data-active={mode === UPCOMING_MODE}
@@ -452,6 +450,20 @@ export default function AtlasDashboardUpcomingWork() {
           scrollbar-width: none;
         }
         .atlas-secondary-work-switcher::-webkit-scrollbar { display: none; }
+        .atlas-secondary-work-switcher select {
+          flex: 1 1 auto;
+          min-width: 0;
+          border: 1px solid #D8E0E8;
+          background: #FFFFFF;
+          color: #17324D;
+          border-radius: 8px;
+          min-height: 28px;
+          padding: 3px 8px;
+          font: inherit;
+          font-size: 11px;
+          font-weight: 800;
+          cursor: pointer;
+        }
         .atlas-secondary-work-switcher button {
           flex: 0 0 auto;
           border: 1px solid #D8E0E8;
