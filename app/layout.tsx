@@ -17,10 +17,12 @@ import AtlasWorkEditorCleanup from "./components/AtlasWorkEditorCleanup";
 import AtlasWorkWeekWrap from "./components/AtlasWorkWeekWrap";
 import AtlasDashboardNoteActionsPolish from "./components/AtlasDashboardNoteActionsPolish";
 import AtlasDashboardUpcomingWork from "./components/AtlasDashboardUpcomingWork";
+import AtlasDashboardDefaultUpcoming from "./components/AtlasDashboardDefaultUpcoming";
 import AtlasHydrawiseWeatherLink from "./components/AtlasHydrawiseWeatherLink";
 import AtlasPhotoPastePolish from "./components/AtlasPhotoPastePolish";
 import AtlasMobileDashboardPolish from "./components/AtlasMobileDashboardPolish";
 import AtlasMobileFieldPolish from "./components/AtlasMobileFieldPolish";
+import AtlasMobileFullAccess from "./components/AtlasMobileFullAccess";
 import AtlasDayOffControl from "./components/AtlasDayOffControl";
 import AtlasSharedTeamList from "./components/AtlasSharedTeamList";
 import AtlasVendorScrollbarPolish from "./components/AtlasVendorScrollbarPolish";
@@ -93,10 +95,12 @@ export default function RootLayout({
         <AtlasWorkWeekWrap />
         <AtlasDashboardNoteActionsPolish />
         <AtlasDashboardUpcomingWork />
+        <AtlasDashboardDefaultUpcoming />
         <AtlasHydrawiseWeatherLink />
         <AtlasPhotoPastePolish />
         <AtlasMobileDashboardPolish />
         <AtlasMobileFieldPolish />
+        <AtlasMobileFullAccess />
         <AtlasDayOffControl />
         <AtlasSharedTeamList />
         <AtlasVendorScrollbarPolish />
