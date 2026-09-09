@@ -1,5 +1,5 @@
-Warning: truncated output (original token count: 353968)
-... 367296 bytes omitted ...
+Warning: truncated output (original token count: 353797)
+... 366609 bytes omitted ...
 
 "use client";
 
@@ -9,8 +9,13 @@ import React, {
   useRef,
   useState,
 } from "react";
-import dynamic from "next/dynamic";
 import { upload } from "@vercel/blob/client";
+import AtlasCalendar from "./AtlasCalendar";
+import AtlasRoutines from "./AtlasRoutines";
+import AtlasTeamWork from "./AtlasTeamWork";
+import AtlasWorkOrders from "./AtlasWorkOrders";
+import ReportsAccessCenter from "./ReportsAccessCenter";
+import AtlasOwnerReport from "./AtlasOwnerReport";
 import {
   Field,
   SelectField,
@@ -28,7 +33,23 @@ import {
 } from "../lib/atlas-page-config";
 import type { AtlasScreen } from "../lib/atlas-page-config";
 import { searchAtlas } from "../lib/atlas-search";
+import AskAtlasWorkspace from "./ai/AskAtlasWorkspace";
+import RelationshipPanel from "./ai/RelationshipPanel";
+import ActionApprovalCard from "./ai/ActionApprovalCard";
+import AtlasGroupedSearchResults from "./ai/AtlasGroupedSearchResults";
+import AtlasNotifications from "./AtlasNotifications";
+import AtlasPortfolioCenter from "./AtlasPortfolioCenter";
+import AtlasParts from "./AtlasParts";
+import AtlasAddisonWork from "./AtlasAddisonWork";
+import AtlasTasks from "./AtlasTasks";
 import AtlasDashboardWorkspace from "./AtlasDashboardWorkspace";
+import AtlasLocationsWorkspace from "./AtlasLocationsWorkspace";
+import AtlasAssetsWorkspace from "./AtlasAssetsWorkspace";
+import AtlasVendorsWorkspace from "./AtlasVendorsWorkspace";
+import AtlasDocumentsWorkspace from "./AtlasDocumentsWorkspace";
+import AtlasProceduresWorkspace from "./AtlasProceduresWorkspace";
+import AtlasTimelineWorkspace from "./AtlasTimelineWorkspace";
+import AtlasHomeWorkspace from "./AtlasHomeWorkspace";
 import { findRelatedRecords } from "../lib/ai/relationship-engine";
 import {
   planAssistantAction,
@@ -108,32 +129,6 @@ import {
   manualCategories, seaDooManualUrl, cleanManualOpenUrl, defaultManuals, inferManualCategory, blankManual, normalizeManualRecord, ListDrawerLayout,
   CreatableRelationshipField,
 } from "./AtlasAppFoundation";
-
-// Keep the dashboard in the initial bundle and download the larger, secondary
-// workspaces only when the user opens them. This preserves each screen's
-// behavior while avoiding the cost of parsing the whole application up front.
-const AtlasCalendar = dynamic(() => import("./AtlasCalendar"));
-const AtlasRoutines = dynamic(() => import("./AtlasRoutines"));
-const AtlasTeamWork = dynamic(() => import("./AtlasTeamWork"));
-const AtlasWorkOrders = dynamic(() => import("./AtlasWorkOrders"));
-const ReportsAccessCenter = dynamic(() => import("./ReportsAccessCenter"));
-const AtlasOwnerReport = dynamic(() => import("./AtlasOwnerReport"));
-const AskAtlasWorkspace = dynamic(() => import("./ai/AskAtlasWorkspace"));
-const RelationshipPanel = dynamic(() => import("./ai/RelationshipPanel"));
-const ActionApprovalCard = dynamic(() => import("./ai/ActionApprovalCard"));
-const AtlasGroupedSearchResults = dynamic(() => import("./ai/AtlasGroupedSearchResults"));
-const AtlasNotifications = dynamic(() => import("./AtlasNotifications"));
-const AtlasPortfolioCenter = dynamic(() => import("./AtlasPortfolioCenter"));
-const AtlasParts = dynamic(() => import("./AtlasParts"));
-const AtlasAddisonWork = dynamic(() => import("./AtlasAddisonWork"));
-const AtlasTasks = dynamic(() => import("./AtlasTasks"));
-const AtlasLocationsWorkspace = dynamic(() => import("./AtlasLocationsWorkspace"));
-const AtlasAssetsWorkspace = dynamic(() => import("./AtlasAssetsWorkspace"));
-const AtlasVendorsWorkspace = dynamic(() => import("./AtlasVendorsWorkspace"));
-const AtlasDocumentsWorkspace = dynamic(() => import("./AtlasDocumentsWorkspace"));
-const AtlasProceduresWorkspace = dynamic(() => import("./AtlasProceduresWorkspace"));
-const AtlasTimelineWorkspace = dynamic(() => import("./AtlasTimelineWorkspace"));
-const AtlasHomeWorkspace = dynamic(() => import("./AtlasHomeWorkspace"));
 
 const atlasProperties = [
   ...baseAtlasProperties,
@@ -6066,7 +6061,31 @@ export default function AtlasApp() {
         if (isRecurringInstanceOnDate(item, dateKey)) {
           const generatedInstanceId = `${item.id}-${dateKey}`;
           const savedOccurrence = occurrenceOverrides.get(generatedInstanceId);
- …142152 tokens truncated…hicle.lastCleaned
+          if (savedOccurrence?.status === "Cancelled") {
+            date.setDate(date.getDate() + 1);
+            continue;
+          }
+
+          expanded.set(
+            generatedInstanceId,
+            savedOccurrence || {
+              ...item,
+              date: dateKey,
+              originalId: item.id,
+              instanceId: generatedInstanceId,
+            },
+          );
+        }
+        date.setDate(date.getDate() + 1);
+      }
+    });
+
+    return Array.from(expanded.values());
+  }, [visibleCalendarItems, calendarCursor]);
+
+  const seanVisibleCalendarItems = useMemo(() => {
+    if (!isSeanMarineUser || seanCalendarPropertyFilter === "all") {
+      return expande…142152 tokens truncated…hicle.lastCleaned
                       ? "No history"
                       : nextCleaning < todayISO()
                         ? "Overdue"
