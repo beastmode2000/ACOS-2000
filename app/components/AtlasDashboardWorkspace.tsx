@@ -2446,7 +2446,6 @@ export default function AtlasDashboardWorkspace(props: any) {
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                         <button type="button" onClick={async () => { await completeWorkOrder(record as AtlasServiceRecord, { completionNote }); setDashboardCompletionNotes((current) => { const next = { ...current }; delete next[String(record.id)]; return next; }); }} style={{ ...goldButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Done</button>
                         <button type="button" onClick={() => void didntGetToDashboardWork(record)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Didn’t Get To It</button>
-                        {record.recurring ? <button type="button" onClick={() => void notNeededDashboardWork(record)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Not Needed</button> : null}
                         <button type="button" onClick={() => void rescheduleDashboardWork(record)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Reschedule</button>
                         <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Edit</button>
                       </div>
@@ -2455,7 +2454,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                       <summary style={{ cursor: "pointer", color: colors.navy, fontSize: 11, fontWeight: 800 }}>Update</summary>
                       <div style={{ display: "grid", gap: 6, marginTop: 7 }}>
                         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 6 }}>
-                          <input type="date" value={String(record.date || "").slice(0,10)} onChange={(event) => void syncWorkOrderPatch(record, { date: event.currentTarget.value })} style={{ ...inputStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}/>
+                          <input type="date" value={String(record.date || "").slice(0,10)} onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => void syncWorkOrderPatch(record, { date: event.currentTarget.value })} style={{ ...inputStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}/>
                           <select value={assigned} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name === "Patrick Tanner" ? "Pat" : name === "Sean Powell" ? "Sean" : name}</option>)}</select>
                           <select value={record.recurring ? "Recurring" : "One time"} onChange={(event) => void syncWorkOrderPatch(record, event.currentTarget.value === "Recurring" ? { recurring: true, recurrenceInterval: record.recurrenceInterval || 1, recurrenceUnit: record.recurrenceUnit || "Weeks" } : { recurring: false })} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}><option>One time</option><option>Recurring</option></select>
                         </div>
@@ -2464,6 +2463,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                           <button type="button" onClick={() => void saveDashboardWorkUpdate(record)} disabled={!completionNote.trim()} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 9px", fontSize: 11, opacity: completionNote.trim() ? 1 : .55 }}>Save Update</button>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {record.recurring ? <button type="button" onClick={() => void notNeededDashboardWork(record)} style={secondaryButtonStyle}>Not Needed</button> : null}
                           <button type="button" onClick={() => void syncWorkOrderPatch(record, { date: addDays(todayISO(), 1) })} style={secondaryButtonStyle}>Move Tomorrow</button>
                           <button type="button" onClick={() => { if (window.confirm(`Delete ${record.title}? This removes it from Work and Calendar.`)) void deleteWorkOrderRecord(record); }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
                         </div>
