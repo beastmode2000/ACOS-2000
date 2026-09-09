@@ -37,6 +37,7 @@ import AtlasNavigationSafety from "./components/AtlasNavigationSafety";
 import AtlasOperationsPolish from "./components/AtlasOperationsPolish";
 import AtlasOwnerReportHeaderPolish from "./components/AtlasOwnerReportHeaderPolish";
 import AtlasServiceLinkPolish from "./components/AtlasServiceLinkPolish";
+import AtlasWorkHistorySearch from "./components/AtlasWorkHistorySearch";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -112,6 +113,7 @@ export default function RootLayout({
         <AtlasOperationsPolish />
         <AtlasOwnerReportHeaderPolish />
         <AtlasServiceLinkPolish />
+        <AtlasWorkHistorySearch />
         {children}
       </body>
     </html>
