@@ -23,6 +23,7 @@ import AtlasPhotoPastePolish from "./components/AtlasPhotoPastePolish";
 import AtlasMobileDashboardPolish from "./components/AtlasMobileDashboardPolish";
 import AtlasMobileFieldPolish from "./components/AtlasMobileFieldPolish";
 import AtlasMobileFullAccess from "./components/AtlasMobileFullAccess";
+import AtlasMobileVisualFixes from "./components/AtlasMobileVisualFixes";
 import AtlasDayOffControl from "./components/AtlasDayOffControl";
 import AtlasSharedTeamList from "./components/AtlasSharedTeamList";
 import AtlasVendorScrollbarPolish from "./components/AtlasVendorScrollbarPolish";
@@ -101,6 +102,7 @@ export default function RootLayout({
         <AtlasMobileDashboardPolish />
         <AtlasMobileFieldPolish />
         <AtlasMobileFullAccess />
+        <AtlasMobileVisualFixes />
         <AtlasDayOffControl />
         <AtlasSharedTeamList />
         <AtlasVendorScrollbarPolish />
