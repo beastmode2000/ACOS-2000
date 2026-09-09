@@ -14,6 +14,17 @@ export default function AtlasMobileVisualFixes() {
         box-shadow: none !important;
       }
 
+      /* Dashboard upcoming rows are informational list rows, not selected-state cards. */
+      .atlas-secondary-custom-row,
+      .atlas-secondary-custom-row:hover,
+      .atlas-secondary-custom-row:focus,
+      .atlas-secondary-custom-row:focus-visible,
+      .atlas-secondary-custom-row:active {
+        border-color: #d8e0e8 !important;
+        background: #ffffff !important;
+        box-shadow: none !important;
+      }
+
       @media (max-width: 900px) {
         html,
         body {
