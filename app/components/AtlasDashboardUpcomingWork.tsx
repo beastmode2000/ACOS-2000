@@ -290,7 +290,7 @@ export default function AtlasDashboardUpcomingWork() {
     return () => {
       observer.disconnect();
       document.removeEventListener("click", schedule, true);
-      document.removeEventListener("change", schedule);
+      document.removeEventListener("change", schedule, true);
       window.removeEventListener("resize", schedule);
       window.removeEventListener("popstate", schedule);
       if (frame) window.cancelAnimationFrame(frame);
