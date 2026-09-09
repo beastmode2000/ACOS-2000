@@ -20,10 +20,7 @@ import AtlasDashboardUpcomingWork from "./components/AtlasDashboardUpcomingWork"
 import AtlasDashboardDefaultUpcoming from "./components/AtlasDashboardDefaultUpcoming";
 import AtlasHydrawiseWeatherLink from "./components/AtlasHydrawiseWeatherLink";
 import AtlasPhotoPastePolish from "./components/AtlasPhotoPastePolish";
-import AtlasMobileDashboardPolish from "./components/AtlasMobileDashboardPolish";
-import AtlasMobileFieldPolish from "./components/AtlasMobileFieldPolish";
-import AtlasMobileFullAccess from "./components/AtlasMobileFullAccess";
-import AtlasMobileVisualFixes from "./components/AtlasMobileVisualFixes";
+import AtlasMobileShell from "./components/AtlasMobileShell";
 import AtlasDayOffControl from "./components/AtlasDayOffControl";
 import AtlasSharedTeamList from "./components/AtlasSharedTeamList";
 import AtlasVendorScrollbarPolish from "./components/AtlasVendorScrollbarPolish";
@@ -99,10 +96,7 @@ export default function RootLayout({
         <AtlasDashboardDefaultUpcoming />
         <AtlasHydrawiseWeatherLink />
         <AtlasPhotoPastePolish />
-        <AtlasMobileDashboardPolish />
-        <AtlasMobileFieldPolish />
-        <AtlasMobileFullAccess />
-        <AtlasMobileVisualFixes />
+        <AtlasMobileShell />
         <AtlasDayOffControl />
         <AtlasSharedTeamList />
         <AtlasVendorScrollbarPolish />
