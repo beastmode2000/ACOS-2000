@@ -80,6 +80,8 @@ export default function AtlasMobileDashboardPolish() {
           min-width: 0 !important;
           margin-left: 0 !important;
           margin-right: 0 !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
           transform: none !important;
           box-sizing: border-box !important;
           gap: 10px !important;
@@ -227,12 +229,20 @@ export default function AtlasMobileDashboardPolish() {
         }
 
         .atlas-mobile-dashboard-fab {
-          right: 16px !important;
-          bottom: 102px !important;
-          width: 58px !important;
-          height: 58px !important;
-          min-width: 58px !important;
-          min-height: 58px !important;
+          position: fixed !important;
+          left: auto !important;
+          right: 10px !important;
+          bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+          width: 46px !important;
+          height: 46px !important;
+          min-width: 46px !important;
+          min-height: 46px !important;
+          max-width: 46px !important;
+          max-height: 46px !important;
+          padding: 0 !important;
+          border-radius: 999px !important;
+          font-size: 20px !important;
+          line-height: 1 !important;
         }
       }
     `}</style>
