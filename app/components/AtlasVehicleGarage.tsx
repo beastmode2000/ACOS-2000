@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Row = Record<string, any>;
 
@@ -22,9 +22,12 @@ function isVehicleAsset(record: Row) {
   return category === "vehicle" || name.startsWith("vehicle ");
 }
 
-function isVehicleCleaningWork(record: Row) {
-  const title = String(record.title || "").trim().toLowerCase();
-  return Boolean(record.recurring) && /^(clean|wash|detail)\b/.test(title);
+function isCleaningTitle(value: unknown) {
+  return /^(clean|wash|detail)\b/.test(String(value || "").trim().toLowerCase());
+}
+
+function isLegacyRecurringVehicleCleaning(record: Row) {
+  return Boolean(record.recurring) && isCleaningTitle(record.title);
 }
 
 function activeWork(record: Row) {
@@ -55,45 +58,76 @@ function todayKey() {
   return dateKey(new Date());
 }
 
-function nextRecurringDate(record: Row, dueDate: string) {
-  const start = new Date(`${dueDate}T12:00:00`);
-  if (Number.isNaN(start.getTime())) return "";
+function cleaningDates(record: Row) {
+  const dates = new Set<string>();
+  const add = (value: unknown) => {
+    const key = dateKey(value);
+    if (key) dates.add(key);
+  };
 
-  const recurrenceDays = Array.isArray(record.recurrenceDays)
-    ? Array.from(
-        new Set(
-          record.recurrenceDays
-            .map((value: unknown) => Math.floor(Number(value)))
-            .filter((value: number) => Number.isInteger(value) && value >= 0 && value <= 6),
-        ),
-      )
-    : [];
+  add(record.lastCompletedDate);
+  if (String(record.status || "").toLowerCase() === "completed") add(record.date);
 
-  let next = new Date(start);
-  if (recurrenceDays.length) {
-    let found = false;
-    for (let offset = 1; offset <= 14; offset += 1) {
-      const candidate = new Date(start);
-      candidate.setDate(candidate.getDate() + offset);
-      if (recurrenceDays.includes(candidate.getDay())) {
-        next = candidate;
-        found = true;
-        break;
-      }
-    }
-    if (!found) return "";
-  } else {
-    const interval = Math.max(1, Math.floor(Number(record.recurrenceInterval || 1)));
-    const unit = String(record.recurrenceUnit || "Weeks");
-    if (unit === "Days") next.setDate(next.getDate() + interval);
-    else if (unit === "Months") next.setMonth(next.getMonth() + interval);
-    else if (unit === "Years") next.setFullYear(next.getFullYear() + interval);
-    else next.setDate(next.getDate() + interval * 7);
+  if (Array.isArray(record.completionHistory)) {
+    record.completionHistory.forEach(add);
   }
 
-  const key = dateKey(next);
-  const endKey = dateKey(record.recurrenceEndDate);
-  return endKey && key > endKey ? "" : key;
+  if (Array.isArray(record.serviceHistory)) {
+    record.serviceHistory.forEach((entry: Row) => {
+      add(entry?.completedAt);
+      add(entry?.date);
+      add(entry?.dueDate);
+    });
+  }
+
+  return Array.from(dates).sort();
+}
+
+function latestCleaningDate(records: Row[]) {
+  const dates = records.flatMap(cleaningDates).sort();
+  return dates[dates.length - 1] || "";
+}
+
+function daysSince(date: string) {
+  if (!date) return null;
+  const start = new Date(`${date}T12:00:00`);
+  const today = new Date(`${todayKey()}T12:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(today.getTime())) return null;
+  return Math.max(0, Math.floor((today.getTime() - start.getTime()) / 86400000));
+}
+
+function ageLabel(lastCleaned: string) {
+  const age = daysSince(lastCleaned);
+  if (age === null) return "Never recorded";
+  if (age === 0) return "Cleaned today";
+  if (age === 1) return "Cleaned yesterday";
+  return `${age} days ago`;
+}
+
+function cleaningStatus(lastCleaned: string) {
+  const age = daysSince(lastCleaned);
+  if (age === null) return "Ready for cleaning";
+  if (age >= 7) return "Ready for cleaning";
+  return "Cleaned recently";
+}
+
+function propertyIdFor(vehicle: Row, related: Row[]) {
+  return String(vehicle.propertyId || related.find((record) => record.propertyId)?.propertyId || "").trim();
+}
+
+async function saveWorkOrder(propertyId: string, record: Row) {
+  if (!propertyId) throw new Error("This vehicle is missing its property link, so Atlas did not save the cleaning record.");
+  const response = await fetch("/api/atlas", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ table: "work_orders", propertyId, record }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || "Atlas could not save the vehicle cleaning record.");
+  }
+  return payload;
 }
 
 export default function AtlasVehicleGarage({
@@ -109,94 +143,172 @@ export default function AtlasVehicleGarage({
 }: Props) {
   const [savingId, setSavingId] = useState("");
   const [message, setMessage] = useState("");
-  const vehicles = assetRecords
-    .filter(isVehicleAsset)
-    .slice()
-    .sort((a, b) => vehicleDisplayName(a).localeCompare(vehicleDisplayName(b)));
+  const [retiring, setRetiring] = useState(false);
+  const retirementAttempted = useRef(false);
 
-  async function completeDueOccurrence(record: Row) {
-    const dueDate = dateKey(record.date);
-    if (!dueDate || dueDate > todayKey()) return;
+  const vehicles = useMemo(
+    () =>
+      assetRecords
+        .filter(isVehicleAsset)
+        .slice()
+        .sort((a, b) => vehicleDisplayName(a).localeCompare(vehicleDisplayName(b))),
+    [assetRecords],
+  );
 
-    const completionNote = window.prompt(
-      `What was done for ${record.title || "this vehicle"}?\n\nExamples: Exterior only, Interior vacuumed, Quick rinse, Full clean.`,
+  const vehicleIds = useMemo(() => new Set(vehicles.map((vehicle) => String(vehicle.id))), [vehicles]);
+
+  const legacyActiveCleaning = useMemo(
+    () =>
+      serviceRecords.filter(
+        (record) =>
+          vehicleIds.has(String(record.assetId || "")) &&
+          isLegacyRecurringVehicleCleaning(record) &&
+          activeWork(record),
+      ),
+    [serviceRecords, vehicleIds],
+  );
+
+  useEffect(() => {
+    if (retirementAttempted.current || !legacyActiveCleaning.length) return;
+    retirementAttempted.current = true;
+    let cancelled = false;
+
+    const retire = async () => {
+      setRetiring(true);
+      try {
+        for (const record of legacyActiveCleaning) {
+          const vehicle = vehicles.find((item) => String(item.id) === String(record.assetId));
+          const propertyId = String(record.propertyId || vehicle?.propertyId || "").trim();
+          if (!propertyId) continue;
+          await saveWorkOrder(propertyId, {
+            ...record,
+            recurring: false,
+            recurrenceDays: [],
+            status: "Cancelled",
+          });
+        }
+        if (!cancelled) {
+          setMessage(
+            `${legacyActiveCleaning.length} old recurring vehicle cleaning ${legacyActiveCleaning.length === 1 ? "series was" : "series were"} retired. Existing cleaning history was preserved.`,
+          );
+          window.setTimeout(() => window.location.reload(), 650);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setMessage(error instanceof Error ? error.message : "Atlas could not retire the old vehicle cleaning schedule.");
+          setRetiring(false);
+        }
+      }
+    };
+
+    void retire();
+    return () => {
+      cancelled = true;
+    };
+  }, [legacyActiveCleaning, vehicles]);
+
+  async function recordCleaning(vehicle: Row) {
+    const relatedCleaning = serviceRecords.filter(
+      (record) => String(record.assetId || "") === String(vehicle.id) && isCleaningTitle(record.title),
+    );
+    const propertyId = propertyIdFor(vehicle, relatedCleaning);
+    if (!propertyId) {
+      setMessage("This vehicle is missing its property link, so Atlas did not save anything.");
+      return;
+    }
+
+    const note = window.prompt(
+      `Record cleaning for ${vehicleDisplayName(vehicle)}.\n\nOptional note — for example: Full clean, Exterior only, Wheels + windows, Interior vacuumed.`,
       "",
     );
-    if (completionNote === null) return;
+    if (note === null) return;
 
     const completedDate = todayKey();
-    const nextDate = nextRecurringDate(record, dueDate);
     const completedAt = new Date().toISOString();
+    const manualTracker = relatedCleaning.find(
+      (record) => record.manualVehicleCleaning === true || String(record.workType || "") === "Manual Vehicle Cleaning",
+    );
+
     const historyEntry = {
-      id: `completion-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `vehicle-clean-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       completedAt,
-      dueDate,
-      statusBefore: String(record.status || "Scheduled"),
-      notes: completionNote.trim(),
-      assetId: record.assetId || "",
-      vendorId: record.vendorId || "",
-      procedureId: record.procedureId || "",
-      locationId: record.locationId || "",
-      photos: Array.isArray(record.photos) ? record.photos : [],
-      documents: Array.isArray(record.documents) ? record.documents : [],
+      date: completedDate,
+      statusBefore: "Manual",
+      notes: note.trim(),
+      assetId: vehicle.id,
+      locationId: vehicle.locationId || "",
+      photos: [],
+      documents: [],
     };
 
-    const nextRecord = {
-      ...record,
-      date: nextDate || dueDate,
-      status: nextDate ? "Scheduled" : "Completed",
-      lastCompletedDate: completedDate,
-      completionHistory: [
-        ...(Array.isArray(record.completionHistory) ? record.completionHistory : []),
-        completedDate,
-      ],
-      serviceHistory: [
-        historyEntry,
-        ...(Array.isArray(record.serviceHistory) ? record.serviceHistory : []),
-      ],
-    };
+    const record: Row = manualTracker
+      ? {
+          ...manualTracker,
+          propertyId,
+          assetId: vehicle.id,
+          locationId: vehicle.locationId || manualTracker.locationId || "",
+          title: `Vehicle Cleaning — ${vehicleDisplayName(vehicle)}`,
+          status: "Completed",
+          recurring: false,
+          manualVehicleCleaning: true,
+          workType: "Manual Vehicle Cleaning",
+          workCategory: "Cleaning",
+          responsibilityArea: "Garage / Vehicles",
+          date: completedDate,
+          lastCompletedDate: completedDate,
+          notes: note.trim(),
+          completionHistory: Array.from(
+            new Set([...(Array.isArray(manualTracker.completionHistory) ? manualTracker.completionHistory : []), completedDate]),
+          ),
+          serviceHistory: [
+            historyEntry,
+            ...(Array.isArray(manualTracker.serviceHistory) ? manualTracker.serviceHistory : []),
+          ],
+        }
+      : {
+          id: `vehicle-cleaning-${String(vehicle.id)}-${Date.now()}`,
+          propertyId,
+          assetId: vehicle.id,
+          locationId: vehicle.locationId || "",
+          title: `Vehicle Cleaning — ${vehicleDisplayName(vehicle)}`,
+          status: "Completed",
+          priority: "Low",
+          recurring: false,
+          manualVehicleCleaning: true,
+          workType: "Manual Vehicle Cleaning",
+          workCategory: "Cleaning",
+          responsibilityArea: "Garage / Vehicles",
+          date: completedDate,
+          lastCompletedDate: completedDate,
+          notes: note.trim(),
+          completionHistory: [completedDate],
+          serviceHistory: [historyEntry],
+        };
 
-    setSavingId(String(record.id));
+    setSavingId(String(vehicle.id));
     setMessage("");
     try {
-      const response = await fetch("/api/atlas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          table: "work_orders",
-          propertyId: record.propertyId,
-          record: nextRecord,
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload?.error || "Could not complete vehicle cleaning.");
-      setMessage(
-        nextDate
-          ? `${record.title} completed for ${formatDate(dueDate)}. Next due ${formatDate(nextDate)}.`
-          : `${record.title} completed for ${formatDate(dueDate)}.`,
-      );
+      await saveWorkOrder(propertyId, record);
+      setMessage(`${vehicleDisplayName(vehicle)} cleaning recorded for ${formatDate(completedDate)}.`);
+      window.dispatchEvent(new CustomEvent("atlas:data-changed"));
       window.setTimeout(() => window.location.reload(), 550);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not complete vehicle cleaning.");
+      setMessage(error instanceof Error ? error.message : "Atlas could not record the vehicle cleaning.");
       setSavingId("");
     }
   }
 
   return (
     <div style={{ display: "grid", gap: 10 }}>
-      <div
-        style={{
-          ...cardStyle,
-          padding: 12,
-          background: "#F8FAFC",
-          borderColor: "#D5E0EA",
-        }}
-      >
-        <strong style={{ color: colors.navy }}>Vehicle Assets</strong>
+      <div style={{ ...cardStyle, padding: 12 }}>
+        <strong style={{ color: colors.navy }}>Vehicle Cleaning</strong>
         <div style={{ ...mutedSmallStyle, marginTop: 3 }}>
-          Garage uses the actual Asset vehicle records. Weekly cleaning status comes only from work orders attached to those Assets.
+          Cleaning is manual. The goal is about once a week when each vehicle is available; Atlas tracks the last cleaning without creating due dates or overdue work.
         </div>
+        <div style={{ ...mutedSmallStyle, marginTop: 3 }}>
+          Typical check: exterior · wheels/tires · windows · vacuum · interior wipe-down. Use only what makes sense for that clean.
+        </div>
+        {retiring ? <div style={{ marginTop: 7, fontSize: 12, fontWeight: 700, color: colors.navy }}>Retiring old recurring vehicle-cleaning schedules…</div> : null}
         {message ? <div style={{ marginTop: 7, fontSize: 12, fontWeight: 700, color: colors.navy }}>{message}</div> : null}
       </div>
 
@@ -208,25 +320,13 @@ export default function AtlasVehicleGarage({
         }}
       >
         {vehicles.map((vehicle) => {
-          const linkedCleaning = serviceRecords
-            .filter(
-              (record) =>
-                String(record.assetId || "") === String(vehicle.id) &&
-                isVehicleCleaningWork(record) &&
-                activeWork(record),
-            )
-            .slice()
-            .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
-          const cleaning = linkedCleaning[0];
+          const relatedCleaning = serviceRecords.filter(
+            (record) => String(record.assetId || "") === String(vehicle.id) && isCleaningTitle(record.title),
+          );
+          const lastCleaned = latestCleaningDate(relatedCleaning);
+          const status = cleaningStatus(lastCleaned);
           const location = locations.find((item) => item.id === vehicle.locationId);
-          const dueDate = cleaning ? dateKey(cleaning.date) : "";
-          const canComplete = Boolean(dueDate && dueDate <= todayKey());
-          const overdue = Boolean(dueDate && dueDate < todayKey());
-          const specs = [
-            vehicle.year,
-            vehicle.manufacturer || vehicle.make,
-            vehicle.model,
-          ]
+          const specs = [vehicle.year, vehicle.manufacturer || vehicle.make, vehicle.model]
             .map((value) => String(value || "").trim())
             .filter(Boolean)
             .join(" · ");
@@ -235,76 +335,60 @@ export default function AtlasVehicleGarage({
             <section key={vehicle.id} style={{ ...cardStyle, padding: 13, display: "grid", gap: 9 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
                 <div style={{ minWidth: 0 }}>
-                  <h3 style={{ margin: 0, color: colors.navy, fontSize: 16 }}>
-                    {vehicleDisplayName(vehicle)}
-                  </h3>
+                  <h3 style={{ margin: 0, color: colors.navy, fontSize: 16 }}>{vehicleDisplayName(vehicle)}</h3>
                   {specs ? <div style={{ ...mutedSmallStyle, marginTop: 2 }}>{specs}</div> : null}
                   {location ? <div style={{ ...mutedSmallStyle, marginTop: 2 }}>{location.name}</div> : null}
                 </div>
                 <span style={badgeStyle(vehicle.status || "Online")}>{vehicle.status || "Online"}</span>
               </div>
 
-              {cleaning ? (
-                <div
-                  style={{
-                    borderTop: `1px solid ${colors.line}`,
-                    paddingTop: 8,
-                    display: "grid",
-                    gap: 6,
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-                    <strong style={{ color: colors.navy, fontSize: 13 }}>{cleaning.title}</strong>
-                    <span style={badgeStyle(overdue ? "High" : cleaning.status || "Scheduled")}>
-                      {overdue ? "Overdue" : cleaning.status || "Scheduled"}
-                    </span>
-                  </div>
-                  <div style={{ ...mutedSmallStyle }}>
-                    Weekly recurring cleaning
-                    {cleaning.date ? ` · Due ${formatDate(String(cleaning.date))}` : ""}
-                    {cleaning.lastCompletedDate ? ` · Last ${formatDate(String(cleaning.lastCompletedDate))}` : ""}
-                  </div>
-                  {canComplete ? (
-                    <button
-                      type="button"
-                      disabled={savingId === String(cleaning.id)}
-                      onClick={() => void completeDueOccurrence(cleaning)}
-                      style={{
-                        justifySelf: "start",
-                        minHeight: 32,
-                        padding: "6px 10px",
-                        borderRadius: 7,
-                        border: `1px solid ${colors.gold}`,
-                        background: "#FFFFFF",
-                        color: colors.navy,
-                        fontSize: 11,
-                        fontWeight: 800,
-                        cursor: savingId === String(cleaning.id) ? "wait" : "pointer",
-                      }}
-                    >
-                      {savingId === String(cleaning.id)
-                        ? "Saving…"
-                        : `Complete ${formatDate(dueDate)} occurrence`}
-                    </button>
-                  ) : null}
-                  {linkedCleaning.length > 1 ? (
-                    <div style={{ color: colors.red || "#A51E1E", fontSize: 11, fontWeight: 800 }}>
-                      {linkedCleaning.length} active recurring cleaning work orders are attached to this Asset. Keep one series only.
+              <div style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 8, display: "grid", gap: 7 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                  <div>
+                    <strong style={{ color: colors.navy, fontSize: 13 }}>Cleaning Status</strong>
+                    <div style={{ ...mutedSmallStyle, marginTop: 2 }}>
+                      Last cleaned: {lastCleaned ? `${formatDate(lastCleaned)} · ${ageLabel(lastCleaned)}` : "Never recorded"}
                     </div>
-                  ) : null}
+                  </div>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      minHeight: 24,
+                      padding: "3px 8px",
+                      borderRadius: 999,
+                      border: `1px solid ${status === "Ready for cleaning" ? "#D8E0E8" : "#C9DFD3"}`,
+                      background: status === "Ready for cleaning" ? "#F8FAFC" : "#F1F8F4",
+                      color: status === "Ready for cleaning" ? colors.navy : "#276749",
+                      fontSize: 11,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {status}
+                  </span>
                 </div>
-              ) : (
-                <div
+
+                <button
+                  type="button"
+                  disabled={savingId === String(vehicle.id) || retiring}
+                  onClick={() => void recordCleaning(vehicle)}
                   style={{
-                    borderTop: `1px solid ${colors.line}`,
-                    paddingTop: 8,
-                    color: colors.muted,
-                    fontSize: 11,
+                    justifySelf: "start",
+                    minHeight: 34,
+                    padding: "6px 11px",
+                    borderRadius: 8,
+                    border: `1px solid ${colors.gold}`,
+                    background: "#FFFFFF",
+                    color: colors.navy,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: savingId === String(vehicle.id) || retiring ? "wait" : "pointer",
+                    opacity: savingId === String(vehicle.id) || retiring ? 0.6 : 1,
                   }}
                 >
-                  No recurring weekly cleaning work order is attached to this Asset.
-                </div>
-              )}
+                  {savingId === String(vehicle.id) ? "Saving…" : "Clean Now"}
+                </button>
+              </div>
             </section>
           );
         })}
