@@ -3,8 +3,12 @@
 export default function AtlasMobileVisualFixes() {
   return (
     <style jsx global>{`
-      /* Asset list rows should not look selected simply because Atlas has a current detail record. */
-      .atlas-assets-viewport-root .atlas-asset-list-card-current {
+      /* Asset list rows stay visually neutral. Atlas may keep a current/detail
+         record internally, but that state should not turn list cards blue. */
+      .atlas-assets-viewport-root .atlas-asset-list-card-polished,
+      .atlas-assets-viewport-root .atlas-asset-list-card-current,
+      .atlas-assets-viewport-root .atlas-asset-list-card-bulk-selected,
+      .atlas-assets-viewport-root .atlas-gold-hover-card.atlas-asset-list-card-polished {
         border-color: #d8e1eb !important;
         background: #ffffff !important;
         box-shadow: none !important;
