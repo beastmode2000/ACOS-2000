@@ -9,8 +9,6 @@ export default function AtlasMobileVisualFixes() {
     const neutralize = () => {
       frame = 0;
 
-      // Assets can carry selected/current state in several layers. Keep the
-      // actual list-card surface neutral regardless of that internal state.
       document
         .querySelectorAll<HTMLElement>(".atlas-assets-viewport-root .atlas-gold-hover-card")
         .forEach((card) => {
@@ -18,8 +16,6 @@ export default function AtlasMobileVisualFixes() {
           card.style.setProperty("background-color", "#ffffff", "important");
           card.style.setProperty("box-shadow", "none", "important");
 
-          // Older list markup can put the blue selected fill on an inner wrapper
-          // rather than the outer card. Only neutralize the known selected fill.
           card.querySelectorAll<HTMLElement>("div, button").forEach((node) => {
             const background = window.getComputedStyle(node).backgroundColor;
             if (background === "rgb(244, 248, 253)") {
@@ -30,9 +26,6 @@ export default function AtlasMobileVisualFixes() {
           });
         });
 
-      // Dashboard work rows are rendered inside the person-lane scroll area.
-      // Neutralize only the known stray selected fill, leaving status/action
-      // colors (gold buttons, red warnings, green completion, etc.) untouched.
       document
         .querySelectorAll<HTMLElement>(".atlas-dashboard-polish-person-lane")
         .forEach((lane) => {
@@ -74,8 +67,6 @@ export default function AtlasMobileVisualFixes() {
 
   return (
     <style jsx global>{`
-      /* Asset list rows stay visually neutral even when Atlas keeps internal
-         current/detail or bulk-selection state. */
       .atlas-assets-viewport-root .atlas-asset-list-card-polished,
       .atlas-assets-viewport-root .atlas-asset-list-card-polished.atlas-asset-list-card-current,
       .atlas-assets-viewport-root .atlas-asset-list-card-polished.atlas-asset-list-card-bulk-selected,
@@ -87,8 +78,6 @@ export default function AtlasMobileVisualFixes() {
         box-shadow: none !important;
       }
 
-      /* Native Dashboard work rows and the custom Upcoming rows are not
-         selected-state cards. Keep them white in every passive interaction state. */
       .atlas-dashboard-polish-person-lane div[style*="overflow-y: auto"] > div,
       .atlas-dashboard-polish-person-lane div[style*="overflow-y:auto"] > div,
       .atlas-secondary-custom-row,
@@ -111,6 +100,8 @@ export default function AtlasMobileVisualFixes() {
       @media (max-width: 900px) {
         html,
         body {
+          width: 100% !important;
+          max-width: 100% !important;
           overflow-x: hidden !important;
         }
 
@@ -120,15 +111,17 @@ export default function AtlasMobileVisualFixes() {
         .atlas-mobile-dashboard-command {
           width: 100vw !important;
           max-width: 100vw !important;
+          min-width: 0 !important;
           margin-left: 0 !important;
           margin-right: 0 !important;
-          padding-left: 4px !important;
-          padding-right: 4px !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
           box-sizing: border-box !important;
         }
 
         .atlas-mobile-field-main > div,
-        .atlas-mobile-field-main .atlas-page,
+        .atlas-mobile-field-main > section,
+        .atlas-mobile-field-main > article,
         .atlas-mobile-dashboard-polish-root > div,
         .atlas-command-dashboard,
         .atlas-mobile-dashboard-command,
@@ -143,8 +136,13 @@ export default function AtlasMobileVisualFixes() {
         }
 
         .atlas-mobile-field-main .atlas-page {
-          padding-left: 0 !important;
-          padding-right: 0 !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          padding-left: 4px !important;
+          padding-right: 4px !important;
+          box-sizing: border-box !important;
         }
 
         .atlas-mobile-field-main section,
@@ -161,20 +159,20 @@ export default function AtlasMobileVisualFixes() {
         .atlas-mobile-dashboard-fab {
           position: fixed !important;
           left: auto !important;
-          right: 14px !important;
-          bottom: calc(86px + env(safe-area-inset-bottom)) !important;
-          width: 52px !important;
-          max-width: 52px !important;
-          min-width: 52px !important;
-          height: 52px !important;
-          max-height: 52px !important;
-          min-height: 52px !important;
+          right: 10px !important;
+          bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+          width: 46px !important;
+          max-width: 46px !important;
+          min-width: 46px !important;
+          height: 46px !important;
+          max-height: 46px !important;
+          min-height: 46px !important;
           padding: 0 !important;
           border-radius: 999px !important;
           display: inline-flex !important;
           align-items: center !important;
           justify-content: center !important;
-          font-size: 22px !important;
+          font-size: 20px !important;
           line-height: 1 !important;
         }
 
