@@ -290,6 +290,7 @@ export default function AtlasDashboardWorkspace(props: any) {
   const [dashboardWorkTitle, setDashboardWorkTitle] = useState("");
   const [dashboardWorkNote, setDashboardWorkNote] = useState("");
   const [dashboardCompletionNotes, setDashboardCompletionNotes] = useState<Record<string, string>>({});
+  const [dashboardWorkUpdateOpen, setDashboardWorkUpdateOpen] = useState<Record<string, boolean>>({});
   const [dashboardWorkAssignee, setDashboardWorkAssignee] = useState(initialDashboardAssignee);
   const [dashboardWorkDate, setDashboardWorkDate] = useState(() => todayISO());
   const [dashboardWorkListFilter, setDashboardWorkListFilter] = useState<"Today" | "All" | "Upcoming" | "Overdue">("Today");
@@ -2450,9 +2451,9 @@ export default function AtlasDashboardWorkspace(props: any) {
                         <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Edit</button>
                       </div>
                     </div>
-                    <details style={{ marginTop: 6 }}>
-                      <summary style={{ cursor: "pointer", color: colors.navy, fontSize: 11, fontWeight: 800 }}>Update</summary>
-                      <div style={{ display: "grid", gap: 6, marginTop: 7 }}>
+                    <div style={{ marginTop: 6 }}>
+                      <button type="button" onClick={() => setDashboardWorkUpdateOpen((current) => ({ ...current, [String(record.id)]: !current[String(record.id)] }))} aria-expanded={Boolean(dashboardWorkUpdateOpen[String(record.id)])} style={{ border: 0, padding: 0, background: "transparent", cursor: "pointer", color: colors.navy, fontSize: 11, fontWeight: 800 }}>{dashboardWorkUpdateOpen[String(record.id)] ? "▾" : "▸"} Update</button>
+                      {dashboardWorkUpdateOpen[String(record.id)] ? <div style={{ display: "grid", gap: 6, marginTop: 7 }}>
                         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 6 }}>
                           <input type="date" value={String(record.date || "").slice(0,10)} onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => void syncWorkOrderPatch(record, { date: event.currentTarget.value })} style={{ ...inputStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}/>
                           <select value={assigned} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name === "Patrick Tanner" ? "Pat" : name === "Sean Powell" ? "Sean" : name}</option>)}</select>
@@ -2467,8 +2468,8 @@ export default function AtlasDashboardWorkspace(props: any) {
                           <button type="button" onClick={() => void syncWorkOrderPatch(record, { date: addDays(todayISO(), 1) })} style={secondaryButtonStyle}>Move Tomorrow</button>
                           <button type="button" onClick={() => { if (window.confirm(`Delete ${record.title}? This removes it from Work and Calendar.`)) void deleteWorkOrderRecord(record); }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
                         </div>
-                      </div>
-                    </details>
+                      </div> : null}
+                    </div>
                   </div>;
                 })}
                 {dashboardWorkListFilter === "Today" ? calendarToday.map((event) => <button key={`calendar-${person}-${event.instanceId || event.id}`} type="button" onClick={() => openDashboardCalendarItem(event as AtlasCalendarItem)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF", textAlign: "left", cursor: "pointer" }}>
