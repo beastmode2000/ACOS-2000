@@ -2446,6 +2446,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                         <button type="button" onClick={async () => { await completeWorkOrder(record as AtlasServiceRecord, { completionNote }); setDashboardCompletionNotes((current) => { const next = { ...current }; delete next[String(record.id)]; return next; }); }} style={{ ...goldButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Done</button>
                         <button type="button" onClick={() => void didntGetToDashboardWork(record)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Didn’t Get To It</button>
+                        {record.recurring ? <button type="button" onClick={() => void notNeededDashboardWork(record)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Not Needed</button> : null}
                         <button type="button" onClick={() => void rescheduleDashboardWork(record)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Reschedule</button>
                         <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Edit</button>
                       </div>
@@ -2765,6 +2766,22 @@ export default function AtlasDashboardWorkspace(props: any) {
       return;
     }
     await syncWorkOrderPatch(record, { date: "", status: "Open", notesHistory });
+  };
+  const notNeededDashboardWork = async (record: ServiceRecord) => {
+    if (!record.recurring) return;
+    const atlasRecord = record as AtlasServiceRecord;
+    const scheduledDate = String(record.date || todayISO()).slice(0, 10);
+    const unit = isWorkOrderRecurrenceUnit(record.recurrenceUnit) ? record.recurrenceUnit : "Weeks";
+    const nextDate = nextRecurrenceDate(scheduledDate, record.recurrenceInterval || 1, unit);
+    const notesHistory = [
+      {
+        id: uid("note"),
+        text: `NOT NEEDED: ${scheduledDate}`,
+        createdAt: new Date().toISOString(),
+      },
+      ...(atlasRecord.notesHistory || []),
+    ];
+    await syncWorkOrderPatch(record, { date: nextDate, status: "Scheduled", notesHistory });
   };
   const rescheduleDashboardWork = async (record: ServiceRecord) => {
     const currentDate = String(record.date || todayISO()).slice(0, 10);
