@@ -7,7 +7,7 @@ type MobileNavItem = {
   key: string;
 };
 
-const PRIMARY_LABELS = new Set(["dashboard", "work", "assets", "calendar", "more"]);
+const EXCLUDED_LABELS = new Set(["more", "menu"]);
 
 function normalized(value: unknown) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -50,7 +50,7 @@ function liveNavItems(): MobileNavItem[] {
     if (mobileControl(control)) return;
     const label = String(control.textContent || "").trim().replace(/\s+/g, " ");
     const key = normalized(label);
-    if (!label || !key || PRIMARY_LABELS.has(key) || key === "menu") return;
+    if (!label || !key || EXCLUDED_LABELS.has(key)) return;
     if (seen.has(key)) return;
     seen.add(key);
     items.push({ label, key });
@@ -176,8 +176,8 @@ export default function AtlasMobileFullAccess() {
             min-width: 0 !important;
             margin-left: 0 !important;
             margin-right: 0 !important;
-            padding-left: 4px !important;
-            padding-right: 4px !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
             box-sizing: border-box !important;
           }
 
