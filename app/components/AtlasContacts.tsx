@@ -24,12 +24,24 @@ type DirectoryEntry = {
   name: string;
   organization: string;
   role: string;
+  category: string;
   phone: string;
   email: string;
   website: string;
   notes: string;
   source: ContactRecord | VendorRecord | TeamMember;
 };
+
+const contactCategoryOptions = [
+  "Staff",
+  "Vendor",
+  "Service",
+  "Emergency",
+  "Personal",
+  "Family / Household",
+  "Professional",
+  "Other",
+];
 
 const titleCase = (value: string) =>
   value
@@ -69,6 +81,7 @@ export default function AtlasContacts(props: any) {
   } = props;
 
   const [filter, setFilter] = useState<DirectoryFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [selected, setSelected] = useState<{ kind: DirectoryKind; id: string } | null>(null);
   const [editing, setEditing] = useState(false);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
@@ -87,6 +100,7 @@ export default function AtlasContacts(props: any) {
         name: member.name || member.email || "Coworker",
         organization: "Atlas Team",
         role: titleCase(member.role || "Coworker"),
+        category: "Staff",
         phone: "",
         email: member.email || "",
         website: "",
@@ -103,6 +117,7 @@ export default function AtlasContacts(props: any) {
       name: vendor.name || "Unnamed Vendor",
       organization: vendor.name || "Vendor",
       role: vendor.category || "Vendor",
+      category: "Vendor",
       phone: vendor.phone || "",
       email: vendor.email || "",
       website: vendor.website || "",
@@ -117,6 +132,7 @@ export default function AtlasContacts(props: any) {
       name: contact.name || "Unnamed Contact",
       organization: contact.organization || "",
       role: contact.role || contact.category || "Contact",
+      category: contact.category || "",
       phone: contact.phone || "",
       email: contact.email || "",
       website: contact.website || "",
@@ -129,15 +145,26 @@ export default function AtlasContacts(props: any) {
     );
   }, [activePropertyId, contactRecords, teamDirectory, vendorRecords]);
 
+  const categoryOptions = useMemo(() => {
+    const existing = entries
+      .map((entry) => entry.category.trim())
+      .filter(Boolean);
+    return Array.from(new Set([...contactCategoryOptions, ...existing])).sort((a, b) =>
+      a.localeCompare(b),
+    );
+  }, [entries]);
+
   const visibleEntries = useMemo(() => {
     const query = String(contactSearch || "").trim().toLowerCase();
     return entries.filter((entry) => {
       if (filter !== "all" && entry.kind !== filter) return false;
+      if (categoryFilter !== "all" && entry.category !== categoryFilter) return false;
       if (!query) return true;
       return [
         entry.name,
         entry.organization,
         entry.role,
+        entry.category,
         entry.phone,
         entry.email,
         entry.website,
@@ -146,7 +173,7 @@ export default function AtlasContacts(props: any) {
         .toLowerCase()
         .includes(query);
     });
-  }, [contactSearch, entries, filter]);
+  }, [categoryFilter, contactSearch, entries, filter]);
 
   const selectedEntry = selected
     ? entries.find((entry) => entry.kind === selected.kind && entry.id === selected.id) || null
@@ -211,14 +238,14 @@ export default function AtlasContacts(props: any) {
         key={label}
         style={{
           display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "minmax(120px, .32fr) minmax(0, 1fr)",
+          gridTemplateColumns: isMobile ? "1fr" : "minmax(105px, .27fr) minmax(0, 1fr)",
           gap: isMobile ? 3 : 12,
           alignItems: "start",
-          padding: "10px 0",
+          padding: "9px 0",
           borderBottom: `1px solid ${colors.line}`,
         }}
       >
-        <span style={{ ...mutedSmallStyle, fontWeight: 800 }}>{label}</span>
+        <span style={{ ...mutedSmallStyle, fontWeight: 750 }}>{label}</span>
         {href ? (
           <a
             href={href}
@@ -239,7 +266,6 @@ export default function AtlasContacts(props: any) {
     const contact = entry.kind === "contact" ? (entry.source as ContactRecord) : null;
     const address = contact?.address || "";
     const birthday = contact?.birthday || "";
-    const category = contact?.category || "";
 
     return (
       <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
@@ -268,6 +294,23 @@ export default function AtlasContacts(props: any) {
               <div style={{ ...mutedSmallStyle, marginTop: 4 }}>
                 {[entry.organization, entry.role].filter(Boolean).join(" · ") || kindLabel(entry.kind)}
               </div>
+              {entry.category ? (
+                <span
+                  style={{
+                    display: "inline-block",
+                    marginTop: 7,
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 999,
+                    padding: "3px 7px",
+                    color: colors.muted,
+                    background: "#F8FAFC",
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                  }}
+                >
+                  {entry.category}
+                </span>
+              ) : null}
             </div>
             <div style={{ ...buttonRowStyle, gap: 6 }}>
               {entry.phone ? (
@@ -303,19 +346,11 @@ export default function AtlasContacts(props: any) {
             minWidth: 0,
           }}
         >
-          <div
-            style={{
-              padding: "10px 0 4px",
-              color: colors.navy,
-              fontSize: 12,
-              fontWeight: 900,
-            }}
-          >
+          <div style={{ padding: "10px 0 4px", color: colors.navy, fontSize: 12, fontWeight: 900 }}>
             Contact Information
           </div>
-          {infoRow("Company / Organization", entry.organization)}
-          {infoRow("Role / Title", entry.role)}
-          {infoRow("Category", category)}
+          {infoRow("Company", entry.organization)}
+          {infoRow("Role", entry.role)}
           {infoRow("Phone", entry.phone, entry.phone ? `tel:${entry.phone.replace(/[^+\d]/g, "")}` : undefined)}
           {infoRow("Email", entry.email, entry.email ? `mailto:${entry.email.trim()}` : undefined)}
           {infoRow(
@@ -327,9 +362,35 @@ export default function AtlasContacts(props: any) {
                 : `https://${entry.website}`
               : undefined,
           )}
-          {infoRow("Address", address)}
-          {infoRow("Birthday", birthday)}
         </section>
+
+        {(address || birthday) ? (
+          <details
+            style={{
+              border: `1px solid ${colors.line}`,
+              borderRadius: 12,
+              background: "#FFFFFF",
+              padding: "0 14px",
+            }}
+          >
+            <summary
+              style={{
+                cursor: "pointer",
+                listStyle: "none",
+                padding: "11px 0",
+                color: colors.navy,
+                fontSize: 12,
+                fontWeight: 850,
+              }}
+            >
+              More Details
+            </summary>
+            <div style={{ paddingBottom: 7 }}>
+              {infoRow("Address", address)}
+              {infoRow("Birthday", birthday)}
+            </div>
+          </details>
+        ) : null}
 
         {entry.notes ? (
           <section
@@ -349,6 +410,14 @@ export default function AtlasContacts(props: any) {
       </div>
     );
   };
+
+  const editorCategoryValues = Array.from(
+    new Set([
+      ...contactCategoryOptions,
+      ...categoryOptions,
+      String(contactDraft.category || "").trim(),
+    ].filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b));
 
   const renderContactEditor = () => (
     <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
@@ -394,7 +463,25 @@ export default function AtlasContacts(props: any) {
           <Field label="Name" value={contactDraft.name} onChange={(name) => updateContactDraft({ name })} />
           <Field label="Company / Organization" value={contactDraft.organization} onChange={(organization) => updateContactDraft({ organization })} />
           <Field label="Role / Title" value={contactDraft.role} onChange={(role) => updateContactDraft({ role })} />
-          <Field label="Category" value={contactDraft.category} onChange={(category) => updateContactDraft({ category })} />
+          <label style={{ display: "grid", gap: 5 }}>
+            <span style={mutedSmallStyle}>Category</span>
+            <select
+              value={contactDraft.category || ""}
+              onChange={(event) => updateContactDraft({ category: event.currentTarget.value })}
+              style={{
+                ...inputStyle,
+                width: "100%",
+                minWidth: 0,
+                minHeight: 40,
+                background: "#FFFFFF",
+              }}
+            >
+              <option value="">No category</option>
+              {editorCategoryValues.map((category) => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </label>
           <Field label="Phone Number" value={contactDraft.phone} onChange={(phone) => updateContactDraft({ phone })} />
           <Field label="Email Address" value={contactDraft.email} onChange={(email) => updateContactDraft({ email })} />
           <Field label="Address" value={contactDraft.address} onChange={(address) => updateContactDraft({ address })} />
@@ -494,36 +581,64 @@ export default function AtlasContacts(props: any) {
               aria-label="Search contact directory"
               style={{ ...inputStyle, minWidth: 0, width: "100%", height: 36 }}
             />
-            <div role="group" aria-label="Contact type" style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-              {([
-                ["all", "All"],
-                ["contact", "Contacts"],
-                ["vendor", "Vendors"],
-                ["coworker", "Coworkers"],
-              ] as Array<[DirectoryFilter, string]>).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setFilter(value)}
-                  style={{
-                    ...secondaryButtonStyle,
-                    minHeight: 30,
-                    padding: "5px 8px",
-                    fontSize: 11,
-                    background: filter === value ? "#FFF3CF" : "#FFFFFF",
-                    borderColor: filter === value ? colors.gold : colors.line,
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0,1fr) minmax(120px,.7fr)",
+                gap: 6,
+                alignItems: "center",
+              }}
+            >
+              <div role="group" aria-label="Contact type" style={{ display: "flex", gap: 4, minWidth: 0 }}>
+                {([
+                  ["all", "All"],
+                  ["contact", "Contacts"],
+                  ["vendor", "Vendors"],
+                  ["coworker", "Staff"],
+                ] as Array<[DirectoryFilter, string]>).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setFilter(value)}
+                    style={{
+                      ...secondaryButtonStyle,
+                      minHeight: 28,
+                      padding: "4px 7px",
+                      fontSize: 10.5,
+                      background: filter === value ? "#FFF3CF" : "#FFFFFF",
+                      borderColor: filter === value ? colors.gold : colors.line,
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <select
+                value={categoryFilter}
+                onChange={(event) => setCategoryFilter(event.currentTarget.value)}
+                aria-label="Contact category"
+                style={{
+                  ...inputStyle,
+                  width: "100%",
+                  minWidth: 0,
+                  height: 30,
+                  padding: "4px 7px",
+                  fontSize: 10.5,
+                  background: "#FFFFFF",
+                }}
+              >
+                <option value="all">All categories</option>
+                {categoryOptions.map((category) => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
             </div>
-            <span style={{ ...mutedSmallStyle, fontSize: 10.5 }}>
+            <span style={{ ...mutedSmallStyle, fontSize: 10 }}>
               {visibleEntries.length} result{visibleEntries.length === 1 ? "" : "s"}
             </span>
           </div>
 
-          <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ display: "grid", gap: 5 }}>
             {visibleEntries.map((entry) => {
               const active = selected?.kind === entry.kind && selected?.id === entry.id;
               return (
@@ -535,34 +650,50 @@ export default function AtlasContacts(props: any) {
                   style={{
                     width: "100%",
                     minWidth: 0,
-                    minHeight: 54,
+                    minHeight: 49,
                     border: `1px solid ${active ? colors.gold : colors.line}`,
                     borderRadius: 9,
                     background: active ? "#FFFDF6" : "#FFFFFF",
-                    padding: "8px 10px",
+                    padding: "7px 9px",
                     textAlign: "left",
                     cursor: "pointer",
                     boxShadow: "none",
                   }}
                 >
-                  <strong
-                    style={{
-                      display: "block",
-                      color: colors.navy,
-                      fontSize: 12.5,
-                      lineHeight: 1.25,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {entry.name}
-                  </strong>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <strong
+                      style={{
+                        display: "block",
+                        minWidth: 0,
+                        color: colors.navy,
+                        fontSize: 12.5,
+                        lineHeight: 1.2,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {entry.name}
+                    </strong>
+                    {entry.category ? (
+                      <span
+                        style={{
+                          flex: "0 0 auto",
+                          color: colors.muted,
+                          fontSize: 9.5,
+                          fontWeight: 750,
+                        }}
+                      >
+                        {entry.category}
+                      </span>
+                    ) : null}
+                  </div>
                   <span
                     style={{
                       ...mutedSmallStyle,
                       display: "block",
-                      marginTop: 3,
+                      marginTop: 2,
+                      fontSize: 10.5,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
@@ -573,7 +704,7 @@ export default function AtlasContacts(props: any) {
                 </button>
               );
             })}
-            {!visibleEntries.length ? <div style={noticeStyle}>No contacts match this search.</div> : null}
+            {!visibleEntries.length ? <div style={noticeStyle}>No contacts match these filters.</div> : null}
           </div>
         </div>
 
