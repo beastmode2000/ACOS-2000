@@ -3,26 +3,38 @@
 export default function AtlasMobileVisualFixes() {
   return (
     <style jsx global>{`
-      /* Asset list rows stay visually neutral. Atlas may keep a current/detail
-         record internally, but that state should not turn list cards blue. */
+      /* Asset list rows stay visually neutral even when Atlas keeps internal
+         current/detail or bulk-selection state. */
       .atlas-assets-viewport-root .atlas-asset-list-card-polished,
-      .atlas-assets-viewport-root .atlas-asset-list-card-current,
-      .atlas-assets-viewport-root .atlas-asset-list-card-bulk-selected,
-      .atlas-assets-viewport-root .atlas-gold-hover-card.atlas-asset-list-card-polished {
+      .atlas-assets-viewport-root .atlas-asset-list-card-polished.atlas-asset-list-card-current,
+      .atlas-assets-viewport-root .atlas-asset-list-card-polished.atlas-asset-list-card-bulk-selected,
+      .atlas-assets-viewport-root .atlas-gold-hover-card.atlas-asset-list-card-polished,
+      .atlas-assets-viewport-root .atlas-gold-hover-card.atlas-asset-list-card-polished.atlas-asset-list-card-current,
+      .atlas-assets-viewport-root .atlas-gold-hover-card.atlas-asset-list-card-polished.atlas-asset-list-card-bulk-selected {
         border-color: #d8e1eb !important;
         background: #ffffff !important;
         box-shadow: none !important;
       }
 
-      /* Dashboard upcoming rows are informational list rows, not selected-state cards. */
+      /* Native Dashboard work rows and the custom Upcoming rows are not
+         selected-state cards. Keep them white in every passive interaction state. */
+      .atlas-dashboard-polish-person-lane div[style*="overflow-y: auto"] > div,
+      .atlas-dashboard-polish-person-lane div[style*="overflow-y:auto"] > div,
+      .atlas-secondary-custom-row,
+      .atlas-secondary-custom-row:hover,
+      .atlas-secondary-custom-row:focus,
+      .atlas-secondary-custom-row:focus-visible,
+      .atlas-secondary-custom-row:active {
+        background: #ffffff !important;
+        box-shadow: none !important;
+      }
+
       .atlas-secondary-custom-row,
       .atlas-secondary-custom-row:hover,
       .atlas-secondary-custom-row:focus,
       .atlas-secondary-custom-row:focus-visible,
       .atlas-secondary-custom-row:active {
         border-color: #d8e0e8 !important;
-        background: #ffffff !important;
-        box-shadow: none !important;
       }
 
       @media (max-width: 900px) {
