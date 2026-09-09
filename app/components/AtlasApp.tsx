@@ -6085,7 +6085,9619 @@ export default function AtlasApp() {
 
   const seanVisibleCalendarItems = useMemo(() => {
     if (!isSeanMarineUser || seanCalendarPropertyFilter === "all") {
-      return expande…142152 tokens truncated…hicle.lastCleaned
+      return expandedCalendarItems;
+    }
+
+    return expandedCalendarItems.filter((item) => {
+      if (item.source === "us-holiday" || item.source === "jewish-holiday") return true;
+      return String(item.propertyId || "2000") === seanCalendarPropertyFilter;
+    });
+  }, [expandedCalendarItems, isSeanMarineUser, seanCalendarPropertyFilter]);
+
+  const calendarFilterLabels = useMemo(() => {
+    const labels = new Set<string>();
+    baseCalendarItems.forEach((item) => labels.add(categoryForEvent(item)));
+    return Array.from(labels)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+  }, [baseCalendarItems, calendarColors]);
+
+  const todayEvents = useMemo(
+    () =>
+      calendarItemsByIdentity(expandedCalendarItems.filter((item) => item.date === todayISO())),
+    [expandedCalendarItems],
+  );
+
+  const selectedDayEvents = useMemo(
+    () =>
+      calendarItemsByIdentity(
+        (isSeanMarineUser ? seanVisibleCalendarItems : expandedCalendarItems).filter(
+          (item) => item.date === selectedCalendarDate,
+        ),
+      ),
+    [expandedCalendarItems, seanVisibleCalendarItems, isSeanMarineUser, selectedCalendarDate],
+  );
+
+  const weatherByDate = useMemo(() => {
+    const map = new Map<string, WeatherDay>();
+    weatherDays.forEach((day) => map.set(day.date, day));
+    return map;
+  }, [weatherDays]);
+
+  const upcomingEvents = useMemo(() => {
+    const today = todayISO();
+    const tomorrowDate = calendarDateValue(today);
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrow = localISODate(tomorrowDate);
+    const futureEvents = [...expandedCalendarItems]
+      .filter((item) => item.date > today)
+      .sort((a, b) =>
+        `${a.date} ${a.time || ""}`.localeCompare(`${b.date} ${b.time || ""}`),
+      );
+    const tomorrowEvents = futureEvents.filter((item) => item.date === tomorrow);
+    const laterEvents = futureEvents.filter((item) => item.date > tomorrow);
+    return [
+      ...tomorrowEvents,
+      ...laterEvents.slice(0, Math.max(0, 7 - tomorrowEvents.length)),
+    ];
+  }, [expandedCalendarItems]);
+
+  const q = query.trim().toLowerCase();
+
+  const filteredLocations = useMemo(() => {
+    const sorted = [...locations].sort((a, b) => a.name.localeCompare(b.name));
+    if (!q) return sorted;
+    return sorted.filter((item) =>
+      [item.name, item.type, item.zone, item.notes]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [q, locations]);
+
+  const filteredMapLabels = useMemo(() => {
+    const sorted = byLabel(mapLabels);
+    if (!q) return sorted;
+    return sorted.filter((item) =>
+      [
+        item.label,
+        item.category,
+        item.notes,
+        (item.detailBoxes || [])
+          .map((box) => `${box.title} ${box.body}`)
+          .join(" "),
+        (item.vendorIds || []).map(vendorName).join(" "),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [q, mapLabels]);
+
+  const filteredAssets = useMemo(() => {
+    const sorted = byName(isSeanMarineUser ? seanVisibleAssetRecords : assetRecords);
+    if (!q) return sorted;
+    return sorted.filter((item) =>
+      [
+        item.name,
+        item.category,
+        item.status,
+        item.make,
+        item.model,
+        item.serial,
+        item.notes,
+        locationName(item.locationId),
+        item.vendorIds.map(vendorName).join(" "),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [q, assetRecords, seanVisibleAssetRecords, isSeanMarineUser, vendorRecords]);
+
+  const filteredVendors = useMemo(() => {
+    const sorted = byName(vendorRecords);
+    if (!q) return sorted;
+    return sorted.filter((item) =>
+      [
+        item.name,
+        item.category,
+        item.phone,
+        item.email,
+        item.website,
+        item.notes,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [q, vendorRecords]);
+
+  const filteredContacts = useMemo(() => {
+    const search = contactSearch.trim().toLowerCase();
+    const sorted = byName(contactRecords);
+    if (!search) return sorted;
+    return sorted.filter((item) =>
+      [
+        item.name,
+        item.organization,
+        item.role,
+        item.category,
+        item.phone,
+        item.email,
+        item.address,
+        item.website,
+        item.notes,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(search),
+    );
+  }, [contactRecords, contactSearch]);
+
+  const filteredServices = useMemo(() => {
+    const seasonFiltered = serviceRecords.filter(
+      (item) =>
+        workOrderSeasonFilter === "All" ||
+        item.season === workOrderSeasonFilter,
+    );
+    const sorted = workOrdersByIdentity(seasonFiltered);
+    if (!q) return sorted;
+    return sorted.filter((item) =>
+      [
+        item.title,
+        item.status,
+        item.priority,
+        item.date,
+        item.followUpDate,
+        item.notes,
+        item.season,
+        (item as AtlasServiceRecord).workCategory,
+        locationName((item as AtlasServiceRecord).locationId),
+        recurrenceLabel(item),
+        assetName(item.assetId),
+        vendorName(item.vendorId),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [q, serviceRecords, assetRecords, vendorRecords, workOrderSeasonFilter]);
+
+  const filteredProcedures = useMemo(() => {
+    const sorted = byTitle(procedureRecords);
+    if (!q) return sorted;
+    return sorted.filter((item) =>
+      [
+        item.title,
+        item.area,
+        item.category,
+        item.priority,
+        item.status,
+        item.purpose,
+        item.safetyNotes,
+        item.toolsParts,
+        item.requiredTools?.join(" "),
+        item.requiredParts?.join(" "),
+        item.steps.join(" "),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [q, procedureRecords]);
+
+  const filteredCalendar = useMemo(() => {
+    const sorted = calendarItemsByIdentity(calendarItems);
+    if (!q) return sorted;
+    return sorted.filter((item) =>
+      [
+        item.title,
+        item.area,
+        item.categoryLabel,
+        item.date,
+        item.time,
+        colorForEvent(item).label,
+        item.notes,
+        item.linkedName,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [q, calendarItems, calendarColors]);
+
+  const filteredParts = useMemo(() => {
+    const sorted = byName(partRecords);
+    if (!q) return sorted;
+    return sorted.filter((item) =>
+      [
+        item.name,
+        item.category,
+        item.status,
+        item.notes,
+        locationName(item.locationId),
+        assetName(item.assetId),
+        vendorName(item.vendorId),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [q, partRecords, assetRecords, vendorRecords]);
+
+  const filteredWorkLinks = useMemo(() => {
+    const sorted = [...workLinks].sort((a, b) => a.name.localeCompare(b.name));
+    if (!q) return sorted;
+    return sorted.filter((item) =>
+      [item.name, item.category, item.vendor, item.notes, item.url]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [q, workLinks]);
+
+  const allDocuments = useMemo(() => {
+    const merged = mergeDocuments(documents, intakeDocs);
+    return isSeanMarineUser ? merged.filter((document) => isMarineDocumentRecord(document)) : merged;
+  }, [documents, intakeDocs, isSeanMarineUser, assetRecords, locations]);
+
+  const allManualRecords = useMemo(() => {
+    const documentManuals = allDocuments
+      .filter((document) => {
+        const text = `${document.type} ${document.title}`.toLowerCase();
+        const hasOpenableFile = Boolean(
+          document.href ||
+          (document.files || []).some((file) => file.url || file.dataUrl),
+        );
+        return (
+          hasOpenableFile &&
+          /manual|owner'?s guide|operator|installation|service|repair|maintenance|parts catalog|wiring|specification|quick start|warranty|safety/.test(
+            text,
+          )
+        );
+      })
+      .map((document) => {
+        const openableFile = (document.files || []).find(
+          (file) => file.url || file.dataUrl,
+        );
+        return normalizeManualRecord({
+          id: `document-manual-${document.id}`,
+          title: document.title,
+          category: inferManualCategory(`${document.type} ${document.title}`),
+          manufacturer: "",
+          model: "",
+          documentNumber: "",
+          linkedAssetId:
+            document.targetType === "Asset"
+              ? document.targetId || document.linkedAssetId || ""
+              : document.linkedAssetId || "",
+          linkedAssetName:
+            document.targetType === "Asset"
+              ? document.targetName || ""
+              : document.linkedAssetId
+                ? assetName(document.linkedAssetId)
+                : "",
+          sourceLabel: "Atlas Documents",
+          href:
+            document.href || openableFile?.url || openableFile?.dataUrl || "",
+          notes: document.notes || "",
+          files: document.files || [],
+          createdAt: document.createdAt || "",
+        });
+      });
+
+    const merged = new Map<string, ManualRecord>();
+    [...manualRecords, ...documentManuals].forEach((manual) => {
+      const key =
+        cleanManualOpenUrl(manual.href).toLowerCase() ||
+        `${manual.title.toLowerCase()}|${String(
+          manual.linkedAssetId || manual.linkedAssetName || "",
+        ).toLowerCase()}`;
+      if (!merged.has(key)) merged.set(key, manual);
+    });
+
+    return [...merged.values()].sort((a, b) => a.title.localeCompare(b.title));
+  }, [allDocuments, manualRecords, assetRecords]);
+
+  function documentTargetOptionsFor(kind: IntakeTargetKind) {
+    if (kind === "Asset")
+      return byName(assetRecords).map((asset) => ({
+        id: asset.id,
+        name: asset.name,
+        detail: `${asset.category} · ${locationName(asset.locationId)}`,
+      }));
+    if (kind === "Location")
+      return [...locations]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((location) => ({
+          id: location.id,
+          name: location.name,
+          detail: `${location.type} · ${location.zone}`,
+        }));
+    if (kind === "Vendor")
+      return byName(vendorRecords).map((vendor) => ({
+        id: vendor.id,
+        name: vendor.name,
+        detail: vendor.category,
+      }));
+    if (kind === "Work Order")
+      return workOrdersByIdentity(serviceRecords).map((record) => ({
+        id: record.id,
+        name: record.title,
+        detail: `${formatDate(record.date)} · ${record.status}`,
+      }));
+    if (kind === "Map Label")
+      return byLabel(mapLabels).map((label) => ({
+        id: label.id,
+        name: label.label,
+        detail: label.category,
+      }));
+    return [];
+  }
+
+  const intakeTargetOptions = useMemo(
+    () => documentTargetOptionsFor(intakeTargetKind),
+    [intakeTargetKind, assetRecords, vendorRecords, serviceRecords, mapLabels],
+  );
+
+  useEffect(() => {
+    if (intakeTargetKind === "General") {
+      if (intakeTargetId) setIntakeTargetId("");
+      return;
+    }
+
+    if (!intakeTargetOptions.length) {
+      if (intakeTargetId) setIntakeTargetId("");
+      return;
+    }
+
+    if (!intakeTargetOptions.some((option) => option.id === intakeTargetId)) {
+      setIntakeTargetId("");
+    }
+  }, [intakeTargetKind, intakeTargetOptions, intakeTargetId]);
+
+  const fastIntakeDuplicateWarning = useMemo(() => {
+    const candidate = (fastIntakeRecordName || intakeTitle)
+      .trim()
+      .toLowerCase();
+    if (!candidate) return "";
+
+    let existingName = "";
+    if (fastIntakeSaveMode === "Create Asset") {
+      existingName =
+        assetRecords.find(
+          (item) => item.name.trim().toLowerCase() === candidate,
+        )?.name || "";
+    } else if (fastIntakeSaveMode === "Create Vendor") {
+      existingName =
+        vendorRecords.find(
+          (item) => item.name.trim().toLowerCase() === candidate,
+        )?.name || "";
+    } else if (fastIntakeSaveMode === "Create Work Order") {
+      existingName =
+        serviceRecords.find(
+          (item) => item.title.trim().toLowerCase() === candidate,
+        )?.title || "";
+    }
+
+    if (!existingName) return "";
+    return `Possible duplicate: Atlas already has ${existingName}. Choose Attach to Existing or change the name before saving.`;
+  }, [
+    fastIntakeRecordName,
+    intakeTitle,
+    fastIntakeSaveMode,
+    assetRecords,
+    vendorRecords,
+    serviceRecords,
+  ]);
+
+  const recentFastIntake = useMemo(
+    () =>
+      [...intakeDocs]
+        .sort((a, b) =>
+          String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+        )
+        .slice(0, 6),
+    [intakeDocs],
+  );
+
+  const qrRecords = useMemo<QrRecord[]>(() => {
+    const localSearch = qrSearch.trim().toLowerCase();
+    const records: QrRecord[] =
+      qrKind === "asset"
+        ? byName(assetRecords).map((asset) => ({
+            kind: "asset",
+            id: asset.id,
+            title: asset.name,
+            subtitle: `${asset.category} · ${locationName(asset.locationId)}`,
+            detail: [
+              asset.make,
+              asset.model,
+              asset.serial,
+              asset.status,
+              asset.notes,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          }))
+        : qrKind === "location"
+          ? [...locations]
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((location) => ({
+                kind: "location",
+                id: location.id,
+                title: location.name,
+                subtitle: `${location.type} · ${location.zone}`,
+                detail: location.notes,
+              }))
+          : qrKind === "vendor"
+            ? byName(vendorRecords).map((vendor) => ({
+                kind: "vendor",
+                id: vendor.id,
+                title: vendor.name,
+                subtitle: vendor.category,
+                detail: [
+                  vendor.phone,
+                  vendor.email,
+                  vendor.website,
+                  vendor.notes,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+              }))
+            : byLabel(mapLabels).map((label) => ({
+                kind: "map",
+                id: label.id,
+                title: label.label,
+                subtitle: label.category,
+                detail: label.notes,
+              }));
+
+    if (!localSearch) return records;
+    return records.filter((record) =>
+      [record.title, record.subtitle, record.detail]
+        .join(" ")
+        .toLowerCase()
+        .includes(localSearch),
+    );
+  }, [qrKind, qrSearch, assetRecords, vendorRecords, mapLabels]);
+
+  function commandWordDistance(left: string, right: string) {
+    const a = left.toLowerCase();
+    const b = right.toLowerCase();
+    const row = Array.from({ length: b.length + 1 }, (_, index) => index);
+    for (let i = 1; i <= a.length; i += 1) {
+      let previous = row[0];
+      row[0] = i;
+      for (let j = 1; j <= b.length; j += 1) {
+        const saved = row[j];
+        row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+        previous = saved;
+      }
+    }
+    return row[b.length];
+  }
+
+  const searchResults = useMemo(() => {
+    const clean = query.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!clean) return [];
+    const index = buildSearchIndex();
+    let intent: "overdue" | "tasks-today" | "work-orders" | "documents" | "" = "";
+    let searchText = query.trim();
+    if (/^(show\s+)?overdue(\s+work)?$/.test(clean)) {
+      intent = "overdue";
+      searchText = "";
+    } else if (/^(show\s+)?tasks?\s+(today|due today)$/.test(clean)) {
+      intent = "tasks-today";
+      searchText = "";
+    } else if (/\bwork\s*orders?$/.test(clean)) {
+      intent = "work-orders";
+      searchText = clean.replace(/\bwork\s*orders?$/, "").trim();
+    } else if (/\b(documents?|manuals?)$/.test(clean)) {
+      intent = "documents";
+      searchText = clean.replace(/\b(documents?|manuals?)$/, "").trim();
+    }
+
+    let matches = searchText ? searchAtlas(index, searchText, 60) : index;
+    if (intent === "overdue") {
+      matches = matches.filter((item) => {
+        if (item.id.startsWith("wo-")) {
+          const record = serviceRecords.find((entry) => `wo-${entry.id}` === item.id);
+          return Boolean(record?.date && record.date < todayISO() && record.status !== "Completed");
+        }
+        if (item.id.startsWith("task-")) {
+          const taskId = item.id.slice("task-".length);
+          return taskDetails(taskId).status !== "Completed" && taskDetails(taskId).dueDate < todayISO();
+        }
+        return false;
+      });
+    }
+    if (intent === "tasks-today") {
+      matches = matches.filter((item) => item.id.startsWith("task-") && taskDetails(item.id.slice(5)).status !== "Completed" && taskDetails(item.id.slice(5)).dueDate <= todayISO());
+    }
+    if (intent === "work-orders") matches = matches.filter((item) => item.id.startsWith("wo-"));
+    if (intent === "documents") matches = matches.filter((item) => item.id.startsWith("document-") || item.id.startsWith("manual-"));
+
+    if (!matches.length && searchText.length >= 3) {
+      const needles = searchText.toLowerCase().split(/\s+/).filter(Boolean);
+      matches = index.filter((item) => {
+        const candidateWords = `${item.title} ${item.subtitle} ${item.detail}`.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+        return needles.every((needle) => candidateWords.some((word) => word.includes(needle) || commandWordDistance(word, needle) <= (needle.length > 6 ? 2 : 1)));
+      });
+    }
+
+    const screenAffinity: Partial<Record<AtlasScreen, string[]>> = {
+      planner: ["task-"],
+      history: ["wo-"],
+      timeline: ["project-", "timeline-"],
+      assets: ["asset-", "photo-", "manual-"],
+      vendors: ["vendor-"],
+      documents: ["document-", "manual-"],
+      calendar: ["calendar-"],
+      locations: ["location-", "map-"],
+    };
+    return [...matches]
+      .sort((a, b) => {
+        const score = (item: SearchResult) =>
+          (commandPinnedIds.includes(item.id) ? 1000 : 0) +
+          Math.min(100, Number(commandOpenCounts[item.id] || 0) * 10) +
+          (recentSearches.some((recent) => recent.toLowerCase() === item.title.toLowerCase()) ? 60 : 0) +
+          (screenAffinity[screen]?.some((prefix) => item.id.startsWith(prefix)) ? 25 : 0) +
+          (item.title.toLowerCase() === searchText.toLowerCase() ? 100 : 0) +
+          (item.title.toLowerCase().startsWith(searchText.toLowerCase()) ? 40 : 0) +
+          (searchText.toLowerCase().split(/\s+/).every((token) => `${item.title} ${item.subtitle}`.toLowerCase().includes(token)) ? 20 : 0);
+        return score(b) - score(a);
+      })
+      .slice(0, 30);
+  }, [
+    query,
+    mapLabels,
+    assetRecords,
+    vendorRecords,
+    contactRecords,
+    serviceRecords,
+    procedureRecords,
+    calendarItems,
+    partRecords,
+    calendarColors,
+    allDocuments,
+    allManualRecords,
+    workLinks,
+    photos,
+    workPlanTasks,
+    taskMeta,
+    photoTimelineProjects,
+    projectTimelineEntries,
+    vehicleCare,
+    commandPinnedIds,
+    commandOpenCounts,
+    recentSearches,
+    screen,
+  ]);
+
+  const commandContextSuggestions = useMemo(() => {
+    const propertyName = atlasProperties.find((property) => property.id === activePropertyId)?.name || activePropertyId;
+    const common = [
+      { query: "show overdue", label: "Overdue work", detail: `${propertyName} attention list` },
+      { query: "tasks today", label: "Tasks due today", detail: `${propertyName} daily work` },
+    ];
+    if (screen === "planner") return [
+      ...common,
+    ];
+    if (screen === "vendors") return [{ query: "vendor", label: "Search vendors", detail: `${propertyName} vendor records` }, ...common];
+    if (screen === "assets") return [{ query: "boiler", label: "Find equipment", detail: `${propertyName} assets and manuals` }, ...common];
+    if (screen === "timeline") return [{ query: "new project", label: "New Project", detail: "Open a blank Project record" }, ...common];
+    return [...common, { query: "operations analytics", label: "Operations Analytics", detail: "Review workload and performance" }, { query: "new task", label: "New Task", detail: `Add work for ${propertyName}` }];
+  }, [activePropertyId, screen]);
+
+  const monthCells = useMemo(() => {
+    const year = calendarCursor.getFullYear();
+    const month = calendarCursor.getMonth();
+    const first = new Date(year, month, 1);
+    const startDay = first.getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells: {
+      key: string;
+      date?: string;
+      day?: number;
+      outside?: boolean;
+    }[] = [];
+
+    for (let i = 0; i < startDay; i += 1)
+      cells.push({ key: `blank-${i}`, outside: true });
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(year, month, day);
+      const iso = localISODate(date);
+      cells.push({ key: iso, date: iso, day });
+    }
+
+    while (cells.length % 7 !== 0)
+      cells.push({ key: `end-${cells.length}`, outside: true });
+    return cells;
+  }, [calendarCursor]);
+
+  const weekCells = useMemo(
+    () => getWeekCells(calendarCursor),
+    [calendarCursor],
+  );
+
+  function buildSearchIndex(): SearchResult[] {
+    return [
+      ...locations.map((item) => ({
+        id: `location-${item.id}`,
+        type: "Location",
+        title: item.name,
+        subtitle: `${item.type} · ${item.zone}`,
+        detail: item.notes,
+        screen: "locations" as Screen,
+        locationId: item.id,
+        relatedIds: [`location:${item.id}`],
+      })),
+      ...mapLabels.map((item) => ({
+        id: `map-${item.id}`,
+        type: "Map Label",
+        title: item.label,
+        subtitle: item.category,
+        detail: [
+          item.notes,
+          (item.detailBoxes || [])
+            .map((box) => `${box.title} ${box.body}`)
+            .join(" "),
+          (item.vendorIds || []).map(vendorName).join(" "),
+        ].join(" "),
+        screen: "map" as Screen,
+        mapLabelId: item.id,
+        relatedIds: [
+          `map:${item.id}`,
+          ...(item.vendorIds || []).map((id) => `vendor:${id}`),
+        ],
+      })),
+      ...assetRecords.map((item) => ({
+        id: `asset-${item.id}`,
+        type: "Asset",
+        title: item.name,
+        subtitle: `${item.category} · ${locationName(item.locationId)} · ${item.status}`,
+        detail: [item.make, item.model, item.serial, item.notes].join(" "),
+        screen: "assets" as Screen,
+        assetId: item.id,
+        relatedIds: [
+          `asset:${item.id}`,
+          item.locationId ? `location:${item.locationId}` : "",
+          ...(item.vendorIds || []).map((id) => `vendor:${id}`),
+        ].filter(Boolean),
+      })),
+      ...vendorRecords.map((item) => ({
+        id: `vendor-${item.id}`,
+        type: "Vendor",
+        title: item.name,
+        subtitle: item.category,
+        detail: [item.phone, item.email, item.website, item.notes].join(" "),
+        screen: "vendors" as Screen,
+        vendorId: item.id,
+        relatedIds: [`vendor:${item.id}`],
+      })),
+      ...contactRecords.map((item) => ({
+        id: `contact-${item.id}`,
+        type: "Contact",
+        title: item.name,
+        subtitle:
+          [item.organization, item.role, item.category]
+            .filter(Boolean)
+            .join(" · ") || "Contact",
+        detail: [
+          item.phone,
+          item.email,
+          item.address,
+          item.website,
+          item.notes,
+        ].join(" "),
+        screen: "contacts" as Screen,
+        contactId: item.id,
+        relatedIds: [`contact:${item.id}`],
+      })),
+      ...serviceRecords.map((item) => ({
+        id: `wo-${item.id}`,
+        type: "Work Order",
+        title: item.title,
+        subtitle: `${formatDate(item.date)} · ${item.status} · ${item.priority ?? "Medium"}`,
+        detail: `${assetName(item.assetId)} ${vendorName(item.vendorId)} ${item.notes}`,
+        screen: "history" as Screen,
+        serviceId: item.id,
+        assetId: item.assetId || undefined,
+        vendorId: item.vendorId || undefined,
+        procedureId: item.procedureId || undefined,
+        locationId: item.locationId || undefined,
+        relatedIds: [
+          `work-order:${item.id}`,
+          item.assetId ? `asset:${item.assetId}` : "",
+          item.vendorId ? `vendor:${item.vendorId}` : "",
+          item.procedureId ? `procedure:${item.procedureId}` : "",
+          item.locationId ? `location:${item.locationId}` : "",
+        ].filter(Boolean),
+      })),
+      ...procedureRecords.map((item) => ({
+        id: `procedure-${item.id}`,
+        type: "Procedure",
+        title: item.title,
+        subtitle: `${item.area} · ${item.priority}`,
+        detail: item.steps.join(" "),
+        screen: "procedures" as Screen,
+        procedureId: item.id,
+        relatedIds: [
+          `procedure:${item.id}`,
+          ...(item.linkedAssetIds || []).map((id) => `asset:${id}`),
+          ...(item.linkedLocationIds || []).map((id) => `location:${id}`),
+          ...(item.linkedVendorIds || []).map((id) => `vendor:${id}`),
+        ],
+      })),
+      ...calendarItems.map((item) => ({
+        id: `calendar-${item.id}`,
+        type: "Calendar",
+        title: item.title,
+        subtitle: `${formatDate(item.date)} · ${item.allDay ? "All day" : item.time || "No time"} · ${colorForEvent(item).label}`,
+        detail: `${item.area} ${item.notes || ""} ${item.linkedName || ""}`,
+        screen: "calendar" as Screen,
+        calendarId: item.id,
+        relatedIds: [
+          `calendar:${item.id}`,
+          item.linkedId && item.linkedType === "Asset"
+            ? `asset:${item.linkedId}`
+            : "",
+          item.linkedId && item.linkedType === "Location"
+            ? `location:${item.linkedId}`
+            : "",
+          item.linkedId && item.linkedType === "Vendor"
+            ? `vendor:${item.linkedId}`
+            : "",
+          item.linkedId && item.linkedType === "Work Order"
+            ? `work-order:${item.linkedId}`
+            : "",
+        ].filter(Boolean),
+      })),
+      ...partRecords.map((item) => ({
+        id: `part-${item.id}`,
+        type: "Part",
+        title: item.name,
+        subtitle: `${item.category} · Qty ${item.quantity}`,
+        detail: item.notes,
+        screen: "parts" as Screen,
+        partId: item.id,
+        relatedIds: [
+          `part:${item.id}`,
+          item.locationId ? `location:${item.locationId}` : "",
+          item.assetId ? `asset:${item.assetId}` : "",
+          item.vendorId ? `vendor:${item.vendorId}` : "",
+        ].filter(Boolean),
+      })),
+      ...requestRecords.map((item) => ({
+        id: `request-${item.id}`,
+        type: "Request",
+        title: item.title || "Owner Request",
+        subtitle: `${item.status} · ${item.priority}`,
+        detail: [
+          item.description,
+          item.locationName,
+          item.assetName,
+          item.requesterName,
+          item.preferredTiming,
+        ].join(" "),
+        screen: "requests" as Screen,
+        requestId: item.id,
+        relatedIds: [
+          `request:${item.id}`,
+          item.convertedWorkOrderId
+            ? `work-order:${item.convertedWorkOrderId}`
+            : "",
+        ].filter(Boolean),
+      })),
+      ...allDocuments.map((item) => ({
+        id: `document-${item.id}`,
+        type: "Document",
+        title: item.title,
+        subtitle: `${item.type} · ${item.area}`,
+        detail: `${item.notes} ${item.pastedText || ""} ${item.targetName || ""}`,
+        screen: "documents" as Screen,
+        relatedIds: [
+          `document:${item.id}`,
+          item.targetId && item.targetType === "Asset"
+            ? `asset:${item.targetId}`
+            : "",
+          item.targetId && item.targetType === "Location"
+            ? `location:${item.targetId}`
+            : "",
+          item.targetId && item.targetType === "Vendor"
+            ? `vendor:${item.targetId}`
+            : "",
+          item.targetId && item.targetType === "Work Order"
+            ? `work-order:${item.targetId}`
+            : "",
+        ].filter(Boolean),
+      })),
+      ...photos.map((item) => ({
+        id: `photo-${item.id}`,
+        type: "Photo",
+        title: item.name || "Asset photo",
+        subtitle: assetName(item.assetId),
+        detail: `${assetName(item.assetId)} ${item.createdAt || ""}`,
+        screen: "assets" as Screen,
+        assetId: item.assetId,
+        relatedIds: [
+          `photo:${item.id}`,
+          item.assetId ? `asset:${item.assetId}` : "",
+        ].filter(Boolean),
+      })),
+      ...allManualRecords.map((item) => ({
+        id: `manual-${item.id}`,
+        type: "Manual",
+        title: item.title,
+        subtitle: `${item.linkedAssetName || "Not linked"} · ${item.category}`,
+        detail: `${item.manufacturer} ${item.model} ${item.documentNumber} ${item.notes}`,
+        screen: "manuals" as Screen,
+        manualId: item.id,
+        relatedIds: [
+          `manual:${item.id}`,
+          item.linkedAssetId ? `asset:${item.linkedAssetId}` : "",
+        ].filter(Boolean),
+      })),
+      ...workPlanTasks.map((item) => ({
+        id: `task-${item.id}`,
+        type: "Task",
+        title: item.title,
+        subtitle: `${taskDetails(item.id).status} · ${item.priority} · ${taskDetails(item.id).assignee}`,
+        detail: `${item.category} ${item.notes || ""} ${taskDetails(item.id).notes || ""} ${locationName(item.locationId)}`,
+        screen: "planner" as Screen,
+        relatedIds: [
+          `task:${item.id}`,
+          taskDetails(item.id).projectId ? `project:${taskDetails(item.id).projectId}` : "",
+          item.locationId && item.locationId !== "general" ? `location:${item.locationId}` : "",
+        ].filter(Boolean),
+      })),
+      ...photoTimelineProjects.filter((item) => !item.archived).map((item) => ({
+        id: `project-${item.id}`,
+        type: "Project",
+        title: item.title,
+        subtitle: `${item.status || "Planning"} · ${item.category} · ${item.progress || 0}%`,
+        detail: `${item.phase || ""} ${item.notes || ""} ${locationName(item.locationId)} ${vendorName(item.vendorId)}`,
+        screen: "timeline" as Screen,
+        relatedIds: [
+          `project:${item.id}`,
+          item.assetId ? `asset:${item.assetId}` : "",
+          item.locationId ? `location:${item.locationId}` : "",
+          item.vendorId ? `vendor:${item.vendorId}` : "",
+        ].filter(Boolean),
+      })),
+      ...projectTimelineEntries.map((item) => ({
+        id: `timeline-${item.id}`,
+        type: "Timeline",
+        title: item.title,
+        subtitle: `${formatDate(item.date)} · ${item.type}`,
+        detail: item.notes,
+        screen: "timeline" as Screen,
+        relatedIds: [`timeline:${item.id}`, `project:${item.projectId}`],
+      })),
+      ...vehicleCare.map((item) => ({
+        id: `vehicle-${item.id}`,
+        type: "Vehicle",
+        title: item.name,
+        subtitle: `${item.kind || "Vehicle"} · ${item.onsite ? "Onsite" : "Offsite"} · ${item.lastCleaned ? `Cleaned ${formatDate(item.lastCleaned)}` : "No cleaning record"}`,
+        detail: `${item.notes || ""} ${locationName(item.locationId)} ${item.assignedTo || ""}`,
+        screen: "planner" as Screen,
+        assetId: item.assetId || undefined,
+        relatedIds: [
+          `vehicle:${item.id}`,
+          item.assetId ? `asset:${item.assetId}` : "",
+          item.locationId ? `location:${item.locationId}` : "",
+        ].filter(Boolean),
+      })),
+      ...workLinks.map((item) => ({
+        id: `link-${item.id}`,
+        type: "Work Link",
+        title: item.name,
+        subtitle: `${item.category}${item.vendor ? ` · ${item.vendor}` : ""}`,
+        detail: `${item.notes} ${item.url}`,
+        screen: "links" as Screen,
+      })),
+    ];
+  }
+
+  useEffect(() => {
+    setSearchActiveIndex(0);
+  }, [q, searchResults.length]);
+
+  useEffect(() => {
+    setSearchOpen(false);
+    setQuery("");
+    setSearchActiveIndex(0);
+  }, [screen]);
+
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const openCommandCenter = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandCenterOpen(true);
+        setSearchOpen(true);
+        setSearchActiveIndex(0);
+      }
+      if (event.key === "Escape" && commandCenterOpen) {
+        closeCommandCenter();
+      }
+    };
+    window.addEventListener("keydown", openCommandCenter);
+    return () => window.removeEventListener("keydown", openCommandCenter);
+  }, [commandCenterOpen]);
+
+  function startVoiceAssistant() {
+    type RecognitionResult = { 0: { transcript: string }; isFinal?: boolean };
+    type RecognitionInstance = { continuous: boolean; interimResults: boolean; lang: string; start: () => void; stop: () => void; abort: () => void; onresult: ((event: { results: ArrayLike<RecognitionResult> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null };
+    type RecognitionConstructor = new () => RecognitionInstance;
+    const speechWindow = window as unknown as { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
+    const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    setCommandCenterOpen(true);
+    setSearchOpen(true);
+    setSearchActiveIndex(0);
+    if (voiceAssistantListening) {
+      voiceRecognitionRef.current?.stop();
+      return;
+    }
+    setQuery("");
+    setVoiceAssistantTranscript("");
+    setVoiceAssistantReviewReady(false);
+    setVoiceAssistantDraft(null);
+    voiceAssistantCancelledRef.current = false;
+    if (!Recognition) {
+      setVoiceAssistantListening(false);
+      setQuery("");
+      showSaveToast("Voice input is not available in this browser. Type your request in Command Center.", "warning");
+      return;
+    }
+    const recognition = new Recognition();
+    let latestTranscript = "";
+    let finalResultHandled = false;
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onresult = (event) => {
+      latestTranscript = Array.from({ length: event.results.length }, (_, index) => event.results[index]?.[0]?.transcript || "").join(" ").trim();
+      setVoiceAssistantTranscript(latestTranscript);
+      setQuery(latestTranscript);
+      setSearchActiveIndex(0);
+      const heardFinalResult = Array.from({ length: event.results.length }, (_, index) => Boolean(event.results[index]?.isFinal)).some(Boolean);
+      if (heardFinalResult && !finalResultHandled) {
+        finalResultHandled = true;
+        setVoiceAssistantListening(false);
+        recognition.stop();
+      }
+    };
+    recognition.onerror = () => showSaveToast("Ask Atlas could not hear that request. Open Ask Atlas and try again.", "warning");
+    recognition.onend = () => {
+      voiceRecognitionRef.current = null;
+      setVoiceAssistantListening(false);
+      if (!voiceAssistantCancelledRef.current) {
+        setVoiceAssistantReviewReady(true);
+        if (latestTranscript) {
+          setQuery(latestTranscript);
+          const parsed = commandCreation(latestTranscript);
+          const fallbackTitle = latestTranscript
+            .replace(/^(?:please\s+)?(?:add|create|schedule|make)\s+(?:a\s+)?/i, "")
+            .replace(/^(?:task|work\s*order|project)\s+/i, "")
+            .replace(/\s+(?:for\s+)?(?:today|tomorrow|next week|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b.*$/i, "")
+            .replace(/\s+(?:assigned?\s+to|give\s+to)\s+addison\b.*$/i, "")
+            .replace(/\s+(?:for\s+)?\d+\s*(?:minutes?|mins?|hours?|hrs?)\b.*$/i, "")
+            .trim();
+          setVoiceAssistantDraft({
+            kind: parsed?.kind || (/work\s*order/i.test(latestTranscript) ? "work order" : /project/i.test(latestTranscript) ? "project" : "task"),
+            title: parsed?.title || fallbackTitle,
+            dueDate: parsed?.dueDate || spokenCommandDate(latestTranscript),
+            assignee: parsed?.assignee || (/\baddison\b/i.test(latestTranscript) ? "Addison" : "Nick"),
+            minutes: parsed?.minutes || 30,
+          });
+        }
+      }
+    };
+    voiceRecognitionRef.current = recognition;
+    setVoiceAssistantListening(true);
+    recognition.start();
+  }
+
+  function stopVoiceAssistant() {
+    voiceRecognitionRef.current?.stop();
+    setVoiceAssistantListening(false);
+  }
+
+  function cancelVoiceAssistant() {
+    voiceAssistantCancelledRef.current = true;
+    voiceRecognitionRef.current?.abort();
+    voiceRecognitionRef.current = null;
+    setVoiceAssistantListening(false);
+    setVoiceAssistantReviewReady(false);
+    setVoiceAssistantTranscript("");
+    setVoiceAssistantDraft(null);
+    setQuery("");
+  }
+
+  function saveVoiceAssistantDraft() {
+    const draft = voiceAssistantDraft;
+    if (!draft?.title.trim()) {
+      showSaveToast("Add a title before saving.", "warning");
+      return;
+    }
+    rememberSearch(voiceAssistantTranscript || `${draft.kind} ${draft.title}`);
+    closeCommandCenter();
+    if (draft.kind === "task") {
+      const taskId = addAtlasTask(draft.title.trim());
+      if (taskId) {
+        setWorkPlanTasks((current) => current.map((task) => task.id === taskId ? { ...task, minutes: Math.max(5, draft.minutes) } : task));
+        updateTaskDetails(taskId, { dueDate: draft.dueDate || todayISO(), assignee: draft.assignee });
+      }
+      setTasksView("tasks");
+      setScreen("planner");
+      showSaveToast("Task saved.");
+      return;
+    }
+    if (draft.kind === "work order") {
+      addWorkOrder({ title: draft.title.trim(), date: draft.dueDate, assignedTo: draft.assignee });
+      showSaveToast("Work order saved.");
+      return;
+    }
+    createProjectFromCommand(draft.title.trim());
+  }
+
+  function spokenCommandDate(value: string) {
+    const clean = value.toLowerCase();
+    if (/\btoday\b/.test(clean)) return todayISO();
+    if (/\btomorrow\b/.test(clean)) return addDays(todayISO(), 1);
+    if (/\bnext week\b/.test(clean)) return addDays(todayISO(), 7);
+    const weekdays = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+    const weekdayIndex = weekdays.findIndex((day) => new RegExp(`\\b${day}\\b`).test(clean));
+    if (weekdayIndex < 0) return "";
+    const currentDay = new Date(`${todayISO()}T12:00:00`).getDay();
+    const offset = ((weekdayIndex - currentDay + 7) % 7) || 7;
+    return addDays(todayISO(), offset);
+  }
+
+  function commandCreation(value = query) {
+    const clean = value.trim();
+    const match = clean.match(/^(?:(?:add|create|schedule|make)\s+(?:a\s+)?)?(task|work\s*order|project)\s+(.+)$/i) || clean.match(/^(schedule)\s+(.+)$/i);
+    if (!match) return null;
+    const naturalSchedule = match[1].toLowerCase() === "schedule";
+    const rawTitle = match[2].trim();
+    const title = rawTitle
+      .replace(/\s+(?:for\s+)?(?:today|tomorrow|next week|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b.*$/i, "")
+      .replace(/\s+(?:assigned?\s+to|give\s+to)\s+addison\b.*$/i, "")
+      .replace(/\s+(?:for\s+)?\d+\s*(?:minutes?|mins?|hours?|hrs?)\b.*$/i, "")
+      .trim();
+    const durationMatch = rawTitle.match(/\b(\d+)\s*(minutes?|mins?|hours?|hrs?)\b/i);
+    const minutes = durationMatch ? Number(durationMatch[1]) * (/hour|hr/i.test(durationMatch[2]) ? 60 : 1) : undefined;
+    return {
+      kind: (naturalSchedule ? "task" : match[1].toLowerCase().replace(/\s+/g, " ")) as "task" | "work order" | "project",
+      title,
+      dueDate: spokenCommandDate(rawTitle),
+      assignee: /\baddison\b/i.test(rawTitle) ? "Addison" as const : undefined,
+      minutes,
+    };
+  }
+
+  function newRecordCommand(value = query): "task" | "work order" | "project" | null {
+    const clean = value.trim().toLowerCase().replace(/\s+/g, " ");
+    if (clean === "new task") return "task";
+    if (clean === "new work order") return "work order";
+    if (clean === "new project") return "project";
+    return null;
+  }
+
+  function navigationCommand(value = query): { label: string; view: "build" | "walk" | "route" | "addison" | "analytics" | "seasonal" | "planner" } | null {
+    const clean = value.trim().toLowerCase().replace(/\s+/g, " ");
+    const commands: Record<string, { label: string; view: "build" | "walk" | "route" | "addison" | "analytics" | "seasonal" | "planner" }> = {
+      "build my day": { label: "Build My Day", view: "build" },
+      "walk mode": { label: "Walk Mode", view: "walk" },
+      "smart route": { label: "Smart Route", view: "route" },
+      "addison manager": { label: "Addison Work Manager", view: "addison" },
+      "addison today": { label: "Addison Work Manager", view: "addison" },
+      "operations analytics": { label: "Operations Analytics", view: "analytics" },
+      "analytics": { label: "Operations Analytics", view: "analytics" },
+      "seasonal intelligence": { label: "Seasonal Intelligence", view: "seasonal" },
+      "plan week": { label: "Plan Week", view: "planner" },
+    };
+    return commands[clean] || null;
+  }
+
+  function runNavigationCommand(value = query) {
+    const command = navigationCommand(value);
+    if (!command) return false;
+    rememberSearch(value);
+    closeCommandCenter();
+    if (command.view === "addison") {
+      setScreen("team");
+      return true;
+    }
+    setTasksView(command.view);
+    setScreen("planner");
+    return true;
+  }
+
+  function toggleSavedCommand(value = query) {
+    const clean = value.trim();
+    if (!clean) return;
+    setSavedCommands((current) => {
+      const exists = current.some((item) => item.toLowerCase() === clean.toLowerCase());
+      const next = exists ? current.filter((item) => item.toLowerCase() !== clean.toLowerCase()) : [clean, ...current].slice(0, 12);
+      try { window.localStorage.setItem("atlas_saved_commands_v1", JSON.stringify(next)); } catch { /* Saved commands remain available for this session. */ }
+      return next;
+    });
+  }
+
+  function closeCommandCenter() {
+    voiceAssistantCancelledRef.current = true;
+    voiceRecognitionRef.current?.abort();
+    voiceRecognitionRef.current = null;
+    setVoiceAssistantListening(false);
+    setVoiceAssistantReviewReady(false);
+    setVoiceAssistantTranscript("");
+    setVoiceAssistantDraft(null);
+    setCommandCenterOpen(false);
+    setSearchOpen(false);
+    setSearchActiveIndex(0);
+    setQuery("");
+  }
+
+  function createProjectFromCommand(title: string) {
+    const id = uid("project");
+    const project: PhotoTimelineProject = {
+      propertyId: activePropertyId,
+      id,
+      title,
+      category: "General",
+      scale: "Standard",
+      status: "Planning",
+      assetId: "",
+      locationId: "",
+      vendorId: "",
+      workOrderId: "",
+      workOrderIds: [],
+      vendorIds: [],
+      documentIds: [],
+      assigneeIds: [],
+      notes: "",
+      coverPhotoId: "",
+      createdAt: new Date().toISOString(),
+      progress: 0,
+      phase: "Planning",
+      startDate: todayISO(),
+      archived: false,
+    };
+    setPhotoTimelineProjects((current) => [project, ...current]);
+    setSelectedPhotoProjectId(id);
+    setPhotoTimelineView("projects");
+    setProjectDetailTab("overview");
+    setScreen("timeline");
+    void postAtlasRecord("projects", { ...project, timelineEntries: [], photoMeta: {} });
+    showSaveToast("Project created.");
+  }
+
+  function runCommandCreation(value = query) {
+    const command = commandCreation(value);
+    if (!command?.title) return false;
+    rememberSearch(value);
+    closeCommandCenter();
+    if (command.kind === "task") {
+      const taskId = addAtlasTask(command.title);
+      if (taskId) {
+        if (command.minutes) setWorkPlanTasks((current) => current.map((task) => task.id === taskId ? { ...task, minutes: Math.max(5, command.minutes || task.minutes) } : task));
+        if (command.dueDate || command.assignee) updateTaskDetails(taskId, { dueDate: command.dueDate || todayISO(), assignee: command.assignee || "Nick" });
+      }
+      setTasksView("tasks");
+      setScreen("planner");
+      return true;
+    }
+    if (command.kind === "work order") {
+      addWorkOrder({ title: command.title, date: command.dueDate || "", assignedTo: command.assignee || "" });
+      showSaveToast("Work order created.");
+      return true;
+    }
+    createProjectFromCommand(command.title);
+    return true;
+  }
+
+  function openNewRecordFromCommand(kind: "task" | "work order" | "project") {
+    closeCommandCenter();
+    if (kind === "task") {
+      setSelectedTaskId("");
+      setTasksView("tasks");
+      setScreen("planner");
+      return;
+    }
+    if (kind === "work order") {
+      addWorkOrder();
+      return;
+    }
+    setSelectedPhotoProjectId("");
+    setPhotoTimelineView("projects");
+    setScreen("timeline");
+  }
+
+  function rememberSearch(value: string) {
+    const clean = value.trim();
+    if (!clean) return;
+
+    setRecentSearches((current) => {
+      const next = [
+        clean,
+        ...current.filter((item) => item.toLowerCase() !== clean.toLowerCase()),
+      ].slice(0, 6);
+
+      try {
+        window.localStorage.setItem(
+          "atlas_recent_searches_v1",
+          JSON.stringify(next),
+        );
+      } catch {
+        // Recent searches are optional and should never block navigation.
+      }
+
+      return next;
+    });
+  }
+
+  function toggleCommandPin(resultId: string) {
+    setCommandPinnedIds((current) => {
+      const next = current.includes(resultId)
+        ? current.filter((id) => id !== resultId)
+        : [resultId, ...current].slice(0, 20);
+      try {
+        window.localStorage.setItem("atlas_command_pins_v1", JSON.stringify(next));
+      } catch {
+        // Pins remain available for this session.
+      }
+      return next;
+    });
+  }
+
+  function rememberCommandOpen(resultId: string) {
+    setCommandOpenCounts((current) => {
+      const next = { ...current, [resultId]: Number(current[resultId] || 0) + 1 };
+      try {
+        window.localStorage.setItem("atlas_command_open_counts_v1", JSON.stringify(next));
+      } catch {
+        // Frequency ranking remains available for this session.
+      }
+      return next;
+    });
+  }
+
+  function runCommandQuickAction(result: SearchResult, action: "complete" | "addison" | "note" | "contact" | "reschedule" | "work-order" | "upload" | "related") {
+    if (action === "upload") {
+      closeCommandCenter();
+      if (result.id.startsWith("project-")) {
+        setSelectedPhotoProjectId(result.id.slice("project-".length));
+        setPhotoTimelineView("projects");
+        setProjectDetailTab("photos");
+        setScreen("timeline");
+        return;
+      }
+      resetIntakeDraft();
+      applyFastIntakeKind("Document");
+      if (result.id.startsWith("asset-")) {
+        setIntakeTargetKind("Asset");
+        setIntakeTargetId(result.id.slice("asset-".length));
+      } else if (result.id.startsWith("vendor-")) {
+        setIntakeTargetKind("Vendor");
+        setIntakeTargetId(result.id.slice("vendor-".length));
+      } else if (result.id.startsWith("wo-")) {
+        setIntakeTargetKind("Work Order");
+        setIntakeTargetId(result.id.slice("wo-".length));
+      } else if (result.id.startsWith("location-")) {
+        setIntakeTargetKind("Location");
+        setIntakeTargetId(result.id.slice("location-".length));
+      }
+      setScreen("intake");
+      return;
+    }
+    if (action === "related") {
+      const related = relatedRecordsFor(result).find((item) => item.id !== result.id);
+      if (related) openSearchResult(related);
+      else showSaveToast("No related record is linked yet.", "warning");
+      return;
+    }
+    if (result.id.startsWith("task-")) {
+      const taskId = result.id.slice("task-".length);
+      const task = workPlanTasks.find((item) => item.id === taskId);
+      if (!task) return;
+      if (action === "complete") completeAtlasTask(task);
+      if (action === "addison") {
+        updateTaskDetails(taskId, { assignee: "Addison" });
+        showSaveToast("Task assigned to Addison.");
+      }
+      if (action === "reschedule") {
+        const date = window.prompt("Reschedule task to YYYY-MM-DD", taskDetails(taskId).dueDate || todayISO());
+        if (date?.trim()) {
+          updateTaskDetails(taskId, { dueDate: date.trim().slice(0, 10), status: "Open" });
+          showSaveToast(`Task moved to ${formatDate(date.trim().slice(0, 10))}.`);
+        }
+      }
+      if (action === "work-order") {
+        closeCommandCenter();
+        addWorkOrder({ title: task.title, notes: `Created from Task: ${task.title}`, locationId: task.locationId === "general" ? "" : task.locationId, projectId: taskDetails(taskId).projectId || "" });
+        showSaveToast("Work order created from task.");
+      }
+      if (action === "note") {
+        const note = window.prompt("Add task note", taskDetails(taskId).notes || "");
+        if (note !== null) updateTaskDetails(taskId, { notes: note.trim() });
+      }
+      return;
+    }
+    if (result.id.startsWith("project-") && action === "note") {
+      const projectId = result.id.slice("project-".length);
+      const note = window.prompt("Add project note");
+      if (note?.trim()) {
+        setProjectTimelineEntries((current) => [{ propertyId: activePropertyId, id: uid("project-note"), projectId, title: "Project note", notes: note.trim(), date: todayISO(), type: "Note", createdAt: new Date().toISOString() }, ...current]);
+        showSaveToast("Project note added.");
+      }
+      return;
+    }
+    if (result.id.startsWith("vehicle-") && action === "complete") {
+      const vehicle = vehicleCare.find((item) => `vehicle-${item.id}` === result.id);
+      if (vehicle) markVehicleCleaned(vehicle);
+      return;
+    }
+    if (result.id.startsWith("wo-")) {
+      const record = serviceRecords.find((item) => `wo-${item.id}` === result.id);
+      if (!record) return;
+      if (action === "complete") void completeWorkOrder(record);
+      if (action === "note") {
+        const note = window.prompt("Add work order note", record.notes || "");
+        if (note !== null) {
+          setServiceRecords((current) => current.map((item) => item.id === record.id ? { ...item, notes: note.trim() } : item));
+          markRecordDirty("work_order", record.id);
+          showSaveToast("Work order note updated.");
+        }
+      }
+      return;
+    }
+    if (result.id.startsWith("vendor-") && action === "contact") {
+      const vendor = vendorRecords.find((item) => `vendor-${item.id}` === result.id);
+      if (vendor?.phone) window.location.href = `tel:${vendor.phone}`;
+      else if (vendor?.email) window.location.href = `mailto:${vendor.email}`;
+      else showSaveToast("No phone number or email is saved for this vendor.", "warning");
+    }
+  }
+
+  function clearRecentSearches() {
+    setRecentSearches([]);
+    try {
+      window.localStorage.removeItem("atlas_recent_searches_v1");
+    } catch {
+      // Ignore unavailable browser storage.
+    }
+  }
+
+  function highlightedSearchText(value: string) {
+    const textValue = String(value || "");
+    const term = query.trim();
+    if (!term) return textValue;
+
+    const index = textValue.toLowerCase().indexOf(term.toLowerCase());
+    if (index < 0) return textValue;
+
+    return (
+      <>
+        {textValue.slice(0, index)}
+        <mark
+          style={{
+            background: "#FFF1B8",
+            color: "inherit",
+            borderRadius: 4,
+            padding: "0 2px",
+          }}
+        >
+          {textValue.slice(index, index + term.length)}
+        </mark>
+        {textValue.slice(index + term.length)}
+      </>
+    );
+  }
+
+  function askAtlasFromGlobalSearch() {
+    const question = query.trim();
+    if (!question) return;
+
+    rememberSearch(question);
+    setAssistantQuestion(question);
+    setDashboardAssistantOpen(true);
+    setQuery("");
+    setSearchOpen(false);
+    void askAtlas(question);
+  }
+
+  function globalInputLooksLikeQuestion(value: string) {
+    const clean = value.trim();
+    if (!clean) return false;
+    if (clean.endsWith("?")) return true;
+    return /^(what|when|where|who|why|how|can|could|should|would|is|are|do|does|did|based on|tell me|help me|show me|find|summarize|recommend|compare|explain|analyze|identify|list everything)\b/i.test(
+      clean,
+    );
+  }
+
+  function relatedRecordsFor(source: SearchResult) {
+    return findRelatedRecords(source, buildSearchIndex(), 10);
+  }
+
+  function openSearchResult(result: SearchResult) {
+    rememberSearch(query || result.title);
+    rememberCommandOpen(result.id);
+    if (result.locationId) setSelectedLocationId(result.locationId);
+    if (result.assetId) setSelectedAssetId(result.assetId);
+    if (result.vendorId) setSelectedVendorId(result.vendorId);
+    if (result.contactId) {
+      const contact = contactRecords.find(
+        (item) => item.id === result.contactId,
+      );
+      if (contact) {
+        setSelectedContactId(contact.id);
+        setContactDraft(normalizeContact(contact));
+        setContactEditorOpen(true);
+        setContactMessage("");
+      }
+    }
+    if (result.serviceId) setSelectedServiceId(result.serviceId);
+    if (result.mapLabelId) setSelectedMapLabelId(result.mapLabelId);
+    if (result.procedureId) setSelectedProcedureId(result.procedureId);
+    if (result.calendarId) startEditCalendarItem(result.calendarId);
+    if (result.partId) setSelectedPartId(result.partId);
+    if (result.manualId) {
+      setSelectedManualId(result.manualId);
+      setManualSearch("");
+    }
+    if (result.id.startsWith("document-")) {
+      const documentId = result.id.slice("document-".length);
+      setSelectedDocumentId(documentId);
+      setDocumentSearch("");
+    }
+    if (result.id.startsWith("link-")) {
+      const workLinkId = result.id.slice("link-".length);
+      const link = workLinks.find((item) => item.id === workLinkId);
+      if (link) {
+        setWorkLinkDraft({ ...link });
+        setWorkLinkEditorOpen(true);
+      }
+    }
+    if (result.id.startsWith("task-")) {
+      setSelectedTaskId(result.id.slice("task-".length));
+      setTasksView("tasks");
+    }
+    if (result.id.startsWith("project-")) {
+      setSelectedPhotoProjectId(result.id.slice("project-".length));
+      setPhotoTimelineView("projects");
+      setProjectDetailTab("overview");
+    }
+    if (result.id.startsWith("timeline-")) {
+      const entry = projectTimelineEntries.find((item) => `timeline-${item.id}` === result.id);
+      if (entry) setSelectedPhotoProjectId(entry.projectId);
+      setPhotoTimelineView("projects");
+      setProjectDetailTab("timeline");
+    }
+    if (result.id.startsWith("vehicle-")) {
+      setSelectedVehicleId(result.id.slice("vehicle-".length));
+      setTasksView("vehicles");
+    }
+    setScreen(result.screen);
+    setQuery("");
+    setSearchOpen(false);
+    setCommandCenterOpen(false);
+  }
+
+  function linkedDocumentsFor(kind: IntakeTargetKind, id?: string) {
+    if (!id) return [];
+    return intakeDocs.filter(
+      (doc) => doc.targetType === kind && doc.targetId === id,
+    );
+  }
+
+  function targetNameFor(kind: IntakeTargetKind, id?: string) {
+    if (kind === "General") return "General";
+    if (!id) return kind;
+    if (kind === "Asset") return assetName(id);
+    if (kind === "Location") return locationName(id);
+    if (kind === "Vendor") return vendorName(id);
+    if (kind === "Work Order")
+      return (
+        serviceRecords.find((record) => record.id === id)?.title || "Work Order"
+      );
+    if (kind === "Map Label")
+      return mapLabels.find((label) => label.id === id)?.label || "Map Label";
+    return "General";
+  }
+
+  function openDocumentTarget(doc: DocumentRecord) {
+    if (doc.targetType === "Asset" && doc.targetId) {
+      setSelectedAssetId(doc.targetId);
+      setScreen("assets");
+      return;
+    }
+    if (doc.targetType === "Vendor" && doc.targetId) {
+      setSelectedVendorId(doc.targetId);
+      setScreen("vendors");
+      return;
+    }
+    if (doc.targetType === "Work Order" && doc.targetId) {
+      setSelectedServiceId(doc.targetId);
+      setScreen("history");
+      return;
+    }
+    if (doc.targetType === "Map Label" && doc.targetId) {
+      setSelectedMapLabelId(doc.targetId);
+      setScreen("map");
+      return;
+    }
+    if (doc.targetType === "Location" && doc.targetName) {
+      setQuery(doc.targetName);
+      setScreen("locations");
+    }
+  }
+
+  function openQuickCapture(kind: QuickCreateKind) {
+    if (quickCaptureMode === "existing") {
+      setQuickCaptureOpen(false);
+      if (kind === "photo" || kind === "document") setScreen("documents");
+      if (kind === "task") { setTasksView("tasks"); setScreen("planner"); }
+      if (kind === "work-order") setScreen("history");
+      if (kind === "project") { setPhotoTimelineView("projects"); setScreen("timeline"); }
+      if (kind === "asset") setScreen("assets");
+      if (kind === "vendor") setScreen("vendors");
+      if (kind === "procedure") setScreen("procedures");
+      showSaveToast("Choose the existing record to link.");
+      return;
+    }
+    setQuickCreateKind(kind);
+    setQuickCreateName("");
+    setQuickCreateAssignee("Nick");
+  }
+
+  function quickCreateLabel(kind: QuickCreateKind | "") {
+    return ({ photo: "Photo", document: "Document", task: "Task", "work-order": "Work Order", project: "Project", asset: "Asset", vendor: "Vendor", procedure: "Procedure" } as Record<string, string>)[kind] || "Record";
+  }
+
+  function saveQuickCreate() {
+    const name = quickCreateName.trim();
+    const kind = quickCreateKind;
+    if (!kind || !name) return;
+    setQuickCaptureOpen(false);
+    setQuickCreateKind("");
+    setQuickCreateName("");
+    if (kind === "photo") {
+      resetIntakeDraft();
+      applyFastIntakeKind("General Photo");
+      setIntakeTitle(name);
+      setScreen("intake");
+      return;
+    }
+    if (kind === "document") {
+      resetIntakeDraft();
+      applyFastIntakeKind("Document");
+      setIntakeTitle(name);
+      setScreen("intake");
+      return;
+    }
+    if (kind === "task") {
+      const taskId = addAtlasTask(name);
+      if (taskId) {
+        updateTaskDetails(taskId, { assignee: quickCreateAssignee });
+      }
+      setTasksView("tasks");
+      setSelectedTaskId(taskId);
+      setScreen("planner");
+      return;
+    }
+    if (kind === "work-order") {
+      addWorkOrder({ title: name });
+      return;
+    }
+    if (kind === "asset") {
+      addAsset(name);
+      return;
+    }
+    if (kind === "vendor") {
+      addVendor(name);
+      return;
+    }
+    if (kind === "procedure") {
+      createProcedureRecord(name);
+      setScreen("procedures");
+      return;
+    }
+    createProjectFromCommand(name);
+  }
+
+  async function saveQuickCaptureNote() {
+    const text = quickCaptureNote.trim();
+    if (!text) return;
+    const note = { id: uid("today-note"), propertyId: activePropertyId, date: todayISO(), category: "Note" as const, text, createdAt: new Date().toISOString() };
+    const saved = await postAtlasRecord("notes" as AtlasTable, { ...note, title: noteTitle(text), section: "General", pinned: false, followUpDate: "", attachments: [] });
+    if (!saved) { showSaveToast("Note did not sync. Nothing was changed.", "warning"); return; }
+    setTodayLogEntries((current) => [note, ...current]);
+    setQuickCaptureNote("");
+    setQuickCaptureOpen(false);
+  }
+
+  async function savePermanentNote() {
+    const noteTitleValue = notesTitleDraft.trim();
+    const noteText = notesDraft.trim();
+    if (!noteTitleValue || !noteText) return;
+    const noteId = uid("permanent-note");
+    const note = { id: noteId, propertyId: activePropertyId, date: todayISO(), category: "Note" as const, text: noteText, createdAt: new Date().toISOString() };
+    const saved = await postAtlasRecord("notes" as AtlasTable, { ...note, title: noteTitleValue, section: notesSection, pinned: false, followUpDate: "", attachments: [] });
+    if (!saved) { showSaveToast("Note did not sync. Nothing was changed.", "warning"); return; }
+    setTodayLogEntries((current) => [note, ...current]);
+    setNotesSectionById((current) => ({ ...current, [noteId]: notesSection }));
+    setNoteTitlesById((current) => ({ ...current, [noteId]: noteTitleValue }));
+    setNotesTitleDraft(""); setNotesDraft(""); setNotesComposerOpen(false);
+    showSaveToast(`${notesSection} note saved.`);
+  }
+
+  async function deletePermanentNote(noteId: string) {
+    const deleted = await deleteAtlasRecord("notes" as AtlasTable, noteId, { suppressFailureToast: true });
+    if (!deleted) { showSaveToast("Note was not deleted because shared Atlas did not confirm it.", "warning"); return; }
+    setTodayLogEntries((current) => current.filter((entry) => entry.id !== noteId));
+    setNotesSectionById((current) => { const next = { ...current }; delete next[noteId]; return next; });
+    setNoteTitlesById((current) => { const next = { ...current }; delete next[noteId]; return next; });
+    setPinnedNoteIds((current) => current.filter((id) => id !== noteId));
+    setNoteFollowUpDates((current) => { const next = { ...current }; delete next[noteId]; return next; });
+    setNoteAttachments((current) => { const next = { ...current }; delete next[noteId]; return next; });
+    showSaveToast("Note deleted.");
+  }
+
+  function updatePermanentNoteText(noteId: string, value: string) {
+    setTodayLogEntries((current) => current.map((entry) => entry.id === noteId ? { ...entry, text: value, updatedAt: new Date().toISOString() } : entry));
+  }
+
+  function updatePermanentNoteTitle(noteId: string, value: string) { setNoteTitlesById((current) => ({ ...current, [noteId]: value })); }
+
+  async function savePermanentNoteEdits(noteId: string) {
+    const entry = todayLogEntries.find((item) => item.id === noteId);
+    if (!entry) return;
+    const updated = { ...entry, updatedAt: new Date().toISOString() };
+    const saved = await postAtlasRecord("notes" as AtlasTable, { ...updated, propertyId: activePropertyId, title: noteTitlesById[noteId] || noteTitle(entry.text), section: notesSectionById[noteId] || "General", pinned: pinnedNoteIds.includes(noteId), followUpDate: noteFollowUpDates[noteId] || "", attachments: noteAttachments[noteId] || [] });
+    if (!saved) { showSaveToast("Note edits did not sync.", "warning"); return; }
+    setTodayLogEntries((current) => current.map((item) => item.id === noteId ? updated : item));
+    showSaveToast("Note saved.");
+  }
+
+  async function movePermanentNote(noteId: string, section: NoteSection) {
+    setNotesSectionById((current) => ({ ...current, [noteId]: section }));
+    const entry = todayLogEntries.find((item) => item.id === noteId);
+    if (entry) await postAtlasRecord("notes" as AtlasTable, { ...entry, propertyId: activePropertyId, title: noteTitlesById[noteId] || noteTitle(entry.text), section, pinned: pinnedNoteIds.includes(noteId), followUpDate: noteFollowUpDates[noteId] || "", attachments: noteAttachments[noteId] || [] });
+    showSaveToast(`Note moved to ${section}.`);
+  }
+
+  async function toggleNotePin(noteId: string) {
+    const nextPinned = !pinnedNoteIds.includes(noteId);
+    setPinnedNoteIds((current) => nextPinned ? [noteId, ...current.filter((id) => id !== noteId)] : current.filter((id) => id !== noteId));
+    const entry = todayLogEntries.find((item) => item.id === noteId);
+    if (entry) await postAtlasRecord("notes" as AtlasTable, { ...entry, propertyId: activePropertyId, title: noteTitlesById[noteId] || noteTitle(entry.text), section: notesSectionById[noteId] || "General", pinned: nextPinned, followUpDate: noteFollowUpDates[noteId] || "", attachments: noteAttachments[noteId] || [] });
+  }
+
+  async function setNoteFollowUp(noteId: string, date: string) {
+    setNoteFollowUpDates((current) => { const next = { ...current }; if (date) next[noteId] = date; else delete next[noteId]; return next; });
+    const entry = todayLogEntries.find((item) => item.id === noteId);
+    if (entry) await postAtlasRecord("notes" as AtlasTable, { ...entry, propertyId: activePropertyId, title: noteTitlesById[noteId] || noteTitle(entry.text), section: notesSectionById[noteId] || "General", pinned: pinnedNoteIds.includes(noteId), followUpDate: date, attachments: noteAttachments[noteId] || [] });
+  }
+
+  function attachmentOptions(kind: NoteAttachmentKind) {
+    if (kind === "Asset") return assetRecords.map((item) => ({ id: item.id, label: item.name || item.id }));
+    if (kind === "Location") return locations.map((item) => ({ id: item.id, label: item.name || item.id }));
+    if (kind === "Vendor") return vendorRecords.map((item) => ({ id: item.id, label: item.name || item.id }));
+    if (kind === "Project") return photoTimelineProjects.map((item) => ({ id: item.id, label: item.title || item.id }));
+    if (kind === "Work Order") return serviceRecords.map((item) => ({ id: item.id, label: item.title || item.id }));
+    if (kind === "Contact") return contactRecords.map((item) => ({ id: item.id, label: item.name || item.id }));
+    if (kind === "Procedure") return procedureRecords.map((item) => ({ id: item.id, label: item.title || item.id }));
+    return workPlanTasks.map((item) => ({ id: item.id, label: item.title || item.id }));
+  }
+
+  function attachmentLabel(attachment?: NoteAttachment) {
+    if (!attachment) return "";
+    return attachmentOptions(attachment.kind).find((item) => item.id === attachment.id)?.label || attachment.id;
+  }
+
+  function attachNote(noteId: string, kind: NoteAttachmentKind, id: string) {
+    if (!id) return;
+    setNoteAttachments((current) => {
+      const existing = current[noteId] || [];
+      if (existing.some((item) => item.kind === kind && item.id === id)) return current;
+      return { ...current, [noteId]: [...existing, { kind, id }] };
+    });
+  }
+
+  function detachNote(noteId: string, kind: NoteAttachmentKind, id: string) {
+    setNoteAttachments((current) => {
+      const nextItems = (current[noteId] || []).filter((item) => !(item.kind === kind && item.id === id));
+      const next = { ...current };
+      if (nextItems.length) next[noteId] = nextItems;
+      else delete next[noteId];
+      return next;
+    });
+  }
+
+  function noteTitle(text: string) {
+    const clean = text.trim().replace(/\s+/g, " ");
+    return clean.length > 72 ? `${clean.slice(0, 69)}…` : clean || "Note";
+  }
+
+  function convertNoteToTask(note: TodayLogEntry) {
+    const taskId = addAtlasTask(noteTitle(note.text));
+    if (!taskId) return;
+    updateTaskDetails(taskId, { notes: note.text });
+    const attachments = noteAttachments[note.id] || [];
+    const projectAttachment = attachments.find((item) => item.kind === "Project");
+    const locationAttachment = attachments.find((item) => item.kind === "Location");
+    const assetAttachment = attachments.find((item) => item.kind === "Asset");
+    const workOrderAttachment = attachments.find((item) => item.kind === "Work Order");
+    const vendorAttachment = attachments.find((item) => item.kind === "Vendor");
+    const procedureAttachment = attachments.find((item) => item.kind === "Procedure");
+    const contactAttachment = attachments.find((item) => item.kind === "Contact");
+    if (projectAttachment) updateTaskDetails(taskId, { projectId: projectAttachment.id, projectIds: attachments.filter((item) => item.kind === "Project").map((item) => item.id) });
+    if (assetAttachment) updateTaskDetails(taskId, { assetId: assetAttachment.id, assetIds: attachments.filter((item) => item.kind === "Asset").map((item) => item.id) });
+    if (workOrderAttachment) updateTaskDetails(taskId, { workOrderId: workOrderAttachment.id, workOrderIds: attachments.filter((item) => item.kind === "Work Order").map((item) => item.id) });
+    if (vendorAttachment) updateTaskDetails(taskId, { vendorId: vendorAttachment.id, vendorIds: attachments.filter((item) => item.kind === "Vendor").map((item) => item.id) });
+    if (procedureAttachment) updateTaskDetails(taskId, { procedureId: procedureAttachment.id, procedureIds: attachments.filter((item) => item.kind === "Procedure").map((item) => item.id) });
+    if (contactAttachment) updateTaskDetails(taskId, { contactId: contactAttachment.id, contactIds: attachments.filter((item) => item.kind === "Contact").map((item) => item.id) });
+    if (locationAttachment) {
+      setWorkPlanTasks((current) => current.map((task) => task.id === taskId ? { ...task, locationId: locationAttachment.id } : task));
+    }
+    showSaveToast("Task created from note.");
+  }
+
+  function convertNoteToWorkOrder(note: TodayLogEntry) {
+    const attachments = noteAttachments[note.id] || [];
+    const initial: Partial<AtlasServiceRecord> = {
+      title: noteTitle(note.text),
+      notes: note.text,
+      date: todayISO(),
+    };
+    const assetAttachment = attachments.find((item) => item.kind === "Asset");
+    const locationAttachment = attachments.find((item) => item.kind === "Location");
+    const vendorAttachment = attachments.find((item) => item.kind === "Vendor");
+    const projectAttachment = attachments.find((item) => item.kind === "Project");
+    if (assetAttachment) initial.assetId = assetAttachment.id;
+    if (locationAttachment) initial.locationId = locationAttachment.id;
+    if (vendorAttachment) initial.vendorId = vendorAttachment.id;
+    if (projectAttachment) initial.projectId = projectAttachment.id;
+    addWorkOrder(initial);
+    showSaveToast("Work Order created from note.");
+  }
+
+  function startPermanentNoteVoice() {
+    type RecognitionResult = { 0: { transcript: string }; isFinal?: boolean };
+    type RecognitionInstance = {
+      continuous: boolean;
+      interimResults: boolean;
+      lang: string;
+      start: () => void;
+      stop: () => void;
+      onresult: ((event: { results: ArrayLike<RecognitionResult> }) => void) | null;
+      onerror: (() => void) | null;
+      onend: (() => void) | null;
+    };
+    type RecognitionConstructor = new () => RecognitionInstance;
+    if (typeof window === "undefined") return;
+    if (notesListening) {
+      notesRecognitionRef.current?.stop();
+      return;
+    }
+    const speechWindow = window as unknown as {
+      SpeechRecognition?: RecognitionConstructor;
+      webkitSpeechRecognition?: RecognitionConstructor;
+    };
+    const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    if (!Recognition) {
+      showSaveToast("Voice input is not available in this browser.", "warning");
+      return;
+    }
+    const recognition = new Recognition();
+    const originalDraft = notesDraft.trim();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onresult = (event) => {
+      const transcript = Array.from(
+        { length: event.results.length },
+        (_, index) => event.results[index]?.[0]?.transcript || "",
+      ).join(" ").trim();
+      setNotesDraft([originalDraft, transcript].filter(Boolean).join(originalDraft && transcript ? " " : ""));
+    };
+    recognition.onerror = () => {
+      setNotesListening(false);
+      notesRecognitionRef.current = null;
+      showSaveToast("Atlas could not hear that note. Try again.", "warning");
+    };
+    recognition.onend = () => {
+      setNotesListening(false);
+      notesRecognitionRef.current = null;
+    };
+    notesRecognitionRef.current = recognition;
+    setNotesListening(true);
+    recognition.start();
+  }
+
+  useEffect(() => {
+    setRestrictedNotesUnlocked(false);
+    setRestrictedNotes([]);
+    setRestrictedNotesPin("");
+    setRestrictedNotesSessionPin("");
+    setRestrictedPinInputKey((current) => current + 1);
+    setRestrictedPinConfirm("");
+    setRestrictedNotesError("");
+    setSelectedRestrictedNoteId("");
+    clearRestrictedPdfPreview();
+    void refreshRestrictedPinStatus();
+  }, [activePropertyId]);
+
+  useEffect(() => {
+    if (!restrictedNotesUnlocked) return;
+    const timer = window.setTimeout(() => {
+      setRestrictedNotesUnlocked(false);
+      setRestrictedNotesPin("");
+      setRestrictedNotesSessionPin("");
+      setRestrictedPinInputKey((current) => current + 1);
+      setRestrictedNotes([]);
+      setRestrictedNoteEditId("");
+      setRestrictedNoteEditText("");
+      setRestrictedNotesError("");
+      setSelectedRestrictedNoteId("");
+      clearRestrictedPdfPreview();
+    }, 15 * 60 * 1000);
+    return () => window.clearTimeout(timer);
+  }, [restrictedNotesUnlocked]);
+
+  useEffect(() => {
+    if (screen === "notes") return;
+
+    setRestrictedNotesUnlocked(false);
+    setRestrictedNotesPin("");
+    setRestrictedNotesSessionPin("");
+    setRestrictedPinInputKey((current) => current + 1);
+    setRestrictedNotes([]);
+    setRestrictedNotesDraft("");
+    setRestrictedNoteEditId("");
+    setRestrictedNoteEditText("");
+    setRestrictedNotesError("");
+    setSelectedRestrictedNoteId("");
+    clearRestrictedPdfPreview();
+  }, [screen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const lockWhenHidden = () => {
+      if (document.visibilityState !== "hidden") return;
+
+      setRestrictedNotesUnlocked(false);
+      setRestrictedNotesPin("");
+      setRestrictedNotesSessionPin("");
+      setRestrictedPinInputKey((current) => current + 1);
+      setRestrictedNotes([]);
+      setRestrictedNotesDraft("");
+      setRestrictedNoteEditId("");
+      setRestrictedNoteEditText("");
+      setRestrictedNotesError("");
+      setSelectedRestrictedNoteId("");
+      clearRestrictedPdfPreview();
+    };
+
+    const lockOnPageHide = () => {
+      setRestrictedNotesUnlocked(false);
+      setRestrictedNotesPin("");
+      setRestrictedNotesSessionPin("");
+      setRestrictedPinInputKey((current) => current + 1);
+      setRestrictedNotes([]);
+      setRestrictedNotesDraft("");
+      setRestrictedNoteEditId("");
+      setRestrictedNoteEditText("");
+      setRestrictedNotesError("");
+      setSelectedRestrictedNoteId("");
+      clearRestrictedPdfPreview();
+    };
+
+    document.addEventListener("visibilitychange", lockWhenHidden);
+    window.addEventListener("pagehide", lockOnPageHide);
+
+    return () => {
+      document.removeEventListener("visibilitychange", lockWhenHidden);
+      window.removeEventListener("pagehide", lockOnPageHide);
+    };
+  }, []);
+
+  async function restrictedNotesRequest(action: "status" | "setupPin" | "changePin" | "list" | "create" | "quickCreate" | "update" | "delete" | "addAttachment" | "getAttachment" | "updateAttachmentLabel" | "deleteAttachment", extra: Record<string, unknown> = {}) {
+    const response = await fetch("/api/atlas-restricted-notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ action, propertyId: activePropertyId, pin: restrictedNotesSessionPin || restrictedNotesPin, ...extra }),
+    });
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; configured?: boolean; notes?: RestrictedNote[]; note?: RestrictedNote; attachment?: RestrictedNoteAttachment; fileName?: string; mimeType?: string; dataBase64?: string };
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "Restricted Notes request failed.");
+    return payload;
+  }
+
+  async function refreshRestrictedPinStatus() {
+    try {
+      const payload = await restrictedNotesRequest("status");
+      setRestrictedPinConfigured(Boolean(payload.configured));
+    } catch (error) {
+      setRestrictedPinConfigured(null);
+      setRestrictedNotesError(
+        error instanceof Error
+          ? error.message
+          : "Could not check Restricted Notes PIN status.",
+      );
+    }
+  }
+
+  async function setupRestrictedPin() {
+    const pin = restrictedNotesPin.trim();
+    const confirmPin = restrictedPinConfirm.trim();
+
+    if (restrictedNotesBusy) return;
+
+    if (pin.length < 4) {
+      setRestrictedNotesError("PIN must be at least 4 characters.");
+      return;
+    }
+
+    if (pin !== confirmPin) {
+      setRestrictedNotesError("PIN entries do not match.");
+      return;
+    }
+
+    setRestrictedNotesBusy(true);
+    setRestrictedNotesError("");
+
+    try {
+      await restrictedNotesRequest("setupPin", { newPin: pin });
+      setRestrictedPinConfigured(true);
+      setRestrictedNotesSessionPin(pin);
+      setRestrictedNotesPin("");
+      setRestrictedPinConfirm("");
+
+      const payload = await restrictedNotesRequest("list");
+      const unlockedNotes = Array.isArray(payload.notes) ? payload.notes : [];
+      setRestrictedNotes(unlockedNotes);
+      setSelectedRestrictedNoteId(unlockedNotes[0]?.id || "");
+      setRestrictedNotesUnlocked(true);
+      showSaveToast("Restricted Notes PIN created.");
+    } catch (error) {
+      setRestrictedNotesError(
+        error instanceof Error
+          ? error.message
+          : "Could not create Restricted Notes PIN.",
+      );
+    } finally {
+      setRestrictedNotesBusy(false);
+    }
+  }
+
+  async function unlockRestrictedNotes(pinOverride?: string) {
+    const pinToUse = (pinOverride ?? restrictedNotesPin).trim();
+    if (!pinToUse || restrictedNotesBusy) return;
+    setRestrictedNotesBusy(true);
+    setRestrictedNotesError("");
+    try {
+      const response = await fetch("/api/atlas-restricted-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ action: "list", propertyId: activePropertyId, pin: pinToUse }),
+      });
+      const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; notes?: RestrictedNote[] };
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not unlock Restricted Notes.");
+      const unlockedNotes = Array.isArray(payload.notes) ? payload.notes : [];
+      setRestrictedNotes(unlockedNotes);
+      setSelectedRestrictedNoteId(unlockedNotes[0]?.id || "");
+      setRestrictedNotesSessionPin(pinToUse);
+      setRestrictedNotesPin("");
+      setRestrictedNotesUnlocked(true);
+    } catch (error) {
+      setRestrictedNotesUnlocked(false);
+      setRestrictedNotes([]);
+      setRestrictedNotesPin("");
+      setRestrictedPinInputKey((current) => current + 1);
+      setRestrictedNotesError(error instanceof Error ? error.message : "Could not unlock Restricted Notes.");
+    } finally {
+      setRestrictedNotesBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (restrictedNotesUnlocked || restrictedPinConfigured !== true || restrictedNotesBusy) return;
+    const pin = restrictedNotesPin.trim();
+    if (pin.length < 4) return;
+    const timer = window.setTimeout(() => {
+      void unlockRestrictedNotes(pin);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [restrictedNotesPin, restrictedPinConfigured, restrictedNotesUnlocked, restrictedNotesBusy, activePropertyId]);
+
+  function lockRestrictedNotes() {
+    setRestrictedNotesUnlocked(false);
+    setRestrictedNotesPin("");
+    setRestrictedNotesSessionPin("");
+    setRestrictedPinInputKey((current) => current + 1);
+    setRestrictedNotes([]);
+    setRestrictedNotesDraft("");
+    setRestrictedNoteEditId("");
+    setRestrictedNoteEditText("");
+    setRestrictedAttachmentLabelByNote({});
+    setRestrictedAttachmentEditId("");
+    setRestrictedAttachmentEditLabel("");
+    setRestrictedAttachmentBusyNoteId("");
+    setRestrictedNotesError("");
+    setSelectedRestrictedNoteId("");
+    clearRestrictedPdfPreview();
+  }
+
+  function clearRestrictedPdfPreview() {
+    setRestrictedPdfPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return "";
+    });
+    setRestrictedPdfPreviewAttachmentId("");
+    setRestrictedPdfPreviewName("");
+    setRestrictedPdfZoom(100);
+  }
+
+  function restrictedNoteDisplayTitle(note: RestrictedNote) {
+    const firstLine = String(note.text || "").split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "";
+    const fallback = note.attachments?.[0]?.label || "Restricted Note";
+    const title = firstLine || fallback;
+    return title.length > 54 ? `${title.slice(0, 51)}…` : title;
+  }
+
+  async function selectRestrictedNote(note: RestrictedNote) {
+    setSelectedRestrictedNoteId(note.id);
+    clearRestrictedPdfPreview();
+  }
+
+  async function quickAddRestrictedNote() {
+    const text = notesDraft.trim();
+    if (!text || restrictedNotesBusy) return;
+    setRestrictedNotesBusy(true);
+    setRestrictedNotesError("");
+    try {
+      const payload = await restrictedNotesRequest("quickCreate", { text });
+      setNotesDraft("");
+      showSaveToast("Added to Restricted Notes.");
+      if (restrictedNotesUnlocked && payload.note) {
+        setRestrictedNotes((current) => [payload.note!, ...current.filter((note) => note.id !== payload.note!.id)]);
+        setSelectedRestrictedNoteId(payload.note.id);
+      }
+    } catch (error) {
+      setRestrictedNotesError(error instanceof Error ? error.message : "Could not add to Restricted Notes.");
+      showSaveToast(error instanceof Error ? error.message : "Could not add to Restricted Notes.", "warning");
+    } finally {
+      setRestrictedNotesBusy(false);
+    }
+  }
+
+  async function fileToBase64(file: File) {
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || "");
+        resolve(result.includes(",") ? result.split(",", 2)[1] || "" : result);
+      };
+      reader.onerror = () => reject(reader.error || new Error("Could not read PDF."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function addRestrictedPdf(noteId: string, file: File) {
+    if (restrictedNotesBusy || restrictedAttachmentBusyNoteId) return;
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      setRestrictedNotesError("Restricted Notes attachments must be PDF files.");
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      setRestrictedNotesError("Restricted Notes PDFs must be 3 MB or smaller.");
+      return;
+    }
+    const fallbackLabel = file.name.replace(/\.pdf$/i, "");
+    const label = (restrictedAttachmentLabelByNote[noteId] || fallbackLabel).trim();
+    setRestrictedAttachmentBusyNoteId(noteId);
+    setRestrictedNotesError("");
+    try {
+      const dataBase64 = await fileToBase64(file);
+      const payload = await restrictedNotesRequest("addAttachment", {
+        noteId,
+        label,
+        fileName: file.name,
+        mimeType: "application/pdf",
+        sizeBytes: file.size,
+        dataBase64,
+      });
+      if (payload.attachment) {
+        setRestrictedNotes((current) => current.map((note) =>
+          note.id === noteId
+            ? { ...note, attachments: [...(note.attachments || []), payload.attachment!] }
+            : note,
+        ));
+      }
+      setRestrictedAttachmentLabelByNote((current) => ({ ...current, [noteId]: "" }));
+      showSaveToast("Restricted PDF attached.");
+    } catch (error) {
+      setRestrictedNotesError(error instanceof Error ? error.message : "Could not attach restricted PDF.");
+    } finally {
+      setRestrictedAttachmentBusyNoteId("");
+    }
+  }
+
+  async function openRestrictedPdf(attachment: RestrictedNoteAttachment) {
+    if (restrictedAttachmentBusyNoteId) return;
+    setRestrictedAttachmentBusyNoteId(attachment.noteId);
+    setRestrictedNotesError("");
+    try {
+      const payload = await restrictedNotesRequest("getAttachment", { attachmentId: attachment.id });
+      if (!payload.dataBase64) throw new Error("Restricted PDF data was not returned.");
+      const binary = window.atob(payload.dataBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+      const blob = new Blob([bytes], { type: payload.mimeType || "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      setRestrictedPdfPreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return url;
+      });
+      setRestrictedPdfPreviewAttachmentId(attachment.id);
+      setRestrictedPdfPreviewName(attachment.label || attachment.fileName || "Restricted PDF");
+      setRestrictedPdfZoom(100);
+    } catch (error) {
+      setRestrictedNotesError(error instanceof Error ? error.message : "Could not open restricted PDF.");
+    } finally {
+      setRestrictedAttachmentBusyNoteId("");
+    }
+  }
+
+  async function updateRestrictedPdfLabel(noteId: string, attachmentId: string) {
+    const label = restrictedAttachmentEditLabel.trim();
+    if (!label || restrictedAttachmentBusyNoteId) return;
+    setRestrictedAttachmentBusyNoteId(noteId);
+    setRestrictedNotesError("");
+    try {
+      const payload = await restrictedNotesRequest("updateAttachmentLabel", { attachmentId, label });
+      if (payload.attachment) {
+        setRestrictedNotes((current) => current.map((note) =>
+          note.id === noteId
+            ? { ...note, attachments: (note.attachments || []).map((attachment) => attachment.id === attachmentId ? payload.attachment! : attachment) }
+            : note,
+        ));
+      }
+      setRestrictedAttachmentEditId("");
+      setRestrictedAttachmentEditLabel("");
+      showSaveToast("Restricted PDF label saved.");
+    } catch (error) {
+      setRestrictedNotesError(error instanceof Error ? error.message : "Could not update restricted PDF label.");
+    } finally {
+      setRestrictedAttachmentBusyNoteId("");
+    }
+  }
+
+  async function deleteRestrictedPdf(noteId: string, attachmentId: string) {
+    if (!window.confirm("Delete this restricted PDF?")) return;
+    setRestrictedAttachmentBusyNoteId(noteId);
+    setRestrictedNotesError("");
+    try {
+      await restrictedNotesRequest("deleteAttachment", { attachmentId });
+      setRestrictedNotes((current) => current.map((note) =>
+        note.id === noteId
+          ? { ...note, attachments: (note.attachments || []).filter((attachment) => attachment.id !== attachmentId) }
+          : note,
+      ));
+      showSaveToast("Restricted PDF deleted.");
+    } catch (error) {
+      setRestrictedNotesError(error instanceof Error ? error.message : "Could not delete restricted PDF.");
+    } finally {
+      setRestrictedAttachmentBusyNoteId("");
+    }
+  }
+
+  async function createRestrictedNote() {
+    const text = restrictedNotesDraft.trim();
+    if (!text || restrictedNotesBusy) return;
+    setRestrictedNotesBusy(true);
+    setRestrictedNotesError("");
+    try {
+      const payload = await restrictedNotesRequest("create", { text });
+      if (payload.note) {
+        setRestrictedNotes((current) => [payload.note!, ...current]);
+        setSelectedRestrictedNoteId(payload.note.id);
+      }
+      setRestrictedNotesDraft("");
+      showSaveToast("Restricted note saved.");
+    } catch (error) {
+      setRestrictedNotesError(error instanceof Error ? error.message : "Could not save restricted note.");
+    } finally {
+      setRestrictedNotesBusy(false);
+    }
+  }
+
+  async function updateRestrictedNote(noteId: string) {
+    const text = restrictedNoteEditText.trim();
+    if (!text || restrictedNotesBusy) return;
+    setRestrictedNotesBusy(true);
+    setRestrictedNotesError("");
+    try {
+      const payload = await restrictedNotesRequest("update", { id: noteId, text });
+      if (payload.note) setRestrictedNotes((current) => current.map((note) => note.id === noteId ? payload.note! : note));
+      setRestrictedNoteEditId("");
+      setRestrictedNoteEditText("");
+      showSaveToast("Restricted note saved.");
+    } catch (error) {
+      setRestrictedNotesError(error instanceof Error ? error.message : "Could not update restricted note.");
+    } finally {
+      setRestrictedNotesBusy(false);
+    }
+  }
+
+  async function deleteRestrictedNote(noteId: string) {
+    if (!window.confirm("Delete this restricted note?")) return;
+    setRestrictedNotesBusy(true);
+    setRestrictedNotesError("");
+    try {
+      await restrictedNotesRequest("delete", { id: noteId });
+      setRestrictedNotes((current) => current.filter((note) => note.id !== noteId));
+      if (restrictedNoteEditId === noteId) {
+        setRestrictedNoteEditId("");
+        setRestrictedNoteEditText("");
+      }
+      showSaveToast("Restricted note deleted.");
+    } catch (error) {
+      setRestrictedNotesError(error instanceof Error ? error.message : "Could not delete restricted note.");
+    } finally {
+      setRestrictedNotesBusy(false);
+    }
+  }
+
+  function renderNotes() {
+    const query = notesSearch.trim().toLowerCase();
+    const allPropertyNotes = todayLogEntries
+      .filter((entry) => entry.propertyId === activePropertyId && entry.category === "Note")
+      .sort((a, b) => String(b.createdAt || b.date).localeCompare(String(a.createdAt || a.date)));
+
+    const sectionFor = (noteId: string): NoteSection => notesSectionById[noteId] || "General";
+    const titleFor = (note: (typeof allPropertyNotes)[number]) => {
+      const savedTitle = String(noteTitlesById[note.id] || "").trim();
+      if (savedTitle) return savedTitle;
+      const firstLine = String(note.text || "").split(/\r?\n/).find((line) => line.trim())?.trim() || "Untitled Note";
+      return firstLine.length > 64 ? `${firstLine.slice(0, 61)}…` : firstLine;
+    };
+
+    const notes = allPropertyNotes
+      .filter((entry) => notesSectionFilter === "All" || sectionFor(entry.id) === notesSectionFilter)
+      .filter((entry) => !query || `${titleFor(entry)} ${entry.text}`.toLowerCase().includes(query))
+      .sort((a, b) => {
+        const aPinned = pinnedNoteIds.includes(a.id) ? 1 : 0;
+        const bPinned = pinnedNoteIds.includes(b.id) ? 1 : 0;
+        if (aPinned !== bPinned) return bPinned - aPinned;
+        return String(b.createdAt || b.date).localeCompare(String(a.createdAt || a.date));
+      });
+
+    const selectedNote = selectedNoteId
+      ? allPropertyNotes.find((note) => note.id === selectedNoteId) || null
+      : null;
+
+    return (
+      <div style={{ display: "grid", gap: 14 }}>
+        <section style={{ ...cardStyle, padding: isMobile ? 12 : 16, borderColor: restrictedNotesUnlocked ? "#D7B45D" : colors.line }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div>
+              <div style={eyebrowStyle}>RESTRICTED</div>
+              <strong style={{ display: "block", color: colors.navy, fontSize: 16 }}>Restricted Notes</strong>
+              <small style={mutedSmallStyle}>{restrictedNotesUnlocked ? "Unlocked for this session. Auto-locks after 15 minutes." : "Protected by a separate access code. Contents stay hidden until unlocked."}</small>
+            </div>
+            {restrictedNotesUnlocked ? (
+              <button type="button" onClick={lockRestrictedNotes} style={secondaryButtonStyle}>Lock Now</button>
+            ) : null}
+          </div>
+
+          {!restrictedNotesUnlocked ? (
+            restrictedPinConfigured === false ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "minmax(0,240px) minmax(0,240px) auto",
+                  gap: 8,
+                  alignItems: "center",
+                  marginTop: 12,
+                }}
+              >
+                <input
+                  key={`restricted-pin-create-${restrictedPinInputKey}`}
+                  type="text"
+                  inputMode="numeric"
+                  name={`atlas-restricted-pin-create-${restrictedPinInputKey}`}
+                  value={restrictedNotesPin}
+                  onChange={(event) =>
+                    setRestrictedNotesPin(event.currentTarget.value)
+                  }
+                  placeholder="Create PIN"
+                  autoComplete="one-time-code"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  style={{
+                    ...inputStyle,
+                    minHeight: 40,
+                    WebkitTextSecurity: "disc",
+                  } as React.CSSProperties}
+                />
+                <input
+                  key={`restricted-pin-confirm-${restrictedPinInputKey}`}
+                  type="text"
+                  inputMode="numeric"
+                  name={`atlas-restricted-pin-confirm-${restrictedPinInputKey}`}
+                  value={restrictedPinConfirm}
+                  onChange={(event) =>
+                    setRestrictedPinConfirm(event.currentTarget.value)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void setupRestrictedPin();
+                  }}
+                  placeholder="Confirm PIN"
+                  autoComplete="one-time-code"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  style={{
+                    ...inputStyle,
+                    minHeight: 40,
+                    WebkitTextSecurity: "disc",
+                  } as React.CSSProperties}
+                />
+                <button
+                  type="button"
+                  onClick={() => void setupRestrictedPin()}
+                  disabled={
+                    restrictedNotesBusy ||
+                    restrictedNotesPin.trim().length < 4 ||
+                    restrictedNotesPin.trim() !==
+                      restrictedPinConfirm.trim()
+                  }
+                  style={{
+                    ...goldButtonStyle,
+                    opacity:
+                      restrictedNotesBusy ||
+                      restrictedNotesPin.trim().length < 4 ||
+                      restrictedNotesPin.trim() !==
+                        restrictedPinConfirm.trim()
+                        ? 0.55
+                        : 1,
+                  }}
+                >
+                  {restrictedNotesBusy ? "Creating…" : "Create PIN"}
+                </button>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "minmax(0,280px) auto",
+                  gap: 8,
+                  alignItems: "center",
+                  marginTop: 12,
+                }}
+              >
+                <input
+                  key={`restricted-pin-${restrictedPinInputKey}`}
+                  type="text"
+                  inputMode="numeric"
+                  name={`atlas-restricted-pin-${restrictedPinInputKey}`}
+                  value={restrictedNotesPin}
+                  onChange={(event) =>
+                    setRestrictedNotesPin(event.currentTarget.value)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void unlockRestrictedNotes();
+                  }}
+                  placeholder={
+                    restrictedPinConfigured === null
+                      ? "Checking Restricted Notes…"
+                      : "Enter Restricted Notes PIN"
+                  }
+                  autoComplete="one-time-code"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  disabled={restrictedPinConfigured === null}
+                  style={{
+                    ...inputStyle,
+                    minHeight: 40,
+                    WebkitTextSecurity: "disc",
+                  } as React.CSSProperties}
+                />
+                <button
+                  type="button"
+                  onClick={() => void unlockRestrictedNotes()}
+                  disabled={
+                    restrictedPinConfigured !== true ||
+                    !restrictedNotesPin.trim() ||
+                    restrictedNotesBusy
+                  }
+                  style={{
+                    ...goldButtonStyle,
+                    opacity:
+                      restrictedPinConfigured !== true ||
+                      !restrictedNotesPin.trim() ||
+                      restrictedNotesBusy
+                        ? 0.55
+                        : 1,
+                  }}
+                >
+                  {restrictedNotesBusy ? "Unlocking…" : "Unlock"}
+                </button>
+              </div>
+            )
+          ) : (
+            <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8, alignItems: "end" }}>
+                <textarea
+                  value={restrictedNotesDraft}
+                  onChange={(event) => setRestrictedNotesDraft(event.currentTarget.value)}
+                  placeholder="Write a restricted note…"
+                  rows={3}
+                  style={{ ...inputStyle, resize: "vertical", minHeight: 76 }}
+                />
+                <button type="button" onClick={() => void createRestrictedNote()} disabled={!restrictedNotesDraft.trim() || restrictedNotesBusy} style={{ ...goldButtonStyle, opacity: !restrictedNotesDraft.trim() || restrictedNotesBusy ? .55 : 1 }}>
+                  Save Restricted Note
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 30%) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
+                <div style={{ display: "grid", gap: 7 }}>
+                  {restrictedNotes.map((note) => {
+                    const selected = note.id === selectedRestrictedNoteId;
+                    return (
+                      <button
+                        key={note.id}
+                        type="button"
+                        onClick={() => void selectRestrictedNote(note)}
+                        style={{
+                          ...rowButtonStyle,
+                          width: "100%",
+                          textAlign: "left",
+                          borderColor: selected ? colors.gold : colors.line,
+                          background: selected ? "#FFF9E9" : "#FFFFFF",
+                          alignItems: "flex-start",
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <strong style={{ display: "block", color: colors.navy, overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {restrictedNoteDisplayTitle(note)}
+                          </strong>
+                          <small style={mutedSmallStyle}>
+                            {(note.attachments || []).length} PDF{(note.attachments || []).length === 1 ? "" : "s"} · {new Date(note.updatedAt || note.createdAt).toLocaleDateString()}
+                          </small>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {!restrictedNotes.length ? <div style={noticeStyle}>No restricted notes for this property yet.</div> : null}
+                </div>
+
+                {(() => {
+                  const note = restrictedNotes.find((item) => item.id === selectedRestrictedNoteId) || restrictedNotes[0];
+                  if (!note) return <div style={noticeStyle}>Select a restricted note.</div>;
+                  return (
+                    <div style={{ ...cardStyle, padding: isMobile ? 10 : 14, background: "#FFFDF7", minWidth: 0 }}>
+                      {restrictedNoteEditId === note.id ? (
+                        <textarea value={restrictedNoteEditText} onChange={(event) => setRestrictedNoteEditText(event.currentTarget.value)} rows={4} style={{ ...inputStyle, width: "100%", resize: "vertical" }} />
+                      ) : (
+                        <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.58, color: colors.text, fontSize: 14 }}>{note.text}</div>
+                      )}
+
+                      <div style={{ display: "grid", gap: 8, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${colors.line}` }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <strong style={{ color: colors.navy, fontSize: 12 }}>PDF Attachments</strong>
+                          <small style={mutedSmallStyle}>Click a PDF to view it here</small>
+                        </div>
+
+                        {(note.attachments || []).map((attachment) => (
+                          <div key={attachment.id} style={{ display: "grid", gap: 7, padding: "8px 9px", border: `1px solid ${restrictedPdfPreviewAttachmentId === attachment.id ? colors.gold : colors.line}`, borderRadius: 10, background: restrictedPdfPreviewAttachmentId === attachment.id ? "#FFF9E9" : "#FFFFFF" }}>
+                            {restrictedAttachmentEditId === attachment.id ? (
+                              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto auto", gap: 7, alignItems: "center" }}>
+                                <input
+                                  autoFocus
+                                  value={restrictedAttachmentEditLabel}
+                                  onChange={(event) => setRestrictedAttachmentEditLabel(event.currentTarget.value)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") void updateRestrictedPdfLabel(note.id, attachment.id);
+                                    if (event.key === "Escape") { setRestrictedAttachmentEditId(""); setRestrictedAttachmentEditLabel(""); }
+                                  }}
+                                  placeholder="PDF label"
+                                  style={{ ...inputStyle, minHeight: 36 }}
+                                />
+                                <button type="button" onClick={() => { setRestrictedAttachmentEditId(""); setRestrictedAttachmentEditLabel(""); }} style={secondaryButtonStyle}>Cancel</button>
+                                <button type="button" onClick={() => void updateRestrictedPdfLabel(note.id, attachment.id)} disabled={!restrictedAttachmentEditLabel.trim() || restrictedAttachmentBusyNoteId === note.id} style={goldButtonStyle}>Save Label</button>
+                              </div>
+                            ) : (
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => void openRestrictedPdf(attachment)}
+                                  disabled={restrictedAttachmentBusyNoteId === note.id}
+                                  style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", textAlign: "left", minWidth: 0, flex: "1 1 220px" }}
+                                >
+                                  <strong style={{ display: "block", color: colors.navy, fontSize: 13 }}>{attachment.label || attachment.fileName}</strong>
+                                  <small style={{ ...mutedSmallStyle, display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{attachment.fileName}</small>
+                                </button>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  <button type="button" onClick={() => { setRestrictedAttachmentEditId(attachment.id); setRestrictedAttachmentEditLabel(attachment.label || attachment.fileName.replace(/\.pdf$/i, "")); }} disabled={restrictedAttachmentBusyNoteId === note.id} style={secondaryButtonStyle}>Edit Label</button>
+                                  <button type="button" onClick={() => void deleteRestrictedPdf(note.id, attachment.id)} disabled={restrictedAttachmentBusyNoteId === note.id} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete PDF</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, alignItems: "center" }}>
+                          <input
+                            value={restrictedAttachmentLabelByNote[note.id] || ""}
+                            onChange={(event) => setRestrictedAttachmentLabelByNote((current) => ({ ...current, [note.id]: event.currentTarget.value }))}
+                            placeholder="PDF label (optional)"
+                            style={{ ...inputStyle, minHeight: 38 }}
+                          />
+                          <label style={{ ...secondaryButtonStyle, cursor: restrictedAttachmentBusyNoteId === note.id ? "wait" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                            {restrictedAttachmentBusyNoteId === note.id ? "Working…" : "Add PDF"}
+                            <input
+                              type="file"
+                              accept="application/pdf,.pdf"
+                              disabled={restrictedAttachmentBusyNoteId === note.id}
+                              onChange={(event) => {
+                                const file = event.currentTarget.files?.[0];
+                                event.currentTarget.value = "";
+                                if (file) void addRestrictedPdf(note.id, file);
+                              }}
+                              style={{ display: "none" }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      {restrictedPdfPreviewUrl ? (
+                        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            <strong style={{ color: colors.navy }}>{restrictedPdfPreviewName || "Restricted PDF"}</strong>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <button type="button" onClick={() => setRestrictedPdfZoom((current) => Math.max(50, current - 25))} style={secondaryButtonStyle}>−</button>
+                              <span style={{ ...mutedSmallStyle, minWidth: 48, textAlign: "center" }}>{restrictedPdfZoom}%</span>
+                              <button type="button" onClick={() => setRestrictedPdfZoom((current) => Math.min(200, current + 25))} style={secondaryButtonStyle}>+</button>
+                              <button type="button" onClick={clearRestrictedPdfPreview} style={secondaryButtonStyle}>Close PDF</button>
+                            </div>
+                          </div>
+                          <div style={{ border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#E5E7EB", minHeight: isMobile ? 480 : 680 }}>
+                            <iframe
+                              key={`${restrictedPdfPreviewAttachmentId}-${restrictedPdfZoom}`}
+                              title={restrictedPdfPreviewName || "Restricted PDF"}
+                              src={`${restrictedPdfPreviewUrl}#zoom=${restrictedPdfZoom}`}
+                              style={{ width: "100%", height: isMobile ? 480 : 680, border: 0, display: "block", background: "#FFFFFF" }}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
+                        <small style={mutedSmallStyle}>{new Date(note.updatedAt || note.createdAt).toLocaleString()}</small>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {restrictedNoteEditId === note.id ? (
+                            <>
+                              <button type="button" onClick={() => { setRestrictedNoteEditId(""); setRestrictedNoteEditText(""); }} style={secondaryButtonStyle}>Cancel</button>
+                              <button type="button" onClick={() => void updateRestrictedNote(note.id)} disabled={!restrictedNoteEditText.trim() || restrictedNotesBusy} style={goldButtonStyle}>Save</button>
+                            </>
+                          ) : (
+                            <button type="button" onClick={() => { setRestrictedNoteEditId(note.id); setRestrictedNoteEditText(note.text); }} style={secondaryButtonStyle}>Edit</button>
+                          )}
+                          <button type="button" onClick={() => void deleteRestrictedNote(note.id)} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+          {restrictedNotesError ? <div style={{ marginTop: 10, color: colors.red, fontSize: 12, fontWeight: 800 }}>{restrictedNotesError}</div> : null}
+        </section>
+
+        {notesComposerOpen ? (
+        <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
+          <input
+            value={notesTitleDraft}
+            onChange={(event) => setNotesTitleDraft(event.currentTarget.value)}
+            placeholder="Note title"
+            style={{ ...inputStyle, width: "100%", minHeight: 42, marginBottom: 10, fontSize: 16, fontWeight: 850 }}
+          />
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 180px", gap: 10 }}>
+            <textarea
+              value={notesDraft}
+              onChange={(event) => setNotesDraft(event.currentTarget.value)}
+              placeholder="Write a note…"
+              style={{ ...inputStyle, minHeight: 76, resize: "vertical", fontSize: 15, lineHeight: 1.55, padding: 13, borderRadius: 15 }}
+            />
+            <button
+              type="button"
+              onClick={startPermanentNoteVoice}
+              aria-pressed={notesListening}
+              style={{
+                border: notesListening ? `2px solid ${colors.gold}` : `1px solid ${colors.line}`,
+                borderRadius: 16,
+                background: notesListening ? colors.navy : "#F8FAFC",
+                color: notesListening ? "#FFFFFF" : colors.navy,
+                minHeight: 76,
+                padding: 10,
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+                alignContent: "center",
+                gap: 7,
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 999,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 3,
+                  background: notesListening ? colors.gold : colors.navy,
+                }}
+              >
+                {[10, 19, 28, 19, 10].map((height, index) => (
+                  <span key={index} style={{ width: 3, height, borderRadius: 999, background: "#FFFFFF" }} />
+                ))}
+              </span>
+              <strong style={{ fontSize: 13 }}>{notesListening ? "Listening…" : "Voice Note"}</strong>
+            </button>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
+            <select
+              value={notesSection}
+              onChange={(event) => setNotesSection(event.currentTarget.value as NoteSection)}
+              style={{ ...inputStyle, width: isMobile ? "100%" : 205, minHeight: 36, fontWeight: 800 }}
+            >
+              {noteSections.map((section) => <option key={section} value={section}>{section}</option>)}
+            </select>
+            <div style={{ display: "flex", gap: 7 }}>
+              <button type="button" onClick={() => { setNotesDraft(""); setNotesTitleDraft(""); setNotesComposerOpen(false); }} style={secondaryButtonStyle}>Cancel</button>
+              <button type="button" onClick={() => void quickAddRestrictedNote()} disabled={!notesDraft.trim() || restrictedNotesBusy} style={secondaryButtonStyle}>Add to Restricted</button>
+              <button type="button" onClick={savePermanentNote} disabled={!notesTitleDraft.trim() || !notesDraft.trim()} style={{ ...goldButtonStyle, opacity: notesTitleDraft.trim() && notesDraft.trim() ? 1 : .55 }}>Save Note</button>
+            </div>
+          </div>
+        </section>
+        ) : (
+          <button type="button" onClick={() => setNotesComposerOpen(true)} style={{ ...goldButtonStyle, width: "auto", justifySelf: "start" }}>+ New Note</button>
+        )}
+
+        {isMobile ? (
+          <button
+            type="button"
+            onClick={() => setMobileNotesMoreOpen((current) => !current)}
+            aria-expanded={mobileNotesMoreOpen}
+            style={{ ...secondaryButtonStyle, width: "100%", minHeight: 40 }}
+          >
+            {mobileNotesMoreOpen ? "Hide Search & Filters" : "Search / Filters / Restricted"}
+          </button>
+        ) : null}
+
+        {(!isMobile || mobileNotesMoreOpen) ? (
+        <section style={{ ...cardStyle, padding: isMobile ? 12 : 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "180px minmax(0,1fr)", gap: 8 }}>
+            <select
+              value={notesSectionFilter}
+              onChange={(event) => setNotesSectionFilter(event.currentTarget.value as NoteSection | "All")}
+              style={{ ...inputStyle, minHeight: 36, fontWeight: 800 }}
+            >
+              <option value="All">All Notes</option>
+              {noteSections.map((section) => <option key={section} value={section}>{section}</option>)}
+            </select>
+            <input
+              value={notesSearch}
+              onChange={(event) => setNotesSearch(event.currentTarget.value)}
+              placeholder="Search notes"
+              style={{ ...inputStyle, minHeight: 36 }}
+            />
+          </div>
+        </section>
+        ) : null}
+
+        <div style={{ display: "grid", gap: 12 }}>
+          {noteSections.map((section) => {
+            const sectionNotes = notes.filter((note) => sectionFor(note.id) === section);
+            if (!sectionNotes.length) return null;
+            return (
+              <section key={section} style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 13px", background: colors.navy, borderBottom: `1px solid ${colors.navy}` }}>
+                  <strong style={{ color: "#FFFFFF" }}>{section}</strong>
+                  <span style={{ minWidth: 24, padding: "3px 7px", borderRadius: 999, background: "rgba(255,255,255,.16)", color: "#FFFFFF", fontSize: 11, fontWeight: 900, textAlign: "center" }}>{sectionNotes.length}</span>
+                </div>
+                <div style={{ display: "grid" }}>
+                  {sectionNotes.map((note, index) => {
+                    const pinned = pinnedNoteIds.includes(note.id);
+                    const followUp = noteFollowUpDates[note.id] || "";
+                    const attachments = noteAttachments[note.id] || [];
+                    return (
+                      <button key={note.id} type="button" onClick={() => setSelectedNoteId(note.id)} style={{ border: 0, borderBottom: index < sectionNotes.length - 1 ? `1px solid ${colors.line}` : 0, background: pinned ? "#FFFDF7" : "#FFFFFF", padding: "8px 10px", cursor: "pointer", textAlign: "left", display: "grid", gap: 5 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                          <strong style={{ color: colors.navy, fontSize: 14 }}>{titleFor(note)}</strong>
+                          {pinned ? <span style={{ color: "#9B742A", fontSize: 10, fontWeight: 900 }}>PINNED</span> : null}
+                        </div>
+                        <span style={{ color: colors.muted, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(note.text || "").replace(/\s+/g, " ")}</span>
+                        <small style={mutedSmallStyle}>{note.createdAt ? new Date(note.createdAt).toLocaleDateString() : formatDate(note.date)}{followUp ? ` · Follow up ${formatDate(followUp)}` : ""}{attachments.length ? ` · ${attachments.length} linked` : ""}</small>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+          {!notes.length ? <div style={noticeStyle}>No notes match this category or search.</div> : null}
+        </div>
+
+        {selectedNote ? (
+          <div
+            className="atlas-quick-capture-backdrop"
+            onMouseDown={() => setSelectedNoteId("")}
+            style={{ zIndex: 1500 }}
+          >
+            <section
+              className="atlas-quick-capture-panel"
+              onMouseDown={(event) => event.stopPropagation()}
+              style={{ width: "min(620px,100%)", maxHeight: "88vh", overflow: "auto" }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                <div>
+                  <div style={eyebrowStyle}>{sectionFor(selectedNote.id)}</div>
+                  <strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>{titleFor(selectedNote)}</strong>
+                  <small style={mutedSmallStyle}>
+                    {selectedNote.createdAt ? new Date(selectedNote.createdAt).toLocaleString() : formatDate(selectedNote.date)}
+                  </small>
+                </div>
+                <button type="button" onClick={() => setSelectedNoteId("")} style={compactUtilityButtonStyle}>Close</button>
+              </div>
+
+              <label style={{ display: "grid", gap: 5, marginTop: 14 }}>
+                <span style={fieldLabelStyle}>TITLE</span>
+                <input
+                  value={noteTitlesById[selectedNote.id] || titleFor(selectedNote)}
+                  onChange={(event) => updatePermanentNoteTitle(selectedNote.id, event.currentTarget.value)}
+                  style={{ ...inputStyle, width: "100%", minHeight: 40, fontWeight: 850 }}
+                />
+              </label>
+
+              <textarea
+                value={selectedNote.text}
+                onChange={(event) =>
+                  updatePermanentNoteText(
+                    selectedNote.id,
+                    event.currentTarget.value,
+                  )
+                }
+                placeholder="Write a note…"
+                style={{
+                  ...inputStyle,
+                  width: "100%",
+                  minHeight: 120,
+                  marginTop: 14,
+                  resize: "vertical",
+                  lineHeight: 1.65,
+                  fontSize: 15,
+                }}
+              />
+
+              <div style={{ display: "grid", gap: 10, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${colors.line}` }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8 }}>
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={fieldLabelStyle}>SECTION</span>
+                    <select
+                      value={sectionFor(selectedNote.id)}
+                      onChange={(event) => movePermanentNote(selectedNote.id, event.currentTarget.value as NoteSection)}
+                      style={{ ...inputStyle, minHeight: 36 }}
+                    >
+                      {noteSections.map((option) => <option key={option} value={option}>{option}</option>)}
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={fieldLabelStyle}>FOLLOW UP</span>
+                    <input
+                      type="date"
+                      value={noteFollowUpDates[selectedNote.id] || ""}
+                      onChange={(event) => setNoteFollowUp(selectedNote.id, event.currentTarget.value)}
+                      style={{ ...inputStyle, minHeight: 36 }}
+                    />
+                  </label>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <span style={fieldLabelStyle}>RELATED RECORDS</span>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {(noteAttachments[selectedNote.id] || []).map((attachment) => (
+                      <button
+                        key={`${attachment.kind}-${attachment.id}`}
+                        type="button"
+                        onClick={() => detachNote(selectedNote.id, attachment.kind, attachment.id)}
+                        title="Remove relationship"
+                        style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "5px 8px", fontSize: 11 }}
+                      >
+                        {attachment.kind} · {attachmentLabel(attachment)} ×
+                      </button>
+                    ))}
+                    {!(noteAttachments[selectedNote.id] || []).length ? <span style={mutedSmallStyle}>No related records yet.</span> : null}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "150px minmax(0,1fr) auto", gap: 7 }}>
+                    <select value={noteAttachKind} onChange={(event) => { setNoteAttachKind(event.currentTarget.value as NoteAttachmentKind); setNoteAttachId(""); }} style={{ ...inputStyle, minHeight: 36 }}>
+                      {(["Asset", "Location", "Vendor", "Project", "Work Order", "Task", "Contact", "Procedure"] as NoteAttachmentKind[]).map((kind) => <option key={kind}>{kind}</option>)}
+                    </select>
+                    <select value={noteAttachId} onChange={(event) => setNoteAttachId(event.currentTarget.value)} style={{ ...inputStyle, minHeight: 36 }}>
+                      <option value="">Choose record…</option>
+                      {attachmentOptions(noteAttachKind).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                    </select>
+                    <button type="button" disabled={!noteAttachId} onClick={() => { attachNote(selectedNote.id, noteAttachKind, noteAttachId); setNoteAttachId(""); }} style={{ ...goldButtonStyle, opacity: noteAttachId ? 1 : .55 }}>Add Link</button>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => savePermanentNoteEdits(selectedNote.id)}
+                    style={goldButtonStyle}
+                  >
+                    Save Note
+                  </button>
+                  <button type="button" onClick={() => toggleNotePin(selectedNote.id)} style={secondaryButtonStyle}>
+                    {pinnedNoteIds.includes(selectedNote.id) ? "Unpin" : "Pin"}
+                  </button>
+                  <button type="button" onClick={() => convertNoteToTask(selectedNote)} style={secondaryButtonStyle}>Create Task</button>
+                  <button type="button" onClick={() => convertNoteToWorkOrder(selectedNote)} style={secondaryButtonStyle}>Create Work Order</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      deletePermanentNote(selectedNote.id);
+                      setSelectedNoteId("");
+                    }}
+                    style={{ ...secondaryButtonStyle, color: colors.red, marginLeft: isMobile ? 0 : "auto" }}
+                  >
+                    Delete Note
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function prepareWeeklyOwnerUpdate() {
+    const since = Date.now() - 7 * 86400000;
+    const completedTasks = workPlanTasks.filter((task) => {
+      const completedAt = taskDetails(task.id).completedAt;
+      return completedAt && new Date(completedAt).getTime() >= since;
+    });
+    const completedWork = serviceRecords.filter((record) => {
+      const completedDate = String((record as AtlasServiceRecord).lastCompletedDate || record.date || "");
+      const completedTime = completedDate ? new Date(`${completedDate.slice(0, 10)}T12:00:00`).getTime() : 0;
+      return record.status === "Completed" && completedTime >= since;
+    });
+    const activeProjects = photoTimelineProjects.filter((project) => !project.archived && project.status !== "Completed").slice(0, 5);
+    const importantProblems = [...workPlanTasks.filter((task) => taskDetails(task.id).status === "Blocked").map((task) => task.title), ...serviceRecords.filter((record) => record.status !== "Completed" && record.priority === "High").map((record) => record.title)].slice(0, 6);
+    const nextWeek = [...workPlanTasks].filter((task) => { const date = taskDetails(task.id).dueDate; return date >= todayISO() && date <= addDays(todayISO(), 7) && taskDetails(task.id).status !== "Completed"; }).slice(0, 8);
+    const bullets = (items: string[], empty: string) => items.length ? items.map((item) => `• ${item}`).join("\n") : `• ${empty}`;
+    setOwnerUpdateDraft([
+      `WEEKLY PROPERTY UPDATE — ${formatDate(todayISO())}`,
+      "",
+      "COMPLETED THIS WEEK",
+      bullets([...completedTasks.map((task) => task.title), ...completedWork.map((record) => record.title)].slice(0, 12), "No major completed work to report."),
+      "",
+      "PROPERTY UPDATES",
+      bullets(todayLogEntries.slice(0, 6).map((entry) => entry.text), "Normal weekly operations continued."),
+      "",
+      "VENDORS & PROJECTS",
+      bullets(activeProjects.map((project) => `${project.title} — ${project.status}`), "No significant vendor or project change."),
+      "",
+      "IMPORTANT PROBLEMS / DECISIONS NEEDED",
+      bullets(importantProblems, "None."),
+      "",
+      "PLANNED FOR NEXT WEEK",
+      bullets(nextWeek.map((task) => task.title), "Continue routine property operations."),
+    ].join("\n"));
+    setOwnerUpdateOpen(true);
+  }
+
+  async function approveWeeklyOwnerUpdate() {
+    const text = ownerUpdateDraft.trim();
+    if (!text) return;
+    const record = { id: uid("owner-update"), propertyId: activePropertyId, date: todayISO(), text, approvedAt: new Date().toISOString(), status: "Approved — ready to send" };
+    const sharedNote = { id: record.id, propertyId: activePropertyId, date: record.date, category: "Note" as const, text: "Weekly owner update approved and ready to send.", createdAt: record.approvedAt };
+    const saved = await postAtlasRecord("notes" as AtlasTable, { ...sharedNote, title: noteTitle(sharedNote.text), section: "General", pinned: false, followUpDate: "", attachments: [] });
+    if (!saved) { showSaveToast("Owner update was not approved because its shared Note did not sync.", "warning"); return; }
+    const key = `atlas-owner-updates-v1-${activePropertyId}`;
+    const current = readStoredArray<typeof record>([key], []);
+    saveStoredArray(key, [record, ...current]);
+    setTodayLogEntries((entries) => [sharedNote, ...entries]);
+    setOwnerUpdateOpen(false);
+    showSaveToast("Owner update approved and saved. Send it from the configured owner communication channel.");
+  }
+
+  function resetIntakeDraft() {
+    setIntakeTitle("");
+    setIntakeType("Paperwork / Scan");
+    setFastIntakeKind("Document");
+    setFastIntakeSaveMode("Attach to Existing");
+    setFastIntakeRecordName("");
+    setFastIntakeCategory("General");
+    setFastIntakeManufacturer("");
+    setFastIntakeModel("");
+    setFastIntakeSerial("");
+    setFastIntakePriority("Medium");
+    setFastIntakeRecurring(false);
+    setFastIntakeRecurrenceInterval(1);
+    setFastIntakeRecurrenceUnit("Weeks");
+    setFastIntakeRecurrenceEndDate("");
+    setFastIntakeLocationId("general");
+    setFastIntakeAppendNotes(false);
+    setIntakeNotes("");
+    setIntakePastedText("");
+    setIntakeFiles([]);
+    setIntakeMessage("Ready for the next scan, photo, upload, or pasted note.");
+  }
+
+  function applyFastIntakeKind(kind: FastIntakeKind) {
+    setFastIntakeKind(kind);
+    setIntakeType(kind);
+    setIntakeTargetId("");
+
+    if (kind === "Asset Label") {
+      setFastIntakeSaveMode("Attach to Existing");
+      setIntakeTargetKind("Asset");
+      return;
+    }
+
+    if (kind === "Invoice / Receipt") {
+      setFastIntakeSaveMode("Attach to Existing");
+      setIntakeTargetKind("Vendor");
+      return;
+    }
+
+    if (kind === "Work Order Issue") {
+      setFastIntakeSaveMode("Create Work Order");
+      setIntakeTargetKind("Asset");
+      return;
+    }
+
+    if (kind === "Gauge / Meter Reading") {
+      setFastIntakeSaveMode("Attach to Existing");
+      setIntakeTargetKind("Asset");
+      return;
+    }
+
+    setFastIntakeSaveMode("Document Only");
+    setIntakeTargetKind("General");
+  }
+
+  function appendIntakeNote(existing: string, incoming: string) {
+    const cleanExisting = existing.trim();
+    const cleanIncoming = incoming.trim();
+    if (!cleanIncoming) return cleanExisting;
+    if (!cleanExisting) return cleanIncoming;
+    if (cleanExisting.toLowerCase().includes(cleanIncoming.toLowerCase())) {
+      return cleanExisting;
+    }
+    return `${cleanExisting}\n\nFast Intake — ${new Date().toLocaleDateString()}\n${cleanIncoming}`;
+  }
+
+  async function addIntakeFiles(fileList: FileList | File[] | null) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+
+    try {
+      setIntakeMessage("Uploading file(s) securely to Atlas storage...");
+
+      const uploaded: UploadedFileRecord[] = [];
+
+      for (const file of files) {
+        const safeName = (file.name || "document")
+          .replace(/[^a-zA-Z0-9._-]+/g, "-")
+          .replace(/-+/g, "-")
+          .replace(/^-|-$/g, "");
+        const pathname = `atlas-documents/${activePropertyId}/${Date.now()}-${safeName || "document"}`;
+
+        const blob = await upload(pathname, file, {
+          access: "public",
+          handleUploadUrl: "/api/atlas-document-upload",
+          multipart: file.size > 20 * 1024 * 1024,
+          contentType: file.type || undefined,
+        });
+
+        uploaded.push({
+          id: uid("upload"),
+          name: file.name || "Uploaded file",
+          type: file.type || blob.contentType || "application/octet-stream",
+          url: blob.url,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      setIntakeFiles((current) => [...current, ...uploaded]);
+      setIntakeTitle((current) => {
+        if (current) return current;
+        const first = uploaded[0];
+        if ((first?.type || "").startsWith("image/")) return "";
+        return first?.name?.replace(/\.[^.]+$/, "") || "New Document";
+      });
+      setIntakeMessage(`${uploaded.length} file(s) uploaded and ready to save into Atlas.`);
+    } catch (error) {
+      setIntakeMessage(
+        error instanceof Error
+          ? `Atlas upload failed: ${error.message}`
+          : "Atlas could not upload that file.",
+      );
+    }
+  }
+
+  function removeIntakeFile(id: string) {
+    setIntakeFiles((current) => current.filter((file) => file.id !== id));
+  }
+
+  function persistentFileSource(file?: UploadedFileRecord | null, fallback = "") {
+    return String(file?.url || file?.dataUrl || fallback || "").trim();
+  }
+
+  function openFileInBrowser(file?: UploadedFileRecord | null, fallback = "") {
+    const source = persistentFileSource(file, fallback);
+
+    if (!source || source === "blocked" || source.includes("about:blank#blocked")) {
+      setIntakeMessage("Atlas found the document record, but no usable file URL is saved.");
+      return;
+    }
+
+    try {
+      let openUrl = source;
+      let temporaryObjectUrl = "";
+
+      if (source.startsWith("data:")) {
+        const commaIndex = source.indexOf(",");
+        if (commaIndex < 0) throw new Error("Invalid file data");
+
+        const metadata = source.slice(5, commaIndex);
+        const encoded = source.slice(commaIndex + 1);
+        const mimeType = metadata.split(";")[0] || file?.type || "application/octet-stream";
+        const isBase64 = metadata.toLowerCase().includes(";base64");
+        const binary = isBase64 ? atob(encoded) : decodeURIComponent(encoded);
+        const bytes = new Uint8Array(binary.length);
+
+        for (let index = 0; index < binary.length; index += 1) {
+          bytes[index] = binary.charCodeAt(index);
+        }
+
+        temporaryObjectUrl = URL.createObjectURL(
+          new Blob([bytes], { type: mimeType }),
+        );
+        openUrl = temporaryObjectUrl;
+      }
+
+      const opened = window.open(openUrl, "_blank");
+      if (!opened) {
+        if (temporaryObjectUrl) URL.revokeObjectURL(temporaryObjectUrl);
+        setIntakeMessage("Your browser blocked the PDF tab. Allow pop-ups for Atlas and try again.");
+        return;
+      }
+
+      opened.opener = null;
+      if (temporaryObjectUrl) {
+        window.setTimeout(() => URL.revokeObjectURL(temporaryObjectUrl), 60_000);
+      }
+    } catch (error) {
+      console.warn("Atlas could not open the saved file.", error);
+      setIntakeMessage("Atlas could not open that saved PDF. The file record may need to be re-saved.");
+    }
+  }
+
+  function openUploadedFile(file: UploadedFileRecord) {
+    if (!file.dataUrl && !file.url) {
+      setIntakeMessage(
+        "That file does not have a preview URL saved in this browser.",
+      );
+      return;
+    }
+    setPreviewZoom(100);
+    setPreviewFile(file);
+  }
+
+  function openPhotoPreview(photo: PhotoRecord) {
+    setPreviewZoom(100);
+    setPreviewFile({
+      id: photo.id,
+      name: photo.name,
+      type: "image/*",
+      dataUrl: photo.dataUrl,
+      url: photo.url,
+      createdAt: photo.createdAt,
+    });
+  }
+
+  function linkedImageFilesFor(
+    kind: IntakeTargetKind,
+    id: string,
+    includeVendorLogos = false,
+  ) {
+    if (!id) return [];
+
+    return allDocuments
+      .filter(
+        (document) =>
+          document.targetType === kind &&
+          document.targetId === id &&
+          (includeVendorLogos || document.type.toLowerCase() !== "vendor logo"),
+      )
+      .sort((a, b) =>
+        String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+      )
+      .flatMap((document) => document.files || [])
+      .filter(
+        (file) =>
+          String(file.type || "").startsWith("image/") ||
+          String(file.dataUrl || "").startsWith("data:image/"),
+      );
+  }
+
+  function vendorLogoFor(vendorId: string) {
+    if (!vendorId) return undefined;
+    const logoDocument = allDocuments
+      .filter(
+        (document) =>
+          document.targetType === "Vendor" &&
+          document.targetId === vendorId &&
+          document.type.toLowerCase() === "vendor logo",
+      )
+      .sort((a, b) =>
+        String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+      )[0];
+
+    return (logoDocument?.files || []).find(
+      (file) =>
+        String(file.type || "").startsWith("image/") ||
+        String(file.dataUrl || "").startsWith("data:image/"),
+    );
+  }
+
+  function manualsForAsset(asset: AssetRecord) {
+    if (!asset.id) return [];
+    const assetNameLower = asset.name.trim().toLowerCase();
+
+    return allManualRecords
+      .filter((manual) => {
+        if (manual.linkedAssetId === asset.id) return true;
+        const linkedName = String(manual.linkedAssetName || "")
+          .trim()
+          .toLowerCase();
+        return Boolean(
+          linkedName &&
+          assetNameLower &&
+          (linkedName === assetNameLower ||
+            linkedName.includes(assetNameLower) ||
+            assetNameLower.includes(linkedName)),
+        );
+      })
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }
+
+  function openManualUrl(manual: ManualRecord) {
+    const uploadedFile = manual.files.find((file) => file.url || file.dataUrl);
+    return cleanManualOpenUrl(
+      manual.id === "manual-seadoo-219002349"
+        ? seaDooManualUrl
+        : manual.href || uploadedFile?.url || uploadedFile?.dataUrl || "",
+    );
+  }
+
+  function showSaveToast(
+    message: string,
+    tone: "success" | "warning" = "success",
+  ) {
+    if (saveToastTimerRef.current !== null) {
+      window.clearTimeout(saveToastTimerRef.current);
+    }
+
+    setSaveToast({ message, tone });
+    saveToastTimerRef.current = window.setTimeout(() => {
+      setSaveToast(null);
+      saveToastTimerRef.current = null;
+    }, 3200);
+  }
+
+  function recordAtlasAudit(action: string, detail: string) {
+    const entry = {
+      id: uid("audit"),
+      at: new Date().toISOString(),
+      user: currentAtlasUser?.name || "Atlas user",
+      action,
+      detail,
+      propertyId: activePropertyId,
+    };
+    setAtlasAuditLog((current) => [entry, ...current].slice(0, 250));
+  }
+
+  function exportAtlasBackup() {
+    const backup = {
+      exportedAt: new Date().toISOString(),
+      propertyId: activePropertyId,
+      propertyName: atlasProperties.find((property) => property.id === activePropertyId)?.name || activePropertyId,
+      tasks: workPlanTasks.map((task) => ({ ...task, taskMeta: taskDetails(task.id) })),
+      workOrders: serviceRecords,
+      assets: assetRecords,
+      locations,
+      vendors: vendorRecords,
+      contacts: contactRecords,
+      calendar: calendarItems,
+      procedures: procedureRecords,
+      intakeDocuments: intakeDocs,
+      reminders: dashboardReminders,
+      audit: atlasAuditLog.filter((entry) => entry.propertyId === activePropertyId),
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `atlas-${activePropertyId}-backup-${todayISO()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    recordAtlasAudit("Backup exported", `Exported property ${activePropertyId}.`);
+    showSaveToast("Atlas backup downloaded.");
+  }
+
+  function restoreDeletedTask() {
+    if (!taskUndo) return;
+    const { task, meta } = taskUndo;
+    clearTaskTombstone(task.id);
+    const pendingDeleteKey = `atlas-operations-deletes-v1-${activePropertyId}`;
+    saveStoredArray(
+      pendingDeleteKey,
+      readStoredArray<{ table: string; id: string }>([pendingDeleteKey], []).filter(
+        (item) => item.table !== "tasks" || item.id !== task.id,
+      ),
+    );
+    setWorkPlanTasks((current) => current.some((item) => item.id === task.id) ? current : [task, ...current]);
+    setTaskMeta((current) => ({ ...current, [task.id]: meta }));
+    void postAtlasRecord("tasks" as AtlasTable, { ...task, ...meta, taskMeta: meta, propertyId: activePropertyId, updatedAt: new Date().toISOString() });
+    recordAtlasAudit("Task restored", task.title);
+    setTaskUndo(null);
+    if (taskUndoTimerRef.current !== null) {
+      window.clearTimeout(taskUndoTimerRef.current);
+      taskUndoTimerRef.current = null;
+    }
+    showSaveToast(`${task.title} restored.`);
+  }
+
+  async function runAtlasActionOnce<T>(
+    key: string,
+    action: () => Promise<T>,
+  ): Promise<T | undefined> {
+    if (atlasActionLocksRef.current.has(key)) {
+      showSaveToast("That action is already processing.", "warning");
+      return undefined;
+    }
+    atlasActionLocksRef.current.add(key);
+    try {
+      return await action();
+    } finally {
+      atlasActionLocksRef.current.delete(key);
+    }
+  }
+
+  async function addAssetPhotoFiles(fileList: FileList | File[] | null) {
+    if (!selectedAsset.id || !fileList?.length) return;
+
+    const incomingFiles = Array.from(fileList)
+      .map(normalizeImageFile)
+      .filter((file) => file.type.startsWith("image/"));
+
+    if (!incomingFiles.length) {
+      setDatabaseStatus("Atlas did not find an image in that item.");
+      return;
+    }
+
+    setDatabaseStatus("Preparing image for this asset...");
+
+    const settled = await Promise.allSettled(
+      incomingFiles.map(fileToUploadedRecord),
+    );
+
+    const uploaded = settled
+      .filter(
+        (result): result is PromiseFulfilledResult<UploadedFileRecord> =>
+          result.status === "fulfilled",
+      )
+      .map((result) => result.value);
+
+    const imagePhotos: PhotoRecord[] = uploaded
+      .filter(
+        (file) => String(file.type || "").startsWith("image/") && file.dataUrl,
+      )
+      .map((file) => ({
+        id: uid("photo"),
+        assetId: selectedAsset.id,
+        name: file.name || `asset-photo-${Date.now()}.jpg`,
+        dataUrl: file.dataUrl,
+        createdAt: file.createdAt || new Date().toISOString(),
+      }));
+
+    if (!imagePhotos.length) {
+      setDatabaseStatus(
+        "Atlas could not read that image. Try Copy image instead of Copy link.",
+      );
+      return;
+    }
+
+    await cachePhotoRecords(imagePhotos);
+
+    setPhotos((current) => {
+      const next = mergePhotoRecords(imagePhotos, current);
+      persistPhotoRecords(next);
+      return next;
+    });
+
+    const syncResults = await Promise.all(
+      imagePhotos.map((photo) => postAtlasRecord("asset_photos", photo)),
+    );
+
+    const syncedCount = syncResults.filter(Boolean).length;
+    const fullySynced = syncedCount === imagePhotos.length;
+
+    setDatabaseStatus(
+      fullySynced
+        ? `Added ${imagePhotos.length} photo${imagePhotos.length === 1 ? "" : "s"} to ${selectedAsset.name}. Existing photos were preserved.`
+        : `The new photo is showing in Atlas, but ${imagePhotos.length - syncedCount} image${imagePhotos.length - syncedCount === 1 ? "" : "s"} did not finish syncing. Existing photos were preserved.`,
+    );
+
+    showSaveToast(
+      fullySynced
+        ? `${imagePhotos.length === 1 ? "Photo" : "Photos"} saved to ${selectedAsset.name}.`
+        : `${imagePhotos.length === 1 ? "Photo" : "Photos"} saved on this device; Atlas sync did not finish.`,
+      fullySynced ? "success" : "warning",
+    );
+  }
+
+  async function addLinkedPhotoFiles(
+    kind: "Location" | "Vendor",
+    id: string,
+    recordName: string,
+    fileList: FileList | File[] | null,
+    documentType = "Photo",
+  ) {
+    if (!id || !fileList?.length) return;
+
+    const uploaded = (
+      await Promise.all(Array.from(fileList).map(fileToUploadedRecord))
+    ).filter(
+      (file) => String(file.type || "").startsWith("image/") && file.dataUrl,
+    );
+
+    if (!uploaded.length) return;
+
+    const createdAt = new Date().toISOString();
+    const record = normalizeDocument({
+      id: uid("doc"),
+      title:
+        documentType === "Vendor Logo"
+          ? `${recordName} logo`
+          : `${recordName} photo`,
+      area: recordName,
+      type: documentType,
+      targetType: kind,
+      targetId: id,
+      targetName: recordName,
+      linkedVendorId: kind === "Vendor" ? id : undefined,
+      notes:
+        documentType === "Vendor Logo"
+          ? "Company logo uploaded from the vendor record."
+          : `Photo uploaded from the ${kind.toLowerCase()} record.`,
+      files: uploaded,
+      createdAt,
+    });
+
+    replaceDocumentInVault(record);
+
+    try {
+      await postDocumentToAtlasVault(record);
+      setDocumentSyncStatus(
+        `${documentType} added to ${recordName} and synced to Atlas.`,
+      );
+      showSaveToast(`${documentType} saved to ${recordName}.`);
+    } catch {
+      setDocumentSyncStatus(
+        `${documentType} added to ${recordName} on this browser. Atlas vault sync did not complete.`,
+      );
+      showSaveToast(
+        `${documentType} saved on this device; Atlas sync did not finish.`,
+        "warning",
+      );
+    }
+  }
+
+  function imageFilesFromPasteEvent(event: React.ClipboardEvent<HTMLElement>) {
+    return Array.from(event.clipboardData?.items || [])
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file))
+      .map(normalizeImageFile)
+      .filter((file) => file.type.startsWith("image/"));
+  }
+
+  function imagePayloadFromPasteEvent(
+    event: React.ClipboardEvent<HTMLElement>,
+  ) {
+    const files = Array.from(event.clipboardData?.items || [])
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file))
+      .map(normalizeImageFile)
+      .filter((file) => file.type.startsWith("image/"));
+
+    const html = event.clipboardData?.getData("text/html") || "";
+    const plainText = event.clipboardData?.getData("text/plain") || "";
+    const urls = [
+      ...imageUrlsFromClipboardText(html),
+      ...imageUrlsFromClipboardText(plainText),
+    ];
+
+    return {
+      files,
+      urls: [...new Set(urls)],
+    };
+  }
+
+  async function filesFromClipboardPayload(files: File[], urls: string[]) {
+    const directImages = files
+      .map(normalizeImageFile)
+      .filter((file) => file.type.startsWith("image/"));
+
+    // A browser clipboard often contains the same copied picture twice:
+    // once as the actual image file and again as an HTML/plain-text image URL.
+    // If we already have the real image bytes, use those only. Importing the
+    // URL as well creates a second Atlas photo for one paste.
+    if (directImages.length) {
+      const uniqueDirect = new Map<string, File>();
+      directImages.forEach((file) => {
+        const key = `${file.type}|${file.size}|${file.lastModified}`;
+        if (!uniqueDirect.has(key)) uniqueDirect.set(key, file);
+      });
+      return [...uniqueDirect.values()];
+    }
+
+    const imported: File[] = [];
+    for (const url of [...new Set(urls)]) {
+      if (imported.length >= 10) break;
+      try {
+        imported.push(await importImageUrlAsFile(url));
+      } catch {
+        // Continue through the remaining clipboard URLs.
+      }
+    }
+
+    const uniqueImported = new Map<string, File>();
+    imported.forEach((file) => {
+      const key = `${file.name}|${file.type}|${file.size}`;
+      if (!uniqueImported.has(key)) uniqueImported.set(key, file);
+    });
+
+    return [...uniqueImported.values()];
+  }
+
+  async function readClipboardImageFiles() {
+    if (!navigator.clipboard || !("read" in navigator.clipboard)) {
+      throw new Error(
+        "Click inside the asset panel and press Ctrl+V or Command+V to paste the image.",
+      );
+    }
+
+    const clipboardItems = await navigator.clipboard.read();
+    const directFiles: File[] = [];
+    const urls: string[] = [];
+
+    for (const item of clipboardItems) {
+      for (const type of item.types) {
+        const blob = await item.getType(type);
+
+        if (type.startsWith("image/")) {
+          const extension = type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+          directFiles.push(
+            new File([blob], `pasted-ai-image-${Date.now()}.${extension}`, {
+              type,
+            }),
+          );
+          continue;
+        }
+
+        if (type === "text/html" || type === "text/plain") {
+          const text = await blob.text();
+          urls.push(...imageUrlsFromClipboardText(text));
+        }
+      }
+    }
+
+    const files = await filesFromClipboardPayload(directFiles, [
+      ...new Set(urls),
+    ]);
+
+    if (!files.length) {
+      throw new Error(
+        "No image was found. On the AI picture, choose Copy image—not Copy link—then click Paste Image.",
+      );
+    }
+
+    return files;
+  }
+
+  async function pasteAssetPhoto() {
+    try {
+      setDatabaseStatus("Reading copied image...");
+      const files = await readClipboardImageFiles();
+      await addAssetPhotoFiles(files);
+    } catch (error) {
+      setDatabaseStatus(
+        error instanceof Error ? error.message : "Could not paste that image.",
+      );
+    }
+  }
+
+  async function pasteLinkedPhoto(
+    kind: "Location" | "Vendor",
+    id: string,
+    recordName: string,
+    documentType = "Photo",
+  ) {
+    try {
+      const files = await readClipboardImageFiles();
+      await addLinkedPhotoFiles(kind, id, recordName, files, documentType);
+    } catch (error) {
+      setDocumentSyncStatus(
+        error instanceof Error ? error.message : "Could not paste that image.",
+      );
+    }
+  }
+
+  async function deleteAssetPhoto(photo: PhotoRecord) {
+    if (!window.confirm(`Delete photo ${photo.name}?`)) return;
+    const deleted = await deleteAtlasRecord("asset_photos", photo.id);
+    if (!deleted) return;
+    await deleteCachedPhoto(photo.id);
+    setPhotos((current) => {
+      const next = current.filter((item) => item.id !== photo.id);
+      persistPhotoRecords(next);
+      return next;
+    });
+  }
+
+  async function deleteLinkedImage(file: UploadedFileRecord) {
+    const record = intakeDocs.find((document) =>
+      (document.files || []).some((item) => item.id === file.id),
+    );
+    if (!record) {
+      setDocumentSyncStatus(
+        "That image is not stored in the editable Atlas vault.",
+      );
+      return;
+    }
+    if (!window.confirm(`Delete image ${file.name}?`)) return;
+
+    const remainingFiles = (record.files || []).filter(
+      (item) => item.id !== file.id,
+    );
+    if (remainingFiles.length) {
+      const updated = normalizeDocument({ ...record, files: remainingFiles });
+      replaceDocumentInVault(updated);
+      try {
+        await postDocumentToAtlasVault(updated);
+        setDocumentSyncStatus(`Deleted ${file.name} from Atlas.`);
+      } catch {
+        setDocumentSyncStatus(
+          `Deleted ${file.name} on this browser. Atlas sync did not complete.`,
+        );
+      }
+      return;
+    }
+
+    setIntakeDocs((current) => {
+      const next = current.filter((document) => document.id !== record.id);
+      saveStoredArray(storageKeys.intakeDocs[0], next);
+      return next;
+    });
+    try {
+      await deleteDocumentFromAtlasVault(record.id);
+      setDocumentSyncStatus(`Deleted ${file.name} from Atlas.`);
+    } catch {
+      setDocumentSyncStatus(
+        `Deleted ${file.name} on this browser. Atlas sync did not complete.`,
+      );
+    }
+  }
+
+  async function deleteAssetRecord(record: AssetRecord) {
+    if (!record.id) return;
+    if (!window.confirm(`Delete asset ${record.name || "this asset"}?`)) return;
+
+    const actionKey = `delete-asset:${record.id}`;
+    if (atlasActionLocksRef.current.has(actionKey)) {
+      showSaveToast("This asset is already being deleted.", "warning");
+      return;
+    }
+
+    atlasActionLocksRef.current.add(actionKey);
+    const relatedPhotos = photos.filter((photo) => photo.assetId === record.id);
+
+    const normalizedRecord = normalizeAtlasSaveRecord("assets", {
+      ...record,
+      propertyId: activePropertyId,
+    });
+    const saveKey = atlasRecordKey("assets", normalizedRecord);
+
+    try {
+      // If this asset is currently being saved, let that save finish first.
+      // Otherwise the late POST can recreate the row after DELETE succeeds.
+      const pendingSave = atlasSaveQueueRef.current.get(saveKey);
+      if (pendingSave) {
+        try {
+          await pendingSave;
+        } catch {
+          // The delete below is still authoritative.
+        }
+      }
+
+      // Block every later asset save before DELETE is sent.
+      rememberDeletedAssetId(record.id, activePropertyId);
+      const generatedAsset = isCodeGeneratedAsset(record);
+      if (generatedAsset) {
+        rememberDeletedGeneratedAssetName(
+          record.name || "",
+          activePropertyId,
+        );
+      }
+
+      const deleted = await deleteAtlasRecord("assets", record.id);
+      if (!deleted) {
+        forgetDeletedAssetId(record.id, activePropertyId);
+        if (generatedAsset) {
+          forgetDeletedGeneratedAssetName(
+            record.name || "",
+            activePropertyId,
+          );
+        }
+        showSaveToast(`Atlas could not delete ${record.name || "that asset"}.`, "warning");
+        return;
+      }
+
+      atlasLastSaveRef.current.delete(saveKey);
+      atlasSaveQueueRef.current.delete(saveKey);
+
+      await Promise.all(
+        relatedPhotos.map((photo) => deleteCachedPhoto(photo.id)),
+      );
+
+      setAssetRecords((current) =>
+        current.filter((item) => item.id !== record.id),
+      );
+      setPhotos((current) => {
+        const next = current.filter((photo) => photo.assetId !== record.id);
+        persistPhotoRecords(next);
+        return next;
+      });
+      setFavoriteAssetIds((current) => current.filter((id) => id !== record.id));
+      setRecentAssetIds((current) => current.filter((id) => id !== record.id));
+      setSelectedAssetIds((current) => current.filter((id) => id !== record.id));
+      setSelectedAssetId("");
+      setAssetEditorOpen(false);
+      showSaveToast(`${record.name || "Asset"} deleted.`);
+    } finally {
+      atlasActionLocksRef.current.delete(actionKey);
+    }
+  }
+
+  async function deleteVendorRecord(record: VendorRecord) {
+    if (!window.confirm(`Delete vendor ${record.name || "this vendor"}?`))
+      return;
+    const deleted = await deleteAtlasRecord("vendors", record.id);
+    if (!deleted) return;
+    setVendorRecords((current) =>
+      current.filter((item) => item.id !== record.id),
+    );
+    setSelectedVendorId("");
+  }
+
+  async function deleteWorkOrderRecord(record: ServiceRecord) {
+    if (
+      !window.confirm(`Delete work order ${record.title || "this work order"}?`)
+    )
+      return;
+    const recordId = String(record.id || "");
+    if (!recordId) return;
+    const actionKey = `delete-work-order:${recordId}`;
+    if (atlasActionLocksRef.current.has(actionKey)) {
+      showSaveToast("This work order is already being deleted.", "warning");
+      return;
+    }
+    atlasActionLocksRef.current.add(actionKey);
+    setDatabaseStatus(`Deleting ${record.title || "work order"}...`);
+
+    try {
+      const deleted = await deleteAtlasRecord("work_orders", recordId, {
+        suppressFailureToast: true,
+      });
+      if (!deleted) {
+        setDatabaseStatus(`${record.title || "Work order"} was not deleted.`);
+        showSaveToast("Work order delete did not finish. Nothing was removed locally.", "warning");
+        return;
+      }
+
+      addWorkOrderTombstone(recordId);
+      const linkedCalendarRecords = calendarItems.filter(
+        (item) => String(item.linkedId || "") === recordId,
+      );
+      for (const item of linkedCalendarRecords) {
+        rememberCalendarDeletion(item);
+        await deleteAtlasRecord("calendar", item.id, {
+          suppressFailureToast: true,
+        });
+      }
+
+      setServiceRecords((current) =>
+        current.filter((item) => String(item.id || "") !== recordId),
+      );
+      if (linkedCalendarRecords.length) {
+        const linkedIds = new Set(linkedCalendarRecords.map((item) => item.id));
+        setCalendarItems((current) =>
+          current.filter((item) => !linkedIds.has(item.id)),
+        );
+      }
+      setSelectedServiceId((current) => (current === recordId ? "" : current));
+      clearRecordDirty("work_order", recordId);
+      setDatabaseStatus(`Deleted ${record.title || "work order"}.`);
+      showSaveToast(`${record.title || "Work order"} deleted.`);
+    } finally {
+      atlasActionLocksRef.current.delete(actionKey);
+    }
+  }
+
+  async function deleteProcedureRecord(record: ProcedureRecord) {
+    if (
+      !window.confirm(`Delete procedure ${record.title || "this procedure"}?`)
+    )
+      return;
+    const deleted = await deleteAtlasRecord("procedures", record.id);
+    if (!deleted) return;
+    setProcedureRecords((current) =>
+      current.filter((item) => item.id !== record.id),
+    );
+    setSelectedProcedureId("");
+  }
+
+  async function deletePartRecord(record: PartRecord) {
+    if (!window.confirm(`Delete part ${record.name || "this part"}?`)) return;
+    const deleted = await deleteAtlasRecord("parts", record.id);
+    if (!deleted) return;
+    setPartRecords((current) =>
+      current.filter((item) => item.id !== record.id),
+    );
+    setSelectedPartId("");
+  }
+
+  function deleteMapLabelRecord(record: MapLabelRecord) {
+    if (!window.confirm(`Delete map label ${record.label || "this label"}?`))
+      return;
+    setMapLabels((current) => current.filter((item) => item.id !== record.id));
+    setSelectedMapLabelId("");
+  }
+
+  async function deleteManualRecord(record: ManualRecord) {
+    if (!window.confirm(`Delete manual ${record.title}?`)) return;
+    setManualRecords((current) => {
+      const next = current.filter((item) => item.id !== record.id);
+      saveStoredArray(storageKeys.manuals[0], next);
+      return next;
+    });
+
+    const matchingDocuments = intakeDocs.filter((document) => {
+      const sameHref =
+        cleanManualOpenUrl(document.href || "") &&
+        cleanManualOpenUrl(document.href || "") ===
+          cleanManualOpenUrl(record.href || "");
+      const sameTitle =
+        document.title.trim().toLowerCase() ===
+        record.title.trim().toLowerCase();
+      return sameHref || sameTitle;
+    });
+    for (const document of matchingDocuments) {
+      setIntakeDocs((current) =>
+        current.filter((item) => item.id !== document.id),
+      );
+      try {
+        await deleteDocumentFromAtlasVault(document.id);
+      } catch {
+        // Manual is still removed locally if the vault call is unavailable.
+      }
+    }
+    setSelectedManualId("");
+  }
+
+  async function uploadManualForAsset(
+    asset: AssetRecord,
+    fileList: FileList | null,
+  ): Promise<{ ok: boolean; title?: string; message?: string }> {
+    if (!asset.id || !fileList?.length) {
+      return { ok: false, message: "No PDF selected." };
+    }
+
+    const file = Array.from(fileList).find(
+      (item) =>
+        item.type === "application/pdf" ||
+        item.name.toLowerCase().endsWith(".pdf"),
+    );
+    if (!file) {
+      showSaveToast("Choose a PDF manual.", "warning");
+      return { ok: false, message: "Choose a PDF manual." };
+    }
+
+    const title =
+      file.name.replace(/\.pdf$/i, "").trim() || "Equipment Manual";
+
+    try {
+      const safeName = (file.name || "manual.pdf")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+
+      const pathname = `atlas-documents/${activePropertyId}/${asset.id}/${Date.now()}-${safeName || "manual.pdf"}`;
+
+      const blob = await upload(pathname, file, {
+        access: "public",
+        handleUploadUrl: "/api/atlas-document-upload",
+        multipart: file.size > 20 * 1024 * 1024,
+        contentType: file.type || "application/pdf",
+      });
+
+      const uploadedFile: UploadedFileRecord = {
+        id: uid("upload"),
+        name: file.name || "manual.pdf",
+        type: file.type || blob.contentType || "application/pdf",
+        url: blob.url,
+        createdAt: new Date().toISOString(),
+      };
+
+      const createdAt = new Date().toISOString();
+
+      const manual = normalizeManualRecord({
+        id: uid("manual"),
+        title,
+        category: inferManualCategory(title),
+        manufacturer: asset.make || "",
+        model: asset.model || "",
+        documentNumber: "",
+        linkedAssetId: asset.id,
+        linkedAssetName: asset.name,
+        sourceLabel: "Asset upload",
+        href: blob.url,
+        notes: "",
+        files: [uploadedFile],
+        createdAt,
+      });
+
+      const documentRecord = normalizeDocument({
+        id: uid("doc"),
+        title,
+        area: locationName(asset.locationId) || asset.name,
+        type: "Equipment Manual / PDF",
+        targetType: "Asset",
+        targetId: asset.id,
+        targetName: asset.name,
+        linkedAssetId: asset.id,
+        notes: "",
+        href: blob.url,
+        files: [uploadedFile],
+        createdAt,
+      });
+
+      await postDocumentToAtlasVault(documentRecord);
+      replaceDocumentInVault(documentRecord);
+
+      setManualRecords((current) => {
+        const next = [manual, ...current];
+        saveStoredArray(storageKeys.manuals[0], next);
+        return next;
+      });
+
+      showSaveToast(`${title} saved to ${asset.name}.`);
+      return { ok: true, title };
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Atlas could not save that manual.";
+      showSaveToast(`Manual was not saved: ${message}`, "warning");
+      return { ok: false, title, message };
+    }
+  }
+
+    function startManualForAsset(asset: AssetRecord) {
+    if (!asset.id) return;
+    setSelectedManualId("");
+    setManualDraft(
+      normalizeManualRecord({
+        ...blankManual(),
+        linkedAssetId: asset.id,
+        linkedAssetName: asset.name,
+        manufacturer: asset.make || "",
+        model: asset.model || "",
+      }),
+    );
+    setManualAddOpen(true);
+    setManualMessage(`Adding a manual for ${asset.name}.`);
+    setScreen("manuals");
+  }
+
+  function findManualForAsset(asset: AssetRecord) {
+    if (!asset.id) return;
+    const equipment = [asset.make, asset.model]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    const question = `Find the official owner or operator manual for ${
+      equipment || asset.name
+    }. Use the exact Atlas asset ${asset.name}${
+      asset.serial ? `, serial ${asset.serial}` : ""
+    }, and attach the best verified result to this asset.`;
+
+    setAssistantQuestion(question);
+    setScreen("assistant");
+    void askAtlas(question);
+  }
+
+  async function refreshDocumentVault() {
+    try {
+      setDocumentSyncStatus("Loading synced documents from Atlas...");
+      const response = await fetch(`/api/atlas-documents?propertyId=${encodeURIComponent(activePropertyId)}`, {
+        cache: "no-store",
+      });
+      if (!response.ok)
+        throw new Error(`Document API returned ${response.status}`);
+
+      const payload = (await response.json()) as {
+        documents?: DocumentRecord[];
+      };
+      const apiDocs = Array.isArray(payload.documents)
+        ? payload.documents.map(normalizeDocument)
+        : [];
+      const localDocs = activePropertyId === "2000"
+        ? mergeDocuments(
+            intakeDocs,
+            readStoredArray<DocumentRecord>(storageKeys.intakeDocs, []).map(
+              normalizeDocument,
+            ),
+          )
+        : intakeDocs.filter((document) => document.propertyId === activePropertyId);
+      const apiIds = new Set(apiDocs.map((doc) => doc.id));
+      const localOnlyDocs = localDocs.filter((doc) => !apiIds.has(doc.id));
+
+      let uploadedLocalCount = 0;
+      for (const localDoc of localOnlyDocs) {
+        try {
+          await postDocumentToAtlasVault(localDoc);
+          uploadedLocalCount += 1;
+        } catch {
+          // Keep local copy. Large files may need to be re-saved after compression.
+        }
+      }
+
+      const merged = mergeDocuments(apiDocs, localDocs);
+      setIntakeDocs(merged);
+      saveStoredArray(storageKeys.intakeDocs[0], merged);
+
+      setDocumentSyncStatus(
+        uploadedLocalCount
+          ? `Synced ${apiDocs.length} document(s) from Atlas and pushed ${uploadedLocalCount} phone/local document(s) up to the vault.`
+          : `Synced ${apiDocs.length} document(s) from Atlas. Phone uploads should show on desktop after Refresh Vault.`,
+      );
+    } catch {
+      const localDocs = readStoredArray<DocumentRecord>(
+        storageKeys.intakeDocs,
+        [],
+      ).map(normalizeDocument);
+      setIntakeDocs((current) => (current.length ? current : localDocs));
+      setDocumentSyncStatus(
+        "Document sync API is not installed or not reachable, so this browser is showing only its local vault.",
+      );
+    }
+  }
+
+  async function postDocumentToAtlasVault(record: DocumentRecord) {
+    const response = await fetch("/api/atlas-documents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ record: { ...record, propertyId: activePropertyId } }),
+    });
+
+    if (!response.ok) {
+      let message = `Document API returned ${response.status}`;
+      try {
+        const payload = await response.json();
+        if (payload?.error) message = String(payload.error);
+      } catch {
+        // Keep default message.
+      }
+      throw new Error(message);
+    }
+
+    return response.json();
+  }
+
+  async function deleteDocumentFromAtlasVault(id: string) {
+    const response = await fetch(
+      `/api/atlas-documents?id=${encodeURIComponent(id)}`,
+      { method: "DELETE" },
+    );
+    if (!response.ok)
+      throw new Error(`Document delete returned ${response.status}`);
+    return response.json();
+  }
+
+  function replaceDocumentInVault(record: DocumentRecord) {
+    const normalized = normalizeDocument(record);
+    setIntakeDocs((current) => {
+      const next = current.map((doc) =>
+        doc.id === normalized.id ? normalized : doc,
+      );
+      const withRecord = next.some((doc) => doc.id === normalized.id)
+        ? next
+        : [normalized, ...next];
+      saveStoredArray(storageKeys.intakeDocs[0], withRecord);
+      return withRecord;
+    });
+  }
+
+  function updateSelectedDocument(id: string, patch: Partial<DocumentRecord>) {
+    setIntakeDocs((current) => {
+      const next = current.map((doc) =>
+        doc.id === id ? normalizeDocument({ ...doc, ...patch }) : doc,
+      );
+      saveStoredArray(storageKeys.intakeDocs[0], next);
+      return next;
+    });
+  }
+
+  async function saveSelectedDocument(record: DocumentRecord) {
+    const normalized = normalizeDocument(record);
+    replaceDocumentInVault(normalized);
+    try {
+      await postDocumentToAtlasVault(normalized);
+      setDocumentSyncStatus(
+        `Saved changes to ${normalized.title} and synced to Atlas.`,
+      );
+    } catch (error) {
+      setDocumentSyncStatus(
+        error instanceof Error
+          ? `Saved locally, but Atlas sync failed: ${error.message}`
+          : "Saved locally, but Atlas sync failed.",
+      );
+    }
+  }
+
+  async function replaceSelectedDocumentFile(record: DocumentRecord, file?: File) {
+    if (!file) return;
+    const confirmed = window.confirm(`Replace the primary file for ${record.title || "this document"} with ${file.name}?`);
+    if (!confirmed) return;
+    try {
+      const dataUrl = await readFileDataUrl(file);
+      const replacement: UploadedFileRecord = {
+        id: uid("document-file"),
+        name: file.name,
+        type: file.type,
+        dataUrl,
+        createdAt: new Date().toISOString(),
+      };
+      const updated = normalizeDocument({
+        ...record,
+        href: "",
+        files: [replacement, ...(record.files || []).slice(1)],
+      });
+      replaceDocumentInVault(updated);
+      await postDocumentToAtlasVault(updated);
+      setDocumentSyncStatus(`Replaced the file for ${updated.title} and synced to Atlas.`);
+    } catch (error) {
+      setDocumentSyncStatus(error instanceof Error ? `File replacement failed: ${error.message}` : "File replacement failed.");
+    }
+  }
+
+  async function deleteSelectedDocument(record: DocumentRecord) {
+    const confirmed = window.confirm(
+      `Delete ${record.title}? This removes the document or photo from Atlas and from every view that uses this document record. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setIntakeDocs((current) => {
+      const next = current.filter((doc) => doc.id !== record.id);
+      saveStoredArray(storageKeys.intakeDocs[0], next);
+      return next;
+    });
+    setSelectedDocumentId("");
+
+    try {
+      await deleteDocumentFromAtlasVault(record.id);
+      setDocumentSyncStatus(`Deleted ${record.title} from Atlas.`);
+    } catch {
+      setDocumentSyncStatus(
+        `Deleted ${record.title} from this browser. Refresh after the API update to confirm it is gone from Atlas.`,
+      );
+    }
+  }
+
+  function handlePreviewTouchStart(event: React.TouchEvent<HTMLDivElement>) {
+    if (event.touches.length !== 2) return;
+    const [first, second] = [event.touches[0], event.touches[1]];
+    const distance = Math.hypot(
+      first.clientX - second.clientX,
+      first.clientY - second.clientY,
+    );
+    previewTouchRef.current = { distance, zoom: previewZoom };
+  }
+
+  function handlePreviewTouchMove(event: React.TouchEvent<HTMLDivElement>) {
+    if (event.touches.length !== 2 || !previewTouchRef.current) return;
+    event.preventDefault();
+
+    const [first, second] = [event.touches[0], event.touches[1]];
+    const distance = Math.hypot(
+      first.clientX - second.clientX,
+      first.clientY - second.clientY,
+    );
+    const nextZoom = Math.round(
+      previewTouchRef.current.zoom *
+        (distance / previewTouchRef.current.distance),
+    );
+    setPreviewZoom(Math.max(50, Math.min(500, nextZoom)));
+  }
+
+  function handlePreviewTouchEnd() {
+    previewTouchRef.current = null;
+  }
+
+  async function saveIntakeDocument() {
+    if (
+      !intakeFiles.length &&
+      !intakePastedText.trim() &&
+      !intakeNotes.trim()
+    ) {
+      setIntakeMessage(
+        "Add a photo, file, pasted text, or note before saving.",
+      );
+      return;
+    }
+
+    if (intakePhotoNeedsName) {
+      setIntakeMessage(
+        "Name this photo before saving so it will be easy to find later.",
+      );
+      intakePhotoNameRef.current?.focus();
+      return;
+    }
+
+    if (fastIntakeDuplicateWarning) {
+      setIntakeMessage(fastIntakeDuplicateWarning);
+      return;
+    }
+
+    const title =
+      intakeTitle.trim() ||
+      fastIntakeRecordName.trim() ||
+      intakeFiles[0]?.name?.replace(/\.[^.]+$/, "") ||
+      intakePastedText.trim().slice(0, 48) ||
+      "New Atlas Intake";
+
+    const combinedNotes = [intakeNotes.trim(), intakePastedText.trim()]
+      .filter(Boolean)
+      .join("\n\n");
+
+    let finalTargetKind: IntakeTargetKind = intakeTargetKind;
+    let finalTargetId = intakeTargetKind === "General" ? "" : intakeTargetId;
+    let finalTargetName = targetNameFor(finalTargetKind, finalTargetId);
+    let createdLabel = "document";
+
+    if (
+      (fastIntakeSaveMode === "Attach to Existing" ||
+        fastIntakeSaveMode === "Create Work Order") &&
+      intakeTargetKind !== "General" &&
+      !intakeTargetId
+    ) {
+      setIntakeMessage(
+        "Choose the existing record before approving the save.",
+      );
+      return;
+    }
+
+    try {
+      if (fastIntakeSaveMode === "Create Work Order") {
+        const workOrder = normalizeService({
+          id: uid("service"),
+          assetId: intakeTargetKind === "Asset" ? intakeTargetId : "",
+          vendorId: intakeTargetKind === "Vendor" ? intakeTargetId : "",
+          date: todayISO(),
+          title: fastIntakeRecordName.trim() || title,
+          status: "Open",
+          priority: fastIntakePriority,
+          recurring: fastIntakeRecurring,
+          recurrenceInterval: Math.max(1, fastIntakeRecurrenceInterval),
+          recurrenceUnit: fastIntakeRecurrenceUnit,
+          recurrenceEndDate: fastIntakeRecurring ? fastIntakeRecurrenceEndDate : "",
+          workType: fastIntakeRecurring ? "Preventive Maintenance" : "Work Order",
+          notes: combinedNotes,
+          photos: intakeFiles.filter((file) =>
+            (file.type || "").startsWith("image/"),
+          ),
+          documents: intakeFiles,
+        });
+        const saved = await postAtlasRecord("work_orders", workOrder);
+        if (!saved) throw new Error("Work order did not save.");
+        setServiceRecords((current) => workOrdersByIdentity([...current, workOrder]));
+        finalTargetKind = "Work Order";
+        finalTargetId = workOrder.id;
+        finalTargetName = workOrder.title;
+        createdLabel = "work order and intake record";
+      }
+
+      if (fastIntakeSaveMode === "Create Asset") {
+        const asset = normalizeAsset({
+          id: uid("asset"),
+          name: fastIntakeRecordName.trim() || title,
+          locationId: fastIntakeLocationId || "general",
+          category: fastIntakeCategory.trim() || "General",
+          make: fastIntakeManufacturer.trim(),
+          manufacturer: fastIntakeManufacturer.trim(),
+          model: fastIntakeModel.trim(),
+          serial: fastIntakeSerial.trim(),
+          status: "Monitor",
+          notes: combinedNotes,
+          vendorIds:
+            intakeTargetKind === "Vendor" && intakeTargetId
+              ? [intakeTargetId]
+              : [],
+        });
+        const saved = await postAtlasRecord("assets", asset);
+        if (!saved) throw new Error("Asset did not save.");
+        setAssetRecords((current) => byName([...current, asset]));
+        finalTargetKind = "Asset";
+        finalTargetId = asset.id;
+        finalTargetName = asset.name;
+        createdLabel = "asset and intake record";
+      }
+
+      if (fastIntakeSaveMode === "Create Vendor") {
+        const vendor = normalizeDepartmentVendor({
+          id: uid("vendor"),
+          name: fastIntakeRecordName.trim() || title,
+          category: fastIntakeCategory.trim() || "General",
+          notes: combinedNotes,
+        });
+        const saved = await postAtlasRecord("vendors", vendor);
+        if (!saved) throw new Error("Vendor did not save.");
+        setVendorRecords((current) => byName([...current, vendor]));
+        finalTargetKind = "Vendor";
+        finalTargetId = vendor.id;
+        finalTargetName = vendor.name;
+        createdLabel = "vendor and intake record";
+      }
+
+      if (fastIntakeSaveMode === "Document Only") {
+        finalTargetKind = "General";
+        finalTargetId = "";
+        finalTargetName = "General";
+      }
+
+      if (
+        fastIntakeSaveMode === "Attach to Existing" &&
+        intakeTargetKind === "Asset"
+      ) {
+        const existing = assetRecords.find(
+          (item) => item.id === intakeTargetId,
+        );
+        if (!existing) throw new Error("The selected asset could not be found.");
+        const updated = normalizeAsset({
+          ...existing,
+          make: existing.make || fastIntakeManufacturer.trim(),
+          manufacturer:
+            existing.manufacturer || fastIntakeManufacturer.trim(),
+          model: existing.model || fastIntakeModel.trim(),
+          serial: existing.serial || fastIntakeSerial.trim(),
+          notes:
+            fastIntakeAppendNotes && combinedNotes
+              ? appendIntakeNote(existing.notes, combinedNotes)
+              : existing.notes,
+        });
+        const saved = await postAtlasRecord("assets", updated);
+        if (!saved) throw new Error("Asset details did not save.");
+        setAssetRecords((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        createdLabel = "asset details, photo, and intake record";
+      }
+
+      if (
+        fastIntakeSaveMode === "Attach to Existing" &&
+        fastIntakeAppendNotes &&
+        combinedNotes
+      ) {
+
+        if (intakeTargetKind === "Vendor") {
+          const existing = vendorRecords.find(
+            (item) => item.id === intakeTargetId,
+          );
+          if (existing) {
+            const updated = normalizeDepartmentVendor({
+              ...existing,
+              notes: appendIntakeNote(existing.notes, combinedNotes),
+            });
+            const saved = await postAtlasRecord("vendors", updated);
+            if (!saved) throw new Error("Vendor note update did not save.");
+            setVendorRecords((current) =>
+              current.map((item) => (item.id === updated.id ? updated : item)),
+            );
+          }
+        }
+
+        if (intakeTargetKind === "Work Order") {
+          const existing = serviceRecords.find(
+            (item) => item.id === intakeTargetId,
+          );
+          if (existing) {
+            const updated = normalizeService({
+              ...existing,
+              notes: appendIntakeNote(existing.notes, combinedNotes),
+              photos: mergeUploadedFiles(
+                intakeFiles.filter((file) =>
+                  (file.type || "").startsWith("image/"),
+                ),
+                existing.photos || [],
+              ),
+              documents: mergeUploadedFiles(
+                intakeFiles,
+                existing.documents || [],
+              ),
+            });
+            const saved = await postAtlasRecord("work_orders", updated);
+            if (!saved) throw new Error("Work order update did not save.");
+            setServiceRecords((current) =>
+              current.map((item) => (item.id === updated.id ? updated : item)),
+            );
+          }
+        }
+      }
+
+      const record: DocumentRecord = {
+        propertyId: activePropertyId,
+        id: uid("doc"),
+        title,
+        area: finalTargetName,
+        type: fastIntakeKind || intakeType.trim() || "Paperwork / Scan",
+        linkedAssetId: finalTargetKind === "Asset" ? finalTargetId : undefined,
+        linkedVendorId:
+          finalTargetKind === "Vendor" ? finalTargetId : undefined,
+        targetType: finalTargetKind,
+        targetId: finalTargetKind === "General" ? "" : finalTargetId,
+        targetName: finalTargetName,
+        notes: intakeNotes.trim(),
+        pastedText: intakePastedText.trim(),
+        files: intakeFiles,
+        createdAt: new Date().toISOString(),
+      };
+
+      const normalizedRecord = normalizeDocument({
+        ...record,
+        propertyId: activePropertyId,
+      });
+
+      replaceDocumentInVault(normalizedRecord);
+      setSelectedDocumentId(normalizedRecord.id);
+
+      let syncedToVault = false;
+      try {
+        const payload = await postDocumentToAtlasVault(normalizedRecord);
+        const savedRecord = payload?.document || payload?.record;
+        if (savedRecord) {
+          replaceDocumentInVault(
+            normalizeDocument({
+              ...savedRecord,
+              propertyId: activePropertyId,
+            }),
+          );
+        }
+        syncedToVault = true;
+        setDocumentSyncStatus(
+          "Fast Intake synced to the Atlas Document Vault.",
+        );
+      } catch (error) {
+        setDocumentSyncStatus(
+          error instanceof Error
+            ? `Fast Intake saved locally, but vault sync failed: ${error.message}`
+            : "Fast Intake saved locally, but document-vault sync failed.",
+        );
+      }
+
+      if (normalizedRecord.targetType === "Asset" && normalizedRecord.targetId) {
+        const imageFiles = (normalizedRecord.files || []).filter(
+          (file) =>
+            (file.type || "").startsWith("image/") &&
+            Boolean(file.url || file.dataUrl),
+        );
+        const imagePhotos: PhotoRecord[] = imageFiles.map((file, index) => ({
+          id: uid("photo"),
+          assetId: normalizedRecord.targetId || "",
+          name:
+            imageFiles.length > 1
+              ? `${normalizedRecord.title} ${index + 1}`
+              : normalizedRecord.title,
+          dataUrl: file.dataUrl || undefined,
+          url: file.url || undefined,
+          createdAt: file.createdAt || new Date().toISOString(),
+        }));
+
+        if (imagePhotos.length) {
+          await cachePhotoRecords(imagePhotos);
+          setPhotos((current) => {
+            const nextPhotos = mergePhotoRecords(imagePhotos, current);
+            persistPhotoRecords(nextPhotos);
+            return nextPhotos;
+          });
+          imagePhotos.forEach((photo) => {
+            void postAtlasRecord("asset_photos", photo);
+          });
+        }
+      }
+
+      const success = syncedToVault
+        ? `Saved ${createdLabel} and synced the intake files.`
+        : `Saved ${createdLabel}. Document-vault sync needs attention.`;
+      resetIntakeDraft();
+      setIntakeMessage(success);
+      showSaveToast(success, syncedToVault ? "success" : "warning");
+      setDocumentSearch("");
+      setSelectedDocumentId(normalizedRecord.id);
+      setScreen("documents");
+      if (finalTargetKind === "Asset" && finalTargetId) {
+        showSaveToast(`${title} was saved to ${finalTargetName}.`);
+        openSavedAsset(finalTargetId, {
+          edit: true,
+          focusName: finalTargetName,
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Fast Intake save failed.";
+      setIntakeMessage(message);
+      showSaveToast(message, "warning");
+    }
+  }
+
+  function renderLinkedDocuments(kind: IntakeTargetKind, id?: string) {
+    const linked = linkedDocumentsFor(kind, id);
+    if (!linked.length) return null;
+
+    return (
+      <section style={detailSectionStyle}>
+        <div style={detailSectionHeaderStyle}>
+          <div>
+            <div style={eyebrowStyle}>Documents</div>
+            <strong>{linked.length} attached</strong>
+          </div>
+        </div>
+        <div style={compactLinkedListStyle}>
+          {linked.map((doc) => (
+            <button
+              key={doc.id}
+              type="button"
+              onClick={() => {
+                setSelectedDocumentId(doc.id);
+                setScreen("documents");
+              }}
+              style={compactLinkedRowStyle}
+            >
+              <span style={{ minWidth: 0 }}>
+                <strong>{doc.title}</strong>
+                <small style={mutedSmallStyle}>
+                  {doc.type} · {(doc.files || []).length} file(s)
+                </small>
+              </span>
+              <span style={linkedOpenLabelStyle}>Open</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  async function loadWeather() {
+    try {
+      setWeatherStatus("Loading 7-day irrigation weather...");
+      const url =
+        "https://api.open-meteo.com/v1/forecast?latitude=47.60&longitude=-122.20&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,et0_fao_evapotranspiration&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America%2FLos_Angeles&forecast_days=7";
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error("Weather failed");
+      const data = await response.json();
+
+      const days: WeatherDay[] = data.daily.time.map(
+        (date: string, index: number) => ({
+          date,
+          code: Number(data.daily.weather_code[index] ?? 0),
+          high: Math.round(Number(data.daily.temperature_2m_max[index] ?? 0)),
+          low: Math.round(Number(data.daily.temperature_2m_min[index] ?? 0)),
+          precipChance: Math.round(
+            Number(data.daily.precipitation_probability_max[index] ?? 0),
+          ),
+          precipAmount: Number(
+            Number(data.daily.precipitation_sum[index] ?? 0).toFixed(2),
+          ),
+          windMax: Math.round(
+            Number(data.daily.wind_speed_10m_max[index] ?? 0),
+          ),
+          et0: Number(
+            Number(data.daily.et0_fao_evapotranspiration[index] ?? 0).toFixed(
+              2,
+            ),
+          ),
+        }),
+      );
+
+      setWeatherDays(days);
+      setSelectedWeatherDate((current) => current || days[0]?.date || "");
+      setWeatherStatus(
+        "7-day weather loaded for irrigation and yard planning.",
+      );
+    } catch {
+      setWeatherStatus(
+        "Weather did not load. Check internet access from the deployed site.",
+      );
+    }
+  }
+
+  function normalizeAtlasSaveRecord(
+    table: AtlasTable,
+    record: unknown,
+  ): Record<string, unknown> {
+    const source =
+      record && typeof record === "object"
+        ? { ...(record as Record<string, unknown>) }
+        : {};
+
+    const clean: Record<string, unknown> = {};
+    Object.entries(source).forEach(([key, value]) => {
+      if (value !== undefined) clean[key] = value;
+    });
+
+    clean.propertyId = String(clean.propertyId || activePropertyId || "2000");
+
+    if (table === "work_orders") {
+      clean.recurring =
+        clean.recurring === true ||
+        clean.recurring === "true" ||
+        clean.recurring === 1;
+
+      const interval = Math.floor(Number(clean.recurrenceInterval || 1));
+      clean.recurrenceInterval =
+        Number.isFinite(interval) && interval > 0 ? interval : 1;
+      clean.recurrenceUnit =
+        String(clean.recurrenceUnit || "Weeks").trim() || "Weeks";
+      clean.season = String(clean.season || "Year-Round").trim() || "Year-Round";
+
+      [
+        "date",
+        "followUpDate",
+        "recurrenceEndDate",
+        "lastCompletedDate",
+      ].forEach((key) => {
+        const value = clean[key];
+        clean[key] =
+          typeof value === "string" ? value.trim().slice(0, 10) : "";
+      });
+
+      [
+        "completionHistory",
+        "checklist",
+        "notesHistory",
+        "serviceHistory",
+        "photos",
+        "documents",
+      ].forEach((key) => {
+        if (!Array.isArray(clean[key])) clean[key] = [];
+      });
+    }
+
+    if (table === "calendar") {
+      clean.date =
+        typeof clean.date === "string" ? clean.date.trim().slice(0, 10) : "";
+      clean.allDay = Boolean(clean.allDay);
+      clean.completed = Boolean(clean.completed);
+    }
+
+    [
+      "vendorIds",
+      "locationIds",
+      "documents",
+      "photos",
+      "requiredTools",
+      "requiredParts",
+      "steps",
+      "linkedAssetIds",
+      "linkedLocationIds",
+      "linkedVendorIds",
+      "customDetails",
+    ].forEach((key) => {
+      if (key in clean && !Array.isArray(clean[key])) clean[key] = [];
+    });
+
+    return clean;
+  }
+
+  function atlasRecordKey(
+    table: AtlasTable,
+    record: Record<string, unknown>,
+  ) {
+    return `${table}:${String(record.id || "new")}:${String(
+      record.propertyId || activePropertyId,
+    )}`;
+  }
+
+  async function atlasApiRequest(
+    method: "POST" | "DELETE",
+    body: Record<string, unknown>,
+    operationLabel: string,
+  ) {
+    const requestId = `atlas-${Date.now()}-${++atlasSaveAttemptRef.current}`;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 20000);
+
+      try {
+        const response = await fetch("/api/atlas", {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "X-Atlas-Request-Id": requestId,
+          },
+          cache: "no-store",
+          redirect: "manual",
+          signal: controller.signal,
+          body: JSON.stringify(body),
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+        const payload = contentType.includes("application/json")
+          ? await response.json().catch(() => ({}))
+          : {};
+
+        if (response.type === "opaqueredirect" || response.status === 0) {
+          throw new Error(
+            `${operationLabel} was redirected instead of saved. Refresh Atlas and try again.`,
+          );
+        }
+
+        const deleteAlreadyFinished = method === "DELETE" && response.status === 404 && /not found|already(?:\s+been)?\s+deleted|does not exist/i.test(String(payload?.error || payload?.message || ""));
+        if (deleteAlreadyFinished) {
+          return { ok: true, id: String(body.id || ""), alreadyDeleted: true };
+        }
+
+        if (!response.ok || payload?.ok !== true) {
+          const message =
+            payload?.error ||
+            `${operationLabel} returned HTTP ${response.status}.`;
+
+          const hydrationRace =
+            method === "POST" &&
+            response.status === 404 &&
+            /not found|does not exist|missing/i.test(
+              String(payload?.error || payload?.message || ""),
+            );
+
+          const retryable =
+            attempt < 3 &&
+            (hydrationRace ||
+              response.status === 408 ||
+              response.status === 429 ||
+              response.status >= 500);
+
+          if (retryable) {
+            await new Promise((resolve) =>
+              window.setTimeout(resolve, hydrationRace ? attempt * 450 : 350),
+            );
+            continue;
+          }
+
+          throw new Error(message);
+        }
+
+        return payload as Record<string, unknown>;
+      } catch (error) {
+        lastError =
+          error instanceof Error
+            ? error
+            : new Error(`${operationLabel} failed.`);
+
+        if (attempt < 3) {
+          await new Promise((resolve) =>
+            window.setTimeout(resolve, attempt * 350),
+          );
+          continue;
+        }
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+
+    throw lastError || new Error(`${operationLabel} failed.`);
+  }
+
+  function assetDeleteTombstoneKey(propertyId = activePropertyId) {
+    return `atlas-asset-deletes-v1-${propertyId}`;
+  }
+
+  function readAssetDeleteTombstones(propertyId = activePropertyId) {
+    return new Set(
+      readStoredArray<string>([assetDeleteTombstoneKey(propertyId)], []).map(String),
+    );
+  }
+
+  function rememberDeletedAssetId(id: string, propertyId = activePropertyId) {
+    if (!id) return;
+    const key = assetDeleteTombstoneKey(propertyId);
+    const current = readStoredArray<string>([key], []).map(String);
+    if (!current.includes(id)) saveStoredArray(key, [...current, id]);
+  }
+
+  function forgetDeletedAssetId(id: string, propertyId = activePropertyId) {
+    if (!id) return;
+    const key = assetDeleteTombstoneKey(propertyId);
+    const current = readStoredArray<string>([key], []).map(String);
+    saveStoredArray(
+      key,
+      current.filter((item) => item !== id),
+    );
+  }
+
+  function assetDeleteNameTombstoneKey(propertyId = activePropertyId) {
+    return `atlas-generated-asset-name-deletes-v1-${propertyId}`;
+  }
+
+  function readAssetDeleteNameTombstones(propertyId = activePropertyId) {
+    return new Set(
+      readStoredArray<string>(
+        [assetDeleteNameTombstoneKey(propertyId)],
+        [],
+      ).map((name) => normalizeLocationName(String(name))),
+    );
+  }
+
+  function rememberDeletedGeneratedAssetName(
+    name: string,
+    propertyId = activePropertyId,
+  ) {
+    const normalizedName = normalizeLocationName(name);
+    if (!normalizedName) return;
+    const key = assetDeleteNameTombstoneKey(propertyId);
+    const current = readStoredArray<string>([key], []).map(String);
+    if (
+      !current.some(
+        (item) => normalizeLocationName(item) === normalizedName,
+      )
+    ) {
+      saveStoredArray(key, [...current, name]);
+    }
+  }
+
+  function forgetDeletedGeneratedAssetName(
+    name: string,
+    propertyId = activePropertyId,
+  ) {
+    const normalizedName = normalizeLocationName(name);
+    if (!normalizedName) return;
+    const key = assetDeleteNameTombstoneKey(propertyId);
+    const current = readStoredArray<string>([key], []).map(String);
+    saveStoredArray(
+      key,
+      current.filter(
+        (item) => normalizeLocationName(item) !== normalizedName,
+      ),
+    );
+  }
+
+  function isCodeGeneratedAsset(record: Partial<AssetRecord>) {
+    const id = String(record.id || "");
+    const notes = String(record.notes || "").toLowerCase();
+    return (
+      id.startsWith("asset-house-") ||
+      id.startsWith("asset-sundance-") ||
+      id.startsWith("asset-main-pool") ||
+      id.startsWith("catalog-asset-") ||
+      notes.includes("created from garage care") ||
+      notes.includes("care, treatment, cleaning, and service history") ||
+      notes.includes("preventive-maintenance history")
+    );
+  }
+
+  async function postAtlasRecord(table: AtlasTable, record: unknown) {
+    const normalizedRecord = normalizeAtlasSaveRecord(table, record);
+
+    if (table === "assets" && normalizedRecord.id) {
+      const propertyId = String(
+        normalizedRecord.propertyId || activePropertyId,
+      );
+      const deletedIds = readAssetDeleteTombstones(propertyId);
+      const deletedGeneratedNames =
+        readAssetDeleteNameTombstones(propertyId);
+      const normalizedName = normalizeLocationName(
+        String(normalizedRecord.name || ""),
+      );
+
+      if (
+        deletedIds.has(String(normalizedRecord.id)) ||
+        (normalizedName && deletedGeneratedNames.has(normalizedName))
+      ) {
+        return true;
+      }
+    }
+
+    if (table === "calendar" && normalizedRecord.id) {
+      if (isCalendarRecordDeleted(normalizedRecord as unknown as AtlasCalendarItem)) {
+        return true;
+      }
+    }
+
+    if (table === "work_orders" && normalizedRecord.id) {
+      if (readWorkOrderTombstones(String(normalizedRecord.propertyId || activePropertyId)).has(String(normalizedRecord.id))) {
+        return true;
+      }
+    }
+
+    const key = atlasRecordKey(table, normalizedRecord);
+    const serialized = JSON.stringify(normalizedRecord);
+
+    if (
+      normalizedRecord.id &&
+      atlasLastSaveRef.current.get(key) === serialized
+    ) {
+      setDatabaseStatus("No unsaved Atlas changes.");
+      return true;
+    }
+
+    const priorSave = atlasSaveQueueRef.current.get(key) || Promise.resolve(true);
+
+    const queuedSave = priorSave.then(async () => {
+      try {
+        if (table === "assets" && normalizedRecord.id) {
+          const propertyId = String(
+            normalizedRecord.propertyId || activePropertyId,
+          );
+          const deletedIds = readAssetDeleteTombstones(propertyId);
+          const deletedGeneratedNames =
+            readAssetDeleteNameTombstones(propertyId);
+          const normalizedName = normalizeLocationName(
+            String(normalizedRecord.name || ""),
+          );
+
+          if (
+            deletedIds.has(String(normalizedRecord.id)) ||
+            (normalizedName && deletedGeneratedNames.has(normalizedName))
+          ) {
+            return true;
+          }
+        }
+
+        if (table === "calendar" && normalizedRecord.id) {
+          if (isCalendarRecordDeleted(normalizedRecord as unknown as AtlasCalendarItem)) {
+            return true;
+          }
+        }
+
+        if (table === "work_orders" && normalizedRecord.id) {
+          if (readWorkOrderTombstones(String(normalizedRecord.propertyId || activePropertyId)).has(String(normalizedRecord.id))) {
+            return true;
+          }
+        }
+
+        setDatabaseStatus(`Saving ${table.replaceAll("_", " ")}...`);
+
+        const payload = await atlasApiRequest(
+          "POST",
+          {
+            table,
+            record: normalizedRecord,
+          },
+          `Atlas ${table.replaceAll("_", " ")} save`,
+        );
+
+        if (!payload.id) {
+          throw new Error("Atlas API did not confirm the saved record ID.");
+        }
+
+        atlasLastSaveRef.current.set(key, serialized);
+        setDatabaseStatus("Saved to shared Atlas.");
+        return true;
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unknown Atlas save failure.";
+
+        console.error(`[Atlas ${table} save failed]`, {
+          error,
+          recordId: normalizedRecord.id,
+          propertyId: normalizedRecord.propertyId,
+        });
+        setDatabaseStatus(`Save failed — changes kept open: ${message}`);
+        showSaveToast(`Save failed: ${message}`);
+        return false;
+      }
+    });
+
+    atlasSaveQueueRef.current.set(key, queuedSave);
+
+    try {
+      return await queuedSave;
+    } finally {
+      if (atlasSaveQueueRef.current.get(key) === queuedSave) {
+        atlasSaveQueueRef.current.delete(key);
+      }
+    }
+  }
+
+  async function deleteAtlasRecord(
+    table: AtlasTable,
+    id: string,
+    options: { suppressFailureToast?: boolean } = {},
+  ) {
+    if (!id) return false;
+
+    try {
+      setDatabaseStatus(`Deleting ${table.replaceAll("_", " ")}...`);
+      await atlasApiRequest(
+        "DELETE",
+        {
+          table,
+          id,
+          propertyId: activePropertyId,
+        },
+        `Atlas ${table.replaceAll("_", " ")} delete`,
+      );
+
+      atlasLastSaveRef.current.delete(
+        `${table}:${id}:${activePropertyId}`,
+      );
+      setDatabaseStatus("Deleted from Atlas.");
+      return true;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Delete failed.";
+      setDatabaseStatus(`Delete failed — record kept: ${message}`);
+      if (!options.suppressFailureToast) showSaveToast(`Delete failed: ${message}`);
+      return false;
+    }
+  }
+
+  async function deleteOperationalRecord(table: AtlasTable, id: string) {
+    const pendingKey = `atlas-operations-deletes-v1-${activePropertyId}`;
+    const pending = readStoredArray<{ table: string; id: string }>([pendingKey], []);
+    if (!pending.some((item) => item.table === String(table) && item.id === id)) saveStoredArray(pendingKey, [...pending, { table: String(table), id }]);
+    const deleted = await deleteAtlasRecord(table, id);
+    if (deleted) saveStoredArray(pendingKey, readStoredArray<{ table: string; id: string }>([pendingKey], []).filter((item) => item.table !== String(table) || item.id !== id));
+    return deleted;
+  }
+
+  async function syncOperationalData() {
+    if (screen === "history") {
+      if (operationsSyncTimerRef.current) {
+        window.clearTimeout(operationsSyncTimerRef.current);
+        operationsSyncTimerRef.current = null;
+      }
+      setOperationsSyncState("saved");
+      setOperationsSyncMessage("Shared Atlas is up to date");
+      return;
+    }
+    if (operationsSyncRunningRef.current) return;
+    operationsSyncRunningRef.current = true;
+    const pendingKey = `atlas-operations-pending-v1-${activePropertyId}`;
+    const cleanedTaskState = dedupeTaskState(workPlanTasks, taskMeta);
+    const taskTombstones = readTaskTombstones(activePropertyId);
+
+    const snapshot = {
+      propertyId: activePropertyId,
+      savedAt: new Date().toISOString(),
+      tasks: cleanedTaskState.tasks
+        .filter((task) => !taskTombstones.has(String(task.id)))
+        // Addison is persisted through /api/landscape-help. Never bulk-write an
+        // older Dashboard copy back over a change made from his phone or Team.
+        .filter((task) => String((cleanedTaskState.meta[task.id] || taskDetails(task.id)).assignee || "").trim().toLowerCase() !== "addison")
+        .map((task) => ({ ...task, ...(cleanedTaskState.meta[task.id] || taskDetails(task.id)), taskMeta: cleanedTaskState.meta[task.id] || taskDetails(task.id), propertyId: activePropertyId, updatedAt: (cleanedTaskState.meta[task.id] || taskDetails(task.id)).updatedAt || new Date().toISOString() })),
+      vehicles: vehicleCare.map((vehicle) => ({ ...vehicle, propertyId: activePropertyId, updatedAt: vehicle.updatedAt || new Date().toISOString() })),
+      daySessions: daySessions.map((session) => ({ ...session, propertyId: activePropertyId })),
+    };
+    try {
+      // The pending local snapshot is only a recovery cache. A full or unavailable
+      // localStorage must never turn a healthy shared-Atlas connection into a failed sync.
+      try {
+        window.localStorage.setItem(pendingKey, JSON.stringify(snapshot));
+      } catch (error) {
+        console.warn("Atlas could not cache the operational retry snapshot locally.", error);
+      }
+      setOperationsSyncState("saving");
+      const pendingDeletesKey = `atlas-operations-deletes-v1-${activePropertyId}`;
+      const pendingDeletes = readStoredArray<{ table: string; id: string }>([pendingDeletesKey], []);
+      const failedDeletes: Array<{ table: string; id: string }> = [];
+      for (const item of pendingDeletes) {
+        const deleted = await deleteAtlasRecord(item.table as AtlasTable, item.id);
+        if (!deleted) failedDeletes.push(item);
+      }
+      if (pendingDeletes.length) saveStoredArray(pendingDeletesKey, failedDeletes);
+
+      // Addison can complete a task from a different device while this dashboard has
+      // an older copy in memory. Before bulk-saving Tasks, compare the shared record's
+      // updatedAt timestamp so an old dashboard retry can never overwrite a newer
+      // Addison completion. This also makes the newer shared copy visible here at once.
+      const newerRemoteTaskRecords: Array<Record<string, any>> = [];
+      let remoteTaskMap = new Map<string, Record<string, any>>();
+      try {
+        const response = await fetch(
+          `/api/atlas?sharedTasksBeforeSave=${Date.now()}&propertyId=${encodeURIComponent(activePropertyId)}`,
+          { cache: "no…42152 tokens truncated…"Manufacturer"
+                      value={fastIntakeManufacturer}
+                      onChange={setFastIntakeManufacturer}
+                    />
+                    <Field
+                      label="Model"
+                      value={fastIntakeModel}
+                      onChange={setFastIntakeModel}
+                    />
+                    <Field
+                      label="Serial number"
+                      value={fastIntakeSerial}
+                      onChange={setFastIntakeSerial}
+                    />
+                  </>
+                ) : null}
+
+                {fastIntakeSaveMode === "Create Vendor" ? (
+                  <Field
+                    label="Category"
+                    value={fastIntakeCategory}
+                    onChange={setFastIntakeCategory}
+                    placeholder="Painting, Plumbing, Boat Service..."
+                  />
+                ) : null}
+
+                {fastIntakeSaveMode === "Attach to Existing" ||
+                fastIntakeSaveMode === "Create Work Order" ? (
+                  <>
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Link to section</span>
+                      <select
+                        value={intakeTargetKind}
+                        onChange={(event) =>
+                          setIntakeTargetKind(
+                            event.currentTarget.value as IntakeTargetKind,
+                          )
+                        }
+                        style={inputStyle}
+                      >
+                        {(
+                          [
+                            "Asset",
+                            "Location",
+                            "Vendor",
+                            "Work Order",
+                            "Map Label",
+                            "General",
+                          ] as IntakeTargetKind[]
+                        ).map((kind) => (
+                          <option key={kind} value={kind}>
+                            {kind}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {intakeTargetKind !== "General" ? (
+                      <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                        <span style={fieldLabelStyle}>Existing record</span>
+                        <select
+                          value={intakeTargetId}
+                          onChange={(event) =>
+                            setIntakeTargetId(event.currentTarget.value)
+                          }
+                          style={inputStyle}
+                        >
+                          <option value="">None selected</option>
+                          {intakeTargetOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+                  </>
+                ) : null}
+
+                <Field
+                  label="Notes"
+                  value={intakeNotes}
+                  onChange={setIntakeNotes}
+                  multiline
+                  placeholder="What is it, what happened, follow-up needed, reading and unit..."
+                />
+                <Field
+                  label="Paste text / email / copied information"
+                  value={intakePastedText}
+                  onChange={setIntakePastedText}
+                  multiline
+                  placeholder="Paste invoice text, serial information, email details, or copied notes."
+                />
+              </div>
+
+              {fastIntakeSaveMode === "Attach to Existing" &&
+              ["Asset", "Vendor", "Work Order"].includes(intakeTargetKind) ? (
+                <label
+                  style={{
+                    ...noticeStyle,
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={fastIntakeAppendNotes}
+                    onChange={(event) =>
+                      setFastIntakeAppendNotes(event.currentTarget.checked)
+                    }
+                    style={{ width: 20, height: 20, marginTop: 1 }}
+                  />
+                  <span>
+                    <strong>
+                      Also append these notes to the selected record.
+                    </strong>
+                    <span style={{ ...mutedSmallStyle, display: "block" }}>
+                      Existing notes are preserved. Atlas adds the new intake
+                      below them.
+                    </span>
+                  </span>
+                </label>
+              ) : null}
+
+              {fastIntakeDuplicateWarning ? (
+                <div
+                  style={{
+                    ...noticeStyle,
+                    borderColor: colors.red,
+                    color: colors.red,
+                  }}
+                >
+                  <strong>{fastIntakeDuplicateWarning}</strong>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div style={cardStyle}>
+            <div style={eyebrowStyle}>4. Review before saving</div>
+            <div style={reviewGridStyle}>
+              <div style={noticeStyle}>
+                <strong>{fastIntakeKind}</strong>
+                <p style={mutedSmallStyle}>Intake type</p>
+              </div>
+              <div style={noticeStyle}>
+                <strong>{fastIntakeSaveMode}</strong>
+                <p style={mutedSmallStyle}>Save action</p>
+              </div>
+              <div style={noticeStyle}>
+                <strong>{reviewName}</strong>
+                <p style={mutedSmallStyle}>Title / new record</p>
+              </div>
+              <div style={noticeStyle}>
+                <strong>
+                  {fastIntakeSaveMode === "Document Only"
+                    ? "General"
+                    : fastIntakeSaveMode.startsWith("Create")
+                      ? fastIntakeSaveMode.replace("Create ", "New ")
+                      : selectedTargetName}
+                </strong>
+                <p style={mutedSmallStyle}>Destination</p>
+              </div>
+              <div style={noticeStyle}>
+                <strong>{intakeFiles.length} file(s)</strong>
+                <p style={mutedSmallStyle}>Photos / documents</p>
+              </div>
+            </div>
+
+            <div style={{ ...noticeStyle, marginTop: 12 }}>
+              <strong>{intakeMessage}</strong>
+              <p style={mutedSmallStyle}>
+                Atlas saves only after you approve below. New records are merged
+                into the current lists; existing records and photos are not
+                replaced.
+              </p>
+            </div>
+
+            <div style={buttonRowStyle}>
+              {fastIntakeKind === "Asset Label" && intakeFiles.length ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      const saved = await createInboxItemFromDraft();
+                      if (saved) await analyzeInboxItem(saved);
+                    })();
+                  }}
+                  disabled={intakePhotoNeedsName}
+                  style={{
+                    ...goldButtonStyle,
+                    opacity: intakePhotoNeedsName ? 0.55 : 1,
+                  }}
+                >
+                  Save to Inbox &amp; Analyze
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void createInboxItemFromDraft()}
+                disabled={intakePhotoNeedsName}
+                style={
+                  fastIntakeKind === "Asset Label" && intakeFiles.length
+                    ? {
+                        ...secondaryButtonStyle,
+                        opacity: intakePhotoNeedsName ? 0.55 : 1,
+                      }
+                    : {
+                        ...goldButtonStyle,
+                        opacity: intakePhotoNeedsName ? 0.55 : 1,
+                      }
+                }
+              >
+                Save to Inbox
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveIntakeDocument()}
+                disabled={
+                  Boolean(fastIntakeDuplicateWarning) || intakePhotoNeedsName
+                }
+                style={{
+                  ...goldButtonStyle,
+                  opacity:
+                    fastIntakeDuplicateWarning || intakePhotoNeedsName
+                      ? 0.55
+                      : 1,
+                }}
+              >
+                Approve and Save
+              </button>
+              <button
+                type="button"
+                onClick={resetIntakeDraft}
+                style={secondaryButtonStyle}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div style={cardStyle}>
+            <div style={eyebrowStyle}>Recent Intake</div>
+            <h3 style={detailTitleStyle}>Intake history</h3>
+            {recentFastIntake.length ? (
+              <div style={listStyle}>
+                {recentFastIntake.map((doc) => (
+                  <button
+                    key={doc.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDocumentId(doc.id);
+                      setScreen("documents");
+                    }}
+                    style={rowButtonStyle}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <strong>{doc.title}</strong>
+                      <p style={mutedSmallStyle}>
+                        {doc.type} · {doc.targetName || "General"} ·{" "}
+                        {(doc.files || []).length} file(s)
+                      </p>
+                    </div>
+                    <span style={mutedSmallStyle}>
+                      {formatDate(doc.createdAt || "")}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div style={emptyStateStyle}>No Fast Intake records yet.</div>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  async function updateOwnerRequest(
+    requestId: string,
+    patch: Partial<OwnerRequestRecord>,
+  ) {
+    setRequestMessage("Saving request...");
+    try {
+      const response = await fetch("/api/atlas-requests", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: requestId, ...patch }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Request update failed.");
+      }
+      const saved = payload.request as OwnerRequestRecord;
+      setRequestRecords((current) =>
+        current.map((item) => (item.id === saved.id ? saved : item)),
+      );
+      setRequestMessage("Request saved.");
+    } catch (error) {
+      setRequestMessage(
+        error instanceof Error ? error.message : "Request update failed.",
+      );
+    }
+  }
+
+  async function convertOwnerRequestToWorkOrder(request: OwnerRequestRecord) {
+    if (request.convertedWorkOrderId) {
+      setRequestMessage("This request was already converted to a work order.");
+      return;
+    }
+
+    const asset = assetRecords.find(
+      (item) =>
+        request.assetName &&
+        item.name.trim().toLowerCase() ===
+          request.assetName.trim().toLowerCase(),
+    );
+
+    const record = normalizeService({
+      id: uid("service"),
+      assetId: asset?.id || "",
+      date: todayISO(),
+      title: request.title || "Owner Request",
+      status: "Open",
+      priority: request.priority || "Medium",
+      assignedTo:
+        request.assignedTo ||
+        ((request.category || "").toLowerCase() === "dock & marine" ? "Sean" : ""),
+      workCategory: request.category || "Maintenance",
+      locationId:
+        locations.find(
+          (location) =>
+            request.locationName &&
+            location.name.trim().toLowerCase() ===
+              request.locationName.trim().toLowerCase(),
+        )?.id || "",
+      notes: [
+        request.description,
+        request.locationName ? `Location: ${request.locationName}` : "",
+        request.assetName ? `Requested asset: ${request.assetName}` : "",
+        request.requesterName ? `Requested by: ${request.requesterName}` : "",
+        request.preferredTiming
+          ? `Preferred timing: ${request.preferredTiming}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      photos: request.photos || [],
+      documents: [],
+    });
+
+    const saved = await postAtlasRecord("work_orders", record);
+    if (!saved) {
+      setRequestMessage(
+        "Work order was not saved. Request was left unchanged.",
+      );
+      return;
+    }
+
+    setServiceRecords((current) => workOrdersByIdentity([...current, record]));
+    await updateOwnerRequest(request.id, {
+      status: "Converted to Work Order",
+      convertedWorkOrderId: record.id,
+    });
+    setSelectedServiceId(record.id);
+    showSaveToast("Work order created and request saved.");
+    setScreen("history");
+  }
+
+  async function deleteOwnerRequest(request: OwnerRequestRecord) {
+    const confirmed = window.confirm(
+      `Delete “${request.title || "this request"}” permanently? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setRequestMessage("Deleting request...");
+    try {
+      const response = await fetch(
+        `/api/atlas-requests?id=${encodeURIComponent(request.id)}`,
+        { method: "DELETE" },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Request deletion failed.");
+      }
+      setRequestRecords((current) =>
+        current.filter((item) => item.id !== request.id),
+      );
+      setSelectedRequestId("");
+      setRequestMessage("Request deleted.");
+    } catch (error) {
+      setRequestMessage(
+        error instanceof Error ? error.message : "Request deletion failed.",
+      );
+    }
+  }
+
+  function renderRequests() {
+    const linkedWorkOrderFor = (request: OwnerRequestRecord) =>
+      request.convertedWorkOrderId
+        ? serviceRecords.find(
+            (item) => item.id === request.convertedWorkOrderId,
+          ) || null
+        : null;
+
+    const requestIsCompleted = (request: OwnerRequestRecord) => {
+      const linked = linkedWorkOrderFor(request);
+      return (
+        request.status === "Converted to Work Order" ||
+        request.status === "Closed" ||
+        request.status === "Declined" ||
+        linked?.status === "Completed"
+      );
+    };
+
+    const completionValue = (request: OwnerRequestRecord) => {
+      const linked = linkedWorkOrderFor(request);
+      return (
+        request.completedAt ||
+        linked?.lastCompletedDate ||
+        (linked?.status === "Completed" ? linked.date : "") ||
+        request.updatedAt ||
+        request.submittedAt
+      );
+    };
+
+    const activeRequestRecords = requestRecords
+      .filter((request) => !requestIsCompleted(request))
+      .sort((a, b) =>
+        String(b.submittedAt).localeCompare(String(a.submittedAt)),
+      );
+
+    const requestHistoryRecords = requestRecords
+      .filter(requestIsCompleted)
+      .sort((a, b) =>
+        String(completionValue(b)).localeCompare(String(completionValue(a))),
+      );
+
+    const portalLink =
+      requestPortalToken && typeof window !== "undefined"
+        ? `${window.location.origin}/request?token=${encodeURIComponent(
+            requestPortalToken,
+          )}&propertyId=${encodeURIComponent(activePropertyId)}`
+        : "";
+    const ownerRequestQr = portalLink ? qrImageUrl(portalLink, 320) : "";
+    const primaryPhoto = selectedRequest?.photos?.[0];
+    const selectedLinkedWorkOrder = selectedRequest
+      ? linkedWorkOrderFor(selectedRequest)
+      : null;
+    const requestCategories = [
+      "Cleaning",
+      "Maintenance",
+      "Landscaping",
+      "Pool & Spa",
+      "Irrigation",
+      "Electrical",
+      "Plumbing",
+      "HVAC",
+      "Dock & Marine",
+      "Vehicles",
+      "House",
+      "Inventory",
+      "Project",
+      "Inspection",
+      "Safety",
+      "Admin",
+    ];
+    const requestAssigneeOptions = Array.from(
+      new Set([
+        "",
+        "Sean",
+        "Pat",
+        "Geronimo",
+        "Nick",
+        ...teamDirectory
+          .filter((member) => member.active)
+          .map((member) => member.name.trim())
+          .filter(Boolean),
+      ]),
+    );
+    const formatRequestDateTime = (value: string) => {
+      if (!value) return "Not recorded";
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime())
+        ? value
+        : parsed.toLocaleString([], {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          });
+    };
+
+    const requestList = (
+      <div style={listStyle}>
+        <div style={eyebrowStyle}>Open / In Progress</div>
+        {activeRequestRecords.length ? (
+          activeRequestRecords.map((request) => {
+            const photo = request.photos?.[0];
+            const linked = linkedWorkOrderFor(request);
+            return (
+              <button
+                key={request.id}
+                type="button"
+                onClick={() => setSelectedRequestId(request.id)}
+                style={{
+                  ...rowButtonStyle,
+                  gap: 12,
+                  alignItems: "center",
+                  borderColor:
+                    request.id === selectedRequest?.id
+                      ? colors.gold
+                      : colors.line,
+                }}
+              >
+                {photo ? (
+                  <img
+                    src={photo.dataUrl || photo.url}
+                    alt=""
+                    style={{
+                      width: 72,
+                      height: 58,
+                      borderRadius: 10,
+                      objectFit: "cover",
+                      flex: "0 0 auto",
+                    }}
+                  />
+                ) : null}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <strong>{request.title || "Untitled Request"}</strong>
+                  <p style={mutedSmallStyle}>
+                    {request.requesterName || "Owner"} ·{" "}
+                    {request.locationName || request.assetName || "Unassigned"}
+                  </p>
+                  {linked ? (
+                    <p style={{ ...mutedSmallStyle, marginTop: 3 }}>
+                      Work order: {linked.status}
+                    </p>
+                  ) : null}
+                </div>
+                <span style={badgeStyle(request.status)}>{request.status}</span>
+              </button>
+            );
+          })
+        ) : (
+          <div style={noticeStyle}>No open requests.</div>
+        )}
+      </div>
+    );
+
+    const requestDrawer = selectedRequest ? (
+      <div style={{ display: "grid", gap: 10, paddingBottom: 76 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 12,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={eyebrowStyle}>Request Details</div>
+            <h3 style={{ ...editorHeaderStyle, marginBottom: 6 }}>
+              {selectedRequest.title || "Untitled Request"}
+            </h3>
+            <p style={{ ...mutedSmallStyle, margin: 0 }}>
+              Submitted by {selectedRequest.requesterName || "Owner"} ·{" "}
+              {formatRequestDateTime(selectedRequest.submittedAt)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void deleteOwnerRequest(selectedRequest)}
+            style={{
+              ...secondaryButtonStyle,
+              color: "#ef6b63",
+              borderColor: "rgba(239,107,99,.55)",
+              fontWeight: 500,
+            }}
+          >
+            Delete Request
+          </button>
+        </div>
+
+        {primaryPhoto ? (
+          <button
+            type="button"
+            onClick={() => setPreviewFile(primaryPhoto)}
+            style={{
+              border: `1px solid ${colors.line}`,
+              borderRadius: 16,
+              overflow: "hidden",
+              padding: 0,
+              background: colors.card,
+              cursor: "pointer",
+            }}
+          >
+            <img
+              src={primaryPhoto.dataUrl || primaryPhoto.url}
+              alt={primaryPhoto.name}
+              style={{
+                width: "100%",
+                maxHeight: 235,
+                objectFit: "contain",
+                display: "block",
+                background: "#09111d",
+              }}
+            />
+          </button>
+        ) : null}
+
+        {requestMessage ? (
+          <div style={{ ...noticeStyle, padding: "8px 10px", fontSize: 12 }}>
+            {requestMessage}
+          </div>
+        ) : null}
+
+        <section style={{ ...sectionStyle, padding: 12 }}>
+          <div style={eyebrowStyle}>Original Request</div>
+          <div style={formGridStyle}>
+            <Field
+              label="Title"
+              value={selectedRequest.title}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, title: value }
+                      : item,
+                  ),
+                )
+              }
+            />
+            <Field
+              label="Submitted By"
+              value={selectedRequest.requesterName}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, requesterName: value }
+                      : item,
+                  ),
+                )
+              }
+            />
+            <Field
+              label="Contact"
+              value={selectedRequest.requesterContact}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, requesterContact: value }
+                      : item,
+                  ),
+                )
+              }
+            />
+            <Field
+              label="Preferred Timing"
+              value={selectedRequest.preferredTiming}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, preferredTiming: value }
+                      : item,
+                  ),
+                )
+              }
+            />
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Field
+                label="Description"
+                value={selectedRequest.description}
+                onChange={(value) =>
+                  setRequestRecords((current) =>
+                    current.map((item) =>
+                      item.id === selectedRequest.id
+                        ? { ...item, description: value }
+                        : item,
+                    ),
+                  )
+                }
+                multiline
+              />
+            </div>
+          </div>
+        </section>
+
+        <section style={{ ...sectionStyle, padding: 12 }}>
+          <div style={eyebrowStyle}>Atlas Assignment</div>
+          <div style={formGridStyle}>
+            <SelectField
+              label="Asset"
+              value={selectedRequest.assetName}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, assetName: value }
+                      : item,
+                  ),
+                )
+              }
+              options={["", ...assetRecords.map((item) => item.name)]}
+            />
+            <SelectField
+              label="Location"
+              value={selectedRequest.locationName}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, locationName: value }
+                      : item,
+                  ),
+                )
+              }
+              options={["", ...locations.map((item) => item.name)]}
+            />
+            <SelectField
+              label="Category"
+              value={selectedRequest.category || "Maintenance"}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, category: value }
+                      : item,
+                  ),
+                )
+              }
+              options={requestCategories}
+            />
+            <SelectField
+              label="Assign To"
+              value={selectedRequest.assignedTo || ""}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, assignedTo: value }
+                      : item,
+                  ),
+                )
+              }
+              options={requestAssigneeOptions}
+            />
+            <SelectField
+              label="Priority"
+              value={selectedRequest.priority}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, priority: value }
+                      : item,
+                  ),
+                )
+              }
+              options={["Low", "Medium", "High"] as const}
+            />
+            <SelectField
+              label="Status"
+              value={selectedRequest.status}
+              onChange={(value) =>
+                setRequestRecords((current) =>
+                  current.map((item) =>
+                    item.id === selectedRequest.id
+                      ? { ...item, status: value }
+                      : item,
+                  ),
+                )
+              }
+              options={[
+                "New",
+                "Under Review",
+                "Approved",
+                "Converted to Work Order",
+                "Declined",
+                "Closed",
+              ] as const}
+            />
+          </div>
+        </section>
+
+        <section style={{ ...sectionStyle, padding: 12 }}>
+          <div style={eyebrowStyle}>Internal Notes</div>
+          <Field
+            label="Notes not visible to the owner"
+            value={selectedRequest.adminNotes}
+            onChange={(value) =>
+              setRequestRecords((current) =>
+                current.map((item) =>
+                  item.id === selectedRequest.id
+                    ? { ...item, adminNotes: value }
+                    : item,
+                ),
+              )
+            }
+            multiline
+          />
+        </section>
+
+        {selectedRequest.photos?.length > 1 ? (
+          <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card }}>
+            <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Photos ({selectedRequest.photos.length - 1})</summary>
+            <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
+            {selectedRequest.photos.slice(1).map((photo) => (
+              <button
+                key={photo.id}
+                type="button"
+                onClick={() => setPreviewFile(photo)}
+                style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: "7px 8px", background: colors.card, color: colors.navy, textAlign: "left", fontWeight: 800, cursor: "pointer" }}
+              >
+                {photo.name || "Request photo"}
+              </button>
+            ))}
+            </div>
+          </details>
+        ) : null}
+
+        {selectedLinkedWorkOrder ? (
+          <section style={{ ...sectionStyle, padding: 12 }}>
+            <div style={eyebrowStyle}>Linked Work Order</div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <strong>{selectedLinkedWorkOrder.title}</strong>
+                <p style={{ ...mutedSmallStyle, margin: "3px 0 0" }}>
+                  Status: {selectedLinkedWorkOrder.status}
+                </p>
+              </div>
+              <span style={badgeStyle(selectedLinkedWorkOrder.status)}>
+                {selectedLinkedWorkOrder.status}
+              </span>
+            </div>
+            <div style={{ ...buttonRowStyle, marginTop: 10 }}>
+              {selectedLinkedWorkOrder.status !== "Completed" ? (
+                <button
+                  type="button"
+                  onClick={() => void completeWorkOrder(selectedLinkedWorkOrder)}
+                  style={goldButtonStyle}
+                >
+                  Mark Complete
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedServiceId(selectedLinkedWorkOrder.id);
+                  setScreen("history");
+                }}
+                style={secondaryButtonStyle}
+              >
+                Edit Work Order
+              </button>
+              <button
+                type="button"
+                onClick={() => void deleteWorkOrderRecord(selectedLinkedWorkOrder)}
+                style={dangerButtonStyle}
+              >
+                Delete Work Order
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        <div style={buttonRowStyle}>
+          <button
+            type="button"
+            onClick={() =>
+              void updateOwnerRequest(selectedRequest.id, selectedRequest)
+            }
+            style={goldButtonStyle}
+          >
+            Save Changes
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(selectedRequest.convertedWorkOrderId)}
+            onClick={() =>
+              void convertOwnerRequestToWorkOrder(selectedRequest)
+            }
+            style={secondaryButtonStyle}
+          >
+            {selectedRequest.convertedWorkOrderId
+              ? "Work Order Created"
+              : "Convert to Work Order"}
+          </button>
+
+        </div>
+      </div>
+    ) : (
+      <div style={noticeStyle}>Select a request to view its information.</div>
+    );
+
+    return (
+      <div style={{ display: "grid", gap: 18 }}>
+        {portalLink ? (
+          <section
+            style={{
+              ...ownerRequestPortalCardStyle,
+              gridTemplateColumns: "minmax(0, 1fr) auto",
+              gap: 12,
+              padding: 14,
+              borderRadius: 16,
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={eyebrowStyle}>Owner Access</div>
+              <h3 style={{ ...editorHeaderStyle, marginBottom: 8 }}>
+                Owner Requests
+              </h3>
+              <p style={mutedSmallStyle}>
+                Scan to submit a secure request without opening the full Atlas app.
+              </p>
+              <div className="atlas-no-print" style={buttonRowStyle}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(portalLink);
+                    setRequestMessage("Owner request link copied.");
+                  }}
+                  style={secondaryButtonStyle}
+                >
+                  Copy Link
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void copyOwnerRequestQrImage(portalLink)}
+                  style={secondaryButtonStyle}
+                >
+                  Copy QR Image
+                </button>
+                <a
+                  href={portalLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={goldButtonStyle}
+                >
+                  Open Request Form
+                </a>
+              </div>
+            </div>
+            <div
+              style={{
+                ...ownerRequestQrShellStyle,
+                width: 118,
+                padding: 6,
+                borderRadius: 13,
+              }}
+            >
+              <img
+                src={ownerRequestQr}
+                alt="Owner Request QR code"
+                style={ownerRequestQrImageStyle}
+              />
+            </div>
+          </section>
+        ) : null}
+
+        <ListDrawerLayout
+          eyebrow="Owner Intake"
+          title="Requests"
+          detail="Review, organize, and convert owner requests into trackable Atlas work."
+          isMobile={isMobile}
+          drawerResetKey={selectedRequest?.id || "requests-empty"}
+          list={requestList}
+          drawer={requestDrawer}
+          outerStyle={
+            isMobile
+              ? undefined
+              : {
+                  ...sectionStyle,
+                  height: "calc(100vh - 250px)",
+                  minHeight: 540,
+                  maxHeight: 720,
+                  overflow: "hidden",
+                  display: "grid",
+                  gridTemplateRows: "auto minmax(0, 1fr)",
+                }
+          }
+          gridStyleOverride={
+            isMobile
+              ? undefined
+              : {
+                  height: "100%",
+                  minHeight: 0,
+                  overflow: "hidden",
+                  alignItems: "stretch",
+                }
+          }
+          listPanelStyleOverride={
+            isMobile
+              ? undefined
+              : {
+                  height: "100%",
+                  minHeight: 0,
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: 6,
+                }
+          }
+          drawerStyleOverride={
+            isMobile
+              ? undefined
+              : {
+                  position: "relative",
+                  top: 0,
+                  height: "100%",
+                  maxHeight: "none",
+                  minHeight: 0,
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  overscrollBehavior: "contain",
+                  paddingRight: 6,
+                }
+          }
+        />
+
+        <section style={{ ...sectionStyle, padding: 14 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+              gap: 12,
+              flexWrap: "wrap",
+              marginBottom: 14,
+            }}
+          >
+            <div>
+              <div style={eyebrowStyle}>Completed History</div>
+              <h3 style={{ ...editorHeaderStyle, marginBottom: 4 }}>
+                Completed Requests / Work Orders
+              </h3>
+              <p style={{ ...mutedSmallStyle, margin: 0 }}>
+                Newest completion first. Select an item to view its full record.
+              </p>
+            </div>
+            <span style={badgeStyle("Completed")}>
+              {requestHistoryRecords.length} completed
+            </span>
+          </div>
+
+          {requestHistoryRecords.length ? (
+            <div style={{ overflowX: "auto", maxHeight: 310, overflowY: "auto" }}>
+              <div style={{ minWidth: 860, display: "grid", gap: 8 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(240px, 2fr) 150px 150px 150px 150px 110px",
+                    gap: 12,
+                    padding: "0 12px 8px",
+                    color: colors.muted,
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                >
+                  <span>Title</span>
+                  <span>Completed</span>
+                  <span>Asset</span>
+                  <span>Location</span>
+                  <span>Work Order</span>
+                  <span>Actions</span>
+                </div>
+                {requestHistoryRecords.map((request) => {
+                  const linked = linkedWorkOrderFor(request);
+                  const photo = request.photos?.[0];
+                  return (
+                    <div
+                      key={request.id}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(240px, 2fr) 150px 150px 150px 150px 110px",
+                        gap: 12,
+                        alignItems: "center",
+                        padding: 12,
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 12,
+                        background: colors.card,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRequestId(request.id)}
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "center",
+                          border: 0,
+                          padding: 0,
+                          background: "transparent",
+                          color: colors.text,
+                          textAlign: "left",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {photo ? (
+                          <img
+                            src={photo.dataUrl || photo.url}
+                            alt=""
+                            style={{
+                              width: 62,
+                              height: 46,
+                              objectFit: "cover",
+                              borderRadius: 8,
+                            }}
+                          />
+                        ) : null}
+                        <span>
+                          <strong style={{ display: "block" }}>
+                            {request.title || "Untitled Request"}
+                          </strong>
+                          <small style={mutedSmallStyle}>
+                            {request.category || "Maintenance"}
+                          </small>
+                        </span>
+                      </button>
+                      <span style={mutedSmallStyle}>
+                        {formatRequestDateTime(completionValue(request))}
+                      </span>
+                      <span>{request.assetName || "—"}</span>
+                      <span>{request.locationName || "—"}</span>
+                      <span>
+                        {linked ? `${linked.title} · ${linked.status}` : "—"}
+                      </span>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRequestId(request.id)}
+                          style={{ ...secondaryButtonStyle, padding: "8px 10px" }}
+                        >
+                          View
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteOwnerRequest(request)}
+                          aria-label={`Delete ${request.title}`}
+                          style={{
+                            ...secondaryButtonStyle,
+                            padding: "8px 10px",
+                            color: "#ef6b63",
+                            borderColor: "rgba(239,107,99,.55)",
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div style={emptyStateStyle}>No completed requests yet.</div>
+          )}
+        </section>
+      </div>
+    );
+  }
+
+
+  function renderProcedures() {
+    return <AtlasProceduresWorkspace {...{
+      assetRecords,
+      buttonRowStyle,
+      cardStyle,
+      closeProcedureViewer,
+      createProcedureRecord,
+      deleteProcedureRecord,
+      duplicateProcedureRecord,
+      editorHeaderStyle,
+      eyebrowStyle,
+      filteredProcedures,
+      formGridStyle,
+      generateProcedureDraft,
+      goldButtonStyle,
+      inputStyle,
+      isMobile,
+      isRecordDirty,
+      listStyle,
+      locations,
+      moveProcedureStep,
+      mutedSmallStyle,
+      noticeStyle,
+      openUploadedFile,
+      procedureDraftNotes,
+      procedureListScrollYRef,
+      procedureMessage,
+      procedureOverlayScrollRef,
+      rowButtonStyle,
+      saveDirtyRecord,
+      secondaryButtonStyle,
+      selectedProcedure,
+      selectedProcedureId,
+      setPreviewFile,
+      setProcedureDraftNotes,
+      setProcedureMessage,
+      setSelectedProcedureId,
+      smallSubtleButtonStyle,
+      tinyDangerButtonStyle,
+      toggleProcedureLink,
+      updateProcedure,
+      updateProcedureSteps,
+      uploadProcedureFiles,
+      vendorRecords
+    }} />;
+  }
+
+  function renderParts() {
+    return (
+      <AtlasParts
+        filteredParts={filteredParts}
+        partRecords={partRecords}
+        selectedPart={selectedPart}
+        selectedPartId={selectedPartId}
+        isMobile={isMobile}
+        locations={locations}
+        assetRecords={assetRecords}
+        vendorRecords={vendorRecords}
+        colors={colors}
+        sectionStyle={sectionStyle}
+        fieldLabelStyle={fieldLabelStyle}
+        goldButtonStyle={goldButtonStyle}
+        listStyle={listStyle}
+        rowButtonStyle={rowButtonStyle}
+        mutedSmallStyle={mutedSmallStyle}
+        editorHeaderStyle={editorHeaderStyle}
+        eyebrowStyle={eyebrowStyle}
+        secondaryButtonStyle={secondaryButtonStyle}
+        formGridStyle={formGridStyle}
+        inputStyle={inputStyle}
+        buttonRowStyle={buttonRowStyle}
+        dangerButtonStyle={dangerButtonStyle}
+        addPartRecord={addPartRecord}
+        setSelectedPartId={setSelectedPartId}
+        badgeStyle={badgeStyle}
+        updatePart={updatePart}
+        saveDirtyRecord={saveDirtyRecord}
+        deletePartRecord={deletePartRecord}
+      />
+    );
+  }
+
+  function renderWorkLinks() {
+    const groupedApps = filteredWorkLinks.reduce<Record<string, WorkLinkRecord[]>>(
+      (groups, link) => {
+        const category = link.category?.trim() || "General";
+        if (!groups[category]) groups[category] = [];
+        groups[category].push(link);
+        return groups;
+      },
+      {},
+    );
+
+    const appCategories = Object.entries(groupedApps).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+
+    const resolvedAppUrl = (link: WorkLinkRecord) => {
+      if (typeof window === "undefined") return link.url;
+      try {
+        return new URL(link.url, window.location.origin).toString();
+      } catch {
+        return link.url;
+      }
+    };
+
+    const appOpensInsideAtlas = (link: WorkLinkRecord) => {
+      if (typeof window === "undefined") return false;
+      try {
+        const target = new URL(link.url, window.location.origin);
+        return target.origin === window.location.origin;
+      } catch {
+        return false;
+      }
+    };
+
+    const openApp = (link: WorkLinkRecord) => {
+      if (appOpensInsideAtlas(link)) {
+        setActiveAppLink(link);
+        return;
+      }
+
+      window.open(resolvedAppUrl(link), "_blank", "noopener,noreferrer");
+    };
+
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Apps"
+          title="Apps"
+          detail="Open estate systems, portals, and tools from one organized launcher."
+          right={
+            <div style={buttonRowStyle}>
+              <button type="button" onClick={openNewWorkLink} style={goldButtonStyle}>
+                + Add App
+              </button>
+              <button
+                type="button"
+                onClick={() => setWorkLinkChooserOpen((current) => !current)}
+                style={secondaryButtonStyle}
+              >
+                Edit Apps
+              </button>
+            </div>
+          }
+        />
+
+        {workLinkMessage ? (
+          <div style={{ ...noticeStyle, marginBottom: 14 }}>
+            {workLinkMessage}
+          </div>
+        ) : null}
+
+        {workLinkChooserOpen ? (
+          <div style={{ ...cardStyle, marginBottom: 16 }}>
+            <div style={eyebrowStyle}>Choose an App to Edit</div>
+            <div style={{ ...buttonRowStyle, marginTop: 10 }}>
+              {filteredWorkLinks.map((link) => (
+                <button
+                  key={`choose-${link.id}`}
+                  type="button"
+                  onClick={() => openEditWorkLink(link)}
+                  style={secondaryButtonStyle}
+                >
+                  {link.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {workLinkEditorOpen ? (
+          <div style={{ ...cardStyle, marginBottom: 16, padding: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <div style={eyebrowStyle}>App Editor</div>
+                <h3 style={detailTitleStyle}>
+                  {workLinkDraft.id ? "Edit App" : "Add App"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWorkLinkEditorOpen(false)}
+                style={secondaryButtonStyle}
+              >
+                Close
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(2, minmax(0, 1fr))",
+                gap: 12,
+              }}
+            >
+              <Field
+                label="App name"
+                value={workLinkDraft.name}
+                onChange={(value) =>
+                  setWorkLinkDraft((current) => ({ ...current, name: value }))
+                }
+              />
+              <Field
+                label="App URL"
+                value={workLinkDraft.url}
+                onChange={(value) =>
+                  setWorkLinkDraft((current) => ({ ...current, url: value }))
+                }
+              />
+              <Field
+                label="Category"
+                value={workLinkDraft.category}
+                onChange={(value) =>
+                  setWorkLinkDraft((current) => ({
+                    ...current,
+                    category: value,
+                  }))
+                }
+              />
+              <Field
+                label="Vendor / Company"
+                value={workLinkDraft.vendor || ""}
+                onChange={(value) =>
+                  setWorkLinkDraft((current) => ({ ...current, vendor: value }))
+                }
+              />
+              <Field
+                label="Logo initials"
+                value={workLinkDraft.logoText}
+                onChange={(value) =>
+                  setWorkLinkDraft((current) => ({
+                    ...current,
+                    logoText: value.slice(0, 4),
+                  }))
+                }
+              />
+              <Field
+                label="Logo image URL"
+                value={workLinkDraft.logoUrl || ""}
+                onChange={(value) =>
+                  setWorkLinkDraft((current) => ({
+                    ...current,
+                    logoUrl: value,
+                  }))
+                }
+              />
+              <div style={{ display: "grid", gap: 7 }}>
+                <span style={fieldLabelStyle}>Logo image</span>
+                <div style={buttonRowStyle}>
+                  <label style={secondaryUploadButtonStyle}>Take Photo<input type="file" accept="image/*" capture="environment" onChange={(event) => { uploadWorkLinkLogo(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} style={{ display: "none" }} /></label>
+                  <label style={secondaryUploadButtonStyle}>Upload from Library<input type="file" accept="image/*" onChange={(event) => { uploadWorkLinkLogo(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} style={{ display: "none" }} /></label>
+                </div>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 10,
+                }}
+              >
+                <label style={{ display: "grid", gap: 7 }}>
+                  <span style={fieldLabelStyle}>Badge background</span>
+                  <input
+                    type="color"
+                    value={workLinkDraft.logoBg || "#EEF6FF"}
+                    onChange={(event) =>
+                      setWorkLinkDraft((current) => ({
+                        ...current,
+                        logoBg: event.currentTarget.value,
+                      }))
+                    }
+                    style={{ ...inputStyle, minHeight: 46, padding: 6 }}
+                  />
+                </label>
+                <label style={{ display: "grid", gap: 7 }}>
+                  <span style={fieldLabelStyle}>Badge text</span>
+                  <input
+                    type="color"
+                    value={workLinkDraft.logoColor || colors.navy3}
+                    onChange={(event) =>
+                      setWorkLinkDraft((current) => ({
+                        ...current,
+                        logoColor: event.currentTarget.value,
+                      }))
+                    }
+                    style={{ ...inputStyle, minHeight: 46, padding: 6 }}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <Field
+              label="Notes"
+              value={workLinkDraft.notes}
+              onChange={(value) =>
+                setWorkLinkDraft((current) => ({ ...current, notes: value }))
+              }
+              multiline
+            />
+
+            <div style={{ ...buttonRowStyle, marginTop: 14 }}>
+              <button
+                type="button"
+                onClick={saveWorkLink}
+                style={goldButtonStyle}
+              >
+                Save App
+              </button>
+              {workLinkDraft.id ? (
+                <button
+                  type="button"
+                  onClick={() => deleteWorkLink(workLinkDraft)}
+                  style={dangerButtonStyle}
+                >
+                  Delete App
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile
+              ? "1fr"
+              : "repeat(2, minmax(0, 1fr))",
+            gap: isMobile ? 16 : 20,
+          }}
+        >
+          {appCategories.map(([category, links]) => (
+            <section key={category} style={{ display: "grid", gap: 8 }}>
+              <h3
+                style={{
+                  ...detailTitleStyle,
+                  margin: 0,
+                  fontSize: 15,
+                  lineHeight: 1.2,
+                }}
+              >
+                {category}
+              </h3>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {links.map((link) => (
+                  <article
+                    key={link.id}
+                    style={{
+                      border: `1px solid ${colors.line}`,
+                      background: "#FFFFFF",
+                      borderRadius: 14,
+                      minHeight: 78,
+                      boxShadow: "0 4px 14px rgba(15,23,42,0.05)",
+                      overflow: "hidden",
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) auto",
+                      alignItems: "stretch",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => openApp(link)}
+                      style={{
+                        border: 0,
+                        background: "transparent",
+                        padding: "12px 10px 12px 12px",
+                        margin: 0,
+                        display: "grid",
+                        gridTemplateColumns: "48px minmax(0, 1fr)",
+                        alignItems: "center",
+                        gap: 12,
+                        color: "inherit",
+                        cursor: "pointer",
+                        minWidth: 0,
+                        textAlign: "left",
+                      }}
+                      aria-label={`Open ${link.name}`}
+                    >
+                      <span
+                        style={{
+                          ...workLinkLogoLargeStyle,
+                          width: 48,
+                          height: 48,
+                          borderRadius: 13,
+                          background: link.logoBg,
+                          color: link.logoColor || colors.navy,
+                          boxShadow: "0 5px 12px rgba(15,23,42,0.10)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <span style={workLinkLogoFallbackStyle}>{link.logoText}</span>
+                        {link.logoUrl ? (
+                          <img
+                            src={link.logoUrl}
+                            alt=""
+                            onError={(event) => {
+                              event.currentTarget.style.display = "none";
+                            }}
+                            style={{
+                              ...workLinkLogoImageLargeStyle,
+                              borderRadius: 13,
+                            }}
+                          />
+                        ) : null}
+                      </span>
+
+                      <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
+                        <strong
+                          style={{
+                            fontSize: 14,
+                            lineHeight: 1.25,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {link.name}
+                        </strong>
+                        {link.vendor ? (
+                          <span
+                            style={{
+                              ...mutedSmallStyle,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {link.vendor}
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        paddingRight: 8,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openApp(link)}
+                        style={{
+                          ...secondaryButtonStyle,
+                          width: 38,
+                          minWidth: 38,
+                          height: 38,
+                          padding: 0,
+                          borderRadius: 10,
+                          fontSize: 17,
+                        }}
+                        aria-label={`Open ${link.name}`}
+                        title={appOpensInsideAtlas(link) ? "Open inside Atlas" : "Open in new tab"}
+                      >
+                        ↗
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAppQrLink(link)}
+                        style={{
+                          ...secondaryButtonStyle,
+                          width: 38,
+                          minWidth: 38,
+                          height: 38,
+                          padding: 0,
+                          borderRadius: 10,
+                          fontSize: 17,
+                        }}
+                        aria-label={`Show phone QR code for ${link.name}`}
+                        title="Open on phone"
+                      >
+                        ▦
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+
+        {activeAppLink ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`App viewer: ${activeAppLink.name}`}
+            onClick={() => setActiveAppLink(null)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 1800,
+              background: "rgba(7, 23, 47, 0.78)",
+              padding: isMobile ? 8 : 20,
+              display: "flex",
+              alignItems: "stretch",
+              justifyContent: "center",
+            }}
+          >
+            <div
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                width: "100%",
+                maxWidth: 1280,
+                minHeight: 0,
+                borderRadius: isMobile ? 18 : 22,
+                overflow: "hidden",
+                background: "#FFFFFF",
+                boxShadow: "0 28px 90px rgba(0,0,0,0.42)",
+                display: "grid",
+                gridTemplateRows: "auto minmax(0, 1fr)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: "10px 12px 10px 16px",
+                  borderBottom: `1px solid ${colors.line}`,
+                  background: "#FFFFFF",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <strong
+                    style={{
+                      display: "block",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {activeAppLink.name}
+                  </strong>
+                  <span style={mutedSmallStyle}>
+                    {activeAppLink.category || "App"}
+                  </span>
+                </div>
+                <div style={{ ...buttonRowStyle, flexWrap: "nowrap" }}>
+                  <a
+                    href={resolvedAppUrl(activeAppLink)}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={secondaryButtonStyle}
+                  >
+                    New Tab
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setAppQrLink(activeAppLink)}
+                    style={secondaryButtonStyle}
+                  >
+                    Phone QR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveAppLink(null)}
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 999,
+                      border: `1px solid ${colors.line}`,
+                      background: colors.navy3,
+                      color: "#FFFFFF",
+                      fontSize: 22,
+                      fontWeight: 900,
+                      lineHeight: 1,
+                      cursor: "pointer",
+                    }}
+                    aria-label="Close app viewer"
+                    title="Close"
+                  >
+                    {closeSymbol}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ minHeight: 0, position: "relative", background: colors.panel }}>
+                <iframe
+                  key={activeAppLink.id}
+                  src={resolvedAppUrl(activeAppLink)}
+                  title={activeAppLink.name}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    minHeight: isMobile ? "calc(100dvh - 82px)" : "calc(100vh - 100px)",
+                    border: 0,
+                    background: "#FFFFFF",
+                  }}
+                  allow="camera; microphone; geolocation; clipboard-read; clipboard-write; fullscreen"
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {appQrLink ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Phone QR code: ${appQrLink.name}`}
+            onClick={() => setAppQrLink(null)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 1900,
+              background: "rgba(7, 23, 47, 0.82)",
+              padding: 16,
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <div
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                width: "min(420px, 100%)",
+                borderRadius: 22,
+                background: "#FFFFFF",
+                padding: 20,
+                boxShadow: "0 28px 90px rgba(0,0,0,0.42)",
+                display: "grid",
+                gap: 16,
+                textAlign: "center",
+              }}
+            >
+              <div>
+                <div style={eyebrowStyle}>Open on Phone</div>
+                <h3 style={{ ...detailTitleStyle, margin: 0 }}>{appQrLink.name}</h3>
+              </div>
+              <div style={qrImageShellStyle}>
+                <img
+                  src={qrImageUrl(resolvedAppUrl(appQrLink), 360)}
+                  alt={`QR code for ${appQrLink.name}`}
+                  style={{ ...qrImageStyle, maxWidth: 320, margin: "0 auto" }}
+                />
+              </div>
+              <p style={mutedSmallStyle}>
+                Scan this code with your phone camera to open the app.
+              </p>
+              <div style={{ ...buttonRowStyle, justifyContent: "center" }}>
+                <a
+                  href={resolvedAppUrl(appQrLink)}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={goldButtonStyle}
+                >
+                  Open Link
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setAppQrLink(null)}
+                  style={secondaryButtonStyle}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </section>
+    );
+  }
+
+  function renderQRCodes() {
+    const qrCounts: Record<QrKind, number> = {
+      asset: assetRecords.length,
+      location: locations.length,
+      vendor: vendorRecords.length,
+      map: mapLabels.length,
+    };
+
+    const qrKindLabel: Record<QrKind, string> = {
+      asset: "Assets",
+      location: "Locations",
+      vendor: "Vendors",
+      map: "Map Labels",
+    };
+
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="QR Labels"
+          title="QR Codes"
+          detail="Create printable QR labels for Atlas records. Scanning a code opens Atlas directly to the matching asset, location, vendor, or map label."
+          right={
+            <div className="atlas-no-print" style={buttonRowStyle}>
+              <button
+                type="button"
+                onClick={() => setScreen("scan")}
+                style={secondaryButtonStyle}
+              >
+                Scan QR
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                style={goldButtonStyle}
+              >
+                Print QR Labels
+              </button>
+            </div>
+          }
+        />
+
+        {requestPortalToken && typeof window !== "undefined" ? (
+          <article
+            className="atlas-qr-print-card"
+            style={{ ...qrCardStyle, marginBottom: 18 }}
+          >
+            <div style={qrImageShellStyle}>
+              <img
+                src={qrImageUrl(
+                  `${window.location.origin}/request?token=${encodeURIComponent(
+                    requestPortalToken,
+                  )}`,
+                  320,
+                )}
+                alt="Owner Request QR code"
+                style={qrImageStyle}
+              />
+            </div>
+
+            <div style={qrCardBodyStyle}>
+              <div>
+                <div style={eyebrowStyle}>Owner Request</div>
+                <h3 style={qrCardTitleStyle}>Request Service</h3>
+                <p style={mutedSmallStyle}>
+                  Public secure form for the owner to submit maintenance
+                  requests.
+                </p>
+              </div>
+
+              <div className="atlas-no-print" style={buttonRowStyle}>
+                <a
+                  href={`${window.location.origin}/request?token=${encodeURIComponent(
+                    requestPortalToken,
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={secondaryButtonStyle}
+                >
+                  Open
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(
+                      `${window.location.origin}/request?token=${encodeURIComponent(
+                        requestPortalToken,
+                      )}`,
+                    );
+                    setRequestMessage("Owner request link copied.");
+                  }}
+                  style={secondaryButtonStyle}
+                >
+                  Copy Link
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void copyOwnerRequestQrImage(
+                      `${window.location.origin}/request?token=${encodeURIComponent(
+                        requestPortalToken,
+                      )}`,
+                    )
+                  }
+                  style={secondaryButtonStyle}
+                >
+                  Copy QR Image
+                </button>
+              </div>
+
+              <small style={qrUrlStyle}>
+                {`${window.location.origin}/request?token=${encodeURIComponent(
+                  requestPortalToken,
+                )}`}
+              </small>
+            </div>
+          </article>
+        ) : null}
+
+        {marineRequestPortalToken && typeof window !== "undefined" ? (
+          <article
+            className="atlas-qr-print-card"
+            style={{
+              ...qrCardStyle,
+              marginBottom: 18,
+              borderColor: "#9CC7E8",
+              background:
+                "linear-gradient(135deg, #F7FBFF 0%, #EEF7FF 100%)",
+            }}
+          >
+            <div style={qrImageShellStyle}>
+              <img
+                src={qrImageUrl(
+                  `${window.location.origin}/request?token=${encodeURIComponent(
+                    marineRequestPortalToken,
+                  )}`,
+                  320,
+                )}
+                alt="Sean Marine Request QR code"
+                style={qrImageStyle}
+              />
+            </div>
+
+            <div style={qrCardBodyStyle}>
+              <div>
+                <div style={eyebrowStyle}>Sean Marine Request</div>
+                <h3 style={qrCardTitleStyle}>Marine Service</h3>
+                <p style={mutedSmallStyle}>
+                  Secure public form for boat detailing, Sea-Doo, dock, lift,
+                  and other marine-service requests. Requests are automatically
+                  assigned to Sean and tagged Dock &amp; Marine.
+                </p>
+              </div>
+
+              <div className="atlas-no-print" style={buttonRowStyle}>
+                <a
+                  href={`${window.location.origin}/request?token=${encodeURIComponent(
+                    marineRequestPortalToken,
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={secondaryButtonStyle}
+                >
+                  Open
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(
+                      `${window.location.origin}/request?token=${encodeURIComponent(
+                        marineRequestPortalToken,
+                      )}`,
+                    );
+                    setRequestMessage("Sean Marine request link copied.");
+                  }}
+                  style={secondaryButtonStyle}
+                >
+                  Copy Link
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void copyOwnerRequestQrImage(
+                      `${window.location.origin}/request?token=${encodeURIComponent(
+                        marineRequestPortalToken,
+                      )}`,
+                    )
+                  }
+                  style={secondaryButtonStyle}
+                >
+                  Copy QR Image
+                </button>
+              </div>
+
+              <small style={qrUrlStyle}>
+                {`${window.location.origin}/request?token=${encodeURIComponent(
+                  marineRequestPortalToken,
+                )}`}
+              </small>
+            </div>
+          </article>
+        ) : null}
+
+        <div className="atlas-no-print" style={qrControlPanelStyle}>
+          <div style={qrTypeGridStyle}>
+            {(["asset", "location", "vendor", "map"] as QrKind[]).map(
+              (kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => setQrKind(kind)}
+                  style={{
+                    ...qrTypeButtonStyle,
+                    borderColor: qrKind === kind ? colors.gold : colors.line,
+                    background: qrKind === kind ? "#FFF8E6" : "#FFFFFF",
+                    color: qrKind === kind ? colors.navy : colors.text,
+                  }}
+                >
+                  <strong>{qrKindLabel[kind]}</strong>
+                  <span>{qrCounts[kind]} records</span>
+                </button>
+              ),
+            )}
+          </div>
+
+          <input
+            value={qrSearch}
+            onChange={(event) => setQrSearch(event.currentTarget.value)}
+            placeholder={`Search ${qrKindLabel[qrKind].toLowerCase()} for QR labels...`}
+            style={{ ...inputStyle, width: "100%" }}
+          />
+        </div>
+
+        <div style={qrSummaryStyle}>
+          <strong>
+            {qrRecords.length} {qrKindLabel[qrKind].toLowerCase()} ready to
+            print
+          </strong>
+          <p style={mutedSmallStyle}>
+            Labels are private to Atlas because the scanned links still require
+            your normal Atlas login. Use Scan QR from Atlas, or use the normal
+            phone Camera app to open a printed label.
+          </p>
+        </div>
+
+        <div style={qrGridStyle}>
+          {qrRecords.map((record) => {
+            const targetUrl = recordQrUrl(record.kind, record.id);
+
+            return (
+              <article
+                key={`${record.kind}-${record.id}`}
+                className="atlas-qr-print-card"
+                style={qrCardStyle}
+              >
+                <div style={qrImageShellStyle}>
+                  <img
+                    src={qrImageUrl(targetUrl)}
+                    alt={`QR code for ${record.title}`}
+                    style={qrImageStyle}
+                  />
+                </div>
+
+                <div style={qrCardBodyStyle}>
+                  <div>
+                    <div style={eyebrowStyle}>
+                      {qrKindLabel[record.kind].slice(0, -1)}
+                    </div>
+                    <h3 style={qrCardTitleStyle}>{record.title}</h3>
+                    <p style={mutedSmallStyle}>{record.subtitle}</p>
+                  </div>
+
+                  {record.detail ? (
+                    <p style={qrDetailStyle}>{record.detail}</p>
+                  ) : null}
+
+                  <div className="atlas-no-print" style={buttonRowStyle}>
+                    <a
+                      href={targetUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={secondaryButtonStyle}
+                    >
+                      Open
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(targetUrl);
+                      }}
+                      style={secondaryButtonStyle}
+                    >
+                      Copy Link
+                    </button>
+                  </div>
+
+                  <small style={qrUrlStyle}>{targetUrl}</small>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
+  function renderQRScanner() {
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Phone Scanner"
+          title="Scan QR"
+          detail="Use the phone camera to scan an Atlas QR label and jump directly to the matching asset, location, vendor, or map record."
+          right={
+            <div style={buttonRowStyle}>
+              <button
+                type="button"
+                onClick={() => setScreen("qr")}
+                style={secondaryButtonStyle}
+              >
+                QR Codes
+              </button>
+              {scannerActive ? (
+                <button
+                  type="button"
+                  onClick={() => void stopQrScanner()}
+                  style={dangerButtonStyle}
+                >
+                  Stop Scanner
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void startQrScanner()}
+                  style={goldButtonStyle}
+                >
+                  Start Camera
+                </button>
+              )}
+            </div>
+          }
+        />
+
+        <div
+          style={
+            isMobile
+              ? { ...scannerLayoutStyle, gridTemplateColumns: "1fr" }
+              : scannerLayoutStyle
+          }
+        >
+          <div style={scannerPanelStyle}>
+            <div id={qrScannerElementId} style={scannerReaderStyle} />
+            <div style={noticeStyle}>
+              <strong>
+                {scannerActive ? "Scanner running" : "Scanner ready"}
+              </strong>
+              <p style={mutedSmallStyle}>{scannerStatus}</p>
+            </div>
+          </div>
+
+          <div style={scannerSideStyle}>
+            <div style={qrCardStyle}>
+              <h3 style={qrCardTitleStyle}>How to use it</h3>
+              <p style={mutedSmallStyle}>
+                Tap Start Camera, allow camera access, then point your phone at
+                an Atlas QR label. Atlas will open the matching record
+                automatically.
+              </p>
+              <p style={mutedSmallStyle}>
+                The regular iPhone Camera app also works because each QR label
+                is a normal Atlas link.
+              </p>
+            </div>
+
+            <div style={qrCardStyle}>
+              <h3 style={qrCardTitleStyle}>Manual QR link</h3>
+              <p style={mutedSmallStyle}>
+                Paste a copied QR link here if camera permission is blocked.
+              </p>
+              <textarea
+                value={scannerManualValue}
+                onChange={(event) =>
+                  setScannerManualValue(event.currentTarget.value)
+                }
+                placeholder="Paste Atlas QR link or qr value here..."
+                style={{ ...inputStyle, minHeight: 90, resize: "vertical" }}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  openQrTarget(scannerManualValue, { source: "manual" })
+                }
+                style={{ ...goldButtonStyle, marginTop: 10 }}
+              >
+                Open QR Target
+              </button>
+            </div>
+
+            {lastScannedQr ? (
+              <div style={noticeStyle}>
+                <strong>Last scanned</strong>
+                <p style={{ ...mutedSmallStyle, wordBreak: "break-all" }}>
+                  {lastScannedQr}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function renderFilePreviewOverlay() {
+    if (!previewFile) return null;
+
+    const source = previewFile.dataUrl || previewFile.url || "";
+    const isImage =
+      source.startsWith("data:image/") ||
+      (previewFile.type || "").startsWith("image/");
+    const isPdf =
+      source.startsWith("data:application/pdf") ||
+      (previewFile.type || "").toLowerCase().includes("pdf") ||
+      previewFile.name.toLowerCase().endsWith(".pdf");
+    const zoomedFrameStyle: React.CSSProperties = {
+      ...previewFrameStyle,
+      transform: `scale(${previewZoom / 100})`,
+      transformOrigin: "top left",
+      width: `${10000 / previewZoom}%`,
+      height: `${10000 / previewZoom}%`,
+    };
+
+    return (
+      <div style={previewOverlayStyle} onMouseDown={() => setPreviewFile(null)}>
+        <div
+          style={previewPanelStyle}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div style={previewHeaderStyle}>
+            <div style={{ minWidth: 0 }}>
+              <div style={eyebrowStyle}>
+                {isPdf ? "PDF Document" : "Document Preview"}
+              </div>
+              <h3 style={detailTitleStyle}>{previewFile.name}</h3>
+              {!isPdf && isImage ? (
+                <p style={mutedSmallStyle}>Zoom: {previewZoom}%</p>
+              ) : null}
+            </div>
+            <div style={buttonRowStyle}>
+              {!isPdf && isImage ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPreviewZoom((value) => Math.max(50, value - 25))
+                    }
+                    style={secondaryButtonStyle}
+                  >
+                    −
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewZoom(100)}
+                    style={secondaryButtonStyle}
+                  >
+                    100%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPreviewZoom((value) => Math.min(300, value + 25))
+                    }
+                    style={secondaryButtonStyle}
+                  >
+                    +
+                  </button>
+                </>
+              ) : null}
+              {source ? (
+                <button
+                  type="button"
+                  onClick={() => openFileInBrowser(previewFile, source)}
+                  style={isPdf ? goldButtonStyle : secondaryButtonStyle}
+                >
+                  {isPdf ? "Open PDF" : "Open New Tab"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setPreviewFile(null)}
+                style={isPdf ? secondaryButtonStyle : goldButtonStyle}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+
+          <div
+            style={previewBodyStyle}
+            onTouchStart={isPdf ? undefined : handlePreviewTouchStart}
+            onTouchMove={isPdf ? undefined : handlePreviewTouchMove}
+            onTouchEnd={isPdf ? undefined : handlePreviewTouchEnd}
+          >
+            {isImage && source ? (
+              <img
+                src={source}
+                alt={previewFile.name}
+                style={{
+                  ...previewImageStyle,
+                  width: `${previewZoom}%`,
+                  maxWidth: "none",
+                  maxHeight: "none",
+                  display: "block",
+                  margin: "0 auto",
+                }}
+              />
+            ) : isPdf ? (
+              <div
+                style={{
+                  ...noticeStyle,
+                  minHeight: isMobile ? 260 : 360,
+                  display: "grid",
+                  placeItems: "center",
+                  textAlign: "center",
+                  padding: 28,
+                }}
+              >
+                <div style={{ maxWidth: 560 }}>
+                  <div style={{ fontSize: 56, lineHeight: 1, marginBottom: 16 }}>
+                    PDF
+                  </div>
+                  <strong style={{ fontSize: 18 }}>
+                    Large PDFs open in a separate browser tab.
+                  </strong>
+                  <p style={{ ...mutedSmallStyle, margin: "10px 0 18px" }}>
+                    Atlas does not load the full PDF inside this page, which prevents large plan sets from freezing the Documents screen.
+                  </p>
+                  {source ? (
+                    <button
+                      type="button"
+                      onClick={() => openFileInBrowser(previewFile, source)}
+                      style={{ ...goldButtonStyle, display: "inline-flex" }}
+                    >
+                      Open PDF
+                    </button>
+                  ) : (
+                    <p style={mutedSmallStyle}>
+                      No PDF file URL is saved for this document.
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : source ? (
+              <div style={noticeStyle}>
+                <strong>Preview not available for this file type.</strong>
+                <p style={mutedSmallStyle}>
+                  Use Open New Tab to view or download it.
+                </p>
+              </div>
+            ) : (
+              <div style={noticeStyle}>
+                No preview URL is saved for this file.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderAssistant() {
+    const suggestedPrompts = [
+      "What do I need to do today?",
+      "Show high-priority work orders",
+      "Find everything related to irrigation",
+      "Show procedures and manuals for the boilers",
+    ];
+
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Ask Atlas"
+          title="AI Property Workspace"
+          detail="Ask a question, review matching Atlas records, and open the exact item without leaving the workspace."
+          right={
+            assistantTurns.length ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setAssistantTurns([]);
+                  setAssistantRecordResults([]);
+                  setSelectedRelationshipId("");
+                  setPendingAssistantAction(null);
+                  setManualCandidates([]);
+                  setManualSaveMessage("");
+                  setAssistantQuestion("");
+                  setAssistantAnswer(
+                    "Ask Atlas about assets, locations, vendors, contacts, work orders, calendar items, procedures, documents, parts, or map records.",
+                  );
+                }}
+                style={secondaryButtonStyle}
+              >
+                Clear Conversation
+              </button>
+            ) : null
+          }
+        />
+
+        <AskAtlasWorkspace
+          isMobile={isMobile}
+          main={
+            <>
+              <div
+                style={{
+                  ...cardStyle,
+                  padding: 0,
+                  overflow: "hidden",
+                  minHeight: isMobile ? 420 : 560,
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                <div
+                  style={{
+                    flex: 1,
+                    overflowY: assistantTurns.length ? "auto" : "hidden",
+                    padding: isMobile ? 14 : 18,
+                    display: "grid",
+                    alignContent: "start",
+                    gap: 12,
+                    maxHeight: isMobile ? "56vh" : "62vh",
+                  }}
+                >
+                  {!assistantTurns.length ? (
+                    <div
+                      style={{
+                        ...noticeStyle,
+                        whiteSpace: "pre-wrap",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {assistantAnswer}
+                    </div>
+                  ) : (
+                    assistantTurns.map((turn) => (
+                      <div
+                        key={turn.id}
+                        style={{
+                          display: "flex",
+                          justifyContent:
+                            turn.role === "user" ? "flex-end" : "flex-start",
+                        }}
+                      >
+                        <div
+                          style={{
+                            maxWidth: "88%",
+                            padding: "12px 14px",
+                            borderRadius:
+                              turn.role === "user"
+                                ? "16px 16px 4px 16px"
+                                : "16px 16px 16px 4px",
+                            background:
+                              turn.role === "user" ? colors.navy : colors.panel,
+                            color:
+                              turn.role === "user" ? "#FFFFFF" : colors.navy,
+                            border:
+                              turn.role === "user"
+                                ? `1px solid ${colors.navy}`
+                                : `1px solid ${colors.line}`,
+                            whiteSpace: "pre-wrap",
+                            lineHeight: 1.55,
+                          }}
+                        >
+                          {turn.role === "assistant"
+                            ? renderAskAtlasAnswer(turn.text)
+                            : turn.text}
+                        </div>
+                      </div>
+                    ))
+                  )}
+
+                  {assistantLoading ? (
+                    <div style={{ ...noticeStyle, lineHeight: 1.5 }}>
+                      Atlas is reviewing property records...
+                    </div>
+                  ) : null}
+
+                  {!assistantLoading && assistantSources.length ? (
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 7,
+                        paddingTop: 4,
+                      }}
+                    >
+                      <div style={{ ...eyebrowStyle, color: colors.muted }}>Sources</div>
+                      {assistantSources.map((source, index) => {
+                        const href = source.page
+                          ? `${source.url}#page=${source.page}`
+                          : source.url;
+                        return (
+                          <a
+                            key={`${source.url}-${source.page || 0}-${index}`}
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              border: `1px solid ${colors.line}`,
+                              borderRadius: 10,
+                              padding: "9px 10px",
+                              background: colors.card,
+                              color: colors.navy,
+                              textDecoration: "none",
+                              display: "grid",
+                              gap: 2,
+                            }}
+                          >
+                            <strong style={{ fontSize: 13 }}>{source.title}</strong>
+                            <span style={mutedSmallStyle}>
+                              {[
+                                source.page ? `Page ${source.page}` : "",
+                                source.sheetTitle || "",
+                                source.kind || "",
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          </a>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div
+                  style={{
+                    borderTop: `1px solid ${colors.line}`,
+                    padding: 14,
+                    background: colors.panel,
+                    display: "grid",
+                    gap: 10,
+                  }}
+                >
+                  <textarea
+                    value={assistantQuestion}
+                    onChange={(event) =>
+                      setAssistantQuestion(event.currentTarget.value)
+                    }
+                    onKeyDown={(event) => {
+                      if (
+                        (event.ctrlKey || event.metaKey) &&
+                        event.key === "Enter"
+                      ) {
+                        event.preventDefault();
+                        if (!assistantLoading && assistantQuestion.trim())
+                          void askAtlas();
+                      }
+                    }}
+                    placeholder="Ask Atlas about the property, records, work, equipment, documents, or manuals..."
+                    style={{ ...inputStyle, minHeight: 92, resize: "vertical" }}
+                  />
+                  <div style={buttonRowStyle}>
+                    <button
+                      type="button"
+                      onClick={() => void askAtlas()}
+                      disabled={assistantLoading || !assistantQuestion.trim()}
+                      style={{
+                        ...goldButtonStyle,
+                        opacity:
+                          assistantLoading || !assistantQuestion.trim()
+                            ? 0.6
+                            : 1,
+                      }}
+                    >
+                      {assistantLoading ? "Working..." : "Ask Atlas"}
+                    </button>
+                    <span style={mutedSmallStyle}>Ctrl/⌘ + Enter to send</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {suggestedPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => {
+                      setAssistantQuestion(prompt);
+                      void askAtlas(prompt);
+                    }}
+                    disabled={assistantLoading}
+                    style={{ ...secondaryButtonStyle, fontSize: 12 }}
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+
+
+
+              {pendingAssistantAction ? (
+                <ActionApprovalCard
+                  action={pendingAssistantAction}
+                  saving={assistantActionSaving}
+                  assetName={
+                    pendingAssistantAction.kind === "work-order"
+                      ? assetRecords.find(
+                          (item) => item.id === pendingAssistantAction.assetId,
+                        )?.name
+                      : pendingAssistantAction.kind === "part-create"
+                        ? assetRecords.find(
+                            (item) =>
+                              item.id === pendingAssistantAction.assetId,
+                          )?.name
+                        : pendingAssistantAction.kind === "asset-update"
+                          ? pendingAssistantAction.targetTitle
+                          : pendingAssistantAction.kind ===
+                              "recurring-maintenance"
+                            ? assetRecords.find(
+                                (item) =>
+                                  item.id ===
+                                  pendingAssistantAction.assetId,
+                              )?.name
+                      : pendingAssistantAction.kind === "procedure"
+                        ? assetRecords.find(
+                            (item) =>
+                              item.id ===
+                              pendingAssistantAction.linkedAssetIds[0],
+                          )?.name
+                        : undefined
+                  }
+                  formattedDate={
+                    pendingAssistantAction.kind === "calendar" ||
+                    pendingAssistantAction.kind === "calendar-update"
+                      ? formatDate(pendingAssistantAction.date)
+                      : undefined
+                  }
+                  colors={colors}
+                  onApprove={() => void approveAssistantAction()}
+                  onCancel={() => {
+                    setPendingAssistantAction(null);
+                    addAssistantTurn(
+                      "assistant",
+                      "Action canceled. Nothing was changed.",
+                    );
+                  }}
+                />
+              ) : null}
+
+              {manualCandidates.length ? (
+                <div style={stackStyle}>
+                  <div style={{ fontWeight: 950, fontSize: 18 }}>
+                    Official Manuals Found
+                  </div>
+                  {manualCandidates.map((candidate, index) => (
+                    <article
+                      key={`${candidate.url}-${index}`}
+                      style={{
+                        ...cardStyle,
+                        padding: 16,
+                        display: "grid",
+                        gap: 10,
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 950, fontSize: 17 }}>
+                          {candidate.title}
+                        </div>
+                        <div style={mutedSmallStyle}>
+                          {[
+                            candidate.manufacturer,
+                            candidate.model,
+                            candidate.sourceDomain,
+                          ]
+                            .filter(Boolean)
+                            .join(" • ")}
+                        </div>
+                      </div>
+                      <div style={{ lineHeight: 1.5 }}>{candidate.reason}</div>
+                      <div style={buttonRowStyle}>
+                        <a
+                          href={candidate.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            ...secondaryButtonStyle,
+                            textDecoration: "none",
+                          }}
+                        >
+                          Open Source
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => void saveManualToAtlas(candidate)}
+                          disabled={manualSavingUrl === candidate.url}
+                          style={goldButtonStyle}
+                        >
+                          {manualSavingUrl === candidate.url
+                            ? "Saving…"
+                            : "Save to Documents"}
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                  {manualSaveMessage ? (
+                    <div style={noticeStyle}>{manualSaveMessage}</div>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
+          }
+          sidebar={
+            <>
+
+              <div style={{ ...cardStyle, padding: 16 }}>
+                <div style={eyebrowStyle}>Matching Atlas Records</div>
+                <h3 style={{ margin: "4px 0 12px", fontSize: 20 }}>
+                  {assistantRecordResults.length
+                    ? `${assistantRecordResults.length} related record${assistantRecordResults.length === 1 ? "" : "s"}`
+                    : "Ask a question to find records"}
+                </h3>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  {assistantRecordResults.map((result) => {
+                    const isSelected = selectedRelationshipId === result.id;
+                    const relatedCount = relatedRecordsFor(result).length;
+
+                    return (
+                      <div
+                        key={result.id}
+                        style={{
+                          border: `1px solid ${
+                            isSelected ? colors.gold : colors.line
+                          }`,
+                          borderRadius: 12,
+                          background: colors.card,
+                          padding: 12,
+                          display: "grid",
+                          gap: 9,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "flex-start",
+                            justifyContent: "space-between",
+                            gap: 10,
+                          }}
+                        >
+                          <strong>{result.title}</strong>
+                          <span
+                            style={{
+                              borderRadius: 999,
+                              background: colors.panel,
+                              padding: "3px 7px",
+                              fontSize: 10,
+                              fontWeight: 900,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {result.type}
+                          </span>
+                        </div>
+
+                        {result.subtitle ? (
+                          <div style={mutedSmallStyle}>{result.subtitle}</div>
+                        ) : null}
+
+                        <div
+                          style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => openSearchResult(result)}
+                            style={{
+                              ...secondaryButtonStyle,
+                              padding: "7px 10px",
+                              fontSize: 11,
+                            }}
+                          >
+                            Open Record
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedRelationshipId(
+                                isSelected ? "" : result.id,
+                              )
+                            }
+                            style={{
+                              ...secondaryButtonStyle,
+                              padding: "7px 10px",
+                              fontSize: 11,
+                            }}
+                          >
+                            {isSelected
+                              ? "Hide Related"
+                              : `Related (${relatedCount})`}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {selectedRelationshipId ? (
+                  <RelationshipPanel
+                    selected={assistantRecordResults.find(
+                      (result) => result.id === selectedRelationshipId,
+                    )}
+                    related={
+                      assistantRecordResults.find(
+                        (result) => result.id === selectedRelationshipId,
+                      )
+                        ? relatedRecordsFor(
+                            assistantRecordResults.find(
+                              (result) => result.id === selectedRelationshipId,
+                            )!,
+                          )
+                        : []
+                    }
+                    onOpen={openSearchResult}
+                    colors={colors}
+                  />
+                ) : null}
+              </div>
+
+              <div style={{ ...cardStyle, padding: 16 }}>
+                <div style={eyebrowStyle}>Safe Actions</div>
+                <h3 style={{ margin: "4px 0 8px", fontSize: 18 }}>
+                  Approval required
+                </h3>
+                <p style={{ ...mutedSmallStyle, lineHeight: 1.55, margin: 0 }}>
+                  Ask Atlas can answer property questions and prepare work orders, calendar events, and
+                  draft procedures. Nothing is saved until you press Approve and
+                  Save.
+                </p>
+              </div>
+            </>
+          }
+        />
+      </section>
+    );
+  }
+
+  function renderOwnerReport() {
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Operations"
+          title="Owner Report"
+          detail="Review completed work before saving or sending the weekly owner report."
+        />
+        <AtlasOwnerReport
+          propertyId={activePropertyId}
+          workOrders={serviceRecords}
+          colors={colors}
+          isMobile={isMobile}
+        />
+      </section>
+    );
+  }
+
+  async function cleanExactOperationalDuplicates() {
+    const workDuplicateIds = exactDuplicateRecordIds(
+      serviceRecords.map((record) => record as unknown as Record<string, unknown>),
+    );
+    const taskRows = workPlanTasks.map((task) => {
+      const meta = taskDetails(task.id);
+      return {
+        ...task,
+        ...meta,
+        taskMeta: meta,
+      } as unknown as Record<string, unknown>;
+    });
+    const taskDuplicateIds = exactDuplicateRecordIds(taskRows);
+    const total = workDuplicateIds.length + taskDuplicateIds.length;
+    if (!total) {
+      showSaveToast("No exact duplicate work or task records found.");
+      return;
+    }
+    if (!window.confirm(`Remove ${total} exact duplicate record${total === 1 ? "" : "s"}? Atlas will keep the newest identical copy of each record.`)) {
+      return;
+    }
+
+    const deletedWorkIds = new Set<string>();
+    for (const id of workDuplicateIds) {
+      const deleted = await deleteAtlasRecord("work_orders", id, { suppressFailureToast: true });
+      if (deleted) deletedWorkIds.add(id);
+    }
+    const deletedTaskIds = new Set<string>();
+    for (const id of taskDuplicateIds) {
+      const deleted = await deleteOperationalRecord("tasks" as AtlasTable, id);
+      if (deleted) deletedTaskIds.add(id);
+    }
+
+    if (deletedWorkIds.size) {
+      setServiceRecords((current) => current.filter((record) => !deletedWorkIds.has(String(record.id))));
+    }
+    if (deletedTaskIds.size) {
+      setWorkPlanTasks((current) => current.filter((task) => !deletedTaskIds.has(String(task.id))));
+      setTaskMeta((current) => {
+        const next = { ...current };
+        deletedTaskIds.forEach((id) => delete next[id]);
+        return next;
+      });
+    }
+
+    const deletedTotal = deletedWorkIds.size + deletedTaskIds.size;
+    showSaveToast(`Removed ${deletedTotal} exact duplicate record${deletedTotal === 1 ? "" : "s"}.`);
+    requestSharedAtlasRefresh();
+  }
+
+  function renderAtlasHealth() {
+    const workDuplicateIds = exactDuplicateRecordIds(
+      serviceRecords.map((record) => record as unknown as Record<string, unknown>),
+    );
+    const taskDuplicateIds = exactDuplicateRecordIds(
+      workPlanTasks.map((task) => {
+        const meta = taskDetails(task.id);
+        return { ...task, ...meta, taskMeta: meta } as unknown as Record<string, unknown>;
+      }),
+    );
+    const dirtyCount = Object.keys(dirtyRecords).length;
+    let pendingSaveCount = 0;
+    let pendingDeleteCount = 0;
+    if (typeof window !== "undefined") {
+      try {
+        const pending = window.localStorage.getItem(`atlas-operations-pending-v1-${activePropertyId}`);
+        pendingSaveCount = pending ? 1 : 0;
+        pendingDeleteCount = readStoredArray<{ table: string; id: string }>(
+          [`atlas-operations-deletes-v1-${activePropertyId}`],
+          [],
+        ).length;
+      } catch {
+        pendingSaveCount = 0;
+        pendingDeleteCount = 0;
+      }
+    }
+    const duplicateCount = workDuplicateIds.length + taskDuplicateIds.length;
+    const healthy = syncState === "synced" && operationsSyncState !== "failed" && dirtyCount === 0 && pendingSaveCount === 0 && pendingDeleteCount === 0;
+
+    return (
+      <section style={{ ...cardStyle, marginBottom: 12, padding: isMobile ? 12 : 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div>
+            <div style={eyebrowStyle}>Atlas Health</div>
+            <strong style={{ color: colors.navy }}>{healthy ? "Shared Atlas healthy" : "Atlas needs attention"}</strong>
+          </div>
+          <span style={badgeStyle(healthy ? "Completed" : syncState === "offline" ? "Open" : "Monitor")}>{syncState === "synced" ? "Connected" : syncState === "loading" ? "Loading" : "Offline"}</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(6,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
+          {[
+            ["Property", activePropertyId],
+            ["Last sync", lastSyncedAt || "—"],
+            ["Unsaved", dirtyCount],
+            ["Retry", pendingSaveCount + pendingDeleteCount],
+            ["Exact duplicates", duplicateCount],
+            ["Work records", serviceRecords.length],
+          ].map(([label, value]) => (
+            <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: "8px 9px", minWidth: 0 }}>
+              <small style={fieldLabelStyle}>{String(label).toUpperCase()}</small>
+              <strong style={{ display: "block", marginTop: 3, color: colors.navy, overflow: "hidden", textOverflow: "ellipsis" }}>{value}</strong>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
+          <button type="button" onClick={requestSharedAtlasRefresh} style={{ ...secondaryButtonStyle, width: "auto" }}>Refresh Shared Atlas</button>
+          {duplicateCount ? <button type="button" onClick={() => void cleanExactOperationalDuplicates()} style={{ ...secondaryButtonStyle, width: "auto" }}>Remove Exact Duplicates ({duplicateCount})</button> : null}
+        </div>
+        <small style={{ ...mutedSmallStyle, display: "block", marginTop: 8 }}>{operationsSyncMessage}</small>
+      </section>
+    );
+  }
+
+  function renderReportsAccess() {
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Operations"
+          title="Reports"
+          detail="Operational reporting and analytics for work, assets, vendors, documents, procedures, and schedules."
+        />
+        {renderAtlasHealth()}
+        <ReportsAccessCenter
+          isMobile={isMobile}
+          colors={colors}
+          analytics={renderOperationsAnalytics()}
+          data={{
+            workOrders: serviceRecords,
+            assets: assetRecords,
+            vendors: vendorRecords,
+            contacts: contactRecords,
+            procedures: procedureRecords,
+            calendar: calendarItems,
+            documents: intakeDocs,
+          }}
+        />
+      </section>
+    );
+  }
+
+  function renderPortfolio() {
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Atlas Portfolio"
+          title="Properties"
+          detail="Choose the property workspace. Property-specific records remain separated while vendors, contacts, and reusable procedures stay shared."
+        />
+        <AtlasPortfolioCenter
+          properties={atlasProperties.filter((property) =>
+            allowedPropertyIds.includes(property.id),
+          )}
+          activePropertyId={activePropertyId}
+          isMobile={isMobile}
+          colors={colors}
+          onOpenProperty={(propertyId, nextScreen) => {
+            selectProperty(propertyId);
+            setScreen(nextScreen);
+          }}
+        />
+      </section>
+    );
+  }
+
+  function renderPageVisualSummary() {
+    // Vendors uses the same clean list-and-information-card workspace as the
+    // other record pages. Do not render a separate command center, coverage
+    // cards, or snapshot above it.
+    if (String(screen) === "vendors") return null;
+
+    const openWorkOrders = serviceRecords.filter(
+      (record) => record.status !== "Completed",
+    ).length;
+    const completedWorkOrders = serviceRecords.filter(
+      (record) => record.status === "Completed",
+    ).length;
+    const operationalAssets = assetRecords.filter(
+      (asset) => asset.status === "Online",
+    ).length;
+    const needsServiceAssets = assetRecords.filter((asset) => {
+      if (asset.status === "Offline") return true;
+
+      return serviceRecords.some(
+        (record) =>
+          record.assetId === asset.id &&
+          record.status !== "Completed" &&
+          (
+            record.priority === "High" ||
+            (Boolean(record.date) && record.date < todayISO())
+          ),
+      );
+    }).length;
+    const setupIncompleteAssets = assetRecords.filter((asset) => {
+      const hasManual = manualsForAsset(asset).length > 0;
+      const hasProcedure = procedureRecords.some((procedure) =>
+        (procedure.linkedAssetIds || []).includes(asset.id),
+      );
+
+      return (
+        !asset.locationId ||
+        asset.locationId === "general" ||
+        !asset.serial ||
+        !asset.vendorIds.length ||
+        !hasManual ||
+        !hasProcedure
+      );
+    }).length;
+    const linkedDocuments = intakeDocs.filter(
+      (document) => document.targetType && document.targetType !== "General",
+    ).length;
+    const activeProcedures = procedureRecords.filter(
+      (procedure) => procedure.status !== "Draft",
+    ).length;
+    const lowParts = partRecords.filter(
+      (part) => part.status === "Low" || part.status === "Out" || part.status === "Order",
+    ).length;
+
+    if (screen === "vendors") {
+      const vendorsWithPhone = vendorRecords.filter((vendor) =>
+        Boolean(String(vendor.phone || "").trim()),
+      ).length;
+      const vendorsWithEmail = vendorRecords.filter((vendor) =>
+        Boolean(String(vendor.email || "").trim()),
+      ).length;
+      const vendorsWithWebsite = vendorRecords.filter((vendor) =>
+        Boolean(String(vendor.website || "").trim()),
+      ).length;
+      const linkedVendorCount = vendorRecords.filter((vendor) =>
+        assetRecords.some((asset) => asset.vendorIds.includes(vendor.id)) ||
+        serviceRecords.some((record) => record.vendorId === vendor.id),
+      ).length;
+      const activeVendorWork = serviceRecords.filter(
+        (record) => Boolean(record.vendorId) && record.status !== "Completed",
+      ).length;
+      const vendorCategories = new Set(
+        vendorRecords
+          .map((vendor) => String(vendor.category || "").trim())
+          .filter(Boolean),
+      ).size;
+
+      const vendorMetrics = [
+        { label: "Vendors", value: vendorRecords.length, note: "saved companies" },
+        { label: "Linked", value: linkedVendorCount, note: "assets or work" },
+        { label: "Active Work", value: activeVendorWork, note: "open assignments" },
+        { label: "Categories", value: vendorCategories, note: "service groups" },
+      ];
+
+      return (
+        <section
+          style={{
+            marginBottom: 16,
+            borderRadius: 24,
+            overflow: "hidden",
+            border: "1px solid rgba(207, 221, 233, 0.9)",
+            background: colors.card,
+            boxShadow: "0 14px 38px rgba(15, 31, 48, 0.10)",
+          }}
+        >
+          <div
+            style={{
+              padding: isMobile ? 18 : 28,
+              background: `linear-gradient(135deg, ${colors.navy} 0%, #183B55 100%)`,
+              color: "#FFFFFF",
+            }}
+          >
+            <div
+              style={{
+                color: colors.gold,
+                fontSize: 11,
+                fontWeight: 900,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              }}
+            >
+              Service Network
+            </div>
+
+            <h2
+              style={{
+                margin: "7px 0 3px",
+                fontSize: isMobile ? 25 : 32,
+                lineHeight: 1.1,
+                letterSpacing: "-0.025em",
+              }}
+            >
+              Vendors Command Center
+            </h2>
+
+            <div style={{ fontSize: 14, opacity: 0.72, fontWeight: 650 }}>
+              Contacts, service relationships, and active vendor work
+            </div>
+
+            <p
+              style={{
+                maxWidth: 900,
+                margin: "14px 0 0",
+                fontSize: isMobile ? 13 : 14,
+                lineHeight: 1.65,
+                opacity: 0.88,
+              }}
+            >
+              Atlas currently tracks {vendorRecords.length} vendor
+              {vendorRecords.length === 1 ? "" : "s"}. {linkedVendorCount} are
+              connected to assets or work orders, and {activeVendorWork} active
+              work item{activeVendorWork === 1 ? " is" : "s are"} assigned to a
+              vendor.
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "repeat(2, minmax(0, 1fr))"
+                  : "repeat(4, minmax(0, 1fr))",
+                gap: 10,
+                marginTop: 20,
+              }}
+            >
+              {vendorMetrics.map((metric) => (
+                <div
+                  key={metric.label}
+                  style={{
+                    display: "grid",
+                    gap: 4,
+                    minWidth: 0,
+                    padding: "13px 14px",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    borderRadius: 14,
+                    background: "rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 900,
+                      letterSpacing: "0.04em",
+                      textTransform: "uppercase",
+                      opacity: 0.64,
+                    }}
+                  >
+                    {metric.label}
+                  </span>
+                  <strong style={{ fontSize: 25, lineHeight: 1.05 }}>
+                    {metric.value}
+                  </strong>
+                  <span style={{ fontSize: 12, opacity: 0.72 }}>
+                    {metric.note}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "repeat(3, minmax(0, 1fr))",
+              gap: 12,
+              padding: isMobile ? 14 : 18,
+              background: "#F8FBFD",
+            }}
+          >
+            {[
+              {
+                label: "Phone coverage",
+                value: `${vendorsWithPhone} of ${vendorRecords.length}`,
+                detail: "vendors have a phone number",
+              },
+              {
+                label: "Email coverage",
+                value: `${vendorsWithEmail} of ${vendorRecords.length}`,
+                detail: "vendors have an email address",
+              },
+              {
+                label: "Website coverage",
+                value: `${vendorsWithWebsite} of ${vendorRecords.length}`,
+                detail: "vendors have a website",
+              },
+            ].map((item) => (
+              <div
+                key={((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}
+                style={{
+                  padding: "14px 16px",
+                  border: `1px solid ${colors.line}`,
+                  borderRadius: 14,
+                  background: colors.card,
+                }}
+              >
+                <div style={{ ...eyebrowStyle, marginBottom: 5 }}>
+                  {((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}
+                </div>
+                <strong style={{ fontSize: 20, color: colors.navy }}>
+                  {item.value}
+                </strong>
+                <div style={{ ...mutedSmallStyle, marginTop: 3 }}>
+                  {item.detail}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (false && screen === "history") {
+      const today = todayISO();
+      const weekAgo = addDays(today, -7);
+
+      const open = serviceRecords.filter(
+        (record) => record.status !== "Completed",
+      );
+      const dueToday = open.filter((record) => record.date === today).length;
+      const overdue = open.filter(
+        (record) => Boolean(record.date) && record.date < today,
+      ).length;
+      const highPriority = open.filter(
+        (record) => record.priority === "High",
+      ).length;
+      const recurring = serviceRecords.filter(
+        (record) => record.recurring,
+      ).length;
+      const completedThisWeek = serviceRecords.filter((record) => {
+        if (record.status !== "Completed") return false;
+        const completedDate =
+          String(record.lastCompletedDate || "") ||
+          String(record.completionHistory?.[record.completionHistory.length - 1] || "");
+        return Boolean(completedDate) && completedDate >= weekAgo;
+      }).length;
+
+      const metrics = [
+        { label: "Open Work", value: open.length, note: "active items" },
+        { label: "Due Today", value: dueToday, note: "scheduled today" },
+        { label: "Overdue", value: overdue, note: "need attention" },
+        { label: "High Priority", value: highPriority, note: "active priority" },
+        {
+          label: "Completed",
+          value: completedThisWeek,
+          note: "finished this week",
+        },
+      ];
+
+      const drivers = [
+        {
+          label: "Overdue work",
+          value: overdue ? `${overdue} overdue` : "No overdue work",
+          symbol: overdue ? "▼" : "▲",
+          color: overdue ? "#FCA5A5" : "#86E1B5",
+        },
+        {
+          label: "Today’s schedule",
+          value: dueToday ? `${dueToday} due today` : "Schedule is open",
+          symbol: dueToday ? "●" : "▲",
+          color: dueToday ? colors.gold : "#86E1B5",
+        },
+        {
+          label: "Priority workload",
+          value: highPriority
+            ? `${highPriority} high priority`
+            : "No high-priority backlog",
+          symbol: highPriority ? "▼" : "▲",
+          color: highPriority ? "#FCA5A5" : "#86E1B5",
+        },
+        {
+          label: "Preventive maintenance",
+          value: `${recurring} recurring`,
+          symbol: "▲",
+          color: "#86E1B5",
+        },
+        {
+          label: "Completion pace",
+          value: `${completedThisWeek} this week`,
+          symbol: completedThisWeek ? "▲" : "●",
+          color: completedThisWeek
+            ? "#86E1B5"
+            : "rgba(255,255,255,0.62)",
+        },
+      ];
+
+      return (
+        <section
+          style={{
+            marginBottom: 16,
+            borderRadius: 24,
+            overflow: "hidden",
+            border: "1px solid rgba(207, 221, 233, 0.9)",
+            background: colors.card,
+            boxShadow: "0 14px 38px rgba(15, 31, 48, 0.10)",
+          }}
+        >
+          <div
+            style={{
+              padding: isMobile ? 18 : 28,
+              background: `linear-gradient(135deg, ${colors.navy} 0%, #183B55 100%)`,
+              color: "#FFFFFF",
+            }}
+          >
+            <div
+              style={{
+                color: colors.gold,
+                fontSize: 11,
+                fontWeight: 900,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              }}
+            >
+              Work Management
+            </div>
+
+            <h2
+              style={{
+                margin: "7px 0 3px",
+                fontSize: isMobile ? 25 : 32,
+                lineHeight: 1.1,
+                letterSpacing: "-0.025em",
+              }}
+            >
+              Work Orders Command Center
+            </h2>
+
+            <div
+              style={{
+                fontSize: 14,
+                opacity: 0.72,
+                fontWeight: 650,
+              }}
+            >
+              Active workload and service history
+            </div>
+
+            <p
+              style={{
+                maxWidth: 900,
+                margin: "14px 0 0",
+                fontSize: isMobile ? 13 : 14,
+                lineHeight: 1.65,
+                opacity: 0.88,
+              }}
+            >
+              {overdue
+                ? `${overdue} overdue work order${overdue === 1 ? " needs" : "s need"} attention. `
+                : "There are no overdue work orders. "}
+              {dueToday
+                ? `${dueToday} item${dueToday === 1 ? " is" : "s are"} due today. `
+                : "Nothing is due today. "}
+              {highPriority
+                ? `${highPriority} high-priority item${highPriority === 1 ? " remains" : "s remain"} active. `
+                : "There is no high-priority backlog. "}
+              {recurring} recurring maintenance item
+              {recurring === 1 ? " is" : "s are"} currently tracked.
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "repeat(2, minmax(0, 1fr))"
+                  : "repeat(5, minmax(0, 1fr))",
+                gap: 10,
+                marginTop: 20,
+              }}
+            >
+              {metrics.map((metric) => (
+                <div
+                  key={metric.label}
+                  style={{
+                    display: "grid",
+                    gap: 4,
+                    minWidth: 0,
+                    padding: "13px 14px",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    borderRadius: 14,
+                    background: "rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 900,
+                      letterSpacing: "0.04em",
+                      textTransform: "uppercase",
+                      opacity: 0.64,
+                    }}
+                  >
+                    {metric.label}
+                  </span>
+                  <strong style={{ fontSize: 25, lineHeight: 1.05 }}>
+                    {metric.value}
+                  </strong>
+                  <span style={{ fontSize: 12, opacity: 0.72 }}>
+                    {metric.note}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div
+              style={{
+                marginTop: 14,
+                padding: 13,
+                borderRadius: 15,
+                background: "rgba(255,255,255,0.07)",
+                border: "1px solid rgba(255,255,255,0.10)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 9,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 900,
+                    letterSpacing: "0.09em",
+                    textTransform: "uppercase",
+                    color: colors.gold,
+                  }}
+                >
+                  Workload Drivers
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.68 }}>
+                  What needs attention
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "repeat(5, minmax(0, 1fr))",
+                  gap: 9,
+                }}
+              >
+                {drivers.map((driver) => (
+                  <div
+                    key={driver.label}
+                    style={{
+                      minWidth: 0,
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      background: "rgba(255,255,255,0.08)",
+                      border: "1px solid rgba(255,255,255,0.09)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 7,
+                        minWidth: 0,
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: driver.color,
+                          fontWeight: 900,
+                          fontSize: 11,
+                        }}
+                      >
+                        {driver.symbol}
+                      </span>
+                      <strong
+                        style={{
+                          minWidth: 0,
+                          fontSize: 12,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {driver.label}
+                      </strong>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 11,
+                        opacity: 0.68,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {driver.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    const summaryByScreen: Partial<
+      Record<Screen, { title: string; detail: string; cards: Array<{ label: string; value: string | number; note: string }> }>
+    > = {
+      history: {
+        title: "Work orders",
+        detail: "Current workload and service history for this property.",
+        cards: [
+          { label: "Open", value: serviceRecords.filter((record) => record.status !== "Completed").length, note: "Active work" },
+          { label: "Due Today", value: serviceRecords.filter((record) => record.status !== "Completed" && record.date === todayISO()).length, note: "Scheduled today" },
+          { label: "Overdue", value: serviceRecords.filter((record) => record.status !== "Completed" && Boolean(record.date) && record.date < todayISO()).length, note: "Needs attention" },
+          { label: "Recurring", value: serviceRecords.filter((record) => record.recurring).length, note: "Maintenance schedules" },
+        ],
+      },
+      locations: {
+        title: "Property at a glance",
+        detail: "A visual snapshot of spaces, assigned equipment, and current work across this property.",
+        cards: [
+          { label: "Locations", value: locations.length, note: "Mapped property areas" },
+          { label: "Assets", value: assetRecords.length, note: "Equipment and systems" },
+          { label: "Open Work", value: openWorkOrders, note: "Across all locations" },
+        ],
+      },
+      assets: {
+        title: "Asset summary",
+        detail: "Equipment condition and record readiness without treating missing information as a mechanical problem.",
+        cards: [
+          { label: "Total Assets", value: assetRecords.length, note: "Tracked on this property" },
+          { label: "Operational", value: operationalAssets, note: "Marked as operating normally" },
+          { label: "Needs Service", value: needsServiceAssets, note: "Out of service, overdue, or high priority" },
+          { label: "Setup", value: setupIncompleteAssets, note: "Records still being completed" },
+        ],
+      },
+      vendors: {
+        title: "Vendor network",
+        detail: "A fast view of service coverage and the vendors connected to property work.",
+        cards: [
+          { label: "Vendors", value: vendorRecords.length, note: "Saved companies" },
+          { label: "Linked Assets", value: assetRecords.filter((asset) => asset.vendorIds.length > 0).length, note: "Assets with vendor support" },
+          { label: "Vendor Work", value: serviceRecords.filter((record) => Boolean(record.vendorId)).length, note: "Linked work orders" },
+        ],
+      },
+      documents: {
+        title: "Document vault",
+        detail: "See document coverage and organization before browsing individual records.",
+        cards: [
+          { label: "Documents", value: intakeDocs.length, note: "Stored records" },
+          { label: "Linked", value: linkedDocuments, note: "Attached to Atlas records" },
+          { label: "Categories", value: new Set(intakeDocs.map((document) => document.type || "Uncategorized")).size, note: "Document groups" },
+        ],
+      },
+      procedures: {
+        title: "Procedure readiness",
+        detail: "A quick operational view of documented standards and drafts still being developed.",
+        cards: [
+          { label: "Procedures", value: procedureRecords.length, note: "Total documented" },
+          { label: "Active", value: activeProcedures, note: "SOP or maintenance ready" },
+          { label: "Drafts", value: procedureRecords.filter((procedure) => procedure.status === "Draft").length, note: "Still in development" },
+        ],
+      },
+      parts: {
+        title: "Inventory condition",
+        detail: "Current stock health before opening the detailed parts list.",
+        cards: [
+          { label: "Parts", value: partRecords.length, note: "Tracked inventory items" },
+          { label: "In Stock", value: partRecords.filter((part) => part.status === "In Stock").length, note: "Available now" },
+          { label: "Attention", value: lowParts, note: "Low, out, or order" },
+        ],
+      },
+    };
+
+    if (screen === "assets" || screen === "history" || screen === "locations") return null;
+
+    const summary = summaryByScreen[screen];
+    if (!summary) return null;
+
+    return (
+      <section
+        style={{
+          ...sectionStyle,
+          marginBottom: 16,
+          padding: isMobile ? 16 : 20,
+          background:
+            "linear-gradient(135deg, rgba(255,255,255,0.98), rgba(246,248,252,0.96))",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 16,
+            alignItems: "flex-end",
+            flexWrap: "wrap",
+            marginBottom: 14,
+          }}
+        >
+          <div>
+            <p style={{ ...eyebrowStyle, marginBottom: 5 }}>Visual Summary</p>
+            <h2 style={{ ...sectionTitleStyle, marginBottom: 5 }}>{summary.title}</h2>
+            <p style={{ ...mutedSmallStyle, maxWidth: 720 }}>{summary.detail}</p>
+          </div>
+          <span style={badgeStyle(atlasProperties.find((property) => property.id === activePropertyId)?.name || activePropertyId)}>
+            {atlasProperties.find((property) => property.id === activePropertyId)?.name || activePropertyId}
+          </span>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile
+              ? summary.cards.length === 4
+                ? "repeat(2, minmax(0, 1fr))"
+                : "1fr"
+              : `repeat(${summary.cards.length}, minmax(0, 1fr))`,
+            gap: 12,
+          }}
+        >
+          {summary.cards.map((card) => (
+            <div
+              key={card.label}
+              style={{
+                border: `1px solid ${colors.line}`,
+                borderRadius: 16,
+                padding: 15,
+                background: colors.card,
+                boxShadow: "0 8px 22px rgba(15, 23, 42, 0.05)",
+              }}
+            >
+              <p style={{ ...mutedSmallStyle, marginBottom: 6 }}>{card.label}</p>
+              <strong
+                style={{
+                  display: "block",
+                  color: colors.navy,
+                  fontSize: isMobile ? 24 : 28,
+                  lineHeight: 1,
+                  marginBottom: 7,
+                }}
+              >
+                {card.value}
+              </strong>
+              <p style={mutedSmallStyle}>{card.note}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  function renderDepartmentCenter(kind: DepartmentKind) {
+    const departmentConfig: Record<DepartmentKind, { title: string; short: string; icon: string; matcher: RegExp; detail: string; people: string[] }> = {
+      house: { title: "House & Maintenance", short: "House", icon: "⌂", matcher: /house|interior|exterior|room|appliance|boiler|hvac|mechanical|pump|electrical|plumbing|lighting|door|gate|alarm/i, detail: "House systems, mechanical equipment, inspections, repairs, procedures, service history, and current work.", people: ["Nick", "Vendors"] },
+      garage: { title: "Garage", short: "Garage", icon: "", matcher: /vehicle|car|mercedes|rivian|porsche|lucid|ford|f-?150|kia|honda|subaru|charging|tire|fuel/i, detail: "Cars and their work orders and tasks.", people: ["Nick", "Addison"] },
+      pool: { title: "Pool & Spa", short: "Pool & Spa", icon: "💧", matcher: /pool|spa|hot tub|sundance|backwash|oxy|phosphate|vacuum|chlorine|alkalinity|pool juice|triton|clearray/i, detail: "Pool, Spa, water treatment, cleaning rotation, pool equipment, procedures, and service history.", people: ["Nick", "Addison", "Vendors"] },
+      landscaping: { title: "Landscaping & Irrigation", short: "Landscaping", icon: "🌿", matcher: /landscap|garden|lawn|weed|irrigation|tree|grounds|bed|courtyard|waterside|veggie/i, detail: "Landscaping, irrigation, crew visits, areas, progress photos, tasks, work orders, and follow-up.", people: ["Pat", "Lanken Landscaping", "Addison"] },
+      marine: { title: "Dock & Waterfront", short: "Dock", icon: "⚓", matcher: /marine|dock|boat|cobalt|sea.?doo|lift|water trampoline|pwc|shoreline|waterfront/i, detail: "Dock, waterfront, boats, lifts, recreation equipment, service, procedures, documents, and photos.", people: ["Nick", "Vendors"] },
+    };
+    const config = departmentConfig[kind];
+    const isLandscape = kind === "landscaping";
+    const isMarine = kind === "marine";
+    const title = config.title;
+    const icon = config.icon;
+    const matcher = config.matcher;
+    const matches = (value: unknown) => matcher.test(recordSearchText(value));
+    const conventionalAppliancePattern = /\b(appliance|refrigerator|freezer|dishwasher|washing machine|washer|clothes dryer|tumble dryer|range|oven|microwave|ice maker)\b/i;
+    const isConventionalApplianceRecord = (value: unknown) => {
+      const record = (value || {}) as Record<string, unknown>;
+      const classificationText = [record.category, record.type, record.assetType, record.workCategory]
+        .filter(Boolean)
+        .join(" ");
+      const identityText = [record.title, record.name, record.description, record.notes]
+        .filter(Boolean)
+        .join(" ");
+      return /\bappliances?\b/i.test(classificationText) || conventionalAppliancePattern.test(identityText);
+    };
+    const isAnnualApplianceServiceRecord = (value: unknown) => {
+      const text = recordSearchText(value);
+      return (
+        /\bannual\b/.test(text) &&
+        /\b(service|maintenance|inspection)\b/.test(text) &&
+        isConventionalApplianceRecord(value)
+      );
+    };
+    const savedDepartmentFor = (value: unknown): DepartmentKind | "" => {
+      const record = (value || {}) as Record<string, unknown>;
+      const classify = (saved: string): DepartmentKind | "" => {
+        if (/dock|marine|waterfront|boat|watercraft/.test(saved)) return "marine";
+        if (/garage|vehicle|automobile|car care/.test(saved)) return "garage";
+        if (/pool|spa|hot tub|water care/.test(saved)) return "pool";
+        if (/landscap|irrigation|garden|grounds|lawn/.test(saved)) return "landscaping";
+        if (/house|maintenance|appliance|cleaning|hvac|mechanical|plumbing|electrical/.test(saved)) return "house";
+        return "";
+      };
+      const primary = classify(recordSearchText(
+        record.workCategory,
+        record.category,
+        record.department,
+      ));
+      return primary || classify(recordSearchText(record.responsibilityArea));
+    };
+    const strictDockPattern =
+      /\b(dock|craft|boat|cobalt|sea[\s-]?doo|jet[\s-]?ski|pwc|lift\s*box|liftbox|dock\s*box|boat\s*lift|sunstream|124[\s-]*(?:inch|in|\")?\s*roller)\b/i;
+    const isStrictDockAsset = (asset: AssetRecord) =>
+      strictDockPattern.test(
+        recordSearchText(
+          asset.name,
+          asset.category,
+          asset.make,
+          asset.model,
+        ),
+      ) && !isConventionalApplianceRecord(asset);
+    const strictDockAssetIds = new Set(
+      assetRecords.filter(isStrictDockAsset).map((asset) => asset.id),
+    );
+    const isStrictDockRecord = (value: unknown) => {
+      const record = (value || {}) as Record<string, unknown>;
+      const linkedIds = [
+        record.assetId,
+        ...(Array.isArray(record.assetIds) ? record.assetIds : []),
+        ...(Array.isArray(record.linkedAssetIds) ? record.linkedAssetIds : []),
+      ].filter(Boolean).map(String);
+      const explicitDepartment = savedDepartmentFor(value);
+      if (explicitDepartment && explicitDepartment !== "marine") return false;
+      const identityText = recordSearchText(
+        record.title,
+        record.name,
+        record.label,
+        record.workCategory,
+        record.category,
+        record.responsibilityArea,
+      );
+      return (
+        linkedIds.some((assetId) => strictDockAssetIds.has(assetId)) ||
+        strictDockPattern.test(identityText)
+      );
+    };
+    const poolExcludedPattern =
+      /\b(fountain|tap water filter|drinking water|potable water|whole house filter|whole-house filter|water filtration)\b/i;
+    const matchesDepartmentRecord = (value: unknown) =>
+      matches(value) &&
+      (kind !== "pool" ||
+        (!isConventionalApplianceRecord(value) &&
+          !poolExcludedPattern.test(recordSearchText(value))));
+    const garageCarAssetPattern =
+      /\b(vehicle|car|automobile|mercedes|rivian|porsche|lucid|ford|f-?150|raptor|kia|honda|subaru)\b/i;
+    const garageSpecificCarPattern =
+      /\b(mercedes|rivian|porsche|lucid|ford|f-?150|raptor|kia|honda|subaru)\b/i;
+    const garageExcludedPattern =
+      /\b(golf simulator|simulator|boat|marine|watercraft|sea.?doo|cobalt|pwc|dock|lift|equipment)\b/i;
+    const garageNonVehicleAssetPattern =
+      /\b(garage door|door opener|opener|keypad|charging station|ev charger|wall charger|cabinet|tool|supply|storage|shelving)\b/i;
+    const isGarageCarAsset = (asset: AssetRecord) => {
+      const assetIdentity = recordSearchText(
+        asset.name,
+        asset.category,
+        asset.make,
+        asset.model,
+      );
+      const assignedLocation = assetLocationIds(asset)
+        .map((locationId) => locationName(locationId))
+        .filter(Boolean)
+        .join(" ") || locationName(asset.locationId);
+      const isVehicle = garageCarAssetPattern.test(assetIdentity);
+      const isAssignedToGarage = /\bgarage\b/i.test(assignedLocation);
+      const knownVehicle =
+        isVehicle &&
+        (garageSpecificCarPattern.test(assetIdentity) || /\b(vehicle|car|automobile)\b/i.test(assetIdentity));
+      const garageLocationVehicle =
+        isAssignedToGarage && !garageNonVehicleAssetPattern.test(assetIdentity);
+      return knownVehicle || (garageLocationVehicle && !garageExcludedPattern.test(assetIdentity));
+    };
+    const garageCarAssetIds = new Set(
+      assetRecords.filter(isGarageCarAsset).map((asset) => asset.id),
+    );
+    const isGarageCarRecord = (value: unknown) => {
+      const record = (value || {}) as Record<string, unknown>;
+      const linkedAssetId = String(record.assetId || "");
+      const text = recordSearchText(value);
+      return (
+        (garageCarAssetIds.has(linkedAssetId) || garageSpecificCarPattern.test(text)) &&
+        !garageExcludedPattern.test(text)
+      );
+    };
+    const rawDepartmentWork = serviceRecords.filter((record) => {
+      if (isAnnualApplianceServiceRecord(record)) return kind === "house";
+      const explicitDepartment = savedDepartmentFor(record);
+      if (explicitDepartment) {
+        if (kind === "marine") {
+          return explicitDepartment === "marine" && isStrictDockRecord(record);
+        }
+        if (kind === "garage") {
+          return explicitDepartment === "garage" && isGarageCarRecord(record);
+        }
+        return explicitDepartment === kind;
+      }
+      if (kind === "garage") return isGarageCarRecord(record);
+      if (kind === "marine") return isStrictDockRecord(record);
+      if (isLandscape) return matches(record) && !isMarineServiceRecord(record);
+      return matchesDepartmentRecord(record);
+    });
+    const departmentWork = kind === "garage"
+      ? (() => {
+          // Garage maintenance was historically generated as separate dated
+          // records. Collapse exact car/title repeats into one live record so
+          // hundreds of old occurrences do not render as current work.
+          const groups = new Map<string, AtlasServiceRecord[]>();
+          rawDepartmentWork.forEach((record) => {
+            const linkedCar = assetRecords.find(
+              (asset) => asset.id === String(record.assetId || ""),
+            );
+            const text = recordSearchText(record);
+            const namedCar =
+              linkedCar?.name ||
+              text.match(
+                /\b(mercedes|rivian|porsche|lucid|ford|f-?150|raptor|kia|honda|subaru)\b/i,
+              )?.[0] ||
+              "car";
+            const key = `${normalizedWorkOrderText(record.title)}|${normalizedWorkOrderText(namedCar)}`;
+            groups.set(key, [
+              ...(groups.get(key) || []),
+              record as AtlasServiceRecord,
+            ]);
+          });
+          return Array.from(groups.values()).map((group) =>
+            mergeDuplicateWorkOrderGroup(group),
+          );
+        })()
+      : isMarine
+        ? planWorkOrderDatabaseCleanup(rawDepartmentWork, activePropertyId).keepers
+        : rawDepartmentWork;
+    const openWork = departmentWork.filter((item) => !["Completed"].includes(String(item.status || "")));
+    const completedWork = departmentWork.filter((item) => String(item.status || "") === "Completed");
+    const departmentAssets = kind === "garage"
+      ? assetRecords.filter(isGarageCarAsset)
+      : isMarine
+        ? assetRecords.filter(isStrictDockAsset)
+        : assetRecords.filter((asset) => {
+            const explicitDepartment = savedDepartmentFor(asset);
+            if (explicitDepartment) return explicitDepartment === kind;
+            return matchesDepartmentRecord(asset) &&
+              (!isLandscape || !isMarineAssetRecord(asset));
+          });
+    const departmentLocations = kind === "garage"
+      ? []
+      : isMarine
+        ? locations.filter((location) => marineLocationIds.has(location.id))
+        : locations.filter((location) => matches(location) && (!isLandscape || !marineLocationIds.has(location.id)));
+    const departmentVendors = kind === "garage"
+      ? vendorRecords.filter((vendor) => vendorDepartmentsFor(vendor).includes("garage"))
+      : vendorRecords.filter((vendor) => vendorDepartmentsFor(vendor).includes(kind));
+    const departmentDocuments = kind === "garage" ? [] : mergeDocuments(documents, intakeDocs).filter((document) =>
+      isMarine ? isMarineDocumentRecord(document) : matchesDepartmentRecord(document) && (!isLandscape || !isMarineDocumentRecord(document)),
+    );
+    const departmentProcedures = kind === "garage" ? [] : procedureRecords.filter((procedure) =>
+      isMarine
+        ? marineDepartmentPattern.test(recordSearchText(procedure)) ||
+          (procedure.linkedAssetIds || []).some((id) => marineAssetIds.has(id)) ||
+          (procedure.linkedLocationIds || []).some((id) => marineLocationIds.has(id))
+        : matchesDepartmentRecord(procedure) && (!isLandscape || !marineDepartmentPattern.test(recordSearchText(procedure))),
+    );
+    const departmentRequests = kind === "garage" ? [] : requestRecords.filter((request) =>
+      isMarine ? matches(request) : matchesDepartmentRecord(request) && (!isLandscape || !marineDepartmentPattern.test(recordSearchText(request))),
+    );
+    const departmentTasks = kind === "garage"
+      ? workPlanTasks.filter((task) => {
+          const meta = taskDetails(task.id);
+          const combined = { ...task, ...meta };
+          const explicitDepartment = savedDepartmentFor(combined);
+          return (
+            (!explicitDepartment || explicitDepartment === "garage") &&
+            isGarageCarRecord(combined)
+          );
+        })
+      : isMarine
+        ? workPlanTasks.filter((task) => {
+            const meta = taskDetails(task.id);
+            return isStrictDockRecord({ ...task, ...meta });
+          })
+        : [];
+    const assignedNames = config.people;
+
+    const openCenter = (next: AtlasScreen) => {
+      setDepartmentCenter("");
+      setDepartmentDrilldown("");
+      setScreen(next);
+      if (typeof window !== "undefined") {
+        window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+      }
+    };
+    const openDepartmentDrilldown = (
+      next: "open" | "completed" | "assets" | "requests" | "vendors" | "documents" | "procedures",
+    ) => {
+      setDepartmentDrilldown(next);
+      if (typeof window !== "undefined") {
+        window.requestAnimationFrame(() => {
+          document.getElementById("atlas-department-record-list")?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        });
+      }
+    };
+    const drilldownTitle =
+      departmentDrilldown === "open"
+        ? `Open ${config.short} Work`
+        : departmentDrilldown === "completed"
+          ? `${config.short} History`
+          : departmentDrilldown === "assets"
+            ? `${config.short} Areas & Assets`
+            : departmentDrilldown === "requests"
+              ? `${config.short} Requests`
+              : departmentDrilldown === "vendors"
+                ? `${config.short} Vendors`
+                : departmentDrilldown === "documents"
+                  ? `${config.short} Documents & Photos`
+                  : departmentDrilldown === "procedures"
+                    ? `${config.short} Procedures`
+                    : "";
+    const metricStyle: React.CSSProperties = {
+      border: `1px solid ${colors.line}`,
+      borderRadius: 16,
+      background: "#FFFFFF",
+      padding: 16,
+      minHeight: 112,
+      display: "grid",
+      alignContent: "space-between",
+      gap: 8,
+    };
+    const centerCardStyle: React.CSSProperties = {
+      border: `1px solid ${colors.line}`,
+      borderRadius: 18,
+      background: "#FFFFFF",
+      padding: 18,
+      display: "grid",
+      gap: 12,
+      minWidth: 0,
+    };
+
+    if (kind === "house" || kind === "pool" || kind === "landscaping" || kind === "marine") {
+      const categorySets: Record<"house" | "pool" | "landscaping" | "marine", Array<{ label: string; pattern: RegExp }>> = {
+        house: [
+          { label: "Annual Service", pattern: /\b(annual|yearly|seasonal service|preventive service)/i },
+          { label: "HVAC", pattern: /\b(hvac|heating|cooling|furnace|air handler|heat pump|thermostat|boiler|radiant|dehumidif)/i },
+          { label: "Plumbing", pattern: /\b(plumb|water heater|hot water|pump|recirc|drain|toilet|faucet|sink|leak|flologic|backflow)/i },
+          { label: "Electrical", pattern: /\b(electric|lighting|light|generator|panel|outlet|switch|battery)/i },
+          { label: "Cleaning", pattern: /\b(clean|housekeep|laundry|wash|window|glass|carpet|floor)/i },
+          { label: "Appliances", pattern: /\b(appliance|refrigerator|freezer|dishwasher|washer|dryer|range|oven|microwave|ice maker)/i },
+          { label: "General Maintenance", pattern: /[\s\S]*/i },
+        ],
+        pool: [
+          { label: "Pool", pattern: /\b(pool|swim)/i },
+          { label: "Spa & Hot Tub", pattern: /\b(spa|hot tub|sundance)/i },
+          { label: "Water Care", pattern: /\b(chemical|chlorine|ph|alkalinity|oxy|phosphate|water test|water care|pool juice)/i },
+          { label: "Equipment", pattern: /\b(pool filter|pool pump|pool heater|triton|clearray|uv|ozone|backwash|vacuum|desert aire|dehumidif)/i },
+          { label: "Cleaning", pattern: /\b(clean|brush|vacuum|skim)/i },
+          { label: "General", pattern: /[\s\S]*/i },
+        ],
+        landscaping: [
+          { label: "Irrigation", pattern: /\b(irrigation|hydrawise|zone|sprinkler|controller|backflow|watering)/i },
+          { label: "Lawns", pattern: /\b(lawn|mow|edge|turf|grass)/i },
+          { label: "Gardens & Beds", pattern: /\b(garden|bed|weed|veggie|plant|flower|pot)/i },
+          { label: "Trees & Shrubs", pattern: /\b(tree|shrub|hedge|yew|prune|trim)/i },
+          { label: "Grounds", pattern: /\b(grounds|courtyard|walkway|driveway|waterside|patio|cleanup|geese)/i },
+          { label: "Seasonal", pattern: /\b(season|spring|summer|fall|winter|fertiliz|mulch)/i },
+          { label: "General", pattern: /[\s\S]*/i },
+        ],
+        marine: [
+          { label: "Boats & Watercraft", pattern: /\b(boat|cobalt|sea[\s-]?doo|jet[\s-]?ski|pwc|watercraft)/i },
+          { label: "Lifts & Dock Equipment", pattern: /\b(lift|liftbox|lift box|dock box|sunstream|roller)/i },
+          { label: "Dock & Waterfront", pattern: /\b(dock|waterfront|shoreline|marine)/i },
+          { label: "Cleaning & Service", pattern: /\b(clean|wash|service|maintenance|inspect|winteriz|opening)/i },
+          { label: "General", pattern: /[\s\S]*/i },
+        ],
+      };
+      const categories = categorySets[kind];
+      const activeCategory = departmentWorkspaceCategory === "All" || categories.some((category) => category.label === departmentWorkspaceCategory)
+        ? departmentWorkspaceCategory
+        : "All";
+      const categoryFor = (value: unknown) => {
+        const text = recordSearchText(value);
+        const specific = categories.find((category) => category.label !== "General Maintenance" && category.label !== "General" && category.pattern.test(text));
+        return specific?.label || (kind === "house" ? "General Maintenance" : categories[categories.length - 1].label);
+      };
+      const categoryMatches = (value: unknown) => activeCategory === "All" || categoryFor(value) === activeCategory;
+      const visibleAssets = departmentAssets.filter(categoryMatches).sort((a, b) => a.name.localeCompare(b.name));
+      const visibleWork = departmentWork.filter(categoryMatches).sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")));
+      const visibleVendors = departmentVendors.filter(categoryMatches).sort((a, b) => a.name.localeCompare(b.name));
+      const selectedAsset = departmentWorkspaceSelectedKind === "asset" ? departmentAssets.find((asset) => asset.id === departmentWorkspaceSelectedId) : undefined;
+      const selectedWork = departmentWorkspaceSelectedKind === "work" ? departmentWork.find((record) => record.id === departmentWorkspaceSelectedId) : undefined;
+      const selectedDepartmentVendor = departmentWorkspaceSelectedKind === "vendor" ? departmentVendors.find((vendor) => vendor.id === departmentWorkspaceSelectedId) : undefined;
+      const selectedTitle = selectedAsset?.name || selectedWork?.title || selectedDepartmentVendor?.name || "";
+      const selectedCategory = selectedAsset ? categoryFor(selectedAsset) : selectedWork ? categoryFor(selectedWork) : selectedDepartmentVendor ? categoryFor(selectedDepartmentVendor) : "";
+      const selectedAssetPhotos = selectedAsset ? photos.filter((photo) => photo.assetId === selectedAsset.id && Boolean(photoSource(photo))) : [];
+      const selectedAssetWork = selectedAsset ? departmentWork.filter((record) => record.assetId === selectedAsset.id) : [];
+      const selectRecord = (recordKind: "asset" | "work" | "vendor", id: string) => {
+        setDepartmentWorkspaceSelectedKind(recordKind);
+        setDepartmentWorkspaceSelectedId(id);
+      };
+      const categoryCount = (label: string) => [...departmentAssets, ...departmentWork, ...departmentVendors].filter((record) => categoryFor(record) === label).length;
+
+      return <section style={{ display: "grid", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}><button type="button" onClick={() => addDashboardWorkOrder(config.title)} style={goldButtonStyle}>+ Add</button><button type="button" onClick={() => selectedAsset ? openAssetById(selectedAsset.id) : selectedWork ? (setDepartmentCenter(""), openWorkOrderById(selectedWork.id)) : selectedDepartmentVendor ? (setSelectedVendorId(selectedDepartmentVendor.id), openCenter("vendors")) : showSaveToast("Select a record to edit.")} style={secondaryButtonStyle}>Edit</button></div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#FFFFFF" }}>{[["Open work", openWork.length],["Assets",departmentAssets.length],["Vendors",departmentVendors.length],["Completed",completedWork.length]].map(([label,value],index)=><div key={String(label)} style={{ padding: "11px 14px", borderRight: !isMobile && index < 3 ? `1px solid ${colors.line}` : undefined }}><strong style={{ color: colors.navy, fontSize: 20, marginRight: 7 }}>{value}</strong><span style={mutedSmallStyle}>{label}</span></div>)}</div>
+        <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2 }}><button type="button" onClick={() => setDepartmentWorkspaceCategory("All")} style={activeCategory === "All" ? goldButtonStyle : secondaryButtonStyle}>All</button>{categories.map((category)=><button key={category.label} type="button" onClick={() => { setDepartmentWorkspaceCategory(category.label); setDepartmentWorkspaceSelectedKind(""); setDepartmentWorkspaceSelectedId(""); }} style={activeCategory === category.label ? goldButtonStyle : secondaryButtonStyle}>{category.label} ({categoryCount(category.label)})</button>)}</div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(330px,40%) minmax(0,60%)", gap: 12, alignItems: "start" }}>
+          <section style={{ ...centerCardStyle, padding: 0, overflow: "hidden" }}>
+            <div style={{ padding: "14px 16px", borderBottom: `1px solid ${colors.line}` }}><div style={eyebrowStyle}>{activeCategory === "All" ? config.short : activeCategory}</div><strong style={{ color: colors.navy, fontSize: 16 }}>Assets and work</strong></div>
+            <div style={{ maxHeight: isMobile ? "none" : "calc(100vh - 300px)", overflowY: "auto" }}>
+              {visibleAssets.length ? <div style={{ padding: "9px 12px 5px", ...fieldLabelStyle }}>ASSETS</div> : null}{visibleAssets.map((asset)=>{const photo=photos.find((item)=>item.assetId===asset.id&&Boolean(photoSource(item)));return <button key={asset.id} type="button" onClick={()=>selectRecord("asset",asset.id)} style={{ width:"100%",border:0,borderBottom:`1px solid ${colors.line}`,background:selectedAsset?.id===asset.id?"#F0F6FC":"#FFFFFF",padding:"10px 12px",display:"grid",gridTemplateColumns:"36px minmax(0,1fr) auto",gap:9,alignItems:"center",textAlign:"left",cursor:"pointer" }}><span style={{width:36,height:36,borderRadius:9,background:"#E2ECF5",display:"grid",placeItems:"center",overflow:"hidden",fontWeight:900,color:colors.navy}}>{photo?<img src={photoSource(photo)} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:asset.name.slice(0,1)}</span><span><strong style={{display:"block",color:colors.navy}}>{asset.name}</strong><small style={mutedSmallStyle}>{categoryFor(asset)} · {locationName(asset.locationId)||"No location"}</small></span><span>›</span></button>})}
+              {visibleWork.length ? <div style={{ padding: "12px 12px 5px", ...fieldLabelStyle }}>WORK ORDERS</div> : null}{visibleWork.map((record)=><button key={record.id} type="button" onClick={()=>selectRecord("work",record.id)} style={{...compactLinkedRowStyle,width:"100%",borderRadius:0,borderLeft:0,borderRight:0,borderBottom:0,background:selectedWork?.id===record.id?"#F0F6FC":"#FFFFFF"}}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.date?formatDate(record.date):"No date"} · {categoryFor(record)}</small></span><span style={badgeStyle(record.status||"Open")}>{record.status||"Open"}</span></button>)}
+              {visibleVendors.length ? <div style={{ padding: "12px 12px 5px", ...fieldLabelStyle }}>VENDORS</div> : null}{visibleVendors.map((vendor)=><button key={vendor.id} type="button" onClick={()=>selectRecord("vendor",vendor.id)} style={{...compactLinkedRowStyle,width:"100%",borderRadius:0,borderLeft:0,borderRight:0,borderBottom:0,background:selectedDepartmentVendor?.id===vendor.id?"#F0F6FC":"#FFFFFF"}}><span><strong>{vendor.name || "Unnamed vendor"}</strong><small style={mutedSmallStyle}>{vendor.category || categoryFor(vendor)}{vendor.phone ? ` · ${vendor.phone}` : ""}</small></span><span style={badgeStyle("Vendor")}>Vendor</span></button>)}
+              {!visibleAssets.length&&!visibleWork.length&&!visibleVendors.length?<div style={{...noticeStyle,margin:10}}>No records in this category.</div>:null}
+            </div>
+          </section>
+          <section style={{ ...centerCardStyle, padding: 0, overflow: "hidden", position: isMobile ? "static" : "sticky", top: 88, maxHeight: isMobile ? "none" : "calc(100vh - 110px)" }}>
+            {selectedTitle ? <><div style={{ padding:16,display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start" }}><span><span style={eyebrowStyle}>{selectedCategory}</span><strong style={{display:"block",fontSize:18,color:colors.navy}}>{selectedTitle}</strong><small style={mutedSmallStyle}>{selectedAsset?"Asset":selectedWork?"Work Order":"Vendor"}</small></span><span style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}><button type="button" onClick={()=>selectedAsset?openAssetById(selectedAsset.id):selectedWork?(setDepartmentCenter(""),openWorkOrderById(selectedWork.id)):(setSelectedVendorId(selectedDepartmentVendor!.id),openCenter("vendors"))} style={goldButtonStyle}>Open</button><button type="button" aria-label="Close details" onClick={()=>{setDepartmentWorkspaceSelectedKind("");setDepartmentWorkspaceSelectedId("");}} style={smallSubtleButtonStyle}>×</button></span></div><div style={{padding:16,borderTop:`1px solid ${colors.line}`,overflowY:"auto"}}>
+              {selectedAsset?<div style={{display:"grid",gap:12}}><div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(2,minmax(0,1fr))",gap:8}}>{[["Make / model",[selectedAsset.make,selectedAsset.model].filter(Boolean).join(" · ")||"Not recorded"],["Location",locationName(selectedAsset.locationId)||"Not linked"],["Status",selectedAsset.status||"Active"],["Open work",selectedAssetWork.filter((record)=>record.status!=="Completed").length]].map(([label,value])=><div key={String(label)} style={recordInfoItemStyle}><small style={fieldLabelStyle}>{label}</small><strong style={{display:"block",marginTop:5}}>{value}</strong></div>)}</div>{selectedAssetPhotos.length?<div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:7}}>{selectedAssetPhotos.slice(0,6).map((photo)=><button key={photo.id} type="button" onClick={()=>openPhotoPreview(photo)} style={{border:`1px solid ${colors.line}`,borderRadius:9,padding:0,overflow:"hidden"}}><img src={photoSource(photo)} alt={photo.name} style={{width:"100%",aspectRatio:"4 / 3",objectFit:"cover",display:"block"}}/></button>)}</div>:null}<button type="button" onClick={()=>addDashboardWorkOrder(config.title)} style={secondaryButtonStyle}>New Work Order</button></div>:null}
+              {selectedWork ? (() => {
+                const description = String((selectedWork as AtlasServiceRecord & { description?: string }).description || "").trim();
+                const historyEntries = Array.isArray(selectedWork.serviceHistory) ? selectedWork.serviceHistory : [];
+                const nextDue = selectedWork.recurring && selectedWork.date ? formatDate(selectedWork.date) : "";
+                return (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    {description ? <p style={{ ...mutedSmallStyle, margin: 0, lineHeight: 1.5 }}>{description}</p> : null}
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8 }}>
+                      <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>Assigned</small><strong style={{display:"block",marginTop:5}}>{selectedWork.assignedTo || "Unassigned"}</strong></div>
+                      <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>{selectedWork.recurring ? "Next due" : "Due date"}</small><strong style={{display:"block",marginTop:5}}>{selectedWork.date ? formatDate(selectedWork.date) : "Not scheduled"}</strong></div>
+                      <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>Category</small><strong style={{display:"block",marginTop:5}}>{selectedWork.workCategory || selectedCategory || "General"}</strong></div>
+                      <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>Status</small><strong style={{display:"block",marginTop:5}}>{selectedWork.status || "Open"}</strong></div>
+                    </div>
+                    <section style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 10 }}>
+                      <small style={fieldLabelStyle}>Notes</small>
+                      <div style={{ ...recordInfoItemStyle, marginTop: 6, whiteSpace: "pre-wrap" }}>{selectedWork.notes || "No notes yet."}</div>
+                    </section>
+                    <details style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 10 }}>
+                      <summary style={{ color: colors.navy, fontWeight: 900, cursor: "pointer" }}>More Info</summary>
+                      <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                        {selectedWork.locationId ? <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>Location</small><strong style={{display:"block",marginTop:5}}>{locationName(selectedWork.locationId) || selectedWork.locationId}</strong></div> : null}
+                        {selectedWork.assetId ? <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>Asset</small><strong style={{display:"block",marginTop:5}}>{assetName(selectedWork.assetId) || selectedWork.assetId}</strong></div> : null}
+                        {selectedWork.vendorId ? <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>Vendor</small><strong style={{display:"block",marginTop:5}}>{vendorRecords.find((vendor)=>vendor.id===selectedWork.vendorId)?.name || selectedWork.vendorId}</strong></div> : null}
+                        {selectedWork.recurring ? <div style={recordInfoItemStyle}><small style={fieldLabelStyle}>Recurring</small><strong style={{display:"block",marginTop:5}}>{nextDue || "Scheduled"}</strong></div> : null}
+                        {historyEntries.length ? (
+                          <div style={{ display: "grid", gap: 7 }}>
+                            <small style={fieldLabelStyle}>History</small>
+                            {historyEntries.map((entry, historyIndex) => (
+                              <div key={String(entry.id || `${entry.completedAt || "history"}-${historyIndex}`)} style={{ ...recordInfoItemStyle, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+                                <span>
+                                  <strong style={{display:"block"}}>{entry.completedAt ? formatDate(String(entry.completedAt).slice(0,10)) : "Completed"}</strong>
+                                  {entry.notes ? <small style={mutedSmallStyle}>{entry.notes}</small> : null}
+                                </span>
+                                <button type="button" onClick={() => void deleteWorkOrderHistoryEntry(selectedWork, String(entry.id || ""), historyIndex)} style={{ ...smallSubtleButtonStyle, color: colors.red }}>Delete</button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        {selectedWork.status === "Completed" ? <button type="button" onClick={() => void deleteWorkOrderRecord(selectedWork)} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete Work History</button> : null}
+                      </div>
+                    </details>
+                  </div>
+                );
+              })() : null}
+              
+              {selectedDepartmentVendor?<div style={{display:"grid",gap:8}}>{[["Category",selectedDepartmentVendor.category||selectedCategory],["Phone",selectedDepartmentVendor.phone||"Not recorded"],["Email",selectedDepartmentVendor.email||"Not recorded"],["Website",selectedDepartmentVendor.website||"Not recorded"]].map(([label,value])=><div key={String(label)} style={recordInfoItemStyle}><small style={fieldLabelStyle}>{label}</small><strong style={{display:"block",marginTop:5,overflowWrap:"anywhere"}}>{value}</strong></div>)}</div>:null}
+            </div></>:<div style={noticeStyle}>Select an asset, work order, task, or vendor.</div>}
+          </section>
+        </div>
+      </section>;
+    }
+
+    if (kind === "garage") {
+      const garageVehicles = departmentAssets
+        .map((asset) => {
+          const savedCare = vehicleCare.find((vehicle) => vehicle.assetId === asset.id);
+          return {
+            id: savedCare?.id || `asset-${asset.id}`,
+            name: asset.name,
+            onsite: savedCare?.onsite ?? true,
+            lastCleaned: savedCare?.lastCleaned || "",
+            priority: savedCare?.priority || "Normal",
+            notes: savedCare?.notes || "",
+            kind: "Vehicle" as const,
+            assignedTo: savedCare?.assignedTo || "Nick",
+            cleaningIntervalDays: savedCare?.cleaningIntervalDays || 7,
+            lastServiced: savedCare?.lastServiced || "",
+            nextServiceDate: savedCare?.nextServiceDate || "",
+            serviceIntervalDays: savedCare?.serviceIntervalDays || 180,
+            history: savedCare?.history || [],
+            assetId: asset.id,
+            locationId: assetLocationIds(asset)[0] || asset.locationId || savedCare?.locationId || "",
+            updatedAt: savedCare?.updatedAt,
+          } satisfies AtlasVehicleCare;
+        })
+        .filter((vehicle) => !garageHiddenVehicleIds.includes(vehicle.id))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const selectedGarageVehicle =
+        garageVehicles.find((vehicle) => vehicle.id === selectedVehicleId) || garageVehicles[0];
+      const selectedGarageAsset = selectedGarageVehicle
+        ? departmentAssets.find((asset) => asset.id === selectedGarageVehicle.assetId)
+        : undefined;
+      const vehicleData = (selectedGarageVehicle || {}) as AtlasVehicleCare & Record<string, any>;
+      const assetData = (selectedGarageAsset || {}) as Record<string, any>;
+      const vehicleWork = selectedGarageVehicle
+        ? departmentWork.filter((record) =>
+            Boolean(selectedGarageVehicle.assetId && record.assetId === selectedGarageVehicle.assetId),
+          )
+        : [];
+      const vehicleTasks: WorkPlanTask[] = [];
+      const vehicleDocuments = selectedGarageVehicle
+        ? mergeDocuments(documents, intakeDocs).filter((document) =>
+            Boolean(selectedGarageVehicle.assetId && (document.linkedAssetId === selectedGarageVehicle.assetId || document.targetId === selectedGarageVehicle.assetId)) ||
+            document.targetName === selectedGarageVehicle.name,
+          )
+        : [];
+      const vehiclePhotos = vehicleDocuments
+        .flatMap((document) => document.files || [])
+        .filter((file) => String(file.type || "").startsWith("image/") || String(file.dataUrl || "").startsWith("data:image/"));
+      const garageAssetPhotos = selectedGarageAsset
+        ? photos
+            .filter((photo) => photo.assetId === selectedGarageAsset.id && Boolean(photoSource(photo)))
+            .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
+        : [];
+      const cleaningHistory = [...(selectedGarageVehicle?.history || [])]
+        .filter((entry) => entry.type === "Cleaned" || (entry.type === "Note" && /^Skipped\b/i.test(entry.notes || "")))
+        .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+      const serviceHistory = [...(selectedGarageVehicle?.history || [])]
+        .filter((entry) => entry.type === "Serviced" || entry.type === "Issue")
+        .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+      const cleaningDueCount = garageVehicles.filter((vehicle) =>
+        Boolean(vehicle.lastCleaned) &&
+        addDays(vehicle.lastCleaned, Math.max(1, Number(vehicle.cleaningIntervalDays || 7))) <= todayISO(),
+      ).length;
+      const serviceDueCount = garageVehicles.filter((vehicle) => vehicle.nextServiceDate && vehicle.nextServiceDate <= todayISO()).length;
+      const openGarageWork = departmentWork.filter((record) => record.status !== "Completed");
+      const updateSpec = (field: string, value: string) => {
+        if (!selectedGarageVehicle) return;
+        updateVehicleCareRecord(selectedGarageVehicle.id, { [field]: value } as Partial<AtlasVehicleCare>);
+      };
+      const linkedAssetValue = (...keys: string[]) => {
+        for (const key of keys) {
+          const value = assetData[key] ?? vehicleData[key];
+          if (value !== undefined && value !== null && String(value).trim()) return String(value);
+        }
+        return "Not recorded";
+      };
+      const nextCleaning = selectedGarageVehicle?.lastCleaned
+        ? addDays(selectedGarageVehicle.lastCleaned, Math.max(1, Number(selectedGarageVehicle.cleaningIntervalDays || 7)))
+        : "";
+      const selectedCleaningTask = vehicleTasks.find((task) => /^clean\s+/i.test(task.title)) || vehicleTasks[0];
+      const nearestThursday = (() => {
+        const base = new Date(`${todayISO()}T12:00:00`);
+        const daysAhead = (4 - base.getDay() + 7) % 7;
+        return addDays(todayISO(), daysAhead || 7);
+      })();
+      const ensureSelectedVehicleSaved = () => {
+        if (!selectedGarageVehicle) return;
+        if (!vehicleCare.some((vehicle) => vehicle.id === selectedGarageVehicle.id)) {
+          updateVehicleCareRecord(selectedGarageVehicle.id, selectedGarageVehicle);
+        }
+      };
+      const skipSelectedCleaning = () => {
+        if (!selectedGarageVehicle) return;
+        ensureSelectedVehicleSaved();
+        const nextDate = addDays(nextCleaning > todayISO() ? nextCleaning : todayISO(), 7);
+        if (selectedCleaningTask) updateTaskDetails(selectedCleaningTask.id, { status: "Open", dueDate: nextDate });
+        updateVehicleCareRecord(selectedGarageVehicle.id, {
+          history: [{ id: uid("fleet-history"), type: "Note", date: new Date().toISOString(), notes: `Skipped · Moved to ${nextDate}` }, ...(selectedGarageVehicle.history || [])],
+        });
+        showSaveToast(`${selectedGarageVehicle.name} cleaning skipped. Next date ${formatDate(nextDate)}.`);
+      };
+      const moveSelectedCleaningToThursday = () => {
+        if (!selectedGarageVehicle) return;
+        ensureSelectedVehicleSaved();
+        if (selectedCleaningTask) updateTaskDetails(selectedCleaningTask.id, { status: "Open", dueDate: nearestThursday });
+        else void createVehicleCleaningWorkOrder({ ...selectedGarageVehicle, assignedTo: selectedGarageVehicle.assignedTo || "Nick" }, nearestThursday);
+        showSaveToast(`${selectedGarageVehicle.name} cleaning moved to Thursday, ${formatDate(nearestThursday)}.`);
+      };
+      const assignSelectedCleaningToAddison = () => {
+        if (!selectedGarageVehicle) return;
+        ensureSelectedVehicleSaved();
+        updateVehicleCareRecord(selectedGarageVehicle.id, { assignedTo: "Addison" });
+        if (selectedCleaningTask) updateTaskDetails(selectedCleaningTask.id, { assignee: "Addison", assignmentScope: "This occurrence" });
+        showSaveToast(`${selectedGarageVehicle.name} cleaning assigned to Addison.`);
+      };
+      const addSelectedCleaningNote = () => {
+        if (!selectedGarageVehicle) return;
+        const note = window.prompt(`Add a cleaning note for ${selectedGarageVehicle.name}:`, "");
+        if (!note?.trim()) return;
+        ensureSelectedVehicleSaved();
+        updateVehicleCareRecord(selectedGarageVehicle.id, { notes: selectedGarageVehicle.notes ? `${selectedGarageVehicle.notes}\n${note.trim()}` : note.trim() });
+        if (selectedCleaningTask) updateTaskDetails(selectedCleaningTask.id, { notes: [taskDetails(selectedCleaningTask.id).notes, note.trim()].filter(Boolean).join("\n") });
+        showSaveToast(`Cleaning note added to ${selectedGarageVehicle.name}.`);
+      };
+      const deleteSelectedGarageVehicle = () => {
+        if (!selectedGarageVehicle || !window.confirm(`Delete ${selectedGarageVehicle.name} from Garage?`)) return;
+        setGarageHiddenVehicleIds((current) => Array.from(new Set([...current, selectedGarageVehicle.id])));
+        setVehicleCare((current) => current.filter((vehicle) => vehicle.id !== selectedGarageVehicle.id));
+        void deleteOperationalRecord("vehicle_care" as AtlasTable, selectedGarageVehicle.id);
+        setSelectedVehicleId("");
+        setGarageVehicleTab("Overview");
+        setGarageVehicleEditing(false);
+        showSaveToast(`${selectedGarageVehicle.name} removed from Garage.`);
+      };
+      const infoTile = (label: string, value: string, field?: string) => (
+        <div style={{ ...recordInfoItemStyle, minHeight: 82, display: "grid", alignContent: "space-between", gap: 7 }}>
+          <span style={fieldLabelStyle}>{label}</span>
+          {garageVehicleEditing && field ? (
+            <input value={value === "Not recorded" ? "" : value} onChange={(event) => updateSpec(field, event.currentTarget.value)} style={inputStyle} />
+          ) : (
+            <strong style={{ color: colors.navy, fontSize: 14 }}>{value}</strong>
+          )}
+        </div>
+      );
+
+      return (
+        <section style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => addDashboardWorkOrder("Garage")} style={goldButtonStyle}>+ Add</button>
+            <button type="button" onClick={() => setGarageVehicleEditing((current) => !current)} style={secondaryButtonStyle}>
+              {garageVehicleEditing ? "Done" : "Edit"}
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(5,minmax(0,1fr))", border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#FFFFFF" }}>
+            {[
+              ["Vehicles", garageVehicles.length],
+              ["Due this week", cleaningDueCount + serviceDueCount],
+              ["Open work orders", openGarageWork.length],
+              ["Vendors", departmentVendors.length],
+              ["Warnings", serviceHistory.filter((entry) => entry.type === "Issue").length],
+            ].map(([label, value], index) => (
+              <div key={String(label)} style={{ padding: "11px 14px", borderRight: !isMobile && index < 4 ? `1px solid ${colors.line}` : undefined, borderBottom: isMobile && index < 3 ? `1px solid ${colors.line}` : undefined }}>
+                <strong style={{ color: colors.navy, fontSize: 20, marginRight: 7 }}>{value}</strong>
+                <span style={mutedSmallStyle}>{label}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(300px,38%) minmax(0,62%)", gap: 12, alignItems: "start" }}>
+            <section style={{ ...centerCardStyle, padding: 0, overflow: "hidden" }}>
+              <div style={{ padding: "14px 16px", borderBottom: `1px solid ${colors.line}` }}>
+                <div style={eyebrowStyle}>Vehicles</div>
+                <strong style={{ color: colors.navy, fontSize: 16 }}>Garage vehicles</strong>
+              </div>
+              <div style={{ maxHeight: isMobile ? "none" : "50vh", overflowY: "auto" }}>
+                {garageVehicles.map((vehicle) => {
+                  const selected = vehicle.id === selectedGarageVehicle?.id;
+                  const interval = Math.max(1, Number(vehicle.cleaningIntervalDays || 7));
+                  const due = Boolean(vehicle.lastCleaned) && addDays(vehicle.lastCleaned, interval) <= todayISO();
+                  const asset = departmentAssets.find((item) => item.id === vehicle.assetId || item.name.toLowerCase().includes(vehicle.name.toLowerCase()));
+                  const assetPhoto = asset
+                    ? photos.find((photo) => photo.assetId === asset.id && Boolean(photoSource(photo)))
+                    : undefined;
+                  return (
+                    <button key={vehicle.id} type="button" onClick={() => { setSelectedVehicleId(vehicle.id); setGarageVehicleTab("Overview"); setGarageVehicleEditing(false); }} style={{ width: "100%", border: 0, borderBottom: `1px solid ${colors.line}`, borderLeft: selected ? `3px solid ${colors.navy}` : "3px solid transparent", background: selected ? "#F0F6FC" : "#FFFFFF", padding: "12px 13px", textAlign: "left", cursor: "pointer", display: "grid", gridTemplateColumns: "36px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+                      <span style={{ width: 36, height: 36, borderRadius: 9, display: "grid", placeItems: "center", background: "#E2ECF5", color: colors.navy, fontWeight: 900, overflow: "hidden" }}>{assetPhoto ? <img src={photoSource(assetPhoto)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : vehicle.name.slice(0, 1).toUpperCase()}</span>
+                      <span style={{ minWidth: 0 }}>
+                        <strong style={{ color: colors.navy, display: "block" }}>{vehicle.name}</strong>
+                        <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>{[asset?.year, asset?.make, asset?.model, locationName(vehicle.locationId)].filter(Boolean).join(" · ") || "Vehicle"}</small>
+                        <small style={{ display: "block", marginTop: 3, color: due ? colors.red : vehicle.lastCleaned ? colors.green : colors.muted, fontWeight: 800 }}>{due ? "Cleaning due" : vehicle.lastCleaned ? `Cleaned ${formatDate(vehicle.lastCleaned)}` : "No cleaning history"}</small>
+                      </span>
+                      <span style={{ color: colors.muted, fontSize: 20 }}>›</span>
+                    </button>
+                  );
+                })}
+                {!garageVehicles.length ? <div style={noticeStyle}>No vehicles are saved.</div> : null}
+              </div>
+
+              <div style={{ borderTop: `8px solid ${colors.panel}`, padding: "13px 15px" }}>
+                <div style={eyebrowStyle}>This week</div>
+                <strong style={{ color: colors.navy }}>Garage schedule</strong>
+              </div>
+              <div style={{ display: "grid" }}>
+                {departmentWork.filter((record) => record.status !== "Completed").slice(0, 4).map((record) => (
+                  <button key={record.id} type="button" onClick={() => { setDepartmentCenter(""); openWorkOrderById(record.id); }} style={{ ...compactLinkedRowStyle, width: "100%", borderRadius: 0, borderLeft: 0, borderRight: 0, borderBottom: 0 }}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "No due date"} · {record.assignedTo || "Unassigned"}</small></span><span>›</span></button>
+                ))}
+                {!departmentWork.some((record) => record.status !== "Completed") ? <div style={{ ...noticeStyle, margin: 10 }}>No garage work scheduled.</div> : null}
+              </div>
+
+              <div style={{ borderTop: `8px solid ${colors.panel}`, padding: "13px 15px" }}>
+                <div style={eyebrowStyle}>Service</div>
+                <strong style={{ color: colors.navy }}>Garage vendors</strong>
+              </div>
+              <div style={{ display: "grid" }}>
+                {departmentVendors.map((vendor) => <button key={vendor.id} type="button" onClick={() => { setSelectedVendorId(vendor.id); openCenter("vendors"); }} style={{ ...compactLinkedRowStyle, width: "100%", borderRadius: 0, borderLeft: 0, borderRight: 0, borderBottom: 0 }}><span><strong>{vendor.name}</strong><small style={mutedSmallStyle}>{vendor.category || "Vehicle service"}</small></span><span>›</span></button>)}
+                {!departmentVendors.length ? <div style={{ ...noticeStyle, margin: 10 }}>No garage vendors assigned.</div> : null}
+              </div>
+            </section>
+
+            {selectedGarageVehicle ? (
+              <section style={{ ...centerCardStyle, padding: 0, overflow: "hidden", position: isMobile ? "static" : "sticky", top: 88, maxHeight: isMobile ? "none" : "calc(100vh - 110px)" }}>
+                <div style={{ padding: 16, display: "grid", gridTemplateColumns: "52px minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
+                  <span style={{ width: 52, height: 52, borderRadius: 11, display: "grid", placeItems: "center", background: "#E2ECF5", color: colors.navy, fontSize: 20, fontWeight: 900, overflow: "hidden" }}>{garageAssetPhotos[0] ? <img src={photoSource(garageAssetPhotos[0])} alt={selectedGarageVehicle.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : selectedGarageVehicle.name.slice(0, 1).toUpperCase()}</span>
+                  <span><span style={eyebrowStyle}>{[assetData.year, assetData.make, assetData.model].filter(Boolean).join(" · ") || "Vehicle"}</span><strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>{selectedGarageVehicle.name}</strong><small style={mutedSmallStyle}>{selectedGarageVehicle.onsite ? "Ready" : "Away"} · {locationName(selectedGarageVehicle.locationId) || "Garage"}</small></span>
+                  <span style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={secondaryButtonStyle}>Open Asset</button> : null}
+                    <button type="button" onClick={deleteSelectedGarageVehicle} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", gap: 4, padding: "0 12px", borderTop: `1px solid ${colors.line}`, borderBottom: `1px solid ${colors.line}`, overflowX: "auto" }}>
+                  {(["Overview", "Maintenance", "Cleaning", "Documents", "Photos"] as const).map((tab) => (
+                    <button key={tab} type="button" onClick={() => setGarageVehicleTab(tab)} style={{ border: 0, borderBottom: garageVehicleTab === tab ? `2px solid ${colors.navy}` : "2px solid transparent", background: "transparent", color: garageVehicleTab === tab ? colors.navy : colors.muted, padding: "11px 9px", fontSize: 11, fontWeight: garageVehicleTab === tab ? 900 : 700, cursor: "pointer", whiteSpace: "nowrap" }}>{tab}</button>
+                  ))}
+                </div>
+
+                <div style={{ padding: 16, overflowY: "auto" }}>
+                  {garageVehicleTab === "Overview" ? <div style={{ display: "grid", gap: 14 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
+                      {infoTile("Mileage", linkedAssetValue("mileage", "odometer"), "mileage")}
+                      {infoTile("Tire pressure", linkedAssetValue("tirePressure"), "tirePressure")}
+                      {infoTile(/rivian|lucid|electric/i.test(selectedGarageVehicle.name) ? "Charging" : "Oil / fuel", linkedAssetValue("oilChargeRecommendation", "chargingRecommendation", "oilRecommendation"), "oilChargeRecommendation")}
+                    </div>
+                    <section style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 13 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9 }}><strong style={{ color: colors.navy }}>Vehicle information</strong><button type="button" onClick={() => setGarageVehicleEditing((current) => !current)} style={smallSubtleButtonStyle}>{garageVehicleEditing ? "Done" : "Edit"}</button></div>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8 }}>
+                        {infoTile("Tire size / type", linkedAssetValue("tireSizeType", "tireSize", "tires"), "tireSizeType")}
+                        {infoTile("VIN", linkedAssetValue("vin", "serial"), "vin")}
+                        {infoTile("Registration / plate", linkedAssetValue("registrationPlate", "plate"), "registrationPlate")}
+                        {infoTile("Stored at", locationName(selectedGarageVehicle.locationId) || "Not linked")}
+                      </div>
+                    </section>
+                    <section style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 13 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}><strong style={{ color: colors.navy }}>Next up</strong><button type="button" onClick={() => setGarageVehicleTab("Cleaning")} style={smallSubtleButtonStyle}>View all</button></div><div style={{ ...recordInfoItemStyle, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><span><strong style={{ display: "block" }}>Cleaning {nextCleaning <= todayISO() ? "due" : formatDate(nextCleaning)}</strong><small style={mutedSmallStyle}>{selectedGarageVehicle.assignedTo || "Unassigned"}</small></span><button type="button" onClick={() => void createVehicleCleaningWorkOrder(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Open</button></div></section>
+                    <section style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 13 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}><strong style={{ color: colors.navy }}>Recent maintenance</strong><button type="button" onClick={() => setGarageVehicleTab("Maintenance")} style={smallSubtleButtonStyle}>Full history</button></div>{vehicleWork.slice(0, 3).map((record) => <button key={record.id} type="button" onClick={() => { setDepartmentCenter(""); openWorkOrderById(record.id); }} style={{ ...compactLinkedRowStyle, width: "100%", marginBottom: 7 }}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "No date"}</small></span><span style={badgeStyle(record.status || "Open")}>{record.status || "Open"}</span></button>)}{!vehicleWork.length ? <div style={noticeStyle}>No maintenance records yet.</div> : null}</section>
+                  </div> : null}
+
+                  {garageVehicleTab === "Maintenance" ? <div style={{ display: "grid", gap: 8 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Maintenance history</strong><button type="button" onClick={() => createVehicleWorkOrder(selectedGarageVehicle)} style={goldButtonStyle}>+ Add record</button></div>{vehicleWork.map((record) => <button key={record.id} type="button" onClick={() => { setDepartmentCenter(""); openWorkOrderById(record.id); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>{record.date ? formatDate(record.date) : "No date"}</small></span><span style={badgeStyle(record.status || "Open")}>{record.status || "Open"}</span></button>)}{serviceHistory.map((entry) => <div key={entry.id} style={recordInfoItemStyle}><strong>{entry.type}</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{formatDate(String(entry.date || "").slice(0, 10))}{entry.notes ? ` · ${entry.notes}` : ""}</small></div>)}{!vehicleWork.length && !serviceHistory.length ? <div style={noticeStyle}>No maintenance history recorded.</div> : null}</div> : null}
+
+                  {garageVehicleTab === "Cleaning" ? <div style={{ display: "grid", gap: 10 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Cleaning schedule & history</strong><span style={badgeStyle(!nextCleaning ? "Monitor" : nextCleaning <= todayISO() ? "Open" : "Scheduled")}>{!nextCleaning ? "Not scheduled" : nextCleaning <= todayISO() ? "Due" : "Scheduled"}</span></div><div style={{ ...recordInfoItemStyle, background: "#F0F6FC", display: "grid", gap: 9 }}><span style={fieldLabelStyle}>NEXT CLEANING</span><strong style={{ color: colors.navy, fontSize: 16 }}>{nextCleaning ? formatDate(nextCleaning) : "No cleaning history yet"}</strong><small style={mutedSmallStyle}>Exterior wash · Interior tidy · Glass · Check supplies · Tire pressure</small><div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 6 }}><button type="button" onClick={() => { ensureSelectedVehicleSaved(); markVehicleCleaned(selectedGarageVehicle); }} style={goldButtonStyle}>Complete</button><button type="button" onClick={skipSelectedCleaning} style={smallSubtleButtonStyle}>Skip</button><button type="button" onClick={moveSelectedCleaningToThursday} style={smallSubtleButtonStyle}>Move to Thursday</button><button type="button" onClick={assignSelectedCleaningToAddison} style={smallSubtleButtonStyle}>Assign to Addison</button><button type="button" onClick={addSelectedCleaningNote} style={smallSubtleButtonStyle}>Add Note</button><button type="button" onClick={() => selectedGarageAsset ? openAssetById(selectedGarageAsset.id) : showSaveToast("Link this vehicle to an Asset before adding photos.")} style={smallSubtleButtonStyle}>Add Photo</button><button type="button" onClick={() => createVehicleWorkOrder(selectedGarageVehicle)} style={smallSubtleButtonStyle}>Create Work Order</button></div><small style={mutedSmallStyle}>Assigned to {selectedGarageVehicle.assignedTo || "Nick"}</small></div>{cleaningHistory.map((entry) => { const skipped = entry.type === "Note" && /^Skipped\b/i.test(entry.notes || ""); return <div key={entry.id} style={{ ...recordInfoItemStyle, display: "grid", gridTemplateColumns: "90px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}><small style={mutedSmallStyle}>{formatDate(String(entry.date || "").slice(0, 10))}</small><span><strong style={{ display: "block" }}>{skipped ? "Cleaning skipped" : "Vehicle cleaning"}</strong>{entry.notes ? <small style={mutedSmallStyle}>{entry.notes}</small> : null}</span><span style={badgeStyle(skipped ? "Monitor" : "Completed")}>{skipped ? "Skipped" : "Completed"}</span></div>; })}{!cleaningHistory.length ? <div style={noticeStyle}>No cleaning history recorded yet.</div> : null}</div> : null}
+
+                  {garageVehicleTab === "Documents" ? <div style={{ display: "grid", gap: 8 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Documents</strong>{selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={goldButtonStyle}>+ Add document</button> : null}</div>{vehicleDocuments.map((document) => <button key={document.id} type="button" onClick={() => { setSelectedDocumentId(document.id); openCenter("documents"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{document.title}</strong><small style={mutedSmallStyle}>{document.type || "Document"}</small></span><span>Open ›</span></button>)}{!vehicleDocuments.length ? <div style={noticeStyle}>No documents attached to this vehicle.</div> : null}</div> : null}
+
+                  {garageVehicleTab === "Photos" ? <div style={{ display: "grid", gap: 10 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: colors.navy }}>Photos</strong>{selectedGarageAsset ? <button type="button" onClick={() => openAssetById(selectedGarageAsset.id)} style={goldButtonStyle}>+ Add photos</button> : null}</div>{garageAssetPhotos.length || vehiclePhotos.length ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 8 }}>{garageAssetPhotos.map((photo) => <button key={`asset-${photo.id}`} type="button" onClick={() => openPhotoPreview(photo)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 0, overflow: "hidden", background: "#FFFFFF" }}><img src={photoSource(photo)} alt={photo.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} /></button>)}{vehiclePhotos.map((photo) => <button key={`document-${photo.id}`} type="button" onClick={() => setPreviewFile(photo)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 0, overflow: "hidden", background: "#FFFFFF" }}><img src={photo.dataUrl || photo.url} alt={photo.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }} /></button>)}</div> : <div style={noticeStyle}>No photos attached to this vehicle asset.</div>}</div> : null}
+                </div>
+              </section>
+            ) : <div style={noticeStyle}>Select a vehicle.</div>}
+          </div>
+        </section>
+      );
+    }
+
+    if (false && kind === "garage") {
+      const sortedCars = [...departmentAssets].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      );
+      const sortedCarWork = [...departmentWork].sort((a, b) =>
+        String(a.date || "9999-12-31").localeCompare(
+          String(b.date || "9999-12-31"),
+        ),
+      );
+      const sortedCarTasks: WorkPlanTask[] = [];
+      const sortedGarageVehicles = vehicleCare
+        .filter(
+          (vehicle) =>
+            vehicle.kind !== "Boat" &&
+            vehicle.kind !== "Watercraft" &&
+            vehicle.kind !== "Equipment" &&
+            !garageExcludedPattern.test(vehicle.name),
+        )
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      return (
+        <section style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => addDashboardWorkOrder("Garage")}
+              style={goldButtonStyle}
+            >
+              New Car Work Order
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "minmax(260px, 31%) minmax(0, 69%)",
+              gap: 12,
+              alignItems: "start",
+            }}
+          >
+            <div style={centerCardStyle}>
+              <strong style={{ color: colors.navy, fontSize: 16 }}>Cars</strong>
+              <div style={{ display: "grid", gap: 8 }}>
+                {sortedCars.map((asset) => (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() => openAssetById(asset.id)}
+                    style={{
+                      ...compactLinkedRowStyle,
+                      width: "100%",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span>
+                      <strong>{asset.name}</strong>
+                      <small style={mutedSmallStyle}>
+                        {[asset.make, asset.model].filter(Boolean).join(" · ") ||
+                          "Vehicle"}
+                      </small>
+                    </span>
+                    <span style={badgeStyle(asset.status || "Active")}>
+                      {asset.status || "Active"}
+                    </span>
+                  </button>
+                ))}
+                {!sortedCars.length ? (
+                  <div style={noticeStyle}>No cars are saved.</div>
+                ) : null}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={centerCardStyle}>
+                <strong style={{ color: colors.navy, fontSize: 16 }}>
+                  Cleaning Schedule
+                </strong>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {sortedGarageVehicles.map((vehicle) => {
+                    const interval = Math.max(
+                      1,
+                      Number(vehicle.cleaningIntervalDays || 7),
+                    );
+                    const nextCleaning = vehicle.lastCleaned
+                      ? addDays(vehicle.lastCleaned, interval)
+                      : "";
+                    const cleaningStatus = !vehicle.lastCleaned
                       ? "No history"
                       : nextCleaning < todayISO()
                         ? "Overdue"
