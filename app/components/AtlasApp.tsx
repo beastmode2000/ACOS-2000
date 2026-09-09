@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 353797)
-... 366609 bytes omitted ...
-
 "use client";
 
 import React, {
@@ -11161,7 +11158,13490 @@ export default function AtlasApp() {
       try {
         const response = await fetch(
           `/api/atlas?sharedTasksBeforeSave=${Date.now()}&propertyId=${encodeURIComponent(activePropertyId)}`,
-          { cache: "no…42152 tokens truncated…"Manufacturer"
+          { cache: "no-store" },
+        );
+        if (response.ok) {
+          const payload = await response.json();
+          const operationsPayload = payload?.operations && typeof payload.operations === "object"
+            ? payload.operations
+            : payload;
+          const records = Array.isArray(operationsPayload?.taskRecords)
+            ? operationsPayload.taskRecords
+            : Array.isArray(operationsPayload?.tasks)
+              ? operationsPayload.tasks
+              : [];
+          remoteTaskMap = new Map(
+            records.map((record: Record<string, any>) => [String(record?.id || ""), record]),
+          );
+        }
+      } catch {
+        // The normal save below still runs. This freshness check is protective, not required.
+      }
+
+      const taskResults = await Promise.all(
+        snapshot.tasks.map(async (record) => {
+          const remote = remoteTaskMap.get(String(record.id || ""));
+          if (remote) {
+            const localMeta = record.taskMeta && typeof record.taskMeta === "object"
+              ? record.taskMeta as Record<string, any>
+              : record as Record<string, any>;
+            const remoteMeta = remote.taskMeta && typeof remote.taskMeta === "object"
+              ? remote.taskMeta as Record<string, any>
+              : remote;
+            const localUpdatedAt = Date.parse(String(localMeta.updatedAt || record.updatedAt || localMeta.completedAt || localMeta.createdAt || "")) || 0;
+            const remoteUpdatedAt = Date.parse(String(remoteMeta.updatedAt || remote.updatedAt || remoteMeta.completedAt || remoteMeta.createdAt || "")) || 0;
+            if (remoteUpdatedAt > localUpdatedAt) {
+              newerRemoteTaskRecords.push(remote);
+              return true;
+            }
+          }
+          return postAtlasRecord("tasks" as AtlasTable, record);
+        }),
+      );
+
+      if (newerRemoteTaskRecords.length) {
+        operationsRemoteRefreshRef.current = true;
+        if (operationsRemoteRefreshTimerRef.current) {
+          window.clearTimeout(operationsRemoteRefreshTimerRef.current);
+        }
+        operationsRemoteRefreshTimerRef.current = window.setTimeout(() => {
+          operationsRemoteRefreshRef.current = false;
+        }, 2000);
+
+        setWorkPlanTasks((current) => {
+          const remoteById = new Map(newerRemoteTaskRecords.map((record) => [String(record.id || ""), record]));
+          return current.map((task) => {
+            const remote = remoteById.get(task.id);
+            if (!remote) return task;
+            return {
+              ...task,
+              title: String(remote.title || task.title),
+              minutes: Math.max(5, Number(remote.minutes || task.minutes || 30)),
+              priority: (remote.priority || task.priority || "Medium") as WorkPlanTask["priority"],
+              category: String(remote.category || task.category || "General"),
+              locationId: String(remote.locationId || task.locationId || "general"),
+              preferredDay: (remote.preferredDay || task.preferredDay || "Auto") as WorkPlanTask["preferredDay"],
+              locked: Boolean(remote.locked),
+              recurring: Boolean(remote.recurring),
+              fixedTime: String(remote.fixedTime || ""),
+              notes: String(remote.notes || task.notes || ""),
+            };
+          });
+        });
+        setTaskMeta((current) => {
+          const next = { ...current };
+          for (const remote of newerRemoteTaskRecords) {
+            const id = String(remote.id || "");
+            if (!id) continue;
+            const nestedMeta = remote.taskMeta && typeof remote.taskMeta === "object"
+              ? remote.taskMeta as Partial<AtlasTaskMeta>
+              : {};
+            const baseMeta = current[id] || taskDetails(id);
+            next[id] = {
+              ...baseMeta,
+              ...nestedMeta,
+              assignee: nestedMeta.assignee || remote.assignee || baseMeta.assignee,
+              dueDate: nestedMeta.dueDate || remote.dueDate || baseMeta.dueDate,
+              status: nestedMeta.status || remote.status || baseMeta.status,
+              createdAt: nestedMeta.createdAt || baseMeta.createdAt,
+            };
+          }
+          return next;
+        });
+      }
+
+      const [vehicleResults, daySessionResults] = await Promise.all([
+        Promise.all(snapshot.vehicles.map((record) => postAtlasRecord("vehicle_care" as AtlasTable, record))),
+        Promise.all(snapshot.daySessions.map((record) => postAtlasRecord("day_sessions" as AtlasTable, record))),
+      ]);
+      const backgroundRetryPending =
+        failedDeletes.length > 0 ||
+        taskResults.some((saved) => !saved) ||
+        vehicleResults.some((saved) => !saved) ||
+        daySessionResults.some((saved) => !saved);
+
+      if (!backgroundRetryPending) {
+        window.localStorage.removeItem(pendingKey);
+      }
+      setOperationsSyncState("saved");
+      setOperationsSyncMessage(
+        backgroundRetryPending
+          ? "Saved to shared Atlas. A background item will retry automatically."
+          : `Saved ${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date())}`,
+      );
+      setSyncState("synced");
+      setLastSyncedAt(new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date()));
+      if (backgroundRetryPending && navigator.onLine) {
+        window.setTimeout(() => { void syncOperationalData(); }, 8000);
+      }
+    } catch (error) {
+      setOperationsSyncState("failed");
+      setOperationsSyncMessage("Failed — saved safely on this device. Atlas will retry automatically.");
+      setSyncState("offline");
+      console.error("Atlas operational sync failed", error);
+      if (navigator.onLine) window.setTimeout(() => { void syncOperationalData(); }, 8000);
+    } finally {
+      operationsSyncRunningRef.current = false;
+    }
+  }
+
+  async function deleteSelectedLocation() {
+    const location = locations.find((item) => item.id === selectedLocationId);
+    if (!location) return;
+
+    if (normalizeLocationName(location.name) === "2000") {
+      window.alert("2000 is the top-level property and cannot be deleted.");
+      return;
+    }
+
+    const dockLocation = locations.find(
+      (item) => normalizeLocationName(item.name) === "dock",
+    );
+    const matchingAssets = assetRecords.filter(
+      (asset) => normalizeLocationName(asset.name) === normalizeLocationName(location.name),
+    );
+    const linkedAssets = assetRecords.filter((asset) =>
+      assetHasLocation(asset, location.id),
+    );
+    const repairableAssetIds = new Set(matchingAssets.map((asset) => asset.id));
+    const unrepairableAssets = linkedAssets.filter(
+      (asset) => !repairableAssetIds.has(asset.id),
+    );
+    const linkedWorkOrders = serviceRecords.filter(
+      (record) => String(record.locationId || "") === location.id,
+    );
+    const directLocationWorkOrders = linkedWorkOrders.filter(
+      (record) => !record.assetId && matchingAssets.length !== 1,
+    );
+    const linkedDocuments = allDocuments.filter(
+      (document) => String(document.targetId || "") === location.id,
+    );
+    const linkedSubLocations = locations.filter(
+      (item) => String(item.parentId || "") === location.id,
+    );
+    const linkedPhotos = linkedImageFilesFor("Location", location.id);
+    const linkedVendors = Array.isArray(location.vendorIds)
+      ? location.vendorIds.filter(Boolean)
+      : [];
+
+    const blockers = [
+      [unrepairableAssets.length, "asset"],
+      [directLocationWorkOrders.length, "location-only work order"],
+      [linkedDocuments.length, "document"],
+      [linkedSubLocations.length, "sub-location"],
+      [linkedPhotos.length, "photo"],
+      [linkedVendors.length, "vendor"],
+    ] as const;
+
+    const activeBlockers = blockers.filter(([count]) => count > 0);
+    if (activeBlockers.length) {
+      const details = activeBlockers
+        .map(([count, label]) => `${count} ${label}${count === 1 ? "" : "s"}`)
+        .join(", ");
+      window.alert(
+        `This location cannot be deleted yet because it has ${details}. Reassign those direct location connections first. Asset work orders do not block deletion.`,
+      );
+      return;
+    }
+
+    if (matchingAssets.length && !dockLocation) {
+      window.alert(
+        `Atlas found the matching asset “${matchingAssets[0].name}”, but it cannot repair this record until a Dock location exists.`,
+      );
+      return;
+    }
+
+    const repairMessage = matchingAssets.length
+      ? ` Atlas will keep the ${matchingAssets.length === 1 ? "asset" : "assets"}, move ${matchingAssets.length === 1 ? "it" : "them"} to Dock, and keep the work orders attached to the asset.`
+      : "";
+
+    if (!window.confirm(`Delete the false location “${location.name}”?${repairMessage}`)) {
+      return;
+    }
+
+    const deleted = await deleteAtlasRecord("locations", location.id);
+    if (!deleted) return;
+
+    const dockId = dockLocation?.id || "";
+    if (matchingAssets.length && dockId) {
+      const matchingIds = new Set(matchingAssets.map((asset) => asset.id));
+      setAssetRecords((current) =>
+        current.map((asset) =>
+          matchingIds.has(asset.id)
+            ? { ...asset, locationId: dockId, locationIds: [dockId] }
+            : asset,
+        ),
+      );
+      setServiceRecords((current) =>
+        current.map((record) => {
+          if (String(record.locationId || "") !== location.id) return record;
+          if (record.assetId) return { ...record, locationId: "" };
+          if (matchingAssets.length === 1) {
+            return { ...record, assetId: matchingAssets[0].id, locationId: "" };
+          }
+          return record;
+        }),
+      );
+    }
+
+    const remaining = locations.filter((item) => item.id !== location.id);
+    setLocations(remaining);
+    setSelectedLocationId(remaining[0]?.id || "");
+    setLocationEditorOpen(false);
+    setLocationMobileDrawerOpen(false);
+    showSaveToast(
+      matchingAssets.length
+        ? "False location deleted. Asset moved to Dock and work orders preserved."
+        : "Location deleted.",
+    );
+  }
+
+  function addLocation() {
+    const record: AtlasLocationRecord = {
+      id: uid("location"),
+      name: "",
+      type: "",
+      zone: "",
+      notes: "",
+    };
+    setLocations((current) => byName([record, ...current]));
+    setSelectedLocationId(record.id);
+    setLocationEditorOpen(true);
+    markRecordDirty("location", record.id);
+    setScreen("locations");
+  }
+
+  function addSubLocation(parentId = selectedLocation.id) {
+    const parent = locations.find((location) => location.id === parentId);
+    if (!parent) return;
+    const record: AtlasLocationRecord = {
+      id: uid("location"),
+      name: "",
+      type: "Room / Area",
+      zone: parent.name,
+      notes: "",
+      parentId: parent.id,
+      customDetails: [],
+      vendorIds: [],
+    };
+    setLocations((current) => byName([record, ...current]));
+    setSelectedLocationId(record.id);
+    setLocationEditorOpen(true);
+    markRecordDirty("location", record.id);
+    setScreen("locations");
+    if (isMobile) setLocationMobileDrawerOpen(true);
+  }
+
+  function updateLocation(patch: Partial<AtlasLocationRecord>) {
+    if (!selectedLocation.id) return;
+    markRecordDirty("location", selectedLocation.id);
+    setLocations((current) =>
+      byName(
+        current.map((item) =>
+          item.id === selectedLocation.id ? { ...item, ...patch } : item,
+        ),
+      ),
+    );
+  }
+
+  function addLocationCustomDetail() {
+    const next = [
+      ...(selectedLocation.customDetails || []),
+      { id: uid("detail"), label: "", value: "" },
+    ];
+    updateLocation({ customDetails: next });
+  }
+
+  function updateLocationCustomDetail(
+    detailId: string,
+    patch: Partial<LocationCustomDetail>,
+  ) {
+    updateLocation({
+      customDetails: (selectedLocation.customDetails || []).map((detail) =>
+        detail.id === detailId ? { ...detail, ...patch } : detail,
+      ),
+    });
+  }
+
+  function removeLocationCustomDetail(detailId: string) {
+    updateLocation({
+      customDetails: (selectedLocation.customDetails || []).filter(
+        (detail) => detail.id !== detailId,
+      ),
+    });
+  }
+
+  async function assignAssetToLocation(assetId: string) {
+    if (!selectedLocation.id || !assetId) return;
+    const asset = assetRecords.find((item) => item.id === assetId);
+    if (!asset) return;
+
+    const nextLocationIds = selectedLocation.id === "general"
+      ? ["general"]
+      : Array.from(
+          new Set([
+            ...assetLocationIds(asset).filter((id) => id !== "general"),
+            selectedLocation.id,
+          ]),
+        );
+    const updated = normalizeAsset({
+      ...asset,
+      locationId:
+        asset.locationId && asset.locationId !== "general"
+          ? asset.locationId
+          : selectedLocation.id,
+      locationIds: nextLocationIds,
+    });
+    setAssetRecords((current) =>
+      byName(current.map((item) => (item.id === assetId ? updated : item))),
+    );
+    const saved = await postAtlasRecord("assets", updated);
+    showSaveToast(
+      saved
+        ? `${asset.name} added to ${selectedLocation.name || "this location"}.`
+        : `${asset.name} was added here, but Atlas sync did not finish.`,
+      saved ? "success" : "warning",
+    );
+  }
+
+  async function removeAssetFromLocation(assetId: string) {
+    const asset = assetRecords.find((item) => item.id === assetId);
+    if (!asset) return;
+
+    const remainingLocationIds = assetLocationIds(asset).filter(
+      (id) => id !== selectedLocation.id,
+    );
+    const nextPrimary =
+      asset.locationId === selectedLocation.id
+        ? remainingLocationIds[0] || ""
+        : asset.locationId && asset.locationId !== "general"
+          ? asset.locationId
+          : remainingLocationIds[0] || "";
+    const updated = normalizeAsset({
+      ...asset,
+      locationId: nextPrimary,
+      locationIds: remainingLocationIds,
+    });
+    setAssetRecords((current) =>
+      byName(current.map((item) => (item.id === assetId ? updated : item))),
+    );
+    const saved = await postAtlasRecord("assets", updated);
+    showSaveToast(
+      saved
+        ? `${asset.name} removed from ${selectedLocation.name || "this location"}.`
+        : `${asset.name} was removed here, but Atlas sync did not finish.`,
+      saved ? "success" : "warning",
+    );
+  }
+
+  function addAsset(name = "") {
+    const record = normalizeAsset({
+      id: uid("asset"),
+      name,
+      locationId: "",
+      category: "",
+      status: "Monitor",
+      make: "",
+      model: "",
+      serial: "",
+      notes: "",
+      vendorIds: [],
+    });
+    setAssetRecords((current) => byName([record, ...current]));
+    setSelectedAssetId(record.id);
+    markRecordDirty("asset", record.id);
+    setScreen("assets");
+  }
+
+  function updateAsset(patch: Partial<AtlasAssetRecord>) {
+    markRecordDirty("asset", selectedAsset.id);
+    setAssetRecords((current) =>
+      byName(
+        current.map((item) =>
+          item.id === selectedAsset.id
+            ? normalizeAsset({ ...item, ...patch })
+            : item,
+        ),
+      ),
+    );
+  }
+
+  async function renameAssetPhoto(photo: PhotoRecord) {
+    const nextName = window.prompt("Photo label", photo.name || "Asset photo");
+    if (nextName === null) return;
+    const name = nextName.trim();
+    if (!name || name === photo.name) return;
+
+    const updated = { ...photo, name };
+    setPhotos((current) => {
+      const next = current.map((item) =>
+        item.id === photo.id ? updated : item,
+      );
+      persistPhotoRecords(next);
+      return next;
+    });
+
+    const saved = await postAtlasRecord("asset_photos", updated);
+    showSaveToast(
+      saved ? "Photo label saved." : "Photo label changed here; Atlas sync did not finish.",
+      saved ? "success" : "warning",
+    );
+  }
+
+  function addVendor(name = "") {
+    const record = normalizeDepartmentVendor({
+      id: uid("vendor"),
+      name,
+      category: "",
+      phone: "",
+      email: "",
+      website: "",
+      notes: "",
+    });
+    setVendorRecords((current) => byName([record, ...current]));
+    setSelectedVendorId(record.id);
+    markRecordDirty("vendor", record.id);
+    setScreen("vendors");
+  }
+
+  function quickCreateVendor(name: string) {
+    const record = normalizeDepartmentVendor({ id: uid("vendor"), name: name.trim(), category: "", phone: "", email: "", website: "", notes: "" });
+    setVendorRecords((current) => byName([record, ...current]));
+    markRecordDirty("vendor", record.id);
+    showSaveToast(`${record.name} added and selected.`);
+    return record.id;
+  }
+
+  function quickCreateAsset(name: string) {
+    const record = normalizeAsset({ id: uid("asset"), name: name.trim(), locationId: "", category: "", status: "Monitor", make: "", model: "", serial: "", notes: "", vendorIds: [] });
+    setAssetRecords((current) => byName([record, ...current]));
+    markRecordDirty("asset", record.id);
+    showSaveToast(`${record.name} added and selected.`);
+    return record.id;
+  }
+
+  function quickCreateLocation(name: string) {
+    const record: AtlasLocationRecord = { id: uid("location"), name: name.trim(), type: "", zone: "", notes: "" };
+    setLocations((current) => byName([record, ...current]));
+    markRecordDirty("location", record.id);
+    showSaveToast(`${record.name} added and selected.`);
+    return record.id;
+  }
+
+  function quickCreateContact(name: string) {
+    const record = normalizeContact({ ...blankContact(), id: uid("contact"), name: name.trim() });
+    setContactRecords((current) => byName([record, ...current]));
+    markRecordDirty("contact", record.id);
+    showSaveToast(`${record.name} added and selected.`);
+    return record.id;
+  }
+
+  function quickCreateProject(name: string) {
+    const id = uid("project");
+    const project: PhotoTimelineProject = { propertyId: activePropertyId, id, title: name.trim(), category: "General", scale: "Standard", status: "Planning", assetId: "", locationId: "", vendorId: "", workOrderId: "", workOrderIds: [], vendorIds: [], documentIds: [], assigneeIds: [], notes: "", coverPhotoId: "", createdAt: new Date().toISOString(), progress: 0, phase: "Planning", startDate: todayISO(), archived: false };
+    setPhotoTimelineProjects((current) => [project, ...current]);
+    void postAtlasRecord("projects", { ...project, timelineEntries: [], photoMeta: {} });
+    showSaveToast(`${project.title} added and selected.`);
+    return id;
+  }
+
+  function updateVendor(patch: Partial<VendorRecord>) {
+    markRecordDirty("vendor", selectedVendor.id);
+    setVendorRecords((current) =>
+      byName(
+        current.map((item) =>
+          item.id === selectedVendor.id
+            ? normalizeDepartmentVendor({ ...(item as AtlasDepartmentVendor), ...(patch as Partial<AtlasDepartmentVendor>) })
+            : item,
+        ),
+      ),
+    );
+  }
+
+  function startNewContact() {
+    setSelectedContactId("");
+    setContactDraft(blankContact());
+    setContactEditorOpen(true);
+    setContactMessage("");
+    setScreen("contacts");
+  }
+
+  function editContact(record: ContactRecord) {
+    setSelectedContactId(record.id);
+    setContactDraft(normalizeContact(record));
+    setContactEditorOpen(true);
+    setContactMessage("");
+  }
+
+  function updateContactDraft(patch: Partial<ContactRecord>) {
+    setContactDraft((current) =>
+      normalizeContact({
+        ...current,
+        ...patch,
+        id: current.id || selectedContactId,
+      }),
+    );
+  }
+
+  async function saveContact() {
+    const name = contactDraft.name.trim();
+    if (!name) {
+      setContactMessage("Add a name before saving this contact.");
+      return;
+    }
+
+    const prepared = normalizeContact({
+      ...contactDraft,
+      id: selectedContactId || contactDraft.id || uid("contact"),
+      name,
+    });
+
+    setContactRecords((current) => {
+      const exists = current.some((item) => item.id === prepared.id);
+      const next = exists
+        ? current.map((item) => (item.id === prepared.id ? prepared : item))
+        : [prepared, ...current];
+      const sorted = byName(next);
+      saveStoredArray(storageKeys.contacts[0], sorted);
+      return sorted;
+    });
+
+    const saved = await postAtlasRecord("contacts", prepared);
+    if (!saved) {
+      setContactMessage(`${prepared.name} remains in this browser, but shared saving failed.`);
+      return;
+    }
+
+    setSelectedContactId("");
+    setContactDraft(blankContact());
+    setContactEditorOpen(true);
+    setContactMessage(`Saved ${prepared.name}. Ready for the next contact.`);
+  }
+
+  async function deleteContact(record: ContactRecord) {
+    if (
+      !record.id ||
+      !window.confirm(`Delete contact ${record.name || "this contact"}?`)
+    ) {
+      return;
+    }
+
+    const deleted = await deleteAtlasRecord("contacts", record.id);
+    if (!deleted) return;
+    setContactRecords((current) => {
+      const next = current.filter((item) => item.id !== record.id);
+      saveStoredArray(storageKeys.contacts[0], next);
+      return next;
+    });
+    setSelectedContactId("");
+    setContactDraft(blankContact());
+    setContactEditorOpen(false);
+    setContactMessage("");
+  }
+
+  function openWorkOrderById(recordId: string) {
+    if (!recordId) return;
+
+    // A direct record link must never inherit a dashboard category filter.
+    setDepartmentCenter("");
+    setDepartmentDrilldown("");
+    setDashboardWorkFilter("");
+    setScreen("history");
+    setSelectedServiceId(recordId);
+
+    // Re-apply the selection after the Work Orders screen mounts so the
+    // selected record opens instead of leaving the user at the list.
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        setSelectedServiceId(recordId);
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+      });
+    }
+  }
+
+  function openAssetById(assetId: string) {
+    if (!assetId) return;
+    setDepartmentCenter("");
+    setDepartmentDrilldown("");
+    setScreen("assets");
+    setSelectedAssetId(assetId);
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        setSelectedAssetId(assetId);
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+      });
+    }
+  }
+
+  function openTaskById(taskId: string) {
+    if (!taskId) return;
+    const task = workPlanTasks.find((item) => item.id === taskId);
+    const meta = task ? taskDetails(task.id) : null;
+    const today = todayISO();
+    const weekEnd = addDays(today, 7);
+    const targetFilter: TaskListFilter =
+      meta?.status === "Completed"
+        ? "completed"
+        : meta?.dueDate && meta.dueDate < today
+          ? "overdue"
+          : meta?.dueDate && meta.dueDate >= today && meta.dueDate <= weekEnd
+            ? "week"
+            : task?.recurring
+              ? "recurring"
+              : "today";
+
+    setTaskListFilter(targetFilter);
+    setTasksView("tasks");
+    setSelectedTaskId(taskId);
+    setScreen("planner");
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        setTasksView("tasks");
+        setSelectedTaskId(taskId);
+        window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+      });
+    }
+  }
+
+  function openWorkOrderFilter(kind: "overdue" | "today" | "high" | "completed-today") {
+    setSelectedServiceId("");
+    setDashboardWorkFilter(`__${kind}__`);
+    setWorkOrdersOpenKey((current) => current + 1);
+    setScreen("history");
+  }
+
+  function openDashboardCalendarItem(event: AtlasCalendarItem) {
+    if (event.source === "work-order" && event.linkedId) {
+      openWorkOrderById(event.linkedId);
+      return;
+    }
+    setScreen("calendar");
+    setSelectedCalendarDate(event.date);
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => openCalendarItem(event));
+    } else {
+      openCalendarItem(event);
+    }
+  }
+
+  async function addDashboardWorkOrder(areaLabel: string, initial: Partial<AtlasServiceRecord> = {}) {
+    const contextByArea: Record<string, Partial<AtlasServiceRecord>> = {
+      Maintenance: { workCategory: "🔧 Maintenance", responsibilityArea: "Operations Dashboard · Maintenance" },
+      Landscaping: { workCategory: "🌳 Landscaping", responsibilityArea: "Operations Dashboard · Landscaping" },
+      "Pool & Spa": { workCategory: "🚿 Pool & Spa", responsibilityArea: "Operations Dashboard · Pool & Spa" },
+      Irrigation: { workCategory: "💧 Irrigation", responsibilityArea: "Operations Dashboard · Irrigation" },
+      "Dock & Marine": { workCategory: "🚤 Dock & Marine", responsibilityArea: "Operations Dashboard · Dock & Marine", locationId: locations.find((location) => /dock/i.test(location.name || ""))?.id || "" },
+      Vehicles: { workCategory: "🚗 Vehicles", responsibilityArea: "Operations Dashboard · Vehicles" },
+    };
+    setDashboardWorkFilter("");
+    return await addWorkOrder({
+      ...(contextByArea[areaLabel] || { responsibilityArea: `Operations Dashboard · ${areaLabel}` }),
+      ...initial,
+    });
+  }
+
+  function addRoutinePhoto(task: { id: string; title: string }) {
+    resetIntakeDraft();
+    applyFastIntakeKind("General Photo");
+    setIntakeTitle(task.title);
+    setIntakeNotes(`Routine item: ${task.title}`);
+    setScreen("intake");
+  }
+
+  async function addRoutineNote(task: { id: string; title: string }) {
+    const note = window.prompt(`Add a note for “${task.title}”:`)?.trim();
+    if (!note) return;
+    const sharedNote = { id: uid("routine-note"), propertyId: activePropertyId, date: todayISO(), category: "Note" as const, text: `${task.title}: ${note}`, createdAt: new Date().toISOString() };
+    const saved = await postAtlasRecord("notes" as AtlasTable, { ...sharedNote, title: noteTitle(sharedNote.text), section: "General", pinned: false, followUpDate: "", attachments: [] });
+    if (!saved) { showSaveToast("Routine note did not sync. Nothing was changed.", "warning"); return; }
+    setTodayLogEntries((current) => [sharedNote, ...current]);
+    showSaveToast("Routine note added to today’s log.");
+  }
+
+  function flagRoutineProblem(task: { id: string; title: string }) {
+    const details = window.prompt(`Describe the problem found during “${task.title}”:`)?.trim();
+    if (!details) return;
+    addWorkOrder({ title: `Routine problem — ${task.title}`, date: todayISO(), priority: "High", status: "Open", notes: `Created from today’s Routine checklist.\n\n${details}`, responsibilityArea: "Mission Control · Routine Problem", workCategory: "🔧 Maintenance" });
+    setTodayLogEntries((current) => [{ id: uid("routine-problem"), propertyId: activePropertyId, date: todayISO(), category: "Repair", text: `Problem flagged: ${task.title}`, createdAt: new Date().toISOString() }, ...current]);
+    showSaveToast("Problem saved as a linked Work Order.");
+  }
+
+  function syncRoutineAssignment(task: { id: string; title: string; assignedTo?: "Nick" | "Addison" | "Pat" | "Crew"; date: string }) {
+    const normalizedTitle = task.title.trim().toLowerCase().replace(/\s+/g, " ");
+    const linkedTaskId = `routine-assignment-${activePropertyId}-${task.date}-${slugify(task.title)}`;
+
+    const generatedMatches = workPlanTasks.filter((item) => {
+      const meta = taskDetails(item.id) as AtlasTaskMeta;
+      const generatedFromRoutine =
+        String(item.id).startsWith(`routine-assignment-${activePropertyId}-`) ||
+        Boolean(meta.routineTaskId) ||
+        String(meta.notes || item.notes || "").includes("Assigned from today’s Routine checklist.");
+      if (!generatedFromRoutine) return false;
+      if (String(meta.assignee || "") !== "Addison") return false;
+      if (String(meta.dueDate || meta.routineDate || "") !== task.date) return false;
+      return item.title.trim().toLowerCase().replace(/\s+/g, " ") === normalizedTitle;
+    });
+
+    const generatedMatchIds = new Set(generatedMatches.map((item) => String(item.id)));
+
+    if (task.assignedTo !== "Addison") {
+      generatedMatchIds.add(`routine-assignment-${activePropertyId}-${task.date}-${task.id}`);
+      generatedMatchIds.add(linkedTaskId);
+
+      if (generatedMatchIds.size) {
+        setWorkPlanTasks((current) =>
+          current.filter((item) => !generatedMatchIds.has(String(item.id))),
+        );
+        setTaskMeta((current) => {
+          const next = { ...current };
+          generatedMatchIds.forEach((id) => delete next[id]);
+          return next;
+        });
+        generatedMatchIds.forEach((id) =>
+          void deleteOperationalRecord("tasks" as AtlasTable, id),
+        );
+      }
+
+      showSaveToast(`${task.title} removed from Addison’s list.`);
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const bestExisting =
+      workPlanTasks.find((item) => item.id === linkedTaskId) ||
+      generatedMatches
+        .slice()
+        .sort((a, b) =>
+          String((taskDetails(b.id) as AtlasTaskMeta).updatedAt || "").localeCompare(
+            String((taskDetails(a.id) as AtlasTaskMeta).updatedAt || ""),
+          ),
+        )[0];
+
+    const existingMeta = bestExisting
+      ? (taskDetails(bestExisting.id) as AtlasTaskMeta)
+      : undefined;
+
+    const assignmentTask: WorkPlanTask = {
+      ...(bestExisting || {
+        id: linkedTaskId,
+        title: task.title,
+        minutes: 30,
+        priority: "Medium",
+        category: inferTaskCategory(task.title),
+        locationId: "general",
+        preferredDay: "Auto",
+        locked: false,
+        recurring: false,
+        fixedTime: "",
+        notes: "Assigned from today’s Routine checklist.",
+      }),
+      id: linkedTaskId,
+      title: task.title,
+    };
+
+    const assignmentMeta: AtlasTaskMeta = {
+      ...(existingMeta || {}),
+      status: existingMeta?.status === "Completed" ? "Completed" : "Open",
+      dueDate: task.date,
+      assignee: "Addison",
+      createdAt: existingMeta?.createdAt || now,
+      updatedAt: now,
+      notes: existingMeta?.notes || "Assigned from today’s Routine checklist.",
+      routineTaskId: task.id,
+      routineDate: task.date,
+      assignmentScope: "This occurrence",
+      recurrenceInterval: 1,
+      recurrenceUnit: "Weeks",
+      recurrenceEndDate: "",
+      completionHistory: existingMeta?.completionHistory || [],
+      season: "Year-Round",
+      weatherDependency: existingMeta?.weatherDependency || "None",
+      flexibleTime: true,
+      skippable: true,
+    };
+
+    const duplicateIds = new Set(
+      generatedMatches
+        .map((item) => String(item.id))
+        .filter((id) => id !== linkedTaskId),
+    );
+
+    setWorkPlanTasks((current) => {
+      const withoutDuplicates = current.filter(
+        (item) => !duplicateIds.has(String(item.id)),
+      );
+      return withoutDuplicates.some((item) => item.id === linkedTaskId)
+        ? withoutDuplicates.map((item) =>
+            item.id === linkedTaskId ? assignmentTask : item,
+          )
+        : [assignmentTask, ...withoutDuplicates];
+    });
+
+    setTaskMeta((current) => {
+      const next = { ...current };
+      duplicateIds.forEach((id) => delete next[id]);
+      next[linkedTaskId] = assignmentMeta;
+      return next;
+    });
+
+    duplicateIds.forEach((id) =>
+      void deleteOperationalRecord("tasks" as AtlasTable, id),
+    );
+
+    void postAtlasRecord("tasks" as AtlasTable, {
+      ...assignmentTask,
+      ...assignmentMeta,
+      taskMeta: assignmentMeta,
+      propertyId: activePropertyId,
+      updatedAt: now,
+    });
+
+    showSaveToast(
+      duplicateIds.size
+        ? `${task.title} assigned to Addison and duplicate copies removed.`
+        : `${task.title} added to Addison’s list.`,
+    );
+  }
+
+  async function addWorkOrder(initial: Partial<AtlasServiceRecord> = {}) {
+    const linkedAssetPhoto = initial.assetId
+      ? [...photos]
+          .filter(
+            (photo) =>
+              photo.assetId === initial.assetId && Boolean(photoSource(photo)),
+          )
+          .sort((a, b) =>
+            String(a.createdAt || "").localeCompare(String(b.createdAt || "")),
+          )[0]
+      : undefined;
+    const record = normalizeService({
+      title: "",
+      date: "",
+      status: "Open",
+      priority: "Medium",
+      notes: "",
+      assetId: "",
+      vendorId: "",
+      procedureId: "",
+      followUpDate: "",
+      recurring: false,
+      recurrenceInterval: 1,
+      recurrenceUnit: "Weeks",
+      recurrenceEndDate: "",
+      season: seasonForDate(),
+      lastCompletedDate: "",
+      completionHistory: [],
+      workType: "Work Order",
+      workCategory: "🔧 Maintenance",
+      effort: "30 minutes",
+      responsibilityArea: "",
+      photos: linkedAssetPhoto
+        ? [
+            {
+              id: linkedAssetPhoto.id,
+              name: linkedAssetPhoto.name || "Asset photo",
+              dataUrl: linkedAssetPhoto.dataUrl,
+              url: linkedAssetPhoto.url,
+              createdAt: linkedAssetPhoto.createdAt,
+            },
+          ]
+        : [],
+      documents: [],
+      checklist: [],
+      notesHistory: [],
+      serviceHistory: [],
+      ...initial,
+      propertyId: activePropertyId,
+      id: initial.id || uid("wo"),
+    });
+
+    const actionKey = `create-work-order:${record.id}`;
+    if (atlasActionLocksRef.current.has(actionKey)) return null;
+    atlasActionLocksRef.current.add(actionKey);
+    clearWorkOrderTombstone(record.id);
+    setDatabaseStatus(`Saving ${record.title || "work order"}...`);
+
+    try {
+      const saved = await postAtlasRecord("work_orders", record);
+      if (!saved) {
+        markRecordDirty("work_order", record.id);
+        setDatabaseStatus(
+          `${record.title || "Work order"} was not created in shared Atlas.`,
+        );
+        showSaveToast("Work order was not created. Try again.", "warning");
+        return null;
+      }
+
+      clearRecordDirty("work_order", record.id);
+      setServiceRecords((current) => workOrdersByIdentity([record, ...current]));
+      setSelectedServiceId(record.id);
+      if (!(activePropertyId === "4725" && record.responsibilityArea === "Family")) {
+        setScreen("history");
+      }
+      setDatabaseStatus(`Saved ${record.title || "work order"}.`);
+      return record;
+    } finally {
+      atlasActionLocksRef.current.delete(actionKey);
+    }
+  }
+
+  function updateWorkOrder(patch: Partial<AtlasServiceRecord>) {
+    const recordId = selectedServiceId || selectedService.id;
+    if (!recordId) return;
+
+    if (patch.status === "Completed") {
+      const record = serviceRecords.find((item) => item.id === recordId);
+      if (record && record.status !== "Completed") {
+        void completeWorkOrder(record);
+      }
+      return;
+    }
+
+    const safePatch: Partial<AtlasServiceRecord> & { category?: string } = {
+      ...patch,
+    };
+
+    if (Object.prototype.hasOwnProperty.call(patch, "workCategory")) {
+      const category = String(patch.workCategory || "🔧 Maintenance").trim() ||
+        "🔧 Maintenance";
+      safePatch.workCategory = category;
+      safePatch.category = category;
+      safePatch.emoji = String(patch.emoji || category.match(/^\S+/)?.[0] || "🔧");
+    }
+
+    if (Object.prototype.hasOwnProperty.call(patch, "status")) {
+      safePatch.status = isServiceStatus(patch.status) ? patch.status : "Open";
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "priority")) {
+      safePatch.priority = isPriority(patch.priority) ? patch.priority : "Medium";
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "date")) {
+      safePatch.date = String(patch.date || "").trim().slice(0, 10);
+    }
+
+    ["assetId", "vendorId", "procedureId", "locationId", "assignedTo", "projectId"].forEach(
+      (key) => {
+        if (Object.prototype.hasOwnProperty.call(patch, key)) {
+          (safePatch as Record<string, unknown>)[key] = String(
+            (patch as Record<string, unknown>)[key] || "",
+          );
+        }
+      },
+    );
+
+    ["assignedPersonIds", "assignedVendorIds"].forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(patch, key)) {
+        (safePatch as Record<string, unknown>)[key] = Array.from(
+          new Set(
+            (Array.isArray((patch as Record<string, unknown>)[key])
+              ? ((patch as Record<string, unknown>)[key] as unknown[])
+              : [])
+              .map(String)
+              .filter(Boolean),
+          ),
+        );
+      }
+    });
+
+    markRecordDirty("work_order", recordId);
+    setServiceRecords((current) =>
+      current.map((item) =>
+        item.id === recordId ? normalizeService({ ...item, ...safePatch }) : item,
+      ),
+    );
+  }
+
+  function canonicalWorkAssignee(value: unknown) {
+    const name = String(value || "").trim();
+    const normalized = name.toLowerCase();
+    if (/^pat(?:rick)?(?:[^a-z]|$)/.test(normalized)) return "Patrick Tanner";
+    if (/^sean(?:[^a-z]|$)/.test(normalized)) return "Sean Powell";
+    return name;
+  }
+
+  async function updateWorkOrderRecord(
+    record: AtlasServiceRecord,
+    patch: Partial<AtlasServiceRecord>,
+  ) {
+    const safePatch: Partial<AtlasServiceRecord> = { ...patch };
+    if (Object.prototype.hasOwnProperty.call(patch, "assignedTo")) {
+      safePatch.assignedTo = canonicalWorkAssignee(patch.assignedTo);
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "date")) {
+      safePatch.date = String(patch.date || "").trim().slice(0, 10);
+    }
+    const updated = normalizeService({
+      ...record,
+      ...safePatch,
+      propertyId: activePropertyId,
+    });
+    const actionKey = `update-work-order:${updated.id}`;
+    if (atlasActionLocksRef.current.has(actionKey)) {
+      showSaveToast("This work order is already saving.", "warning");
+      return false;
+    }
+    atlasActionLocksRef.current.add(actionKey);
+    setDatabaseStatus(`Saving ${updated.title || "work order"}...`);
+    try {
+      const saved = await postAtlasRecord("work_orders", updated);
+      if (!saved) {
+        markRecordDirty("work_order", updated.id);
+        showSaveToast(
+          `${updated.title || "Work"} was not changed because shared saving failed.`,
+          "warning",
+        );
+        return false;
+      }
+      clearRecordDirty("work_order", updated.id);
+      setServiceRecords((current) =>
+        workOrdersByIdentity(current.map((item) => (item.id === updated.id ? updated : item))),
+      );
+      setDatabaseStatus(`Saved ${updated.title || "work order"}.`);
+      showSaveToast(`${updated.title || "Work"} saved.`, "success");
+      return true;
+    } finally {
+      atlasActionLocksRef.current.delete(actionKey);
+    }
+  }
+
+  async function saveWorkOrderRecord() {
+    if (!selectedService?.id) {
+      setDatabaseStatus("Save failed: no work order is selected.");
+      return;
+    }
+
+    const actionKey = `save-work-order:${selectedService.id}`;
+    if (atlasActionLocksRef.current.has(actionKey)) {
+      showSaveToast("This work order is already saving.", "warning");
+      return;
+    }
+    atlasActionLocksRef.current.add(actionKey);
+
+    const prepared = normalizeService({
+      ...selectedService,
+      date:
+        typeof selectedService.date === "string"
+          ? selectedService.date.trim()
+          : "",
+      followUpDate:
+        typeof selectedService.followUpDate === "string"
+          ? selectedService.followUpDate.trim()
+          : "",
+      assetId: String(selectedService.assetId || ""),
+      vendorId: String(selectedService.vendorId || ""),
+      procedureId: String(selectedService.procedureId || ""),
+      locationId: String(selectedService.locationId || ""),
+      assignedTo: canonicalWorkAssignee(selectedService.assignedTo),
+      assignedPersonIds: Array.isArray(selectedService.assignedPersonIds) ? selectedService.assignedPersonIds : [],
+      assignedVendorIds: Array.isArray(selectedService.assignedVendorIds) ? selectedService.assignedVendorIds : [],
+      projectId: String(selectedService.projectId || ""),
+      responsibilityArea: String(selectedService.responsibilityArea || ""),
+      notes: String(selectedService.notes || ""),
+      workCategory: String(
+        selectedService.workCategory ||
+          (selectedService as AtlasServiceRecord & { category?: string }).category ||
+          "🔧 Maintenance",
+      ),
+    }) as AtlasServiceRecord & { category?: string };
+
+    prepared.category = prepared.workCategory;
+
+    setDatabaseStatus(`Saving ${prepared.title || "work order"}...`);
+
+    const saved = await postAtlasRecord("work_orders", prepared);
+
+    if (!saved) {
+      markRecordDirty("work_order", prepared.id);
+      window.alert(
+        "Atlas could not save this work order to the shared database. Your changes are still visible. Do not refresh until the save succeeds.",
+      );
+      atlasActionLocksRef.current.delete(actionKey);
+      showSaveToast("Work order changed locally, but shared saving did not finish.", "warning");
+      return;
+    }
+
+    setServiceRecords((current) =>
+      workOrdersByIdentity(
+        current.map((item) => (item.id === prepared.id ? prepared : item)),
+      ),
+    );
+    clearRecordDirty("work_order", prepared.id);
+    setDatabaseStatus(`Saved ${prepared.title || "work order"}.`);
+    showSaveToast(`${prepared.title || "Work order"} saved.`);
+    atlasActionLocksRef.current.delete(actionKey);
+    setSelectedServiceId("");
+  }
+
+
+  function recordConnectedProjectCompletion(input: {
+    projectId?: string;
+    title: string;
+    source: "Task" | "Work Order";
+    sourceId: string;
+    detail?: string;
+  }) {
+    const projectId = String(input.projectId || "").trim();
+    if (!projectId) return;
+
+    const marker = `${input.source.toLowerCase().replace(/\s+/g, "-")}:${input.sourceId}:completed`;
+    const createdAt = new Date().toISOString();
+    setProjectTimelineEntries((current) => {
+      if (current.some((entry) => String(entry.notes || "").includes(`[${marker}]`))) {
+        return current;
+      }
+      const entry: ProjectTimelineEntry = {
+        propertyId: activePropertyId,
+        id: uid("project-completion"),
+        projectId,
+        title: `${input.source} completed: ${input.title}`,
+        notes: [`[${marker}]`, input.detail || ""].filter(Boolean).join("\n"),
+        date: todayISO(),
+        type: "Completed",
+        createdAt,
+      };
+      return [entry, ...current];
+    });
+  }
+
+  async function completeWorkOrder(
+    record: AtlasServiceRecord,
+    options: {
+      completedDate?: string;
+      completionNote?: string;
+      allowEarly?: boolean;
+    } = {},
+  ) {
+    const completedDate =
+      workOrderDateKey(options.completedDate) || todayISO();
+    let resolvedCompletionNote = String(options.completionNote ?? "").trim();
+    if (options.completionNote === undefined) {
+      const prompted = window.prompt(
+        `Work done / completion note for “${record.title || "this work"}” (optional):`,
+        "",
+      );
+      if (prompted === null) return;
+      resolvedCompletionNote = prompted.trim();
+    }
+    const dueDate = workOrderDateKey(record.date);
+    if (
+      dueDate &&
+      dueDate > completedDate &&
+      !options.allowEarly &&
+      !window.confirm(
+        `This work order is due ${formatDate(dueDate)}. Complete it early on ${formatDate(completedDate)}?`,
+      )
+    ) {
+      return;
+    }
+
+    const schedule = recurringWorkOrderSchedule(record);
+    const recurring =
+      Boolean(record.recurring) || record.workType === "Preventive Maintenance";
+    const preparedRecord = normalizeService({
+      ...record,
+      recurring,
+      recurrenceInterval: recurring
+        ? schedule.interval
+        : record.recurrenceInterval,
+      recurrenceUnit: recurring ? schedule.unit : record.recurrenceUnit,
+      workType: recurring ? "Preventive Maintenance" : record.workType,
+    });
+    const alreadyCompletedOnDate =
+      workOrderDateKey(preparedRecord.lastCompletedDate) === completedDate &&
+      (preparedRecord.serviceHistory || []).some(
+        (entry) => workOrderDateKey(entry?.completedAt) === completedDate,
+      );
+    if (alreadyCompletedOnDate) {
+      showSaveToast(
+        `${preparedRecord.title || "Work order"} is already recorded as completed on ${formatDate(completedDate)}.`,
+        "warning",
+      );
+      return;
+    }
+
+    const actionKey = `complete-work-order:${record.id}`;
+    if (atlasActionLocksRef.current.has(actionKey)) {
+      showSaveToast("This work order is already being completed.", "warning");
+      return;
+    }
+    atlasActionLocksRef.current.add(actionKey);
+    const history = Array.from(
+      new Set([...(preparedRecord.completionHistory || []), completedDate]),
+    ).sort();
+    const completionNotes =
+      resolvedCompletionNote || String(preparedRecord.notes || "").trim();
+    const completionEntry: WorkCompletionEntry = {
+      id: uid("completion"),
+      completedAt:
+        completedDate === todayISO()
+          ? new Date().toISOString()
+          : completionTimestampForDate(completedDate),
+      statusBefore: String(preparedRecord.status || "Open"),
+      dueDate: String(preparedRecord.date || ""),
+      notes: completionNotes,
+      notesHistory: Array.isArray(preparedRecord.notesHistory)
+        ? preparedRecord.notesHistory
+        : [],
+      checklist: Array.isArray(preparedRecord.checklist)
+        ? preparedRecord.checklist
+        : [],
+      photos: Array.isArray(preparedRecord.photos) ? preparedRecord.photos : [],
+      documents: Array.isArray(preparedRecord.documents)
+        ? preparedRecord.documents
+        : [],
+      assetId: String(preparedRecord.assetId || ""),
+      vendorId: String(preparedRecord.vendorId || ""),
+      procedureId: String(preparedRecord.procedureId || ""),
+      locationId: String(preparedRecord.locationId || ""),
+    };
+    const serviceHistory = [
+      completionEntry,
+      ...(Array.isArray(preparedRecord.serviceHistory)
+        ? preparedRecord.serviceHistory
+        : []),
+    ];
+
+    if (!recurring) {
+      const completed = normalizeService({
+        ...preparedRecord,
+        status: "Completed",
+        lastCompletedDate: completedDate,
+        completionHistory: history,
+        serviceHistory,
+      });
+
+      const saved = await postAtlasRecord("work_orders", completed);
+      if (!saved) {
+        markRecordDirty("work_order", completed.id);
+        setDatabaseStatus(`${completed.title || "Work order"} was not completed because shared saving failed.`);
+        showSaveToast("Completion was not saved. The work order remains open.", "warning");
+        atlasActionLocksRef.current.delete(actionKey);
+        return;
+      }
+      clearRecordDirty("work_order", completed.id);
+      setServiceRecords((current) =>
+        workOrdersByIdentity(
+          current.map((item) => (item.id === completed.id ? completed : item)),
+        ),
+      );
+      recordConnectedProjectCompletion({
+        projectId: String(completed.projectId || ""),
+        title: completed.title || "Work order",
+        source: "Work Order",
+        sourceId: completed.id,
+        detail: [
+          completed.assetId ? `Asset: ${assetName(completed.assetId) || completed.assetId}` : "",
+          completed.locationId ? `Location: ${locationName(completed.locationId) || completed.locationId}` : "",
+          completed.vendorId ? `Vendor: ${vendorRecords.find((vendor) => vendor.id === completed.vendorId)?.name || completed.vendorId}` : "",
+        ].filter(Boolean).join(" · "),
+      });
+      recordAtlasAudit("Work order completed", completed.title || completed.id);
+      setDatabaseStatus(`Completed ${completed.title}.`);
+      showSaveToast(`${completed.title || "Work order"} completed.`);
+      atlasActionLocksRef.current.delete(actionKey);
+      return;
+    }
+
+    const nextDate = nextRecurrenceDate(
+      completedDate,
+      schedule.interval,
+      schedule.unit,
+      preparedRecord.recurrenceDays,
+    );
+    const scheduleEnded = Boolean(
+      preparedRecord.recurrenceEndDate &&
+        nextDate > preparedRecord.recurrenceEndDate,
+    );
+
+    const advanced = normalizeService({
+      ...preparedRecord,
+      status: scheduleEnded ? "Completed" : "Scheduled",
+      date: scheduleEnded ? preparedRecord.date : nextDate,
+      lastCompletedDate: completedDate,
+      completionHistory: history,
+      serviceHistory,
+      checklist: (preparedRecord.checklist || []).map((item) => ({
+        ...item,
+        completed: false,
+      })),
+    });
+
+    const saved = await postAtlasRecord("work_orders", advanced);
+    if (!saved) {
+      markRecordDirty("work_order", advanced.id);
+      setDatabaseStatus(`${advanced.title || "Work order"} was not completed because shared saving failed.`);
+      showSaveToast("Completion was not saved. The recurring work order was not advanced.", "warning");
+      atlasActionLocksRef.current.delete(actionKey);
+      return;
+    }
+    clearRecordDirty("work_order", advanced.id);
+    setServiceRecords((current) =>
+      workOrdersByIdentity(
+        current.map((item) => (item.id === advanced.id ? advanced : item)),
+      ),
+    );
+    recordConnectedProjectCompletion({
+      projectId: String(advanced.projectId || ""),
+      title: advanced.title || "Work order",
+      source: "Work Order",
+      sourceId: advanced.id,
+      detail: [
+        advanced.assetId ? `Asset: ${assetName(advanced.assetId) || advanced.assetId}` : "",
+        advanced.locationId ? `Location: ${locationName(advanced.locationId) || advanced.locationId}` : "",
+        advanced.vendorId ? `Vendor: ${vendorRecords.find((vendor) => vendor.id === advanced.vendorId)?.name || advanced.vendorId}` : "",
+        scheduleEnded ? "Recurring schedule ended." : `Next due ${formatDate(nextDate)}.`,
+      ].filter(Boolean).join(" · "),
+    });
+    recordAtlasAudit(
+      "Work order completed",
+      scheduleEnded
+        ? `${advanced.title || advanced.id} · recurring schedule ended`
+        : `${advanced.title || advanced.id} · next due ${formatDate(nextDate)}`,
+    );
+    setDatabaseStatus(
+      scheduleEnded
+        ? `Completed ${advanced.title}. Its recurring schedule has ended.`
+        : `Completed ${advanced.title}. Next due ${formatDate(nextDate)}.`,
+    );
+    showSaveToast(
+      scheduleEnded
+        ? `${advanced.title || "Work order"} completed.`
+        : `${advanced.title || "Work order"} completed. Next due ${formatDate(nextDate)}.`,
+    );
+    atlasActionLocksRef.current.delete(actionKey);
+  }
+
+  async function reopenWorkOrder(record: AtlasServiceRecord) {
+    if (!record?.id) return;
+
+    const history = Array.isArray(record.serviceHistory) ? record.serviceHistory : [];
+    const latestCompletion = history[0];
+    const restoredDate = String(latestCompletion?.dueDate || record.date || "");
+    const restoredStatusRaw = String(latestCompletion?.statusBefore || "Open");
+    const restoredStatus: ServiceStatus =
+      isServiceStatus(restoredStatusRaw) && restoredStatusRaw !== "Completed"
+        ? restoredStatusRaw
+        : "Open";
+    const completionDate = latestCompletion?.completedAt
+      ? String(latestCompletion.completedAt).slice(0, 10)
+      : String(record.lastCompletedDate || "");
+
+    const remainingCompletionHistory = [...(record.completionHistory || [])];
+    if (completionDate) {
+      const index = remainingCompletionHistory.lastIndexOf(completionDate);
+      if (index >= 0) remainingCompletionHistory.splice(index, 1);
+    }
+
+    const remainingServiceHistory = latestCompletion ? history.slice(1) : history;
+    const previousCompletion = remainingServiceHistory[0]?.completedAt
+      ? String(remainingServiceHistory[0].completedAt).slice(0, 10)
+      : remainingCompletionHistory[remainingCompletionHistory.length - 1] || "";
+
+    const reopened = normalizeService({
+      ...record,
+      status: restoredStatus,
+      date: restoredDate,
+      lastCompletedDate: previousCompletion,
+      completionHistory: remainingCompletionHistory,
+      serviceHistory: remainingServiceHistory,
+      checklist: latestCompletion?.checklist || record.checklist || [],
+      notes: latestCompletion?.notes ?? record.notes,
+      notesHistory: latestCompletion?.notesHistory || record.notesHistory || [],
+      photos: latestCompletion?.photos || record.photos || [],
+      documents: latestCompletion?.documents || record.documents || [],
+      assetId: latestCompletion?.assetId || record.assetId || "",
+      vendorId: latestCompletion?.vendorId || record.vendorId || "",
+      procedureId: latestCompletion?.procedureId || record.procedureId || "",
+      locationId: latestCompletion?.locationId || record.locationId || "",
+    });
+
+    setDatabaseStatus(`Reopening ${reopened.title || "work order"}...`);
+    const saved = await postAtlasRecord("work_orders", reopened);
+    if (!saved) {
+      markRecordDirty("work_order", reopened.id);
+      showSaveToast("Work order was not reopened because shared saving failed.", "warning");
+      return;
+    }
+    clearRecordDirty("work_order", reopened.id);
+    setServiceRecords((current) =>
+      workOrdersByIdentity(current.map((item) => (item.id === reopened.id ? reopened : item))),
+    );
+    setDatabaseStatus(`Reopened ${reopened.title || "work order"}.`);
+    showSaveToast(`${reopened.title || "Work order"} reopened.`);
+  }
+
+
+  async function deleteWorkOrderHistoryEntry(
+    record: AtlasServiceRecord,
+    historyEntryId: string,
+    historyEntryIndex?: number,
+  ) {
+    if (!record?.id) return;
+    const history = Array.isArray(record.serviceHistory) ? record.serviceHistory : [];
+    const entryIndex = historyEntryId
+      ? history.findIndex((entry) => String(entry.id || "") === historyEntryId)
+      : Number.isInteger(historyEntryIndex)
+        ? Number(historyEntryIndex)
+        : -1;
+    if (entryIndex < 0 || entryIndex >= history.length) return;
+    const entry = history[entryIndex];
+    const completionDate = workOrderDateKey(entry.completedAt);
+    if (
+      !window.confirm(
+        `Delete this history entry${completionDate ? ` from ${formatDate(completionDate)}` : ""}? The work order itself will stay.`,
+      )
+    ) {
+      return;
+    }
+
+    const remainingServiceHistory = history.filter((_, index) => index !== entryIndex);
+    const remainingCompletionHistory = [...(record.completionHistory || [])];
+    if (completionDate) {
+      const completionIndex = remainingCompletionHistory.lastIndexOf(completionDate);
+      if (completionIndex >= 0) remainingCompletionHistory.splice(completionIndex, 1);
+    }
+    const nextLastCompletedDate =
+      workOrderDateKey(remainingServiceHistory[0]?.completedAt) ||
+      remainingCompletionHistory
+        .map(workOrderDateKey)
+        .filter(Boolean)
+        .sort()
+        .at(-1) ||
+      "";
+
+    const updated = normalizeService({
+      ...record,
+      serviceHistory: remainingServiceHistory,
+      completionHistory: remainingCompletionHistory,
+      lastCompletedDate:
+        workOrderDateKey(record.lastCompletedDate) === completionDate
+          ? nextLastCompletedDate
+          : record.lastCompletedDate,
+    });
+
+    setDatabaseStatus(`Deleting history from ${record.title || "work order"}...`);
+    const saved = await postAtlasRecord("work_orders", updated);
+    if (!saved) {
+      markRecordDirty("work_order", updated.id);
+      showSaveToast("History was not deleted because shared saving failed.", "warning");
+      return;
+    }
+
+    clearRecordDirty("work_order", updated.id);
+    setServiceRecords((current) =>
+      workOrdersByIdentity(
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      ),
+    );
+    setDatabaseStatus(`Deleted history from ${updated.title || "work order"}.`);
+    showSaveToast("History entry deleted.");
+  }
+
+  function startNewCalendarDraft(date?: string) {
+    const targetDate = date || selectedCalendarDate || todayISO();
+    setSelectedCalendarDate(targetDate);
+    setSelectedCalendarId("");
+    setSelectedCalendarOccurrenceDate("");
+    setCalendarDraft(blankCalendarItem(targetDate));
+    setCalendarDirty(false);
+    setCalendarIntakeText("");
+    setCalendarIntakeMessage("");
+    setScreen("calendar");
+  }
+
+  function startEditCalendarItem(id: string, occurrenceDate?: string) {
+    const event =
+      calendarItems.find((item) => item.id === id) ||
+      expandedCalendarItems.find(
+        (item) =>
+          item.id === id ||
+          item.instanceId === id ||
+          item.originalId === id,
+      );
+    if (!event) return;
+    const normalized = normalizeCalendar(event);
+    const clickedOccurrenceDate = occurrenceDate || normalized.date;
+    const isRecurringOccurrence =
+      normalized.repeat !== "None" && clickedOccurrenceDate !== normalized.date;
+
+    setSelectedCalendarId(normalized.id);
+    setSelectedCalendarOccurrenceDate(
+      isRecurringOccurrence ? clickedOccurrenceDate : "",
+    );
+    setSelectedCalendarDate(clickedOccurrenceDate);
+    setCalendarDraft({
+      ...normalized,
+      date: clickedOccurrenceDate,
+    });
+    setCalendarDirty(false);
+  }
+
+  function openCalendarItem(event: CalendarItem) {
+    if (event.source === "work-order" && event.linkedId) {
+      setSelectedServiceId(event.linkedId);
+      setScreen("history");
+      return;
+    }
+
+    if (event.source === "us-holiday" || event.source === "jewish-holiday") {
+      setSelectedCalendarDate(event.date);
+      setSelectedCalendarId("");
+      setCalendarDraft(blankCalendarItem(event.date));
+      return;
+    }
+
+    startEditCalendarItem(event.originalId || event.id, event.date);
+  }
+
+  function addCalendarItem(date?: string) {
+    startNewCalendarDraft(date);
+    const currentName = String(currentAtlasUser?.name || "Nick").trim().toLowerCase();
+    const defaultOwner = activePropertyId === "4725" && home4725PersonFilter !== "All"
+      ? home4725PersonFilter
+      : isSeanMarineUser
+      ? "Sean Powell"
+      : currentName.startsWith("addison")
+        ? "Addison"
+        : currentName.startsWith("pat")
+          ? "Patrick Tanner"
+          : currentName.startsWith("sean")
+            ? "Sean Powell"
+            : "Nick";
+    setCalendarDraft((current) => ({
+      ...current,
+      propertyId: isSeanMarineUser && seanCalendarPropertyFilter !== "all" ? seanCalendarPropertyFilter : activePropertyId,
+      calendarOwner: defaultOwner,
+      ownerUserId: String(currentAtlasUser?.id || currentAtlasUser?.email || defaultOwner),
+    }));
+    setCalendarDirty(true);
+  }
+
+  function updateCalendarItem(patch: Partial<CalendarItem>) {
+    setCalendarDirty(true);
+    setCalendarDraft((current) => {
+      const nextAllDay = patch.allDay ?? current.allDay ?? false;
+      const nextCategory =
+        patch.categoryLabel ??
+        patch.area ??
+        current.categoryLabel ??
+        current.area ??
+        "";
+      const nextLinkedType = patch.linkedType ?? current.linkedType;
+
+      const next: AtlasCalendarItem = {
+        ...current,
+        ...patch,
+        id: selectedCalendarId || current.id || "",
+        title: patch.title ?? current.title ?? "",
+        area: nextCategory,
+        categoryLabel: nextCategory,
+        date: patch.date ?? current.date ?? selectedCalendarDate ?? todayISO(),
+        time: nextAllDay ? "" : (patch.time ?? current.time ?? ""),
+        endTime: nextAllDay ? "" : ((patch as Partial<AtlasCalendarItem>).endTime ?? current.endTime ?? ""),
+        colorId:
+          (patch.categoryLabel === "Meeting" || patch.area === "Meeting")
+            ? "meeting"
+            : (patch.colorId ?? current.colorId ?? ""),
+        colorName:
+          (patch.categoryLabel === "Meeting" || patch.area === "Meeting")
+            ? "red"
+            : (patch.colorName ?? current.colorName),
+        allDay: nextAllDay,
+        repeat: patch.repeat ?? current.repeat,
+        reminder: patch.reminder ?? current.reminder,
+        notes: patch.notes ?? current.notes ?? "",
+        linkedType: nextLinkedType,
+        linkedId: patch.linkedId ?? current.linkedId ?? "",
+        linkedName: patch.linkedName ?? current.linkedName ?? "",
+        completed: false,
+        source: "manual",
+        propertyId: String((patch as Partial<AtlasCalendarItem>).propertyId ?? current.propertyId ?? (isSeanMarineUser ? (seanCalendarPropertyFilter === "all" ? "2000" : seanCalendarPropertyFilter) : activePropertyId)),
+        calendarOwner: String((patch as Partial<AtlasCalendarItem>).calendarOwner ?? current.calendarOwner ?? (isSeanMarineUser ? "sean" : "")),
+        ownerUserId: String((patch as Partial<AtlasCalendarItem>).ownerUserId ?? current.ownerUserId ?? (isSeanMarineUser ? (currentAtlasUser?.id || currentAtlasUser?.email || "sean") : "")),
+      };
+
+      if (nextLinkedType === "None" || !nextLinkedType) {
+        next.linkedId = "";
+        next.linkedName = "";
+      }
+
+      if (patch.date) setSelectedCalendarDate(patch.date);
+
+      return next;
+    });
+  }
+
+  function resetCalendarEntryForm(date = selectedCalendarDate || todayISO()) {
+    setSelectedCalendarId("");
+    setSelectedCalendarOccurrenceDate("");
+    setCalendarDraft(blankCalendarItem(date));
+    setCalendarDirty(false);
+    setCalendarIntakeText("");
+    setCalendarIntakeMessage("");
+  }
+
+  function requestHome4725ChoreMoveScope(title: string, fromDate: string, toDate: string) {
+    return new Promise<"one" | "all" | null>((resolve) => {
+      setHome4725ChoreMovePrompt({ title, fromDate, toDate, resolve });
+    });
+  }
+
+  function resolveHome4725ChoreMoveScope(scope: "one" | "all" | null) {
+    const prompt = home4725ChoreMovePrompt;
+    setHome4725ChoreMovePrompt(null);
+    prompt?.resolve(scope);
+  }
+
+  async function saveCalendarItem() {
+    const selectedSourceRecord = selectedCalendarId
+      ? expandedCalendarItems.find(
+          (item) =>
+            item.id === selectedCalendarId ||
+            item.instanceId === selectedCalendarId ||
+            item.originalId === selectedCalendarId,
+        )
+      : undefined;
+
+    const selectedHomeChoreId =
+      activePropertyId === "4725" &&
+      String(selectedSourceRecord?.source || "").toLowerCase() === "home-chore"
+        ? String(selectedSourceRecord?.linkedId || "")
+        : "";
+    const selectedHomeChore = selectedHomeChoreId
+      ? serviceRecords.find((record) => String(record.id || "") === selectedHomeChoreId)
+      : undefined;
+    const selectedHomeChoreOccurrenceDate = workOrderDateKey(selectedSourceRecord?.date);
+    const selectedHomeChoreTargetDate = workOrderDateKey(calendarDraft.date);
+
+    if (
+      selectedHomeChore &&
+      selectedHomeChoreOccurrenceDate &&
+      selectedHomeChoreTargetDate &&
+      selectedHomeChoreOccurrenceDate !== selectedHomeChoreTargetDate
+    ) {
+      const scope = selectedHomeChore.recurring
+        ? await requestHome4725ChoreMoveScope(
+            selectedHomeChore.title || selectedSourceRecord?.title || "Chore",
+            selectedHomeChoreOccurrenceDate,
+            selectedHomeChoreTargetDate,
+          )
+        : "all";
+
+      if (!scope) return;
+
+      setDatabaseStatus(
+        scope === "all"
+          ? "Moving the recurring chore series..."
+          : "Moving only this chore occurrence...",
+      );
+
+      const response = await fetch("/api/atlas-home", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: scope === "all" ? "moveChoreSeries" : "moveChoreOccurrence",
+          propertyId: "4725",
+          choreId: selectedHomeChoreId,
+          occurrenceDate: selectedHomeChoreOccurrenceDate,
+          newDate: selectedHomeChoreTargetDate,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setDatabaseStatus(payload?.error || "The chore date was not changed.");
+        return;
+      }
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("atlas:home-chore-changed", {
+            detail: {
+              choreId: selectedHomeChoreId,
+              occurrenceDate: selectedHomeChoreOccurrenceDate,
+              newDate: selectedHomeChoreTargetDate,
+              scope,
+            },
+          }),
+        );
+      }
+
+      setSelectedCalendarDate(selectedHomeChoreTargetDate);
+      setCalendarCursor(calendarDateValue(selectedHomeChoreTargetDate));
+      resetCalendarEntryForm(selectedHomeChoreTargetDate);
+      setDatabaseStatus(
+        scope === "all"
+          ? "Recurring chore series moved."
+          : "This chore occurrence moved.",
+      );
+      return;
+    }
+
+    const originalSeriesRecord = selectedCalendarId
+      ? calendarItems.find((item) => item.id === selectedCalendarId)
+      : undefined;
+    const displayedOccurrenceWasUnchanged =
+      Boolean(selectedCalendarOccurrenceDate) &&
+      calendarDraft.date === selectedCalendarOccurrenceDate;
+    const dateToPersist = displayedOccurrenceWasUnchanged
+      ? originalSeriesRecord?.date || calendarDraft.date
+      : calendarDraft.date;
+
+    const record: AtlasCalendarItem = normalizeCalendar({
+      ...calendarDraft,
+      id: selectedCalendarId || uid("cal"),
+      title: calendarDraft.title.trim() || "Untitled Calendar Item",
+      area: (
+        calendarDraft.categoryLabel ||
+        calendarDraft.area ||
+        "Maintenance"
+      ).trim(),
+      categoryLabel: (
+        calendarDraft.categoryLabel ||
+        calendarDraft.area ||
+        "Maintenance"
+      ).trim(),
+      date: dateToPersist || selectedCalendarDate || todayISO(),
+      time: calendarDraft.allDay ? "" : calendarDraft.time || "",
+      endTime: calendarDraft.allDay ? "" : calendarDraft.endTime || "",
+      colorId:
+        calendarDraft.colorId ||
+        categoryToColorId(
+          calendarDraft.categoryLabel || calendarDraft.area || "Maintenance",
+        ),
+      colorName:
+        calendarDraft.colorName ||
+        colorNameFromLegacyColorId(
+          calendarDraft.colorId ||
+            categoryToColorId(
+              calendarDraft.categoryLabel ||
+                calendarDraft.area ||
+                "Maintenance",
+            ),
+        ),
+      allDay: !!calendarDraft.allDay,
+      repeat: calendarDraft.repeat || "None",
+      reminder: calendarDraft.reminder || "None",
+      notes: calendarDraft.notes || "",
+      linkedType: calendarDraft.linkedType || "None",
+      linkedId: calendarDraft.linkedId || "",
+      linkedName: calendarDraft.linkedName || "",
+      completed: false,
+      source: "manual",
+      propertyId: String(calendarDraft.propertyId || (isSeanMarineUser ? (seanCalendarPropertyFilter === "all" ? "2000" : seanCalendarPropertyFilter) : activePropertyId)),
+      calendarOwner: isSeanMarineUser ? "sean" : String(calendarDraft.calendarOwner || ""),
+      ownerUserId: isSeanMarineUser
+        ? String(currentAtlasUser?.id || currentAtlasUser?.email || "sean")
+        : String(calendarDraft.ownerUserId || ""),
+    });
+
+    if (originalSeriesRecord) {
+      clearCalendarDeletion(originalSeriesRecord);
+      if (
+        String(originalSeriesRecord.id || "").startsWith("atlas-auto-") ||
+        originalSeriesRecord.source === "task" ||
+        originalSeriesRecord.source === "work-order" ||
+        Boolean(originalSeriesRecord.linkedId)
+      ) {
+        rememberCalendarManualOverride(record.id);
+      }
+    }
+
+    setDatabaseStatus("Saving calendar event to shared Atlas...");
+
+    const saved = await postAtlasRecord("calendar", {
+      ...record,
+      propertyId: record.propertyId || activePropertyId,
+      status: "Scheduled",
+    });
+
+    if (!saved) {
+      setDatabaseStatus(
+        "Calendar event was not saved. It was not added locally because it would not appear on your other devices.",
+      );
+      return;
+    }
+
+    setCalendarItems((current) => {
+      const original = current.find((item) => item.id === record.id);
+      const exists = Boolean(original);
+      let next: CalendarItem[];
+
+      if (!exists) {
+        next = calendarItemsByIdentity([record, ...current]);
+      } else {
+        const originalRepeats =
+          original?.repeat && original.repeat !== "None";
+        const titleChanged =
+          String(original?.title || "") !== String(record.title || "");
+
+        next = calendarItemsByIdentity(
+          current.map((item) => {
+            if (item.id === record.id) return record;
+
+            if (!originalRepeats || !titleChanged) return item;
+
+            const sameExplicitSeries =
+              Boolean((original as any)?.seriesId) &&
+              (item as any)?.seriesId === (original as any)?.seriesId;
+
+            const sameLegacyRecurringSeries =
+              item.source === "manual" &&
+              item.repeat === original.repeat &&
+              item.title === original.title &&
+              String(item.linkedType || "") ===
+                String(original.linkedType || "") &&
+              String(item.linkedId || "") ===
+                String(original.linkedId || "");
+
+            if (!sameExplicitSeries && !sameLegacyRecurringSeries) {
+              return item;
+            }
+
+            return {
+              ...item,
+              title: record.title,
+            };
+          }),
+        );
+      }
+
+      saveStoredArray(storageKeys.calendar[0], next);
+      return next;
+    });
+
+    const labelExists = calendarColors.some(
+      (item) => item.label.toLowerCase() === record.area.toLowerCase(),
+    );
+
+    if (!labelExists) {
+      const plain = plainColor(record.colorName);
+      setCalendarColors((current) => [
+        ...current,
+        {
+          id: slugify(record.area),
+          label: record.area,
+          colorName: record.colorName,
+          hex: plain.hex,
+        },
+      ]);
+    }
+
+    const dateToKeepOpen = selectedCalendarOccurrenceDate || record.date;
+    setSelectedCalendarDate(dateToKeepOpen);
+    setSelectedCalendarId(record.id);
+    setSelectedCalendarOccurrenceDate(
+      selectedCalendarOccurrenceDate && record.repeat !== "None"
+        ? selectedCalendarOccurrenceDate
+        : "",
+    );
+    setCalendarCursor(calendarDateValue(dateToKeepOpen));
+    setCalendarDraft(record);
+    setCalendarDirty(false);
+    setDatabaseStatus("Calendar event saved to shared Atlas.");
+    resetCalendarEntryForm(dateToKeepOpen);
+  }
+
+
+  async function saveCalendarOccurrenceOnly() {
+    if (!selectedCalendarId || !selectedCalendarOccurrenceDate) {
+      await saveCalendarItem();
+      return;
+    }
+    const original = calendarItems.find((item) => item.id === selectedCalendarId);
+    if (!original || !original.repeat || original.repeat === "None") {
+      await saveCalendarItem();
+      return;
+    }
+    const instanceId = `${original.id}-${selectedCalendarOccurrenceDate}`;
+    const override = normalizeCalendar({
+      ...calendarDraft,
+      id: instanceId,
+      date: calendarDraft.date || selectedCalendarOccurrenceDate,
+      repeat: "None",
+      originalId: original.id,
+      instanceId,
+      source: "manual",
+      propertyId: String(calendarDraft.propertyId || activePropertyId),
+      status: "Scheduled",
+    });
+    const saved = await postAtlasRecord("calendar", { ...override, propertyId: override.propertyId || activePropertyId, status: "Scheduled" });
+    if (!saved) {
+      setDatabaseStatus("This occurrence was not saved.");
+      return;
+    }
+    setCalendarItems((current) => calendarItemsByIdentity([override, ...current.filter((item) => item.id !== instanceId)]));
+    setDatabaseStatus("This occurrence was saved without changing the series.");
+    resetCalendarEntryForm(override.date || selectedCalendarOccurrenceDate);
+  }
+
+  async function deleteCalendarOccurrenceOnly() {
+    if (!selectedCalendarId || !selectedCalendarOccurrenceDate) return;
+    const original = calendarItems.find((item) => item.id === selectedCalendarId);
+    if (!original || !original.repeat || original.repeat === "None") {
+      await deleteCalendarItem(selectedCalendarId);
+      return;
+    }
+    if (!window.confirm(`Delete only ${original.title || "this event"} on ${formatDate(selectedCalendarOccurrenceDate)}?`)) return;
+    const instanceId = `${original.id}-${selectedCalendarOccurrenceDate}`;
+    const cancelled = normalizeCalendar({
+      ...original,
+      id: instanceId,
+      date: selectedCalendarOccurrenceDate,
+      repeat: "None",
+      originalId: original.id,
+      instanceId,
+      source: "manual",
+      status: "Cancelled",
+      propertyId: String(original.propertyId || activePropertyId),
+    });
+    const saved = await postAtlasRecord("calendar", { ...cancelled, propertyId: cancelled.propertyId || activePropertyId, status: "Cancelled" });
+    if (!saved) {
+      setDatabaseStatus("This occurrence was not deleted.");
+      return;
+    }
+    setCalendarItems((current) => calendarItemsByIdentity([cancelled, ...current.filter((item) => item.id !== instanceId)]));
+    setDatabaseStatus("Only this occurrence was deleted. The series is unchanged.");
+    resetCalendarEntryForm(selectedCalendarOccurrenceDate);
+  }
+
+
+  async function toggleCalendarItemCompleted(event: CalendarItem) {
+    const linkedWorkOrderId =
+      event.linkedType === "Work Order" || event.source === "work-order"
+        ? String(event.linkedId || "")
+        : "";
+
+    if (linkedWorkOrderId) {
+      const workOrder = serviceRecords.find(
+        (record) => record.id === linkedWorkOrderId,
+      );
+
+      if (!workOrder) {
+        setDatabaseStatus("The linked work order could not be found.");
+        return false;
+      }
+
+      if (workOrder.status !== "Completed") {
+        await completeWorkOrder(workOrder);
+        return true;
+      }
+
+      await reopenWorkOrder(workOrder);
+      return true;
+    }
+
+    if (
+      event.source === "us-holiday" ||
+      event.source === "jewish-holiday"
+    ) {
+      return false;
+    }
+
+    const recordId = String(event.originalId || event.id || "");
+    const existing = calendarItems.find((item) => item.id === recordId);
+    if (!existing) {
+      setDatabaseStatus("The calendar event could not be found.");
+      return false;
+    }
+
+    const updated = normalizeCalendar({
+      ...existing,
+      completed: !existing.completed,
+    });
+
+    const saved = await postAtlasRecord("calendar", {
+      ...updated,
+      propertyId: activePropertyId,
+      status: updated.completed ? "Completed" : "Scheduled",
+    });
+
+    if (!saved) {
+      setDatabaseStatus(
+        updated.completed
+          ? "Atlas could not complete this calendar event."
+          : "Atlas could not reopen this calendar event.",
+      );
+      return false;
+    }
+
+    setCalendarItems((current) => {
+      const next = calendarItemsByIdentity(
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      saveStoredArray(storageKeys.calendar[0], next);
+      return next;
+    });
+
+    setCalendarDraft((current) =>
+      current.id === updated.id ? updated : current,
+    );
+    setDatabaseStatus(
+      updated.completed
+        ? `Completed ${updated.title}.`
+        : `Reopened ${updated.title}.`,
+    );
+    return true;
+  }
+
+  async function convertCalendarItemToWorkOrder(event: CalendarItem) {
+    if (
+      event.source !== "manual" ||
+      event.linkedType === "Work Order" ||
+      !event.id
+    ) {
+      return false;
+    }
+
+    const recordId = String(event.originalId || event.id);
+    const calendarRecord = calendarItems.find((item) => item.id === recordId);
+    if (!calendarRecord) {
+      setDatabaseStatus("The calendar event could not be found.");
+      return false;
+    }
+
+    const repeat = calendarRecord.repeat || "None";
+    const recurring = ["Daily", "Weekly", "Monthly", "Yearly"].includes(
+      repeat,
+    );
+    const recurrenceUnit: WorkOrderRecurrenceUnit =
+      repeat === "Daily"
+        ? "Days"
+        : repeat === "Monthly"
+          ? "Months"
+          : repeat === "Yearly"
+            ? "Years"
+            : "Weeks";
+
+    const workOrder = normalizeService({
+      id: uid("wo"),
+      title: calendarRecord.title || "Calendar Work Order",
+      date: event.date || calendarRecord.date || todayISO(),
+      status: calendarRecord.completed ? "Completed" : "Open",
+      priority: "Medium",
+      notes: [
+        calendarRecord.notes,
+        calendarRecord.time
+          ? `Calendar time: ${calendarRecord.time}`
+          : calendarRecord.allDay
+            ? "Calendar time: All day"
+            : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      assetId:
+        calendarRecord.linkedType === "Asset"
+          ? String(calendarRecord.linkedId || "")
+          : "",
+      vendorId:
+        calendarRecord.linkedType === "Vendor"
+          ? String(calendarRecord.linkedId || "")
+          : "",
+      locationId:
+        calendarRecord.linkedType === "Location"
+          ? String(calendarRecord.linkedId || "")
+          : "",
+      recurring,
+      recurrenceInterval: 1,
+      recurrenceUnit,
+      season: seasonForDate(calendarRecord.date || todayISO()),
+      workType: recurring ? "Preventive Maintenance" : "Work Order",
+      workCategory:
+        calendarRecord.categoryLabel ||
+        calendarRecord.area ||
+        "🔧 Maintenance",
+    });
+
+    const workOrderSaved = await postAtlasRecord("work_orders", workOrder);
+    if (!workOrderSaved) {
+      setDatabaseStatus(
+        "The work order was not created. The calendar event was left unchanged.",
+      );
+      return false;
+    }
+
+    // Conversion changes ownership: the Work Order becomes the single source
+    // of truth, so the original manual Calendar row is removed.
+    const calendarDeleted = await deleteAtlasRecord("calendar", calendarRecord.id, {
+      suppressFailureToast: true,
+    });
+    if (!calendarDeleted) {
+      await deleteAtlasRecord("work_orders", workOrder.id, {
+        suppressFailureToast: true,
+      });
+      setDatabaseStatus(
+        "Atlas could not finish converting this event, so the original calendar event was left unchanged.",
+      );
+      return false;
+    }
+
+    setServiceRecords((current) => workOrdersByIdentity([workOrder, ...current]));
+    setCalendarItems((current) => {
+      const next = current.filter((item) => item.id !== calendarRecord.id);
+      saveStoredArray(storageKeys.calendar[0], next);
+      return next;
+    });
+    resetCalendarEntryForm(workOrder.date || todayISO());
+    setDatabaseStatus(`Created work order: ${workOrder.title}.`);
+    return true;
+  }
+
+  async function deleteCalendarItem(id: string) {
+    if (!id) {
+      setSelectedCalendarId("");
+      setCalendarDraft(blankCalendarItem(selectedCalendarDate));
+      return;
+    }
+
+    const sourceRecord =
+      expandedCalendarItems.find(
+        (item) =>
+          item.id === id ||
+          item.instanceId === id ||
+          item.originalId === id,
+      ) ||
+      calendarItems.find((item) => item.id === id);
+
+    if (
+      sourceRecord?.source === "work-order" &&
+      sourceRecord.linkedId
+    ) {
+      const workOrder = serviceRecords.find(
+        (record) => record.id === String(sourceRecord.linkedId),
+      );
+      if (!workOrder) {
+        setDatabaseStatus("The linked work order could not be found.");
+        return;
+      }
+      await deleteWorkOrderRecord(workOrder);
+      resetCalendarEntryForm(sourceRecord.date || selectedCalendarDate);
+      return;
+    }
+
+    const record = calendarItems.find(
+      (item) => item.id === String(sourceRecord?.originalId || id),
+    );
+    const recordId = String(record?.id || id);
+    if (!window.confirm(`Delete ${record?.title || sourceRecord?.title || "this calendar item"}?`))
+      return;
+
+    if (record) rememberCalendarDeletion(record);
+    else rememberCalendarDeletion({ id: recordId });
+
+    const deleted = await deleteAtlasRecord("calendar", recordId);
+    if (!deleted) {
+      if (record) clearCalendarDeletion(record);
+      else clearCalendarDeletion({ id: recordId });
+      return;
+    }
+
+    const remaining = calendarItemsByIdentity(
+      calendarItems.filter((item) => item.id !== recordId),
+    );
+    saveStoredArray(storageKeys.calendar[0], remaining);
+    setCalendarItems(remaining);
+    setSelectedCalendarId("");
+    setSelectedCalendarOccurrenceDate("");
+    setCalendarDraft(blankCalendarItem(selectedCalendarDate));
+    setCalendarDirty(false);
+  }
+
+  function formatCalendarIntakeTime(
+    hourText: string,
+    minuteText: string | undefined,
+    meridiemText?: string,
+  ) {
+    let hour = Number(hourText);
+    const minute = minuteText ? minuteText.padStart(2, "0") : "00";
+    const meridiem = meridiemText?.toLowerCase().replace(/\./g, "") || "";
+
+    if (meridiem === "pm" && hour < 12) hour += 12;
+    if (meridiem === "am" && hour === 12) hour = 0;
+
+    const displayHour = hour % 12 || 12;
+    const displayMeridiem = hour >= 12 ? "PM" : "AM";
+
+    return `${displayHour}:${minute} ${displayMeridiem}`;
+  }
+
+  function dateFromCalendarIntake(text: string) {
+    const now = new Date();
+    const lower = text.toLowerCase();
+
+    if (lower.includes("tomorrow")) {
+      const date = new Date(now);
+      date.setDate(date.getDate() + 1);
+      return localISODate(date);
+    }
+
+    if (lower.includes("today")) return todayISO();
+
+    const isoMatch = text.match(/\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b/);
+    if (isoMatch) {
+      return localISODate(
+        new Date(
+          Number(isoMatch[1]),
+          Number(isoMatch[2]) - 1,
+          Number(isoMatch[3]),
+          12,
+        ),
+      );
+    }
+
+    const slashMatch = text.match(
+      /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/,
+    );
+    if (slashMatch) {
+      const yearValue = slashMatch[3]
+        ? Number(slashMatch[3])
+        : now.getFullYear();
+      const fullYear = yearValue < 100 ? 2000 + yearValue : yearValue;
+      return localISODate(
+        new Date(
+          fullYear,
+          Number(slashMatch[1]) - 1,
+          Number(slashMatch[2]),
+          12,
+        ),
+      );
+    }
+
+    const monthNames: Record<string, number> = {
+      jan: 0,
+      january: 0,
+      feb: 1,
+      february: 1,
+      mar: 2,
+      march: 2,
+      apr: 3,
+      april: 3,
+      may: 4,
+      jun: 5,
+      june: 5,
+      jul: 6,
+      july: 6,
+      aug: 7,
+      august: 7,
+      sep: 8,
+      sept: 8,
+      september: 8,
+      oct: 9,
+      october: 9,
+      nov: 10,
+      november: 10,
+      dec: 11,
+      december: 11,
+    };
+
+    const monthMatch = lower.match(
+      /\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(20\d{2}))?\b/,
+    );
+    if (monthMatch) {
+      const year = monthMatch[3] ? Number(monthMatch[3]) : now.getFullYear();
+      return localISODate(
+        new Date(year, monthNames[monthMatch[1]], Number(monthMatch[2]), 12),
+      );
+    }
+
+    return selectedCalendarDate || todayISO();
+  }
+
+  function timeFromCalendarIntake(text: string) {
+    const timeMatch = text.match(
+      /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b/i,
+    );
+    if (timeMatch)
+      return formatCalendarIntakeTime(timeMatch[1], timeMatch[2], timeMatch[3]);
+
+    const twentyFourHourMatch = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+    if (twentyFourHourMatch)
+      return formatCalendarIntakeTime(
+        twentyFourHourMatch[1],
+        twentyFourHourMatch[2],
+      );
+
+    return "";
+  }
+
+  function titleFromCalendarIntake(text: string) {
+    const lines = text
+      .split(/\r?\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const firstUsefulLine =
+      lines.find((line) => !/^from:|^to:|^sent:|^subject:/i.test(line)) ||
+      lines[0] ||
+      "New Calendar Item";
+    return firstUsefulLine.replace(/\s+/g, " ").slice(0, 90);
+  }
+
+  function categoryFromCalendarIntake(text: string) {
+    const lower = text.toLowerCase();
+
+    if (/meeting|meet with|weekly meeting|staff meeting/.test(lower)) {
+      return { label: "Meeting", colorId: "meeting", colorName: "red" as CalendarColorName };
+    }
+    if (/pto|day off|time off|out of office|ooo/.test(lower)) {
+      return { label: "PTO / Off", colorId: "pto-off", colorName: "orange" as CalendarColorName };
+    }
+    if (/delivery|drop[- ]?off|pickup|pick[- ]?up/.test(lower)) {
+      return { label: "Delivery", colorId: "delivery", colorName: "orange" as CalendarColorName };
+    }
+    if (/travel|flight|airport|depart|arrival/.test(lower)) {
+      return { label: "Travel", colorId: "travel", colorName: "blue" as CalendarColorName };
+    }
+    if (/deadline|due by|remind me|reminder/.test(lower)) {
+      return { label: "Deadline / Reminder", colorId: "deadline-reminder", colorName: "red" as CalendarColorName };
+    }
+    if (/appointment/.test(lower)) {
+      return { label: "Appointment", colorId: "appointment", colorName: "blue" as CalendarColorName };
+    }
+    if (/service visit|technician visit|service call/.test(lower)) {
+      return { label: "Service Visit", colorId: "service-visit", colorName: "purple" as CalendarColorName };
+    }
+
+    if (
+      /landscape|weeding|grounds|lawn|irrigation|hydrawise|sprinkler/.test(
+        lower,
+      )
+    ) {
+      return {
+        label: "Landscaping",
+        colorId: "landscaping",
+        colorName: "green" as CalendarColorName,
+      };
+    }
+
+    if (/boat|dock|cobalt|seadoo|sea-doo|sunstream|seaborne/.test(lower)) {
+      return {
+        label: "Boat / Dock",
+        colorId: "boat-dock",
+        colorName: "blue" as CalendarColorName,
+      };
+    }
+
+    if (
+      /vendor|service|install|repair|estimate|invoice|paint|flooring|plumb|electric|hvac|delivery|appointment/.test(
+        lower,
+      )
+    ) {
+      return {
+        label: "Vendor",
+        colorId: "vendor",
+        colorName: "purple" as CalendarColorName,
+      };
+    }
+
+    if (/family|school|kids|personal|owner|steve|jessica|jeremy/.test(lower)) {
+      return {
+        label: "Personal / Owner",
+        colorId: "personal-owner",
+        colorName: "yellow" as CalendarColorName,
+      };
+    }
+
+    if (/work order|wo:|maintenance|check|inspect|maintenance/.test(lower)) {
+      return {
+        label: "Maintenance",
+        colorId: "maintenance",
+        colorName: "gray" as CalendarColorName,
+      };
+    }
+
+    return {
+      label: "Maintenance",
+      colorId: "maintenance",
+      colorName: "gray" as CalendarColorName,
+    };
+  }
+
+  function linkedRecordFromCalendarIntake(text: string) {
+    const lower = text.toLowerCase();
+    const vendor = vendorRecords.find(
+      (record) => record.name && lower.includes(record.name.toLowerCase()),
+    );
+    if (vendor)
+      return {
+        linkedType: "Vendor" as CalendarLinkType,
+        linkedId: vendor.id,
+        linkedName: vendor.name,
+      };
+
+    const asset = assetRecords.find(
+      (record) => record.name && lower.includes(record.name.toLowerCase()),
+    );
+    if (asset)
+      return {
+        linkedType: "Asset" as CalendarLinkType,
+        linkedId: asset.id,
+        linkedName: asset.name,
+      };
+
+    const location = locations.find(
+      (record) => record.name && lower.includes(record.name.toLowerCase()),
+    );
+    if (location)
+      return {
+        linkedType: "Location" as CalendarLinkType,
+        linkedId: location.id,
+        linkedName: location.name,
+      };
+
+    return {
+      linkedType: "None" as CalendarLinkType,
+      linkedId: "",
+      linkedName: "",
+    };
+  }
+
+  function applyCalendarIntake() {
+    const text = calendarIntakeText.trim();
+
+    if (!text) {
+      setCalendarIntakeMessage("Paste text first.");
+      return;
+    }
+
+    const date = dateFromCalendarIntake(text);
+    const time = timeFromCalendarIntake(text);
+    const category = categoryFromCalendarIntake(text);
+    const linked = linkedRecordFromCalendarIntake(text);
+    const title = titleFromCalendarIntake(text);
+
+    const nextDraft: CalendarItem = {
+      ...blankCalendarItem(date, category.colorId),
+      id: "",
+      date,
+      time,
+      title,
+      area: category.label,
+      categoryLabel: category.label,
+      colorId: category.colorId,
+      colorName: category.colorName,
+      allDay: !time,
+      repeat: "None",
+      reminder: "None",
+      notes: text,
+      linkedType: linked.linkedType,
+      linkedId: linked.linkedId,
+      linkedName: linked.linkedName,
+      completed: false,
+      source: "manual",
+    };
+
+    setSelectedCalendarId("");
+    setSelectedCalendarDate(date);
+    setCalendarCursor(calendarDateValue(date));
+    setCalendarDraft(nextDraft);
+    setCalendarDirty(true);
+    setScreen("calendar");
+    setCalendarIntakeMessage("Draft ready. Review and save.");
+  }
+
+  function updateCalendarColor(id: string, patch: Partial<CalendarColor>) {
+    setCalendarColors((current) =>
+      current.map((item) => {
+        if (item.id !== id) return item;
+        const colorName =
+          patch.colorName ??
+          item.colorName ??
+          colorNameFromLegacyColorId(item.id);
+        const plain = plainColor(colorName);
+        return {
+          ...item,
+          ...patch,
+          label: patch.label ?? item.label,
+          colorName,
+          hex: plain.hex,
+        };
+      }),
+    );
+  }
+
+  function addCalendarColor() {
+    const newColor: CalendarColor = {
+      id: uid("label"),
+      label: "",
+      colorName: "blue",
+      hex: plainColor("blue").hex,
+    };
+    setCalendarColors((current) => [...current, newColor]);
+    setCalendarDraft((current) => ({
+      ...current,
+      colorId: newColor.id,
+      categoryLabel: newColor.label,
+      area: newColor.label,
+      colorName: newColor.colorName,
+    }));
+  }
+
+  function updateProcedure(patch: Partial<ProcedureRecord>) {
+    markRecordDirty("procedure", selectedProcedure.id);
+    setProcedureRecords((current) =>
+      byTitle(
+        current.map((item) =>
+          item.id === selectedProcedure.id
+            ? normalizeProcedure({ ...item, ...patch })
+            : item,
+        ),
+      ),
+    );
+  }
+
+  function createProcedureRecord(title = "") {
+    const record = normalizeProcedure({
+      id: uid("procedure"),
+      title,
+      area: "2000",
+      category: "Maintenance",
+      priority: "Normal",
+      status: "Draft",
+      purpose: "",
+      safetyNotes: "",
+      toolsParts: "",
+      requiredTools: [],
+      requiredParts: [],
+      estimatedTime: "",
+      steps: [],
+      checklist: [],
+      linkedAssetIds: [],
+      linkedLocationIds: [],
+      linkedVendorIds: [],
+      photos: [],
+      documents: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    setProcedureRecords((current) => byTitle([...current, record]));
+    setSelectedProcedureId(record.id);
+    markRecordDirty("procedure", record.id);
+    setProcedureDraftNotes("");
+    setProcedureMessage("New procedure ready.");
+    procedureOverlayScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }
+
+  function duplicateProcedureRecord(record: ProcedureRecord) {
+    const copy = normalizeProcedure({
+      ...record,
+      id: uid("procedure"),
+      title: `${record.title || "Procedure"} Copy`,
+      status: "Draft",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      checklist: (record.checklist || []).map((item, index) => ({
+        ...item,
+        id: uid("procedure-step"),
+        completed: false,
+        order: index,
+      })),
+    });
+    setProcedureRecords((current) => byTitle([...current, copy]));
+    setSelectedProcedureId(copy.id);
+    markRecordDirty("procedure", copy.id);
+    setProcedureMessage("Procedure duplicated. Review and save it.");
+  }
+
+  function updateProcedureSteps(nextSteps: string[]) {
+    const cleaned = nextSteps.map((item) => item.trim()).filter(Boolean);
+    const existing = selectedProcedure.checklist || [];
+    updateProcedure({
+      steps: cleaned,
+      checklist: cleaned.map((text, index) => ({
+        id: existing[index]?.id || uid("procedure-step"),
+        text,
+        completed: Boolean(existing[index]?.completed),
+        order: index,
+      })),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  function moveProcedureStep(index: number, direction: -1 | 1) {
+    const next = [...selectedProcedure.steps];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    updateProcedureSteps(next);
+  }
+
+  function toggleProcedureLink(
+    field: "linkedAssetIds" | "linkedLocationIds" | "linkedVendorIds",
+    id: string,
+  ) {
+    const current = selectedProcedure[field] || [];
+    updateProcedure({
+      [field]: current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async function uploadProcedureFiles(
+    kind: "photos" | "documents",
+    files: FileList | null,
+  ) {
+    if (!files?.length) return;
+    const uploaded = await Promise.all(
+      Array.from(files).map((file) => fileToUploadedRecord(file)),
+    );
+    updateProcedure({
+      [kind]: mergeUploadedFiles(uploaded, selectedProcedure[kind] || []),
+      updatedAt: new Date().toISOString(),
+    });
+    setProcedureMessage(
+      `${uploaded.length} ${kind === "photos" ? "photo" : "document"}${uploaded.length === 1 ? "" : "s"} added.`,
+    );
+  }
+
+  function generateProcedureDraft() {
+    const source = procedureDraftNotes.trim();
+    if (!source) {
+      setProcedureMessage("Paste notes or describe the work first.");
+      return;
+    }
+
+    const lines = source
+      .split(/\n|(?<=[.!?])\s+/)
+      .map((line) => line.replace(/^[-*\d.)\s]+/, "").trim())
+      .filter((line) => line.length > 2);
+    const safetyLines = lines.filter((line) =>
+      /safety|caution|warning|disconnect|shut off|ppe|glove|eye protection|hazard/i.test(
+        line,
+      ),
+    );
+    const toolMatches = source.match(
+      /(?:tools?|equipment)\s*[:\-]\s*([^\n.]+)/i,
+    );
+    const partMatches = source.match(
+      /(?:parts?|materials?|supplies)\s*[:\-]\s*([^\n.]+)/i,
+    );
+    const timeMatch = source.match(
+      /(?:estimated time|duration|takes?)\s*[:\-]?\s*([^\n.]+)/i,
+    );
+    const stepLines = lines.filter(
+      (line) =>
+        !safetyLines.includes(line) &&
+        !/^(tools?|equipment|parts?|materials?|supplies|estimated time|duration)\b/i.test(
+          line,
+        ),
+    );
+
+    updateProcedure({
+      purpose: selectedProcedure.purpose || lines[0] || source.slice(0, 240),
+      safetyNotes:
+        safetyLines.join("\n") ||
+        selectedProcedure.safetyNotes ||
+        "Review the work area, isolate energy or water sources when applicable, and use appropriate PPE.",
+      requiredTools: toolMatches
+        ? toolMatches[1]
+            .split(/,|;/)
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : selectedProcedure.requiredTools || [],
+      requiredParts: partMatches
+        ? partMatches[1]
+            .split(/,|;/)
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : selectedProcedure.requiredParts || [],
+      estimatedTime:
+        timeMatch?.[1]?.trim() ||
+        selectedProcedure.estimatedTime ||
+        "30–60 minutes",
+      status: selectedProcedure.status || "Draft",
+      updatedAt: new Date().toISOString(),
+    });
+    if (stepLines.length) updateProcedureSteps(stepLines);
+    setProcedureMessage("Atlas built a procedure draft. Review it, then save.");
+  }
+
+  function closeProcedureViewer() {
+    setSelectedProcedureId("");
+    setProcedureMessage("");
+    if (isMobile) {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({
+          top: procedureListScrollYRef.current,
+          left: 0,
+          behavior: "auto",
+        });
+      });
+    }
+  }
+
+  function updatePart(patch: Partial<PartRecord>) {
+    markRecordDirty("part", selectedPart.id);
+    const quantity = Number(patch.quantity ?? selectedPart.quantity);
+    const minQuantity = Number(
+      patch.minQuantity ?? selectedPart.minQuantity,
+    );
+    const automaticStatus: PartStatus =
+      quantity <= 0 ? "Out" : quantity <= minQuantity ? "Low" : "In Stock";
+    setPartRecords((current) =>
+      byName(
+        current.map((item) =>
+          item.id === selectedPart.id
+            ? normalizePart({ ...item, ...patch, status: automaticStatus })
+            : item,
+        ),
+      ),
+    );
+  }
+
+  function addPartRecord() {
+    const record = normalizePart({
+      id: uid("part"),
+      name: "",
+      category: "General",
+      locationId: "general",
+      assetId: "",
+      vendorId: "",
+      quantity: 0,
+      minQuantity: 1,
+      status: "Out",
+      notes: "",
+    });
+    setPartRecords((current) => byName([record, ...current]));
+    setSelectedPartId(record.id);
+    markRecordDirty("part", record.id);
+  }
+
+  function addMapLabel() {
+    const record: MapLabelRecord = {
+      id: uid("map"),
+      label: "",
+      category: "",
+      x: 50,
+      y: 50,
+      notes: "",
+      photos: [],
+      coverPhotoId: "",
+      vendorIds: [],
+      detailBoxes: [{ id: uid("mapbox"), title: "", body: "" }],
+      installer: "",
+      paintColor: "",
+      specs: "",
+      documentNotes: "",
+      photoNotes: "",
+      maintenanceNotes: "",
+    };
+    setMapLabels((current) => byLabel([...current, record]));
+    setSelectedMapLabelId(record.id);
+    setActiveMapPanelTab("info");
+  }
+
+  function resetMapLabels() {
+    setMapLabels(defaultMapLabels);
+    setSelectedMapLabelId(defaultMapLabels[0].id);
+    setActiveMapPanelTab("info");
+  }
+
+  function updateSelectedMapLabel(patch: Partial<MapLabelRecord>) {
+    setMapLabels((current) =>
+      byLabel(
+        current.map((label) =>
+          label.id === selectedMapLabel.id
+            ? {
+                ...label,
+                ...patch,
+                x:
+                  patch.x === undefined
+                    ? label.x
+                    : clampPercent(Number(patch.x)),
+                y:
+                  patch.y === undefined
+                    ? label.y
+                    : clampPercent(Number(patch.y)),
+                photos: patch.photos ?? label.photos ?? [],
+                coverPhotoId: patch.coverPhotoId ?? label.coverPhotoId ?? "",
+                vendorIds: patch.vendorIds ?? label.vendorIds ?? [],
+                detailBoxes:
+                  patch.detailBoxes ??
+                  label.detailBoxes ??
+                  normalizeMapDetailBoxes(label),
+                installer: patch.installer ?? label.installer ?? "",
+                paintColor: patch.paintColor ?? label.paintColor ?? "",
+                specs: patch.specs ?? label.specs ?? "",
+                documentNotes: patch.documentNotes ?? label.documentNotes ?? "",
+                photoNotes: patch.photoNotes ?? label.photoNotes ?? "",
+                maintenanceNotes:
+                  patch.maintenanceNotes ?? label.maintenanceNotes ?? "",
+              }
+            : label,
+        ),
+      ),
+    );
+  }
+
+  function toggleMapLabelVendor(vendorId: string) {
+    const currentVendorIds = selectedMapLabel.vendorIds || [];
+    const nextVendorIds = currentVendorIds.includes(vendorId)
+      ? currentVendorIds.filter((id) => id !== vendorId)
+      : [...currentVendorIds, vendorId];
+
+    updateSelectedMapLabel({ vendorIds: nextVendorIds });
+  }
+
+  function addMapDetailBox() {
+    updateSelectedMapLabel({
+      detailBoxes: [
+        ...(selectedMapLabel.detailBoxes || []),
+        { id: uid("mapbox"), title: "New Tab", body: "" },
+      ],
+    });
+  }
+
+  function updateMapDetailBox(boxId: string, patch: Partial<MapDetailBox>) {
+    updateSelectedMapLabel({
+      detailBoxes: (selectedMapLabel.detailBoxes || []).map((box) =>
+        box.id === boxId ? { ...box, ...patch } : box,
+      ),
+    });
+  }
+
+  function removeMapDetailBox(boxId: string) {
+    const nextBoxes = (selectedMapLabel.detailBoxes || []).filter(
+      (box) => box.id !== boxId,
+    );
+    updateSelectedMapLabel({
+      detailBoxes: nextBoxes.length
+        ? nextBoxes
+        : [{ id: uid("mapbox"), title: "General Notes", body: "" }],
+    });
+  }
+
+  function handleMapLabelPhotoUpload(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const files = Array.from(event.currentTarget.files || []);
+    if (!files.length) return;
+
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const nextPhoto: UploadedFileRecord = {
+          id: uid("map-photo"),
+          name: file.name,
+          type: file.type,
+          dataUrl: String(reader.result || ""),
+          createdAt: new Date().toISOString(),
+        };
+
+        setMapLabels((current) =>
+          byLabel(
+            current.map((label) =>
+              label.id === selectedMapLabel.id
+                ? { ...label, photos: [...(label.photos || []), nextPhoto] }
+                : label,
+            ),
+          ),
+        );
+        showSaveToast(
+          `Photo saved to ${selectedMapLabel.label || "map record"}.`,
+        );
+      };
+      reader.readAsDataURL(file);
+    });
+
+    event.currentTarget.value = "";
+  }
+
+  function removeMapLabelPhoto(photoId: string) {
+    const nextPhotos = (selectedMapLabel.photos || []).filter(
+      (photo) => photo.id !== photoId,
+    );
+    const nextCoverId =
+      selectedMapLabel.coverPhotoId === photoId
+        ? nextPhotos[0]?.id || ""
+        : selectedMapLabel.coverPhotoId;
+    updateSelectedMapLabel({ photos: nextPhotos, coverPhotoId: nextCoverId });
+  }
+
+  function handleMapHeaderPhotoUpload(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const nextPhoto: UploadedFileRecord = {
+        id: uid("map-photo"),
+        name: file.name,
+        type: file.type,
+        dataUrl: String(reader.result || ""),
+        createdAt: new Date().toISOString(),
+      };
+
+      updateSelectedMapLabel({
+        photos: [...(selectedMapLabel.photos || []), nextPhoto],
+        coverPhotoId: nextPhoto.id,
+      });
+      showSaveToast(
+        `Main photo saved to ${selectedMapLabel.label || "map record"}.`,
+      );
+    };
+    reader.readAsDataURL(file);
+    event.currentTarget.value = "";
+  }
+
+  function handleMapLabelPointerDown(
+    event: React.PointerEvent<HTMLButtonElement>,
+    labelId: string,
+  ) {
+    if (isMobile || mapMoveLabelId !== labelId) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    draggingLabelRef.current = labelId;
+    setSelectedMapLabelId(labelId);
+  }
+
+  function handleMapPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!draggingLabelRef.current || !mapRef.current) return;
+    const rect = mapRef.current.getBoundingClientRect();
+    const x = clampPercent(((event.clientX - rect.left) / rect.width) * 100);
+    const y = clampPercent(((event.clientY - rect.top) / rect.height) * 100);
+    const id = draggingLabelRef.current;
+    setMapLabels((current) =>
+      current.map((label) => (label.id === id ? { ...label, x, y } : label)),
+    );
+  }
+
+  function stopMapDrag() {
+    draggingLabelRef.current = null;
+  }
+
+  function moveCalendarMonth(delta: number) {
+    setCalendarCursor(
+      (current) =>
+        new Date(current.getFullYear(), current.getMonth() + delta, 1),
+    );
+  }
+
+  function moveCalendarYear(delta: number) {
+    setCalendarCursor(
+      (current) =>
+        new Date(current.getFullYear() + delta, current.getMonth(), 1),
+    );
+  }
+
+  function moveCalendarPeriod(delta: number) {
+    if (calendarView === "week") {
+      setCalendarCursor((current) => {
+        const next = new Date(current);
+        next.setDate(current.getDate() + delta * 7);
+        return next;
+      });
+      return;
+    }
+
+    moveCalendarMonth(delta);
+  }
+
+  async function saveManualToAtlas(candidate: ManualCandidate) {
+    if (!candidate.url) return;
+
+    setManualSavingUrl(candidate.url);
+    setManualSaveMessage(`Checking ${candidate.title}...`);
+
+    try {
+      const verifyResponse = await fetch("/api/manual-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: candidate.url }),
+      });
+
+      const verified = (await verifyResponse.json().catch(() => ({}))) as {
+        ok?: boolean;
+        url?: string;
+        contentType?: string;
+        fileName?: string;
+        sizeBytes?: number;
+        error?: string;
+      };
+
+      if (!verifyResponse.ok || !verified.ok || !verified.url) {
+        throw new Error(
+          verified.error || "Atlas could not verify that manual.",
+        );
+      }
+
+      const linkedAsset = candidate.assetId
+        ? assetRecords.find((asset) => asset.id === candidate.assetId)
+        : assetRecords.find((asset) =>
+            [candidate.assetName, candidate.model]
+              .filter(Boolean)
+              .some((value) =>
+                asset.name.toLowerCase().includes(String(value).toLowerCase()),
+              ),
+          );
+
+      const createdAt = new Date().toISOString();
+      const record: DocumentRecord = normalizeDocument({
+        id: uid("doc"),
+        title: candidate.title || verified.fileName || "Equipment Manual",
+        area: linkedAsset
+          ? locations.find((location) => location.id === linkedAsset.locationId)
+              ?.name || linkedAsset.name
+          : "General",
+        type: "Equipment Manual / PDF",
+        linkedAssetId: linkedAsset?.id,
+        targetType: linkedAsset ? "Asset" : "General",
+        targetId: linkedAsset?.id || "",
+        targetName: linkedAsset?.name || "General",
+        notes: [
+          candidate.manufacturer
+            ? `Manufacturer: ${candidate.manufacturer}`
+            : "",
+          candidate.model ? `Model: ${candidate.model}` : "",
+          candidate.sourceLabel ? `Source: ${candidate.sourceLabel}` : "",
+          candidate.reason ? `Match: ${candidate.reason}` : "",
+          `Original PDF: ${verified.url}`,
+          verified.sizeBytes
+            ? `Verified size: ${Math.round(verified.sizeBytes / 1024)} KB`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        files: [
+          {
+            id: uid("file"),
+            name: verified.fileName || `${candidate.title || "manual"}.pdf`,
+            type: verified.contentType || "application/pdf",
+            url: verified.url,
+            createdAt,
+          },
+        ],
+        href: verified.url,
+        createdAt,
+      });
+
+      replaceDocumentInVault(record);
+      await postDocumentToAtlasVault(record);
+
+      const manualRecord = normalizeManualRecord({
+        id: uid("manual"),
+        title: record.title,
+        category: inferManualCategory(record.title),
+        manufacturer: candidate.manufacturer || "",
+        model: candidate.model || "",
+        documentNumber: "",
+        linkedAssetId: linkedAsset?.id || "",
+        linkedAssetName: linkedAsset?.name || "",
+        sourceLabel:
+          candidate.sourceLabel || candidate.sourceDomain || "Official source",
+        href: verified.url,
+        notes: candidate.reason || record.notes,
+        files: record.files || [],
+        createdAt,
+      });
+
+      setManualRecords((current) => {
+        const duplicate = current.some(
+          (manual) =>
+            cleanManualOpenUrl(manual.href) ===
+            cleanManualOpenUrl(manualRecord.href),
+        );
+        const next = duplicate ? current : [manualRecord, ...current];
+        saveStoredArray(storageKeys.manuals[0], next);
+        return next;
+      });
+
+      setManualSaveMessage(
+        `Saved ${record.title} to Atlas Documents${linkedAsset ? ` and linked it to ${linkedAsset.name}` : ""}.`,
+      );
+      setDocumentSyncStatus(`Saved ${record.title} from Ask Atlas.`);
+    } catch (error) {
+      setManualSaveMessage(
+        error instanceof Error
+          ? error.message
+          : "Atlas could not save that manual.",
+      );
+    } finally {
+      setManualSavingUrl("");
+    }
+  }
+
+  function addAssistantTurn(role: AssistantTurn["role"], value: string) {
+    const clean = value.trim();
+    if (!clean) return;
+    setAssistantTurns((current) => [
+      ...current.slice(-19),
+      {
+        id: uid(`assistant-${role}`),
+        role,
+        text: clean,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+  }
+
+  function finishAssistantAnswer(value: string) {
+    setAssistantAnswer(value);
+    addAssistantTurn("assistant", value);
+  }
+
+  function renderAskAtlasInlineText(value: string) {
+    return value.split(/(\*\*[^*]+\*\*)/g).map((part, index) =>
+      part.startsWith("**") && part.endsWith("**") && part.length > 4 ? (
+        <strong key={`${index}-${part.slice(0, 12)}`}>
+          {part.slice(2, -2)}
+        </strong>
+      ) : (
+        <React.Fragment key={`${index}-${part.slice(0, 12)}`}>
+          {part}
+        </React.Fragment>
+      ),
+    );
+  }
+
+  function renderAskAtlasAnswer(value: string) {
+    const lines = String(value || "").split("\n");
+    const sourceIndex = lines.findIndex((line) =>
+      /^\s*source\s*:/i.test(line),
+    );
+    const bodyLines =
+      sourceIndex >= 0 ? lines.slice(0, sourceIndex) : lines;
+    const sourceLines =
+      sourceIndex >= 0 ? lines.slice(sourceIndex) : [];
+
+    return (
+      <div style={{ display: "grid", gap: sourceLines.length ? 10 : 0 }}>
+        <div style={{ whiteSpace: "pre-wrap" }}>
+          {renderAskAtlasInlineText(bodyLines.join("\n"))}
+        </div>
+        {sourceLines.length ? (
+          <div
+            style={{
+              paddingTop: 8,
+              borderTop: `1px solid ${colors.line}`,
+              fontSize: 13,
+              lineHeight: 1.4,
+              color: colors.muted,
+            }}
+          >
+            {renderAskAtlasInlineText(sourceLines.join("\n"))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function closeAndResetAskAtlas() {
+    askAtlasAbortRef.current?.abort();
+    askAtlasAbortRef.current = null;
+    setAssistantLoading(false);
+    setAssistantQuestion("");
+    setAssistantAnswer("");
+    setAssistantTurns([]);
+    setAssistantSources([]);
+    setAssistantRecordResults([]);
+    setSelectedRelationshipId("");
+    setPendingAssistantAction(null);
+    setManualCandidates([]);
+    setManualSavingUrl("");
+    setManualSaveMessage("");
+    setDashboardAssistantOpen(false);
+  }
+
+  function refreshAssistantRecordResults(question: string) {
+    const matches = searchAtlas(buildSearchIndex(), question, 8);
+    setAssistantRecordResults(matches);
+    setSelectedRelationshipId(matches[0]?.id || "");
+  }
+
+  function inferAssistantRecord(question: string) {
+    const matches = searchAtlas(buildSearchIndex(), question, 8);
+    const asset = matches.find((item) => item.type === "Asset");
+    const vendor = matches.find((item) => item.type === "Vendor");
+    const location = matches.find((item) => item.type === "Location");
+    return { matches, asset, vendor, location };
+  }
+
+  function cleanAssistantActionTitle(question: string, fallback: string) {
+    const cleaned = question
+      .replace(
+        /\b(create|make|add|prepare|draft|schedule|put|new|a|an|the|work order|calendar event|event|procedure|for|on my calendar)\b/gi,
+        " ",
+      )
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^[,.:;-]+|[,.:;-]+$/g, "");
+
+    if (!cleaned) return fallback;
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  }
+
+  function prepareAssistantAction(question: string) {
+    const matches = searchAtlas(buildSearchIndex(), question, 8);
+    const action = planAssistantAction({
+      question,
+      matches,
+      today: todayISO(),
+      addDays,
+      createId: uid,
+    });
+
+    if (!action) return false;
+    setPendingAssistantAction(action);
+    return true;
+  }
+
+  async function approveAssistantAction() {
+    if (!pendingAssistantAction || assistantActionSaving) return;
+    setAssistantActionSaving(true);
+
+    try {
+      if (pendingAssistantAction.kind === "work-order") {
+        const record = normalizeService({
+          id: uid("wo"),
+          title: pendingAssistantAction.title,
+          date: todayISO(),
+          status: "Open",
+          priority: pendingAssistantAction.priority,
+          notes: pendingAssistantAction.notes,
+          assetId: pendingAssistantAction.assetId,
+          vendorId: pendingAssistantAction.vendorId,
+          workType: "Work Order",
+          workCategory: "🔧 Maintenance",
+          effort: "30 minutes",
+          photos: [],
+          documents: [],
+          checklist: [],
+          notesHistory: [],
+          serviceHistory: [],
+        });
+        const saved = await postAtlasRecord("work_orders", record);
+        if (!saved) throw new Error("The work order did not save.");
+        setServiceRecords((current) => workOrdersByIdentity([record, ...current]));
+        setSelectedServiceId(record.id);
+        finishAssistantAnswer(`Created work order: ${record.title}`);
+      }
+
+      if (pendingAssistantAction.kind === "calendar") {
+        const record = normalizeCalendar({
+          id: uid("cal"),
+          title: pendingAssistantAction.title,
+          notes: pendingAssistantAction.notes,
+          date: pendingAssistantAction.date,
+          time: pendingAssistantAction.time,
+          allDay: pendingAssistantAction.allDay,
+          linkedId: pendingAssistantAction.linkedId,
+          linkedName: pendingAssistantAction.linkedName,
+          linkedType: pendingAssistantAction.linkedType,
+          source: "manual",
+          completed: false,
+        });
+        const saved = await postAtlasRecord("calendar", record);
+        if (!saved) throw new Error("The calendar event did not save.");
+        setCalendarItems((current) => calendarItemsByIdentity([record, ...current]));
+        finishAssistantAnswer(
+          `Scheduled ${record.title} for ${formatDate(record.date)}${
+            record.time ? ` at ${record.time}` : ""
+          }.`,
+        );
+      }
+
+      if (pendingAssistantAction.kind === "procedure") {
+        const record = normalizeProcedure({
+          id: uid("procedure"),
+          title: pendingAssistantAction.title,
+          status: "Draft",
+          category: "Maintenance",
+          purpose: pendingAssistantAction.purpose,
+          linkedAssetIds: pendingAssistantAction.linkedAssetIds,
+          linkedLocationIds: pendingAssistantAction.linkedLocationIds,
+          linkedVendorIds: pendingAssistantAction.linkedVendorIds,
+          checklist: [],
+          steps: [],
+          photos: [],
+          documents: [],
+        });
+        const saved = await postAtlasRecord("procedures", record);
+        if (!saved) throw new Error("The procedure did not save.");
+        setProcedureRecords((current) => byTitle([record, ...current]));
+        setSelectedProcedureId(record.id);
+        finishAssistantAnswer(`Created draft procedure: ${record.title}`);
+      }
+
+      if (pendingAssistantAction.kind === "work-order-update") {
+        const existing = serviceRecords.find(
+          (item) => item.id === pendingAssistantAction.targetId,
+        );
+        if (!existing) throw new Error("Atlas could not find that work order.");
+
+        const noteToAppend = pendingAssistantAction.noteToAppend?.trim();
+        if (
+          pendingAssistantAction.status === "Completed" &&
+          existing.status !== "Completed"
+        ) {
+          await completeWorkOrder(
+            normalizeService({
+              ...existing,
+              priority:
+                pendingAssistantAction.priority || existing.priority,
+              notes: noteToAppend
+                ? [existing.notes, noteToAppend].filter(Boolean).join("\n\n")
+                : existing.notes,
+            }),
+            { completionNote: noteToAppend || "", allowEarly: true },
+          );
+          setSelectedServiceId(existing.id);
+          finishAssistantAnswer(`Updated work order: ${existing.title}`);
+        } else {
+        const updated = normalizeService({
+          ...existing,
+          status: pendingAssistantAction.status || existing.status,
+          priority: pendingAssistantAction.priority || existing.priority,
+          notes: noteToAppend
+            ? [existing.notes, noteToAppend].filter(Boolean).join("\n\n")
+            : existing.notes,
+          lastCompletedDate:
+            pendingAssistantAction.status === "Completed"
+              ? todayISO()
+              : existing.lastCompletedDate,
+        });
+
+        const saved = await postAtlasRecord("work_orders", updated);
+        if (!saved) throw new Error("The work order update did not save.");
+        setServiceRecords((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        setSelectedServiceId(updated.id);
+        finishAssistantAnswer(`Updated work order: ${updated.title}`);
+        }
+      }
+
+      if (pendingAssistantAction.kind === "calendar-update") {
+        const existing = calendarItems.find(
+          (item) => item.id === pendingAssistantAction.targetId,
+        );
+        if (!existing)
+          throw new Error("Atlas could not find that calendar event.");
+
+        const updated = normalizeCalendar({
+          ...existing,
+          date: pendingAssistantAction.date,
+          time: pendingAssistantAction.time,
+          allDay: pendingAssistantAction.allDay,
+        });
+
+        const saved = await postAtlasRecord("calendar", updated);
+        if (!saved) throw new Error("The calendar update did not save.");
+        setCalendarItems((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        finishAssistantAnswer(
+          `Rescheduled ${updated.title} for ${formatDate(updated.date)}${
+            updated.time ? ` at ${updated.time}` : ""
+          }.`,
+        );
+      }
+
+      if (pendingAssistantAction.kind === "part-update") {
+        const existing = partRecords.find(
+          (item) => item.id === pendingAssistantAction.targetId,
+        );
+        if (!existing) throw new Error("Atlas could not find that part.");
+
+        const quantity =
+          pendingAssistantAction.quantity ?? existing.quantity;
+        const minQuantity =
+          pendingAssistantAction.minQuantity ?? existing.minQuantity;
+        const status: PartStatus =
+          quantity <= 0 ? "Out" : quantity <= minQuantity ? "Low" : "In Stock";
+        const updated = normalizePart({
+          ...existing,
+          quantity,
+          minQuantity,
+          status,
+        });
+
+        const saved = await postAtlasRecord("parts", updated);
+        if (!saved) throw new Error("The inventory update did not save.");
+        setPartRecords((current) =>
+          byName(
+            current.map((item) =>
+              item.id === updated.id ? updated : item,
+            ),
+          ),
+        );
+        setSelectedPartId(updated.id);
+        finishAssistantAnswer(
+          `Updated inventory: ${updated.name} now has ${updated.quantity} on hand with a minimum of ${updated.minQuantity}.`,
+        );
+      }
+
+      if (pendingAssistantAction.kind === "part-create") {
+        const duplicate = partRecords.find(
+          (item) =>
+            item.name.trim().toLowerCase() ===
+            pendingAssistantAction.title.trim().toLowerCase(),
+        );
+        if (duplicate) {
+          throw new Error(
+            `${duplicate.name} already exists. Atlas Assistant to update its quantity instead.`,
+          );
+        }
+
+        const quantity = pendingAssistantAction.quantity;
+        const minQuantity = pendingAssistantAction.minQuantity;
+        const status: PartStatus =
+          quantity <= 0 ? "Out" : quantity <= minQuantity ? "Low" : "In Stock";
+        const record = normalizePart({
+          id: uid("part"),
+          name: pendingAssistantAction.title,
+          category: "General",
+          locationId: pendingAssistantAction.locationId,
+          assetId: pendingAssistantAction.assetId,
+          vendorId: pendingAssistantAction.vendorId,
+          quantity,
+          minQuantity,
+          status,
+          notes: `Created through Ask Atlas on ${todayISO()}.`,
+        });
+
+        const saved = await postAtlasRecord("parts", record);
+        if (!saved) throw new Error("The new inventory part did not save.");
+        setPartRecords((current) => byName([record, ...current]));
+        setSelectedPartId(record.id);
+        finishAssistantAnswer(
+          `Created inventory part: ${record.name} with ${record.quantity} on hand and a minimum of ${record.minQuantity}.`,
+        );
+      }
+
+      if (pendingAssistantAction.kind === "asset-update") {
+        const existing = assetRecords.find(
+          (item) => item.id === pendingAssistantAction.targetId,
+        );
+        if (!existing) throw new Error("Atlas could not find that asset.");
+
+        const noteToAppend = pendingAssistantAction.noteToAppend?.trim();
+        const updated = normalizeAsset({
+          ...existing,
+          status: pendingAssistantAction.status || existing.status,
+          notes: noteToAppend
+            ? [existing.notes, noteToAppend].filter(Boolean).join("\n\n")
+            : existing.notes,
+        });
+
+        const saved = await postAtlasRecord("assets", updated);
+        if (!saved) throw new Error("The asset update did not save.");
+        setAssetRecords((current) =>
+          byName(
+            current.map((item) =>
+              item.id === updated.id ? updated : item,
+            ),
+          ),
+        );
+        setSelectedAssetId(updated.id);
+        finishAssistantAnswer(`Updated asset: ${updated.name}`);
+      }
+
+      if (pendingAssistantAction.kind === "recurring-maintenance") {
+        const record = normalizeService({
+          id: uid("pm"),
+          assetId: pendingAssistantAction.assetId,
+          vendorId: pendingAssistantAction.vendorId,
+          locationId: pendingAssistantAction.locationId,
+          date: todayISO(),
+          title: pendingAssistantAction.title,
+          status: "Open",
+          priority: pendingAssistantAction.priority,
+          notes: pendingAssistantAction.notes,
+          recurring: true,
+          recurrenceInterval: pendingAssistantAction.recurrenceInterval,
+          recurrenceUnit: pendingAssistantAction.recurrenceUnit,
+          season: "Year-Round",
+          workType: "Preventive Maintenance",
+          workCategory: "🔧 Maintenance",
+          photos: [],
+          documents: [],
+          checklist: [],
+          notesHistory: [],
+          serviceHistory: [],
+        });
+        const saved = await postAtlasRecord("work_orders", record);
+        if (!saved) {
+          throw new Error("The recurring maintenance record did not save.");
+        }
+        setServiceRecords((current) => workOrdersByIdentity([record, ...current]));
+        setSelectedServiceId(record.id);
+        finishAssistantAnswer(
+          `Created recurring maintenance: ${record.title}, every ${record.recurrenceInterval} ${record.recurrenceUnit.toLowerCase()}.`,
+        );
+      }
+
+      if (pendingAssistantAction.kind === "request-convert") {
+        const request = requestRecords.find(
+          (item) => item.id === pendingAssistantAction.targetId,
+        );
+        if (!request) throw new Error("Atlas could not find that request.");
+        if (request.convertedWorkOrderId) {
+          throw new Error("That request was already converted.");
+        }
+
+        const asset = assetRecords.find(
+          (item) =>
+            request.assetName &&
+            item.name.trim().toLowerCase() ===
+              request.assetName.trim().toLowerCase(),
+        );
+        const record = normalizeService({
+          id: uid("service"),
+          assetId: asset?.id || "",
+          date: todayISO(),
+          title: request.title || "Owner Request",
+          status: "Open",
+          priority: request.priority || "Medium",
+          notes: [
+            request.description,
+            request.locationName ? `Location: ${request.locationName}` : "",
+            request.assetName ? `Requested asset: ${request.assetName}` : "",
+            request.requesterName ? `Requested by: ${request.requesterName}` : "",
+            request.preferredTiming
+              ? `Preferred timing: ${request.preferredTiming}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          photos: request.photos || [],
+          documents: [],
+        });
+        const saved = await postAtlasRecord("work_orders", record);
+        if (!saved) {
+          throw new Error(
+            "The work order did not save, so the request was left unchanged.",
+          );
+        }
+
+        const response = await fetch("/api/atlas-requests", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: request.id,
+            status: "Converted to Work Order",
+            convertedWorkOrderId: record.id,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.ok === false) {
+          throw new Error(
+            "The work order saved, but Atlas could not move the request to History.",
+          );
+        }
+        const updatedRequest = payload.request as OwnerRequestRecord;
+        setServiceRecords((current) => workOrdersByIdentity([record, ...current]));
+        setRequestRecords((current) =>
+          current.map((item) =>
+            item.id === updatedRequest.id ? updatedRequest : item,
+          ),
+        );
+        setSelectedServiceId(record.id);
+        finishAssistantAnswer(
+          `Converted request to work order: ${record.title}`,
+        );
+      }
+
+      setPendingAssistantAction(null);
+    } catch (error) {
+      finishAssistantAnswer(
+        error instanceof Error
+          ? error.message
+          : "Atlas could not complete that action.",
+      );
+    } finally {
+      setAssistantActionSaving(false);
+    }
+  }
+
+  async function askAtlas(questionOverride?: string) {
+    const question = String(questionOverride ?? assistantQuestion).trim();
+
+    if (!question) {
+      finishAssistantAnswer("Type a question first.");
+      return;
+    }
+
+    setAssistantQuestion("");
+    setAssistantSources([]);
+
+    addAssistantTurn("user", question);
+    refreshAssistantRecordResults(question);
+
+    if (prepareAssistantAction(question)) {
+      finishAssistantAnswer(
+        "I prepared the action below. Review it and approve before Atlas saves anything.",
+      );
+      setManualCandidates([]);
+      setManualSaveMessage("");
+      setAssistantLoading(false);
+      return;
+    }
+
+    const normalizedQuestion = question
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const isTodayQuestion =
+      /^(what do i need to do today|what am i doing today|what is on my schedule today|what s on my schedule today|show me today|today s work|todays work)$/.test(
+        normalizedQuestion,
+      ) ||
+      (normalizedQuestion.includes("today") &&
+        (normalizedQuestion.includes("need to do") ||
+          normalizedQuestion.includes("schedule") ||
+          normalizedQuestion.includes("work")));
+
+    if (isTodayQuestion) {
+      const today = localISODate();
+      const todayCalendar = calendarItems
+        .filter((item) => item.date === today && !item.completed)
+        .sort((a, b) =>
+          String(a.time || "").localeCompare(String(b.time || "")),
+        );
+      const todayWorkOrders = serviceRecords.filter(
+        (item) =>
+          item.status !== "Completed" &&
+          (item.date === today || item.followUpDate === today),
+      );
+      const highPriorityOpen = serviceRecords.filter(
+        (item) => item.status !== "Completed" && item.priority === "High",
+      );
+
+      const lines: string[] = [];
+      if (todayCalendar.length) {
+        lines.push("Today’s schedule:");
+        todayCalendar.forEach((item) => {
+          lines.push(`• ${item.time ? `${item.time} — ` : ""}${item.title}`);
+        });
+      } else {
+        lines.push("Nothing is scheduled on your calendar today.");
+      }
+
+      if (todayWorkOrders.length) {
+        lines.push("", "Work due today:");
+        todayWorkOrders.slice(0, 10).forEach((item) => {
+          const assetName = assetRecords.find(
+            (asset) => asset.id === item.assetId,
+          )?.name;
+          lines.push(
+            `• ${item.title}${assetName ? ` — ${assetName}` : ""}${item.priority ? ` (${item.priority})` : ""}`,
+          );
+        });
+        if (todayWorkOrders.length > 10) {
+          lines.push(`• ${todayWorkOrders.length - 10} more`);
+        }
+      } else {
+        lines.push("", "No work orders are due today.");
+      }
+
+      if (highPriorityOpen.length) {
+        lines.push(
+          "",
+          `${highPriorityOpen.length} high-priority open work order${highPriorityOpen.length === 1 ? "" : "s"} still need attention.`,
+        );
+      }
+
+      finishAssistantAnswer(lines.join("\n"));
+      setManualCandidates([]);
+      setManualSaveMessage("");
+      setAssistantLoading(false);
+      return;
+    }
+
+    const manualQuestion =
+      /\b(manual|owner'?s manual|user guide|installation guide|service manual|pdf|documentation|spec sheet|datasheet)\b/i.test(
+        question,
+      );
+    const manualSearchQuestion =
+      manualQuestion &&
+      (/(?:\bfind\b|\blocate\b|\bdownload\b|\bget\b|\bsearch(?:\s+for)?\b|\blook\s+for\b).{0,80}\b(manual|pdf|documentation|spec sheet|datasheet)\b/i.test(question) ||
+        /\b(manual|pdf|documentation|spec sheet|datasheet)\s+(?:for|of)\b/i.test(question));
+
+    const cleanText = (value: unknown, maxLength = 1200) =>
+      String(value ?? "").slice(0, maxLength);
+
+    const atlasSnapshot = {
+      generatedAt: new Date().toISOString(),
+      activeProperty: {
+        id: activePropertyId,
+        name:
+          atlasProperties.find((property) => property.id === activePropertyId)
+            ?.name || activePropertyId,
+        detail:
+          atlasProperties.find((property) => property.id === activePropertyId)
+            ?.detail || "",
+      },
+      counts: {
+        locations: locations.length,
+        assets: assetRecords.length,
+        vendors: vendorRecords.length,
+        contacts: contactRecords.length,
+        workOrders: serviceRecords.length,
+        calendarItems: calendarItems.length,
+        procedures: procedureRecords.length,
+        manuals: manualRecords.length,
+        parts: partRecords.length,
+        documents: intakeDocs.length,
+        mapLabels: mapLabels.length,
+      },
+      locations: locations.map((item) => ({
+        id: item.id,
+        name: cleanText(item.name, 200),
+        type: cleanText(item.type, 120),
+        zone: cleanText(item.zone, 120),
+        notes: cleanText(item.notes),
+      })),
+      assets: assetRecords.map((item) => ({
+        id: item.id,
+        name: cleanText(item.name, 200),
+        locationId: item.locationId,
+        locationName:
+          locations.find((location) => location.id === item.locationId)?.name ||
+          "",
+        category: cleanText(item.category, 120),
+        status: item.status,
+        make: cleanText(item.make, 160),
+        model: cleanText(item.model, 160),
+        year: cleanText(item.year, 40),
+        manufacturer: cleanText(item.manufacturer, 160),
+        serial: cleanText(item.serial, 160),
+        notes: cleanText(item.notes),
+        vendorIds: item.vendorIds,
+      })),
+      vendors: vendorRecords.map((item) => ({
+        id: item.id,
+        name: cleanText(item.name, 200),
+        category: cleanText(item.category, 120),
+        phone: cleanText(item.phone, 120),
+        email: cleanText(item.email, 200),
+        website: cleanText(item.website, 300),
+        notes: cleanText(item.notes),
+      })),
+      contacts: contactRecords.map((item) => ({
+        id: item.id,
+        name: cleanText(item.name, 200),
+        organization: cleanText(item.organization, 200),
+        role: cleanText(item.role, 160),
+        category: cleanText(item.category, 120),
+        phone: cleanText(item.phone, 120),
+        email: cleanText(item.email, 200),
+        address: cleanText(item.address, 300),
+        website: cleanText(item.website, 300),
+        birthday: item.birthday,
+        notes: cleanText(item.notes),
+      })),
+      workOrders: serviceRecords.map((item) => ({
+        id: item.id,
+        title: cleanText(item.title, 240),
+        date: item.date,
+        followUpDate: item.followUpDate || "",
+        status: item.status,
+        priority: item.priority || "",
+        assetId: item.assetId,
+        assetName:
+          assetRecords.find((asset) => asset.id === item.assetId)?.name || "",
+        vendorId: item.vendorId || "",
+        vendorName:
+          vendorRecords.find((vendor) => vendor.id === item.vendorId)?.name ||
+          "",
+        procedureId: item.procedureId || "",
+        recurring: !!item.recurring,
+        recurrenceInterval: item.recurrenceInterval || 1,
+        recurrenceUnit: item.recurrenceUnit || "Weeks",
+        recurrenceEndDate: item.recurrenceEndDate || "",
+        season: item.season || "Year-Round",
+        lastCompletedDate: item.lastCompletedDate || "",
+        completionHistory: item.completionHistory || [],
+        notes: cleanText(item.notes),
+      })),
+      calendarItems: calendarItems.map((item) => ({
+        id: item.id,
+        date: item.date,
+        time: item.time || "",
+        title: cleanText(item.title, 240),
+        area: cleanText(item.area, 160),
+        category: cleanText(item.categoryLabel, 160),
+        notes: cleanText(item.notes),
+        linkedType: item.linkedType || "None",
+        linkedId: item.linkedId || "",
+        linkedName: cleanText(item.linkedName, 240),
+        completed: Boolean(item.completed),
+      })),
+      procedures: procedureRecords.map((item) => ({
+        id: item.id,
+        title: cleanText(item.title, 240),
+        area: cleanText(item.area, 160),
+        category: cleanText(item.category, 120),
+        status: item.status || "Draft",
+        priority: item.priority,
+        purpose: cleanText(item.purpose),
+        safetyNotes: cleanText(item.safetyNotes),
+        toolsParts: cleanText(item.toolsParts),
+        requiredTools: item.requiredTools || [],
+        requiredParts: item.requiredParts || [],
+        estimatedTime: cleanText(item.estimatedTime, 120),
+        steps: item.steps.map((step) => cleanText(step, 500)),
+        linkedAssetIds: item.linkedAssetIds || [],
+        linkedLocationIds: item.linkedLocationIds || [],
+        linkedVendorIds: item.linkedVendorIds || [],
+        photoNames: (item.photos || []).map((photo) =>
+          cleanText(photo.name, 240),
+        ),
+        documentNames: (item.documents || []).map((document) =>
+          cleanText(document.name, 240),
+        ),
+      })),
+      manuals: manualRecords.map((item) => ({
+        id: item.id,
+        title: cleanText(item.title, 240),
+        category: cleanText(item.category, 160),
+        manufacturer: cleanText(item.manufacturer, 160),
+        model: cleanText(item.model, 160),
+        documentNumber: cleanText(item.documentNumber, 160),
+        linkedAssetId: item.linkedAssetId || "",
+        linkedAssetName: cleanText(item.linkedAssetName, 240),
+        sourceLabel: cleanText(item.sourceLabel, 240),
+        href: cleanText(item.href, 4000),
+        notes: cleanText(item.notes, 2500),
+        createdAt: item.createdAt || "",
+        files: (item.files || []).map((file) => ({
+          name: cleanText(file.name, 300),
+          type: cleanText(file.type, 160),
+          url: cleanText(file.url, 4000),
+        })),
+      })),
+      parts: partRecords.map((item) => ({
+        id: item.id,
+        name: cleanText(item.name, 200),
+        category: cleanText(item.category, 120),
+        locationId: item.locationId,
+        locationName:
+          locations.find((location) => location.id === item.locationId)?.name ||
+          "",
+        assetId: item.assetId || "",
+        assetName:
+          assetRecords.find((asset) => asset.id === item.assetId)?.name || "",
+        vendorId: item.vendorId || "",
+        vendorName:
+          vendorRecords.find((vendor) => vendor.id === item.vendorId)?.name ||
+          "",
+        quantity: item.quantity,
+        minQuantity: item.minQuantity,
+        status: item.status,
+        notes: cleanText(item.notes),
+      })),
+      requests: requestRecords.map((item) => ({
+        id: item.id,
+        title: cleanText(item.title, 240),
+        status: item.status,
+        priority: item.priority,
+        description: cleanText(item.description),
+        locationName: cleanText(item.locationName, 200),
+        assetName: cleanText(item.assetName, 200),
+        requesterName: cleanText(item.requesterName, 200),
+        preferredTiming: cleanText(item.preferredTiming, 200),
+        convertedWorkOrderId: item.convertedWorkOrderId || "",
+      })),
+      documents: intakeDocs.map((item) => ({
+        id: item.id,
+        title: cleanText(item.title, 240),
+        area: cleanText(item.area, 160),
+        type: cleanText(item.type, 120),
+        targetType: item.targetType || "General",
+        targetId: item.targetId || "",
+        targetName: cleanText(item.targetName, 240),
+        notes: cleanText(item.notes),
+        pastedText: cleanText(item.pastedText, 12000),
+        href: cleanText(item.href, 4000),
+        createdAt: item.createdAt || "",
+        files: (item.files || []).map((file) => ({
+          name: cleanText(file.name, 300),
+          type: cleanText(file.type, 160),
+          url: cleanText(file.url, 4000),
+        })),
+      })),
+      mapLabels: mapLabels.map((item) => ({
+        id: item.id,
+        label: cleanText(item.label, 200),
+        category: cleanText(item.category, 120),
+        notes: cleanText(item.notes),
+        installer: cleanText(item.installer, 200),
+        paintColor: cleanText(item.paintColor, 160),
+        specs: cleanText(item.specs),
+        documentNotes: cleanText(item.documentNotes),
+        photoNotes: cleanText(item.photoNotes),
+        maintenanceNotes: cleanText(item.maintenanceNotes),
+        vendorIds: item.vendorIds || [],
+      })),
+      weather: {
+        status: weatherStatus,
+        days: weatherDays,
+      },
+    };
+
+    const requestSnapshot = manualSearchQuestion
+      ? {
+          generatedAt: atlasSnapshot.generatedAt,
+          activeProperty: atlasSnapshot.activeProperty,
+          assets: atlasSnapshot.assets.map((asset) => ({
+            id: asset.id,
+            name: asset.name,
+            make: asset.make,
+            model: asset.model,
+            category: asset.category,
+            locationName: asset.locationName,
+            notes: asset.notes.slice(0, 500),
+          })),
+        }
+      : atlasSnapshot;
+
+    askAtlasAbortRef.current?.abort();
+    const requestController = new AbortController();
+    askAtlasAbortRef.current = requestController;
+
+    setAssistantLoading(true);
+    setManualCandidates([]);
+    setManualSaveMessage("");
+    setAssistantAnswer(
+      manualSearchQuestion
+        ? "Ask Atlas is checking the exact equipment details and searching official manufacturer sources..."
+        : "Ask Atlas is reviewing your property records, manuals, and documents...",
+    );
+
+    try {
+      const response = await fetch("/api/ask-atlas", {
+        method: "POST",
+        signal: requestController.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          atlas: requestSnapshot,
+          allowWebSearch: manualSearchQuestion,
+          conversation: assistantTurns.map((turn) => ({
+            role: turn.role,
+            text: cleanText(turn.text, 1200),
+          })),
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as Record<
+        string,
+        unknown
+      >;
+
+      const readString = (value: unknown): string =>
+        typeof value === "string" ? value.trim() : "";
+      const nestedResult =
+        payload.result && typeof payload.result === "object"
+          ? (payload.result as Record<string, unknown>)
+          : {};
+      const nestedData =
+        payload.data && typeof payload.data === "object"
+          ? (payload.data as Record<string, unknown>)
+          : {};
+      const nestedMessage =
+        payload.message && typeof payload.message === "object"
+          ? (payload.message as Record<string, unknown>)
+          : {};
+
+      const payloadError =
+        readString(payload.error) ||
+        readString(nestedResult.error) ||
+        readString(nestedData.error);
+      const payloadOk = payload.ok !== false;
+
+      if (!response.ok || !payloadOk) {
+        throw new Error(
+          payloadError || "Atlas Assistant could not answer right now.",
+        );
+      }
+
+      let cleanAnswer =
+        readString(payload.answer) ||
+        readString(payload.output_text) ||
+        readString(payload.text) ||
+        readString(payload.content) ||
+        readString(nestedResult.answer) ||
+        readString(nestedResult.output_text) ||
+        readString(nestedResult.text) ||
+        readString(nestedData.answer) ||
+        readString(nestedData.text) ||
+        readString(nestedMessage.content);
+      let cleanManuals = Array.isArray(payload.manuals)
+        ? (payload.manuals as ManualCandidate[])
+        : Array.isArray(nestedResult.manuals)
+          ? (nestedResult.manuals as ManualCandidate[])
+          : Array.isArray(nestedData.manuals)
+            ? (nestedData.manuals as ManualCandidate[])
+            : [];
+      const cleanSources = (Array.isArray(payload.sources)
+        ? payload.sources
+        : Array.isArray(nestedResult.sources)
+          ? nestedResult.sources
+          : Array.isArray(nestedData.sources)
+            ? nestedData.sources
+            : []
+      )
+        .map((value) => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+          const source = value as Record<string, unknown>;
+          const title = readString(source.title);
+          const url = readString(source.url);
+          if (!title || !/^https:\/\//i.test(url)) return null;
+          const page = Number(source.page || 0);
+          return {
+            title,
+            url,
+            page: Number.isFinite(page) && page > 0 ? page : undefined,
+            sheetTitle: readString(source.sheetTitle) || undefined,
+            kind: readString(source.kind) || undefined,
+          } satisfies AskAtlasSource;
+        })
+        .filter((value): value is NonNullable<typeof value> => Boolean(value))
+        .slice(0, 6);
+
+      if (cleanAnswer.startsWith("{") || cleanAnswer.startsWith("```")) {
+        try {
+          const normalized = cleanAnswer
+            .replace(/^```(?:json)?\s*/i, "")
+            .replace(/\s*```$/i, "")
+            .trim();
+          const parsed = JSON.parse(normalized) as {
+            answer?: unknown;
+            manuals?: ManualCandidate[];
+          };
+          cleanAnswer = String(parsed.answer || "").trim();
+          if (!cleanManuals.length && Array.isArray(parsed.manuals)) {
+            cleanManuals = parsed.manuals;
+          }
+        } catch {
+          // Keep the readable text returned by the route.
+        }
+      }
+
+      finishAssistantAnswer(
+        cleanAnswer ||
+          (cleanManuals.length
+            ? "I found the official manual options below."
+            : "I could not find a matching Atlas record. Try naming the asset, vendor, location, or date more specifically."),
+      );
+      setManualCandidates(cleanManuals.slice(0, 3));
+      setAssistantSources(cleanSources);
+    } catch (error) {
+      if (requestController.signal.aborted) return;
+      finishAssistantAnswer(
+        error instanceof Error
+          ? error.message
+          : "Atlas Assistant could not answer right now.",
+      );
+    } finally {
+      if (askAtlasAbortRef.current === requestController) {
+        askAtlasAbortRef.current = null;
+        setAssistantLoading(false);
+      }
+    }
+  }
+
+  function renderCalendarIntakeCard() {
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Calendar Intake"
+          title="Text to Calendar"
+          detail="Paste scheduling text, make a draft, review it, then save."
+          right={
+            <button
+              type="button"
+              onClick={() => setScreen("calendar")}
+              style={secondaryButtonStyle}
+            >
+              Open Calendar
+            </button>
+          }
+        />
+
+        <div style={{ display: "grid", gap: 10 }}>
+          <textarea
+            value={calendarIntakeText}
+            onChange={(event) =>
+              setCalendarIntakeText(event.currentTarget.value)
+            }
+            placeholder="Paste scheduling text here"
+            style={{
+              ...inputStyle,
+              minHeight: 86,
+              resize: "vertical",
+              fontFamily: "Arial, Helvetica, sans-serif",
+            }}
+          />
+
+          <div style={buttonRowStyle}>
+            <button
+              type="button"
+              onClick={() =>
+                addWorkOrder({
+                  title: selectedProcedure.title,
+                  workType: "Preventive Maintenance",
+                  recurring: true,
+                  recurrenceInterval: 1,
+                  recurrenceUnit: "Years",
+                  procedureId: selectedProcedure.id,
+                  assetId: selectedProcedure.linkedAssetIds?.[0] || "",
+                  locationId: selectedProcedure.linkedLocationIds?.[0] || "",
+                  vendorId: selectedProcedure.linkedVendorIds?.[0] || "",
+                  notes: selectedProcedure.purpose || selectedProcedure.safetyNotes,
+                  checklist: selectedProcedure.steps.map((text) => ({
+                    id: uid("check"),
+                    text,
+                    completed: false,
+                  })),
+                })
+              }
+              style={goldButtonStyle}
+            >
+              Create PM Work Order
+            </button>
+            <button
+              type="button"
+              onClick={applyCalendarIntake}
+              style={goldButtonStyle}
+            >
+              Make Draft
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCalendarIntakeText("");
+                setCalendarIntakeMessage("");
+              }}
+              style={secondaryButtonStyle}
+            >
+              Clear
+            </button>
+          </div>
+
+          {calendarIntakeMessage ? (
+            <p style={mutedSmallStyle}>{calendarIntakeMessage}</p>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
+  function blankWorkLink(): WorkLinkRecord {
+    return {
+      id: "",
+      name: "",
+      category: "",
+      vendor: "",
+      url: "",
+      logoText: "",
+      logoBg: "#EEF6FF",
+      logoUrl: "",
+      logoColor: colors.navy3,
+      notes: "",
+    };
+  }
+
+  function openNewWorkLink() {
+    setWorkLinkDraft(blankWorkLink());
+    setWorkLinkMessage("");
+    setWorkLinkEditorOpen(true);
+  }
+
+  function openEditWorkLink(link: WorkLinkRecord) {
+    setWorkLinkDraft({ ...link });
+    setWorkLinkMessage("");
+    setWorkLinkEditorOpen(true);
+    setWorkLinkChooserOpen(false);
+  }
+
+  function saveWorkLink() {
+    const name = workLinkDraft.name.trim();
+    const url = workLinkDraft.url.trim();
+
+    if (!name || !url) {
+      setWorkLinkMessage("Name and URL are required.");
+      return;
+    }
+
+    const normalizedUrl =
+      url.startsWith("/") || /^https?:\/\//i.test(url) ? url : `https://${url}`;
+
+    const next: WorkLinkRecord = {
+      ...workLinkDraft,
+      id: workLinkDraft.id || uid("work-link"),
+      name,
+      url: normalizedUrl,
+      category: workLinkDraft.category.trim() || "General",
+      vendor: workLinkDraft.vendor?.trim() || "",
+      logoText:
+        workLinkDraft.logoText.trim().slice(0, 4).toUpperCase() ||
+        name
+          .split(/\s+/)
+          .map((part) => part[0])
+          .join("")
+          .slice(0, 3)
+          .toUpperCase(),
+      logoBg: workLinkDraft.logoBg || "#EEF6FF",
+      logoColor: workLinkDraft.logoColor || colors.navy3,
+      logoUrl: workLinkDraft.logoUrl?.trim() || "",
+      notes: workLinkDraft.notes.trim(),
+    };
+
+    setWorkLinks((current) =>
+      [...current.filter((item) => item.id !== next.id), next].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+    );
+    setWorkLinkEditorOpen(false);
+    setWorkLinkMessage(`Saved ${next.name}.`);
+    showSaveToast(`${next.name} was saved to Apps.`, "success");
+  }
+
+  function deleteWorkLink(link: WorkLinkRecord) {
+    if (!window.confirm(`Delete ${link.name} from Apps?`)) return;
+    setWorkLinks((current) => current.filter((item) => item.id !== link.id));
+    setWorkLinkEditorOpen(false);
+    setWorkLinkMessage(`Deleted ${link.name}.`);
+  }
+
+  function uploadWorkLinkLogo(file?: File) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setWorkLinkMessage("Choose an image file for the logo.");
+      return;
+    }
+    if (file.size > 700_000) {
+      setWorkLinkMessage("Logo image is too large. Use an image under 700 KB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setWorkLinkDraft((current) => ({
+        ...current,
+        logoUrl: String(reader.result || ""),
+      }));
+      setWorkLinkMessage("Logo loaded. Save the Work Link to keep it.");
+    };
+    reader.onerror = () => setWorkLinkMessage("Logo could not be read.");
+    reader.readAsDataURL(file);
+  }
+
+  function calculateExpression(value = calculatorValue) {
+    const clean = value.trim();
+    if (!clean) {
+      setCalculatorResult("0");
+      return;
+    }
+    if (!/^[0-9+\-*/().%\s]+$/.test(clean)) {
+      setCalculatorResult("Invalid");
+      return;
+    }
+    try {
+      const result = Function(`"use strict"; return (${clean});`)();
+      setCalculatorResult(
+        typeof result === "number" && Number.isFinite(result)
+          ? String(Math.round((result + Number.EPSILON) * 1e10) / 1e10)
+          : "Invalid",
+      );
+    } catch {
+      setCalculatorResult("Invalid");
+    }
+  }
+
+  function calculatorKey(value: string) {
+    if (value === "C") {
+      setCalculatorValue("");
+      setCalculatorResult("0");
+      return;
+    }
+    if (value === "⌫") {
+      setCalculatorValue((current) => current.slice(0, -1));
+      return;
+    }
+    if (value === "=") {
+      calculateExpression();
+      return;
+    }
+    setCalculatorValue((current) => `${current}${value}`);
+  }
+
+  const workPlanDays: WorkPlanDay[] = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+  ];
+
+  const workPlanTimeOptions = Array.from({ length: 96 }, (_, index) => {
+    const hour = Math.floor(index / 4);
+    const minute = (index % 4) * 15;
+    const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+    const displayHour = hour % 12 || 12;
+    const meridiem = hour < 12 ? "AM" : "PM";
+    return {
+      value,
+      label: `${displayHour}:${String(minute).padStart(2, "0")} ${meridiem}`,
+    };
+  });
+
+  function minutesLabel(minutes: number) {
+    const safe = Math.max(0, Math.round(minutes));
+    const hours = Math.floor(safe / 60);
+    const mins = safe % 60;
+    if (!hours) return `${mins}m`;
+    if (!mins) return `${hours}h`;
+    return `${hours}h ${mins}m`;
+  }
+
+  function formatPlannerTime(value: string) {
+    const match = /^(\d{2}):(\d{2})$/.exec(value);
+    if (!match) return value;
+
+    const hour24 = Number(match[1]);
+    const minute = match[2];
+    const hour12 = hour24 % 12 || 12;
+    const meridiem = hour24 < 12 ? "AM" : "PM";
+
+    return `${hour12}:${minute} ${meridiem}`;
+  }
+
+  function normalizePlannerText(value: string) {
+    return value
+      .toLowerCase()
+      .replace(/[–—]/g, "-")
+      .replace(/[^a-z0-9./&+\-\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function parseTaskMinutes(value: string) {
+    const text = normalizePlannerText(value);
+    let total = 0;
+    let foundDuration = false;
+
+    for (const match of text.matchAll(
+      /(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)\b/g,
+    )) {
+      total += Number(match[1]) * 60;
+      foundDuration = true;
+    }
+    for (const match of text.matchAll(
+      /(\d+)\s*(?:m|min|mins|minute|minutes)\b/g,
+    )) {
+      total += Number(match[1]);
+      foundDuration = true;
+    }
+
+    const clockMatch = text.match(/\b(\d{1,2}):(\d{2})\b/);
+    if (!foundDuration && clockMatch) {
+      total = Number(clockMatch[1]) * 60 + Number(clockMatch[2]);
+      foundDuration = true;
+    }
+
+    if (foundDuration) return Math.max(15, Math.round(total));
+
+    const numeric = Number(text);
+    return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : 60;
+  }
+
+  function inferTaskDay(title: string, category: string): WorkPlanDay | "Auto" {
+    const text = normalizePlannerText(`${title} ${category}`);
+    const explicit = workPlanDays.find((day) =>
+      new RegExp(`\\b${day.toLowerCase()}\\b`).test(text),
+    );
+    if (explicit) return explicit;
+    if (
+      /weekend cleanup|cleanup after weekend|prep for week|prepare for week/.test(
+        text,
+      )
+    )
+      return "Monday";
+    if (
+      /prep for weekend|prepare for weekend|final cleanup|end of week/.test(
+        text,
+      )
+    )
+      return "Friday";
+    if (/landscap|irrigation|lawn|garden|weeding|prun/.test(text))
+      return "Tuesday";
+    if (/maintenance|inspect|service|repair|mechanical/.test(text))
+      return "Wednesday";
+    return "Auto";
+  }
+
+  function inferTaskCategory(title: string) {
+    const text = normalizePlannerText(title);
+    if (/cleanup|clean up|prep|organize|restock/.test(text))
+      return "Cleanup / Prep";
+    if (
+      /landscap|irrigation|lawn|garden|weed|prun|mow|edge|blow|plant/.test(text)
+    )
+      return "Landscaping";
+    if (
+      /repair|service|inspect|maintenance|mechanical|check|test|replace|paint/.test(
+        text,
+      )
+    )
+      return "Maintenance";
+    if (/admin|paperwork|update atlas|schedule|call|email|review/.test(text))
+      return "Administration";
+    if (/plan|planning|prepare list/.test(text)) return "Planning";
+    if (/walkthrough|walk through|inspection/.test(text)) return "Inspection";
+    return "General";
+  }
+
+  function inferTaskPriority(value: string): WorkOrderPriority {
+    const text = normalizePlannerText(value);
+    if (/\b(urgent|critical|emergency|highest|high)\b/.test(text))
+      return "High";
+    if (/\b(low|whenever|optional)\b/.test(text)) return "Low";
+    return "Medium";
+  }
+
+  function inferTaskLocation(value: string) {
+    const text = normalizePlannerText(value);
+    const exact = [...locations]
+      .sort((a, b) => b.name.length - a.name.length)
+      .find((item) => text.includes(normalizePlannerText(item.name)));
+    if (exact) return exact;
+
+    const words = new Set(text.split(" ").filter((word) => word.length >= 4));
+    let best: LocationRecord | undefined;
+    let bestScore = 0;
+    for (const location of locations) {
+      const locationWords = normalizePlannerText(location.name)
+        .split(" ")
+        .filter((word) => word.length >= 4);
+      const score = locationWords.filter((word) => words.has(word)).length;
+      if (score > bestScore) {
+        best = location;
+        bestScore = score;
+      }
+    }
+    return bestScore > 0 ? best : undefined;
+  }
+
+  function cleanImportedTaskTitle(value: string) {
+    const firstSegment = value.split("|")[0]?.trim() || value.trim();
+    return (
+      firstSegment
+        .replace(
+          /\b\d+(?:\.\d+)?\s*(?:h|hr|hrs|hour|hours|m|min|mins|minute|minutes)\b/gi,
+          " ",
+        )
+        .replace(/\b(?:monday|tuesday|wednesday|thursday|friday)\b/gi, " ")
+        .replace(
+          /\b(?:urgent|critical|emergency|highest|high|medium|normal|low)\s*(?:priority)?\b/gi,
+          " ",
+        )
+        .replace(/\s*[-–—,:;]+\s*$/g, "")
+        .replace(/\s+/g, " ")
+        .trim() || "Untitled task"
+    );
+  }
+
+  function nextWorkWeekDates() {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const day = today.getDay();
+    let delta = day === 0 ? 1 : day === 6 ? 2 : 1 - day;
+    if (day >= 1 && day <= 5) delta = 1 - day;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + delta);
+    return workPlanDays.reduce<Record<WorkPlanDay, string>>(
+      (acc, label, index) => {
+        const date = new Date(monday);
+        date.setDate(monday.getDate() + index);
+        acc[label] = date.toISOString().slice(0, 10);
+        return acc;
+      },
+      {} as Record<WorkPlanDay, string>,
+    );
+  }
+
+  function importWorkPlanTasks() {
+    const lines = workPlanInput
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (!lines.length) {
+      setWorkPlanMessage("Paste at least one task, one per line.");
+      return;
+    }
+
+    const next = lines.map((line, index) => {
+      const parts = line
+        .split("|")
+        .map((part) => part.trim())
+        .filter(Boolean);
+      const title =
+        cleanImportedTaskTitle(parts[0] || line) || `Task ${index + 1}`;
+      const durationSource =
+        parts.find((part) =>
+          /\d+(?:\.\d+)?\s*(?:h|hr|hrs|hour|hours|m|min|mins|minute|minutes)\b/i.test(
+            part,
+          ),
+        ) || line;
+      const categoryPart = parts.find((part) =>
+        /^(cleanup\s*\/\s*prep|cleanup|prep|landscaping|maintenance|administration|planning|inspection|general)$/i.test(
+          part,
+        ),
+      );
+      const category = categoryPart
+        ? categoryPart.replace(/\b\w/g, (letter) => letter.toUpperCase())
+        : inferTaskCategory(line);
+      const explicitDay = workPlanDays.find((day) =>
+        new RegExp(`\\b${day.toLowerCase()}\\b`, "i").test(line),
+      );
+      const location = inferTaskLocation(line);
+      const priority = inferTaskPriority(line);
+      const recognizedParts = new Set(
+        [durationSource, categoryPart, explicitDay]
+          .filter(Boolean)
+          .map((part) => String(part).toLowerCase()),
+      );
+      const notes = parts
+        .slice(1)
+        .filter((part) => !recognizedParts.has(part.toLowerCase()))
+        .filter(
+          (part) =>
+            !/\b(?:urgent|critical|emergency|highest|high|medium|normal|low)\s*(?:priority)?\b/i.test(
+              part,
+            ),
+        )
+        .join(" · ");
+
+      return {
+        id: uid("plan-task"),
+        title,
+        minutes: parseTaskMinutes(durationSource),
+        priority,
+        category,
+        locationId: location?.id || "general",
+        preferredDay: explicitDay || inferTaskDay(line, category),
+        locked: /\b(?:locked|fixed|must stay|do not move)\b/i.test(line),
+        recurring: /\b(?:recurring|repeat weekly|every week|weekly)\b/i.test(
+          line,
+        ),
+        fixedTime: line.match(/\b(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i)
+          ? (() => {
+              const match = line.match(
+                /\b(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i,
+              )!;
+              let hour = Number(match[1]);
+              const minute = Number(match[2] || 0);
+              const meridiem = match[3].toLowerCase();
+              if (meridiem === "pm" && hour !== 12) hour += 12;
+              if (meridiem === "am" && hour === 12) hour = 0;
+              return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+            })()
+          : "",
+        notes,
+      } satisfies WorkPlanTask;
+    });
+
+    setWorkPlanTasks(next);
+    setTaskMeta((current) => {
+      const updated = { ...current };
+      next.forEach((task) => {
+        if (!updated[task.id]) updated[task.id] = { status: "Open", dueDate: "", assignee: "Nick", createdAt: new Date().toISOString() };
+      });
+      return updated;
+    });
+    setWorkPlanMessage(
+      `Imported ${next.length} tasks. Review estimates, then build the week.`,
+    );
+  }
+
+  function buildWorkPlan() {
+    if (!workPlanTasks.length) {
+      setWorkPlanMessage("Import tasks before building the schedule.");
+      return;
+    }
+    const dates = nextWorkWeekDates();
+    const capacity = Math.max(60, Math.round(workPlanTargetHours * 60));
+    const used = workPlanDays.reduce<Record<WorkPlanDay, number>>(
+      (acc, day) => {
+        acc[day] = 0;
+        return acc;
+      },
+      {} as Record<WorkPlanDay, number>,
+    );
+
+    const dayPreference: Record<string, WorkPlanDay[]> = {
+      "Cleanup / Prep": [
+        "Monday",
+        "Friday",
+        "Wednesday",
+        "Tuesday",
+        "Thursday",
+      ],
+      Landscaping: ["Tuesday", "Thursday", "Wednesday", "Monday", "Friday"],
+      Maintenance: ["Wednesday", "Tuesday", "Thursday", "Monday", "Friday"],
+      Administration: ["Monday", "Friday", "Wednesday", "Tuesday", "Thursday"],
+      Planning: ["Monday", "Friday", "Wednesday", "Tuesday", "Thursday"],
+      Inspection: ["Monday", "Friday", "Wednesday", "Tuesday", "Thursday"],
+      General: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+    };
+
+    const lockedTasks = workPlanTasks.filter((task) => task.locked);
+    const flexibleTasks = workPlanTasks.filter((task) => !task.locked);
+    const conflicts: string[] = [];
+
+    const plannedLocked = lockedTasks.map((task) => {
+      const selected =
+        task.preferredDay !== "Auto"
+          ? task.preferredDay
+          : task.scheduledDay || inferTaskDay(task.title, task.category);
+      if (selected === "Auto") {
+        conflicts.push(`${task.title} is locked but has no fixed day.`);
+        return { ...task, scheduledDay: undefined, scheduledDate: undefined };
+      }
+      used[selected] += task.minutes;
+      if (used[selected] > 8 * 60)
+        conflicts.push(`${selected} has more than 8 hours of locked work.`);
+      return {
+        ...task,
+        scheduledDay: selected,
+        scheduledDate: dates[selected],
+      };
+    });
+
+    const priorityRank = { High: 0, Medium: 1, Low: 2 };
+    const sortedFlexible = [...flexibleTasks].sort(
+      (a, b) =>
+        priorityRank[a.priority] - priorityRank[b.priority] ||
+        a.locationId.localeCompare(b.locationId) ||
+        b.minutes - a.minutes,
+    );
+
+    const plannedFlexible = sortedFlexible.map((task) => {
+      const candidates =
+        task.preferredDay !== "Auto"
+          ? [
+              task.preferredDay,
+              ...workPlanDays.filter((day) => day !== task.preferredDay),
+            ]
+          : dayPreference[task.category] || dayPreference.General;
+      let selected = candidates.find(
+        (day) => used[day] + task.minutes <= capacity,
+      );
+      if (!selected)
+        selected = [...workPlanDays].sort((a, b) => used[a] - used[b])[0];
+      used[selected] += task.minutes;
+      return {
+        ...task,
+        scheduledDay: selected,
+        scheduledDate: dates[selected],
+      };
+    });
+
+    const plannedMap = new Map(
+      [...plannedLocked, ...plannedFlexible].map((task) => [task.id, task]),
+    );
+    const planned = workPlanTasks.map(
+      (task) => plannedMap.get(task.id) || task,
+    );
+    setWorkPlanTasks(planned);
+
+    const overloaded = workPlanDays.filter((day) => used[day] > capacity);
+    const messages = [
+      `Plan built with locked commitments first and about ${Math.max(0, 8 - workPlanTargetHours)} hour${8 - workPlanTargetHours === 1 ? "" : "s"} of daily buffer.`,
+      overloaded.length
+        ? `${overloaded.join(", ")} exceeds the ${workPlanTargetHours}-hour target.`
+        : "",
+      conflicts.length ? conflicts.join(" ") : "",
+    ].filter(Boolean);
+    setWorkPlanMessage(messages.join(" "));
+  }
+
+  async function approveWorkPlan() {
+    if (workPlanSaving) return;
+
+    const scheduled = workPlanTasks.filter(
+      (task) => task.scheduledDate && task.scheduledDay,
+    );
+
+    if (!scheduled.length) {
+      setWorkPlanMessage(
+        "Build My Week first, then approve the planned tasks.",
+      );
+      showSaveToast(
+        "Build My Week before adding tasks to the Calendar.",
+        "warning",
+      );
+      return;
+    }
+
+    setWorkPlanSaving(true);
+
+    try {
+      const byDay = workPlanDays.reduce<Record<WorkPlanDay, WorkPlanTask[]>>(
+        (acc, day) => {
+          acc[day] = scheduled.filter((task) => task.scheduledDay === day);
+          return acc;
+        },
+        {} as Record<WorkPlanDay, WorkPlanTask[]>,
+      );
+
+      const prepared: Array<{ taskId: string; record: CalendarItem }> = [];
+
+      for (const day of workPlanDays) {
+        let minuteOfDay = 8 * 60;
+
+        for (const task of byDay[day]) {
+          const automaticTime = `${String(
+            Math.floor(minuteOfDay / 60),
+          ).padStart(2, "0")}:${String(minuteOfDay % 60).padStart(2, "0")}`;
+
+          const taskTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(
+            task.fixedTime || "",
+          )
+            ? task.fixedTime!
+            : automaticTime;
+
+          const locationName =
+            locations.find((item) => item.id === task.locationId)?.name ||
+            "General";
+
+          const occurrenceCount = task.recurring ? 52 : 1;
+
+          for (
+            let occurrence = 0;
+            occurrence < occurrenceCount;
+            occurrence += 1
+          ) {
+            const occurrenceDate = new Date(`${task.scheduledDate}T12:00:00`);
+            occurrenceDate.setDate(occurrenceDate.getDate() + occurrence * 7);
+            const date = occurrenceDate.toISOString().slice(0, 10);
+
+            const displayTitle =
+              task.recurring && taskTime
+                ? `${task.title} · ${formatPlannerTime(taskTime)}`
+                : task.title;
+
+            const record = normalizeCalendar({
+              id:
+                occurrence === 0
+                  ? uid("planned")
+                  : uid(`planned-week-${occurrence}`),
+              title: displayTitle,
+              area: "Planned Work",
+              categoryLabel: "Planned Work",
+              date,
+              time: taskTime,
+              allDay: false,
+              repeat: "None",
+              reminder: "Morning of",
+              notes: [
+                `Estimated time: ${minutesLabel(task.minutes)}`,
+                `Priority: ${task.priority}`,
+                `Type: ${task.category}`,
+                `Location: ${locationName}`,
+                task.locked ? "Locked: Yes" : "",
+                task.recurring ? "Recurring weekly planner task" : "",
+                task.notes || "",
+              ]
+                .filter(Boolean)
+                .join("\n"),
+              linkedType: task.locationId !== "general" ? "Location" : "None",
+              linkedId: task.locationId !== "general" ? task.locationId : "",
+              linkedName: task.locationId !== "general" ? locationName : "",
+              completed: false,
+              status: "Scheduled",
+              source: "manual",
+            });
+
+            const duplicate = [
+              ...calendarItems,
+              ...prepared.map((item) => item.record),
+            ].some(
+              (item) =>
+                item.date === record.date &&
+                item.title.trim().toLowerCase() ===
+                  record.title.trim().toLowerCase(),
+            );
+
+            if (!duplicate) {
+              prepared.push({ taskId: task.id, record });
+            }
+          }
+
+          minuteOfDay += task.minutes + 10;
+        }
+      }
+
+      if (!prepared.length) {
+        setWorkPlanMessage(
+          "Those tasks already appear on the Calendar. No duplicates were added.",
+        );
+        showSaveToast("Those tasks are already on the Calendar.", "warning");
+        return;
+      }
+
+      const records = prepared.map((item) => item.record);
+      const approvedTaskIds = new Set(prepared.map((item) => item.taskId));
+      const firstRecord = records[0];
+      const nextCalendar = calendarItemsByIdentity([...records, ...calendarItems]);
+
+      // Save and verify browser persistence before removing imported tasks.
+      const savedLocally = saveStoredArray(
+        storageKeys.calendar[0],
+        nextCalendar,
+      );
+      setCalendarItems(nextCalendar);
+
+      setSelectedCalendarDate(firstRecord.date);
+      setSelectedCalendarId(firstRecord.id);
+      setCalendarCursor(calendarDateValue(firstRecord.date));
+      setCalendarDraft(firstRecord);
+
+      let failed = 0;
+      for (const record of records) {
+        const ok = await postAtlasRecord("calendar", {
+          ...record,
+          status: record.status || "Scheduled",
+        });
+        if (!ok) failed += 1;
+      }
+
+      const syncedToAtlas = failed === 0;
+
+      // Never discard imported tasks unless the Calendar is safely stored in
+      // this browser or every record reached Neon successfully.
+      if (savedLocally || syncedToAtlas) {
+        setWorkPlanInput("");
+        setWorkPlanTasks((current) =>
+          current.filter((task) => !approvedTaskIds.has(task.id)),
+        );
+      }
+
+      setScreen("calendar");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+
+      if (!savedLocally && !syncedToAtlas) {
+        setWorkPlanMessage(
+          "Calendar storage is full and Atlas sync failed. The imported tasks were kept so nothing is lost.",
+        );
+        showSaveToast(
+          "Calendar was not saved. Imported tasks were kept.",
+          "warning",
+        );
+      } else if (failed) {
+        setWorkPlanMessage(
+          `${records.length} item${records.length === 1 ? "" : "s"} saved on this device. ${failed} did not sync to Neon yet.`,
+        );
+        showSaveToast(
+          `Calendar saved here; ${failed} item${failed === 1 ? "" : "s"} need database sync.`,
+          "warning",
+        );
+      } else {
+        setWorkPlanMessage(
+          `${records.length} calendar item${records.length === 1 ? "" : "s"} added and synced successfully.`,
+        );
+        setDatabaseStatus("Calendar saved to Atlas.");
+        showSaveToast(
+          `${records.length} item${records.length === 1 ? "" : "s"} added to the Calendar.`,
+          "success",
+        );
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Calendar approval failed.";
+      setWorkPlanMessage(
+        `Planner could not finish: ${message}. Your imported tasks were kept unless they already appeared on the Calendar.`,
+      );
+      showSaveToast(`Planner error: ${message}`, "warning");
+    } finally {
+      setWorkPlanSaving(false);
+    }
+  }
+
+  function updateWorkPlanTask(taskId: string, patch: Partial<WorkPlanTask>) {
+    const updatedAt = new Date().toISOString();
+
+    setWorkPlanTasks((current) => {
+      const next = current.map((item) =>
+        item.id === taskId ? { ...item, ...patch } : item,
+      );
+      saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, next);
+      if (activePropertyId === "2000") {
+        saveStoredArray("atlas-tasks-v1", next);
+      }
+      return next;
+    });
+
+    setTaskMeta((current) => {
+      const base = current[taskId] || taskDetails(taskId);
+      const next = {
+        ...current,
+        [taskId]: {
+          ...base,
+          updatedAt,
+        },
+      };
+      try {
+        window.localStorage.setItem(
+          `atlas-task-meta-v1-${activePropertyId}`,
+          JSON.stringify(next),
+        );
+        if (activePropertyId === "2000") {
+          window.localStorage.setItem(
+            "atlas-task-meta-v1",
+            JSON.stringify(next),
+          );
+        }
+      } catch {}
+      return next;
+    });
+  }
+
+  function cyclePlannerPriority(priority: WorkOrderPriority) {
+    if (priority === "High") return "Medium" as WorkOrderPriority;
+    if (priority === "Medium") return "Low" as WorkOrderPriority;
+    return "High" as WorkOrderPriority;
+  }
+
+  function cyclePlannerLocation(locationId: string) {
+    const ids = ["general", ...locations.map((location) => location.id)];
+    const currentIndex = Math.max(0, ids.indexOf(locationId));
+    return ids[(currentIndex + 1) % ids.length];
+  }
+
+  function cyclePlannerDay(day: WorkPlanDay | "Auto" | undefined) {
+    const days: Array<WorkPlanDay | "Auto"> = ["Auto", ...workPlanDays];
+    const currentIndex = Math.max(0, days.indexOf(day || "Auto"));
+    return days[(currentIndex + 1) % days.length];
+  }
+
+  function shiftPlannerTime(current: string | undefined, minutes: number) {
+    const base = /^([01]\d|2[0-3]):[0-5]\d$/.test(current || "")
+      ? current!
+      : "08:00";
+    const [hour, minute] = base.split(":").map(Number);
+    const total = Math.max(
+      0,
+      Math.min(23 * 60 + 45, hour * 60 + minute + minutes),
+    );
+    return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(
+      total % 60,
+    ).padStart(2, "0")}`;
+  }
+
+  function plannerLocationName(locationId: string) {
+    return (
+      locations.find((location) => location.id === locationId)?.name ||
+      "General"
+    );
+  }
+
+  function calendarDeleteTombstoneKey(propertyId = activePropertyId) {
+    return `atlas-calendar-delete-tombstones-v1-${propertyId}`;
+  }
+
+  function calendarManualOverrideKey(propertyId = activePropertyId) {
+    return `atlas-calendar-manual-overrides-v1-${propertyId}`;
+  }
+
+  function calendarSourceKey(
+    linkedType: unknown,
+    linkedId: unknown,
+  ) {
+    const type = String(linkedType || "").trim().toLowerCase();
+    const id = String(linkedId || "").trim();
+    return type && id ? `link:${type}:${id}` : "";
+  }
+
+  function readCalendarDeleteTombstones(propertyId = activePropertyId) {
+    return new Set(
+      readStoredArray<string>([calendarDeleteTombstoneKey(propertyId)], []).map(String),
+    );
+  }
+
+  function rememberCalendarDeletion(record?: Partial<AtlasCalendarItem> | null) {
+    if (!record) return;
+    const current = readCalendarDeleteTombstones();
+    const id = String(record.id || "").trim();
+    const linkKey = calendarSourceKey(record.linkedType, record.linkedId);
+    if (id) current.add(`id:${id}`);
+    if (linkKey) current.add(linkKey);
+    saveStoredArray(calendarDeleteTombstoneKey(), Array.from(current));
+  }
+
+  function clearCalendarDeletion(record?: Partial<AtlasCalendarItem> | null) {
+    if (!record) return;
+    const current = readCalendarDeleteTombstones();
+    const id = String(record.id || "").trim();
+    const linkKey = calendarSourceKey(record.linkedType, record.linkedId);
+    let changed = false;
+    if (id) changed = current.delete(`id:${id}`) || changed;
+    if (linkKey) changed = current.delete(linkKey) || changed;
+    if (changed) saveStoredArray(calendarDeleteTombstoneKey(), Array.from(current));
+  }
+
+  function isCalendarRecordDeleted(record?: Partial<AtlasCalendarItem> | null) {
+    if (!record) return false;
+    const tombstones = readCalendarDeleteTombstones();
+    const id = String(record.id || "").trim();
+    const linkKey = calendarSourceKey(record.linkedType, record.linkedId);
+    return Boolean(
+      (id && tombstones.has(`id:${id}`)) ||
+      (linkKey && tombstones.has(linkKey))
+    );
+  }
+
+  function rememberCalendarManualOverride(id: string) {
+    const cleanId = String(id || "").trim();
+    if (!cleanId) return;
+    const current = new Set(
+      readStoredArray<string>([calendarManualOverrideKey()], []).map(String),
+    );
+    current.add(cleanId);
+    saveStoredArray(calendarManualOverrideKey(), Array.from(current));
+  }
+
+  function isCalendarManualOverride(id: string) {
+    const cleanId = String(id || "").trim();
+    if (!cleanId) return false;
+    return readStoredArray<string>([calendarManualOverrideKey()], [])
+      .map(String)
+      .includes(cleanId);
+  }
+
+  function workOrderTombstoneKey(propertyId = activePropertyId) {
+    return `atlas-work-order-tombstones-v1-${propertyId}`;
+  }
+
+  function readWorkOrderTombstones(propertyId = activePropertyId) {
+    return new Set(
+      readStoredArray<string>([workOrderTombstoneKey(propertyId)], []).map(String),
+    );
+  }
+
+  function addWorkOrderTombstone(id: string) {
+    const cleanId = String(id || "").trim();
+    if (!cleanId) return;
+    const current = readWorkOrderTombstones();
+    current.add(cleanId);
+    saveStoredArray(workOrderTombstoneKey(), Array.from(current));
+  }
+
+  function clearWorkOrderTombstone(id: string) {
+    const cleanId = String(id || "").trim();
+    if (!cleanId) return;
+    const current = readWorkOrderTombstones();
+    if (!current.delete(cleanId)) return;
+    saveStoredArray(workOrderTombstoneKey(), Array.from(current));
+  }
+
+  function taskTombstoneKey(propertyId = activePropertyId) {
+    return `atlas-task-tombstones-v1-${propertyId}`;
+  }
+
+  function readTaskTombstones(propertyId = activePropertyId) {
+    return new Set(
+      readStoredArray<string>([taskTombstoneKey(propertyId)], []).map(String),
+    );
+  }
+
+  function addTaskTombstone(taskId: string) {
+    if (!taskId) return;
+    const current = readTaskTombstones();
+    current.add(String(taskId));
+    saveStoredArray(taskTombstoneKey(), Array.from(current));
+  }
+
+  function clearTaskTombstone(taskId: string) {
+    if (!taskId) return;
+    const current = readTaskTombstones();
+    if (!current.delete(String(taskId))) return;
+    saveStoredArray(taskTombstoneKey(), Array.from(current));
+  }
+
+  function normalizedTaskIdentity(
+    task: WorkPlanTask,
+    meta: AtlasTaskMeta = taskDetails(task.id),
+  ) {
+    const title = String(task.title || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+    const assignee = String(meta.assignee || "Unassigned")
+      .trim()
+      .toLowerCase();
+    const dueDate = String(meta.dueDate || "").slice(0, 10);
+    const listId = String(meta.listId || "").trim().toLowerCase();
+    const recurrence = task.recurring
+      ? `${Number(meta.recurrenceInterval || 1)}-${String(meta.recurrenceUnit || "Weeks").toLowerCase()}`
+      : "one-time";
+    return [title, assignee, dueDate, listId, recurrence].join("||");
+  }
+
+  function dedupeTaskState(
+    tasks: WorkPlanTask[],
+    metaMap: Record<string, AtlasTaskMeta>,
+  ) {
+    const tombstones = readTaskTombstones();
+    const groups = new Map<string, WorkPlanTask[]>();
+
+    tasks
+      .filter((task) => !tombstones.has(String(task.id)))
+      .forEach((task) => {
+        const meta = metaMap[task.id] || taskDetails(task.id);
+        const key = normalizedTaskIdentity(task, meta);
+        groups.set(key, [...(groups.get(key) || []), task]);
+      });
+
+    const duplicateIds = new Set<string>();
+    const kept: WorkPlanTask[] = [];
+
+    for (const group of groups.values()) {
+      if (group.length === 1) {
+        kept.push(group[0]);
+        continue;
+      }
+
+      const ranked = [...group].sort((a, b) => {
+        const am = metaMap[a.id] || taskDetails(a.id);
+        const bm = metaMap[b.id] || taskDetails(b.id);
+
+        const aUpdated = String(
+          am.updatedAt || am.completedAt || am.createdAt || "",
+        );
+        const bUpdated = String(
+          bm.updatedAt || bm.completedAt || bm.createdAt || "",
+        );
+
+        if (aUpdated !== bUpdated) return bUpdated.localeCompare(aUpdated);
+
+        const aCompleted = am.status === "Completed" ? 1 : 0;
+        const bCompleted = bm.status === "Completed" ? 1 : 0;
+        if (aCompleted !== bCompleted) return bCompleted - aCompleted;
+
+        return String(a.id).localeCompare(String(b.id));
+      });
+
+      kept.push(ranked[0]);
+      ranked.slice(1).forEach((task) => duplicateIds.add(String(task.id)));
+    }
+
+    const nextMeta = { ...metaMap };
+    duplicateIds.forEach((id) => {
+      delete nextMeta[id];
+      addTaskTombstone(id);
+    });
+
+    return {
+      tasks: kept,
+      meta: nextMeta,
+      duplicateIds,
+    };
+  }
+
+  function removeExactDuplicateTasks() {
+    const cleaned = dedupeTaskState(workPlanTasks, taskMeta);
+    if (!cleaned.duplicateIds.size) {
+      showSaveToast("No duplicate tasks found.");
+      return;
+    }
+
+    setWorkPlanTasks(cleaned.tasks);
+    setTaskMeta(cleaned.meta);
+    saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, cleaned.tasks);
+    if (activePropertyId === "2000") {
+      saveStoredArray("atlas-tasks-v1", cleaned.tasks);
+    }
+    try {
+      window.localStorage.setItem(
+        `atlas-task-meta-v1-${activePropertyId}`,
+        JSON.stringify(cleaned.meta),
+      );
+      if (activePropertyId === "2000") {
+        window.localStorage.setItem(
+          "atlas-task-meta-v1",
+          JSON.stringify(cleaned.meta),
+        );
+      }
+    } catch {}
+
+    cleaned.duplicateIds.forEach((id) => {
+      void deleteOperationalRecord("tasks" as AtlasTable, id);
+    });
+
+    showSaveToast(
+      `Removed ${cleaned.duplicateIds.size} duplicate task${cleaned.duplicateIds.size === 1 ? "" : "s"}.`,
+    );
+  }
+
+  function taskDetails(taskId: string): AtlasTaskMeta {
+    return taskMeta[taskId] || {
+      status: "Open",
+      dueDate: "",
+      assignee: "Unassigned",
+      createdAt: new Date().toISOString(),
+      recurrenceInterval: 1,
+      recurrenceUnit: "Weeks",
+      recurrenceEndDate: "",
+      completionHistory: [],
+      season: "Year-Round",
+      weatherDependency: "None",
+      flexibleTime: true,
+      skippable: true,
+    };
+  }
+
+  function syncTaskProblemToInbox(taskId: string, problemText: string) {
+    const description = String(problemText || "").trim();
+    if (!description) return;
+
+    const task = workPlanTasks.find((item) => item.id === taskId);
+    if (!task) return;
+
+    const submittedBy = String(currentAtlasUser?.name || "Team Member").trim() || "Team Member";
+    const submittedById = String(currentAtlasUser?.id || currentAtlasUser?.email || submittedBy).trim().toLowerCase();
+    const problemKey = [
+      activePropertyId,
+      taskId,
+      description.toLowerCase().replace(/\s+/g, " "),
+    ].join("|");
+
+    const alreadyWaiting = inboxItems.some((item) => {
+      if (item.status === "Archived") return false;
+      const data = (item.extractedData || {}) as Record<string, unknown>;
+      return String(data.taskProblemKey || "") === problemKey;
+    });
+    if (alreadyWaiting) return;
+
+    const meta = taskDetails(taskId);
+    const reportLocationName = task.locationId ? locationName(task.locationId) : "General property";
+
+    void fetch("/api/atlas-inbox", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: `Problem found — ${task.title}`,
+        intakeType: "Work Order Issue",
+        status: "Needs Review",
+        source: "Employee Task Problem",
+        notes: description,
+        pastedText: "",
+        files: meta.photos || [],
+        targetType: task.locationId ? "Location" : "General",
+        targetId: task.locationId || "",
+        targetName: reportLocationName,
+        proposedAction: "Attach to Existing",
+        extractedData: {
+          propertyId: activePropertyId,
+          reportType: "Task Problem",
+          submittedBy,
+          submittedById,
+          taskId,
+          taskTitle: task.title,
+          locationId: task.locationId || "",
+          locationName: reportLocationName,
+          taskProblemKey: problemKey,
+          suggestedAction: "Review / Create Task or Work Order",
+        },
+      }),
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.ok === false || !payload?.item) return;
+        const saved = payload.item as InboxItemRecord;
+        setInboxItems((current) => [
+          saved,
+          ...current.filter((item) => item.id !== saved.id),
+        ]);
+      })
+      .catch(() => {
+        // The task problem remains saved on the task even if Inbox delivery retries later.
+      });
+  }
+
+  function updateTaskDetails(taskId: string, patch: Partial<AtlasTaskMeta>) {
+    if (typeof patch.problemFlag === "string" && patch.problemFlag.trim()) {
+      syncTaskProblemToInbox(taskId, patch.problemFlag);
+    }
+
+    setTaskMeta((current) => {
+      const base = current[taskId] || taskDetails(taskId);
+      const updated = {
+        ...base,
+        ...patch,
+        projectIds: patch.projectIds ?? (patch.projectId !== undefined ? (patch.projectId ? Array.from(new Set([...(base.projectIds || []), patch.projectId])) : base.projectIds) : base.projectIds),
+        workOrderIds: patch.workOrderIds ?? (patch.workOrderId !== undefined ? (patch.workOrderId ? Array.from(new Set([...(base.workOrderIds || []), patch.workOrderId])) : base.workOrderIds) : base.workOrderIds),
+        assetIds: patch.assetIds ?? (patch.assetId !== undefined ? (patch.assetId ? Array.from(new Set([...(base.assetIds || []), patch.assetId])) : base.assetIds) : base.assetIds),
+        vendorIds: patch.vendorIds ?? (patch.vendorId !== undefined ? (patch.vendorId ? Array.from(new Set([...(base.vendorIds || []), patch.vendorId])) : base.vendorIds) : base.vendorIds),
+        procedureIds: patch.procedureIds ?? (patch.procedureId !== undefined ? (patch.procedureId ? Array.from(new Set([...(base.procedureIds || []), patch.procedureId])) : base.procedureIds) : base.procedureIds),
+        contactIds: patch.contactIds ?? (patch.contactId !== undefined ? (patch.contactId ? Array.from(new Set([...(base.contactIds || []), patch.contactId])) : base.contactIds) : base.contactIds),
+        updatedAt: new Date().toISOString(),
+      };
+      const next = { ...current, [taskId]: updated };
+      const taskRecord = workPlanTasks.find((item) => item.id === taskId);
+      if (taskRecord) {
+        void postAtlasRecord("tasks" as AtlasTable, {
+          ...taskRecord,
+          ...updated,
+          taskMeta: updated,
+          propertyId: activePropertyId,
+          updatedAt: updated.updatedAt,
+        });
+      }
+      try {
+        window.localStorage.setItem(
+          `atlas-task-meta-v1-${activePropertyId}`,
+          JSON.stringify(next),
+        );
+        if (activePropertyId === "2000") {
+          window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
+        }
+      } catch {
+        // The normal persistence effect will retry when browser storage is available.
+      }
+      return next;
+    });
+  }
+
+  function assignTaskTo(task: WorkPlanTask, person: "Addison" | "Pat") {
+    const meta = taskDetails(task.id);
+    const allFuture = task.recurring && window.confirm(`Assign all future occurrences of “${task.title}” to ${person}?\n\nChoose Cancel for this occurrence only.`);
+    const useToday = window.confirm(`Assign “${task.title}” to ${person} for today?\n\nChoose Cancel to keep its current date.`);
+    updateTaskDetails(task.id, { assignee: person, status: "Open", dueDate: useToday ? todayISO() : meta.dueDate, assignmentScope: allFuture ? "All future occurrences" : "This occurrence", needsReview: false });
+    recordAtlasAudit("Task reassigned", `${task.title} → ${person}`);
+    showSaveToast(`Assigned to ${person}.`);
+  }
+
+  function advanceRecurringTask(
+    task: WorkPlanTask,
+    meta: AtlasTaskMeta,
+    completionNote = "",
+  ) {
+    const completedDate = todayISO();
+    const cleanCompletionNote = completionNote.trim();
+    const completedAt = new Date().toISOString();
+    const completionNotes = cleanCompletionNote
+      ? [
+          {
+            id: uid("task-completion-note"),
+            completedAt,
+            note: cleanCompletionNote,
+          },
+          ...(meta.completionNotes || []),
+        ]
+      : meta.completionNotes || [];
+    const interval = Math.max(1, Number(meta.recurrenceInterval || 1));
+    const unit = meta.recurrenceUnit || "Weeks";
+    // The next occurrence starts from the actual completion date. This keeps
+    // overdue recurring maintenance from immediately remaining overdue after
+    // it is completed.
+    const nextDate = nextRecurrenceDate(completedDate, interval, unit);
+    const recurrenceEnded = Boolean(meta.recurrenceEndDate && nextDate > meta.recurrenceEndDate);
+    const history = Array.from(new Set([...(meta.completionHistory || []), completedDate])).sort();
+
+    if (recurrenceEnded) {
+      updateTaskDetails(task.id, {
+        status: "Completed",
+        completedAt,
+        lastCompletedDate: completedDate,
+        completionHistory: history,
+        lastCompletionNote: cleanCompletionNote || meta.lastCompletionNote || "",
+        completionNotes,
+      });
+      recordConnectedProjectCompletion({
+        projectId: meta.projectId,
+        title: task.title,
+        source: "Task",
+        sourceId: task.id,
+        detail: [
+          meta.assignee ? `Assigned to ${meta.assignee}.` : "",
+          "Recurring schedule ended.",
+          cleanCompletionNote ? `Work done: ${cleanCompletionNote}` : "",
+        ].filter(Boolean).join(" "),
+      });
+      if (meta.routineTaskId && meta.routineDate) void toggleLinkedRoutineCompletion(meta);
+      recordAtlasAudit(
+        "Task completed",
+        `${task.title} · ${meta.assignee || "Unassigned"} · recurring schedule ended`,
+      );
+      showSaveToast(`${task.title} completed. Its recurring schedule has ended.`);
+      return;
+    }
+
+    updateTaskDetails(task.id, {
+      status: "Open",
+      dueDate: nextDate,
+      completedAt: undefined,
+      lastCompletedDate: completedDate,
+      completionHistory: history,
+      lastCompletionNote: cleanCompletionNote || meta.lastCompletionNote || "",
+      completionNotes,
+      assignee: meta.assignmentScope === "This occurrence" ? "Nick" : meta.assignee,
+      assignmentScope: meta.assignmentScope === "This occurrence" ? undefined : meta.assignmentScope,
+      needsReview: meta.assignee === "Addison" || meta.assignee === "Pat",
+    });
+    recordVehicleCleaningFromTask(task, meta, completedDate, nextDate);
+    recordConnectedProjectCompletion({
+      projectId: meta.projectId,
+      title: task.title,
+      source: "Task",
+      sourceId: task.id,
+      detail: [
+        meta.assignee ? `Assigned to ${meta.assignee}.` : "",
+        `Next due ${formatDate(nextDate)}.`,
+        cleanCompletionNote ? `Work done: ${cleanCompletionNote}` : "",
+      ].filter(Boolean).join(" "),
+    });
+    if (meta.routineTaskId && meta.routineDate) void toggleLinkedRoutineCompletion(meta);
+    recordAtlasAudit(
+      "Task completed",
+      `${task.title} · ${meta.assignee || "Unassigned"} · next due ${formatDate(nextDate)}`,
+    );
+    showSaveToast(`${task.title} completed. Next due ${formatDate(nextDate)}.`);
+  }
+
+  function completeAtlasTask(task: WorkPlanTask, completionNoteInput?: string) {
+    const meta = taskDetails(task.id);
+    let completionNote = String(completionNoteInput ?? "").trim();
+    if (completionNoteInput === undefined) {
+      const prompted = window.prompt(
+        `Work done / completion note for “${task.title}” (optional):`,
+        "",
+      );
+      if (prompted === null) return;
+      completionNote = prompted.trim();
+    }
+    if (meta.dueDate && String(meta.dueDate).slice(0, 10) > todayISO()) {
+      showSaveToast(`This task is due ${formatDate(meta.dueDate)} and cannot be completed early.`, "warning");
+      return;
+    }
+    if (task.recurring) {
+      advanceRecurringTask(task, meta, completionNote);
+      return;
+    }
+    const completedAt = new Date().toISOString();
+    const completionNotes = completionNote
+      ? [
+          {
+            id: uid("task-completion-note"),
+            completedAt,
+            note: completionNote,
+          },
+          ...(meta.completionNotes || []),
+        ]
+      : meta.completionNotes || [];
+    updateTaskDetails(task.id, {
+      status: "Completed",
+      completedAt,
+      lastCompletedDate: todayISO(),
+      completionHistory: Array.from(new Set([...(meta.completionHistory || []), todayISO()])).sort(),
+      lastCompletionNote: completionNote || meta.lastCompletionNote || "",
+      completionNotes,
+      needsReview: meta.assignee === "Addison" || meta.assignee === "Pat",
+    });
+    if (meta.vehicleId || /^clean\s+/i.test(task.title)) {
+      const interval = Math.max(1, Number(meta.recurrenceInterval || 7));
+      const unit = meta.recurrenceUnit || "Days";
+      recordVehicleCleaningFromTask(
+        task,
+        meta,
+        todayISO(),
+        nextRecurrenceDate(todayISO(), interval, unit),
+      );
+    }
+    recordConnectedProjectCompletion({
+      projectId: meta.projectId,
+      title: task.title,
+      source: "Task",
+      sourceId: task.id,
+      detail: [
+        meta.assignee ? `Assigned to ${meta.assignee}.` : "",
+        completionNote ? `Work done: ${completionNote}` : "",
+      ].filter(Boolean).join(" "),
+    });
+    if (meta.routineTaskId && meta.routineDate) void toggleLinkedRoutineCompletion(meta);
+    recordAtlasAudit(
+      "Task completed",
+      `${task.title} · ${meta.assignee || "Unassigned"}${completionNote ? ` · ${completionNote}` : ""}`,
+    );
+    showSaveToast(`${task.title} completed.`);
+  }
+
+  async function toggleLinkedRoutineCompletion(meta: AtlasTaskMeta) {
+    if (!meta.routineTaskId || !meta.routineDate) return;
+    try {
+      await fetch("/api/atlas-routines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle-task", propertyId: activePropertyId, date: meta.routineDate, taskId: meta.routineTaskId }),
+      });
+    } catch {
+      showSaveToast("Task saved; routine checkoff will retry when Atlas reconnects.", "warning");
+    }
+  }
+
+  function skipRecurringTask(task: WorkPlanTask) {
+    const meta = taskDetails(task.id);
+    if (!task.recurring || meta.skippable === false) return;
+    const interval = Math.max(1, Number(meta.recurrenceInterval || 1));
+    const unit = meta.recurrenceUnit || "Weeks";
+    const nextDate = nextRecurrenceDate(meta.dueDate || todayISO(), interval, unit);
+    updateTaskDetails(task.id, { dueDate: nextDate, status: "Open" });
+    showSaveToast(`${task.title} skipped. Next due ${formatDate(nextDate)}.`);
+  }
+
+  function focusRapidTaskInput(clear = true) {
+    if (clear) setNewTaskTitle("");
+    requestAnimationFrame(() => {
+      rapidTaskInputRef.current?.focus();
+    });
+  }
+
+  function addAtlasTask(title = newTaskTitle, continueRapidEntry = false) {
+    const clean = title.trim();
+    if (!clean) {
+      if (continueRapidEntry) focusRapidTaskInput(false);
+      return "";
+    }
+
+    // Always resolve the date at the exact moment the task is created.
+    // New tasks must never inherit a previously selected task's date or state.
+    const createdNow = new Date();
+    const createdDate = localISODate(createdNow);
+    const createdAt = createdNow.toISOString();
+
+    const task: WorkPlanTask = {
+      id: uid("task"),
+      title: clean,
+      minutes: 30,
+      priority: "Medium",
+      category: inferTaskCategory(clean),
+      locationId: "general",
+      preferredDay: inferTaskDay(clean, inferTaskCategory(clean)),
+      locked: false,
+      recurring: false,
+      fixedTime: "",
+      notes: "",
+    };
+
+    const cleanMeta: AtlasTaskMeta = {
+      status: "Open",
+      dueDate: createdDate,
+      assignee: "Nick",
+      createdAt,
+      completedAt: undefined,
+      notes: "",
+      instructions: "",
+      addisonNote: "",
+      problemFlag: "",
+      recurrenceInterval: 1,
+      recurrenceUnit: "Weeks",
+      recurrenceEndDate: "",
+      lastCompletedDate: "",
+      completionHistory: [],
+      season: "Year-Round",
+      weatherDependency: "None",
+      flexibleTime: true,
+      skippable: true,
+      assignmentScope: "This occurrence",
+      needsReview: false,
+      updatedAt: createdAt,
+    };
+
+    clearTaskTombstone(task.id);
+    setWorkPlanTasks((current) => [task, ...current]);
+    setTaskMeta((current) => ({
+      ...current,
+      [task.id]: cleanMeta,
+    }));
+
+    // A newly-created task is today's work by default, regardless of which
+    // dated task was selected before creation.
+    setTaskListFilter("today");
+    setSelectedTaskId(task.id);
+    setNewTaskTitle("");
+    recordAtlasAudit("Task created", `${task.title} · ${formatDate(createdDate)} · Nick`);
+    showSaveToast(`Task added for ${formatDate(createdDate)}.`);
+
+    if (continueRapidEntry) {
+      requestAnimationFrame(() => {
+        rapidTaskInputRef.current?.focus();
+      });
+    }
+
+    return task.id;
+  }
+
+  function deleteAtlasTask(taskId: string) {
+    const task = workPlanTasks.find((item) => item.id === taskId);
+    if (!task) return;
+
+    addTaskTombstone(taskId);
+    const meta = taskDetails(taskId);
+    setTaskUndo({ task, meta });
+    if (taskUndoTimerRef.current !== null) window.clearTimeout(taskUndoTimerRef.current);
+    taskUndoTimerRef.current = window.setTimeout(() => {
+      setTaskUndo(null);
+      taskUndoTimerRef.current = null;
+    }, 8000);
+
+    // Always remove from the latest state. Using the render-time arrays here
+    // caused consecutive deletes to overwrite one another and made earlier
+    // deletions briefly reappear.
+    setWorkPlanTasks((current) => {
+      const next = current.filter((item) => item.id !== taskId);
+      saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, next);
+      if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", next);
+      return next;
+    });
+    setTaskMeta((current) => {
+      const next = { ...current };
+      delete next[taskId];
+      try {
+        window.localStorage.setItem(
+          `atlas-task-meta-v1-${activePropertyId}`,
+          JSON.stringify(next),
+        );
+        if (activePropertyId === "2000") {
+          window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
+        }
+      } catch {
+        // The normal persistence effect will retry when browser storage is available.
+      }
+      return next;
+    });
+
+    setSelectedTaskId("");
+    void deleteOperationalRecord("tasks" as AtlasTable, taskId);
+    recordAtlasAudit("Task deleted", task.title);
+    showSaveToast("Task deleted — Atlas will keep it deleted even if sync has to retry.");
+  }
+
+  function moveAtlasTaskToDate(task: WorkPlanTask, value: string) {
+    const dueDate = String(value || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+      showSaveToast("Choose a valid task date.", "warning");
+      return;
+    }
+
+    const parsedDate = new Date(`${dueDate}T12:00:00`);
+    if (Number.isNaN(parsedDate.getTime())) {
+      showSaveToast("Choose a valid task date.", "warning");
+      return;
+    }
+
+    const weekdayIndex = parsedDate.getDay();
+    const preferredDay: WorkPlanTask["preferredDay"] =
+      weekdayIndex >= 1 && weekdayIndex <= 5
+        ? workPlanDays[weekdayIndex - 1]
+        : "Auto";
+    const updatedAt = new Date().toISOString();
+    const updatedTask: WorkPlanTask = {
+      ...task,
+      preferredDay,
+      scheduledDay: preferredDay === "Auto" ? undefined : preferredDay,
+      scheduledDate: dueDate,
+    };
+    const updatedMeta: AtlasTaskMeta = {
+      ...taskDetails(task.id),
+      dueDate,
+      status: "Open",
+      completedAt: undefined,
+      updatedAt,
+    };
+
+    setWorkPlanTasks((current) => {
+      const next = current.map((item) =>
+        item.id === task.id ? updatedTask : item,
+      );
+      saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, next);
+      if (activePropertyId === "2000") {
+        saveStoredArray("atlas-tasks-v1", next);
+      }
+      return next;
+    });
+
+    setTaskMeta((current) => {
+      const next = { ...current, [task.id]: updatedMeta };
+      try {
+        window.localStorage.setItem(
+          `atlas-task-meta-v1-${activePropertyId}`,
+          JSON.stringify(next),
+        );
+        if (activePropertyId === "2000") {
+          window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
+        }
+      } catch {}
+      return next;
+    });
+
+    void postAtlasRecord("tasks" as AtlasTable, {
+      ...updatedTask,
+      ...updatedMeta,
+      taskMeta: updatedMeta,
+      propertyId: activePropertyId,
+      updatedAt,
+    });
+
+    recordAtlasAudit("Task moved", `${task.title} → ${dueDate}`);
+    showSaveToast(`${task.title} moved to ${formatDate(dueDate)}.`);
+  }
+
+  function moveAtlasTaskToToday(task: WorkPlanTask) {
+    moveAtlasTaskToDate(task, todayISO());
+  }
+
+  function moveAtlasTaskToTomorrow(task: WorkPlanTask) {
+    moveAtlasTaskToDate(task, addDays(todayISO(), 1));
+  }
+
+  function addQuickTaskNote(task: WorkPlanTask) {
+    const current = taskDetails(task.id);
+    const note = window.prompt("Add a task note", "");
+    if (!note?.trim()) return;
+    updateTaskDetails(task.id, {
+      notes: `${current.notes ? `${current.notes}\n` : ""}${note.trim()} — ${new Date().toLocaleString()}`,
+    });
+    showSaveToast("Task note added.");
+  }
+
+  function addTaskPhoto(task: WorkPlanTask) {
+    setIntakeTitle(task.title);
+    setIntakeNotes(`Photo for task: ${task.title}`);
+    setFastIntakeKind("General Photo");
+    setScreen("intake");
+  }
+
+  function convertTaskToWorkOrder(task: WorkPlanTask) {
+    const meta = taskDetails(task.id);
+    const record = normalizeService({
+      id: uid("work-order"),
+      title: task.title,
+      date: meta.dueDate || todayISO(),
+      status: "Open",
+      priority: task.priority,
+      notes: meta.notes || task.notes || "Converted from Tasks.",
+      locationId: task.locationId === "general" ? "" : task.locationId,
+      assignedTo: meta.assignee === "Unassigned" ? "" : meta.assignee,
+      workType: "Work Order",
+      workCategory: task.category || "Maintenance",
+      effort: task.minutes <= 15 ? "15 minutes" : task.minutes <= 30 ? "30 minutes" : task.minutes <= 60 ? "1 hour" : task.minutes <= 240 ? "Half Day" : "Full Day",
+      recurring: task.recurring,
+      recurrenceInterval: meta.recurrenceInterval || 1,
+      recurrenceUnit: meta.recurrenceUnit || "Weeks",
+      recurrenceEndDate: meta.recurrenceEndDate || "",
+      season: meta.season || "Year-Round",
+      projectId: meta.projectId || "",
+    });
+    setServiceRecords((current) => workOrdersByIdentity([record, ...current]));
+    setSelectedServiceId(record.id);
+    updateTaskDetails(task.id, { status: "Completed", completedAt: new Date().toISOString() });
+    setScreen("history");
+    showSaveToast("Task converted to a Work Order.");
+  }
+
+  function addBacklogItem() {
+    const title = newBacklogTitle.trim();
+    if (!title) return;
+    setBacklogItems((current) => [{ id: uid("backlog"), title, category: inferTaskCategory(title), notes: "", createdAt: new Date().toISOString() }, ...current]);
+    setNewBacklogTitle("");
+    showSaveToast("Added to Backlog.");
+  }
+
+  function backlogToTask(item: AtlasBacklogItem) {
+    const task: WorkPlanTask = { id: uid("plan-task"), title: item.title, minutes: 60, priority: "Medium", category: item.category || "General", locationId: "general", preferredDay: "Auto", locked: false, recurring: false, fixedTime: "", notes: item.notes || "" };
+    setWorkPlanTasks((current) => [task, ...current]);
+    setTaskMeta((current) => ({ ...current, [task.id]: { status: "Open", dueDate: "", assignee: "Nick", createdAt: new Date().toISOString(), notes: item.notes || "" } }));
+    setBacklogItems((current) => current.filter((entry) => entry.id !== item.id));
+    setSelectedTaskId(task.id);
+    setTasksView("tasks");
+    showSaveToast("Backlog item moved to Tasks.");
+  }
+
+  function daysSince(dateValue: string) {
+    if (!dateValue) return 9999;
+    const date = new Date(`${dateValue}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return 9999;
+    return Math.max(0, Math.floor((Date.now() - date.getTime()) / 86400000));
+  }
+
+  function vehicleDueScore(vehicle: AtlasVehicleCare) {
+    if (!vehicle.onsite || vehicle.priority === "Skip") return -1;
+    // No cleaning history is unknown, not overdue. A cadence begins after the
+    // first recorded cleaning (or when a cleaning task is explicitly scheduled).
+    if (!String(vehicle.lastCleaned || "").trim()) return -1;
+    return daysSince(vehicle.lastCleaned) + (vehicle.priority === "High" ? 30 : 0);
+  }
+
+  function recordVehicleCleaningFromTask(
+    task: WorkPlanTask,
+    meta: AtlasTaskMeta,
+    completedDate: string,
+    nextDate: string,
+  ) {
+    const cleanTitle = String(task.title || "")
+      .replace(/^clean\s+/i, "")
+      .trim()
+      .toLowerCase();
+    const vehicle = vehicleCare.find(
+      (item) =>
+        (meta.vehicleId && item.id === meta.vehicleId) ||
+        item.name.trim().toLowerCase() === cleanTitle,
+    );
+    if (!vehicle) return;
+
+    const alreadyRecorded = (vehicle.history || []).some(
+      (entry) =>
+        entry.type === "Cleaned" && String(entry.date || "").slice(0, 10) === completedDate,
+    );
+    const completedAt = new Date().toISOString();
+    updateVehicleCareRecord(vehicle.id, {
+      lastCleaned: completedDate,
+      history: alreadyRecorded
+        ? vehicle.history || []
+        : [
+            { id: uid("fleet-history"), type: "Cleaned", date: completedAt },
+            ...(vehicle.history || []),
+          ],
+    });
+
+    setCalendarItems((current) => {
+      const next = current.map((item) =>
+        item.id === `fleet-clean-${vehicle.id}` ||
+        item.linkedId === task.id
+          ? {
+              ...item,
+              date: nextDate,
+              status: "Scheduled" as const,
+              linkedId: task.id,
+              linkedName: task.title,
+            }
+          : item,
+      );
+      next
+        .filter(
+          (item) =>
+            item.id === `fleet-clean-${vehicle.id}` || item.linkedId === task.id,
+        )
+        .forEach((item) => {
+          void postAtlasRecord("calendar", item);
+        });
+      return next;
+    });
+  }
+
+  async function createVehicleCleaningWorkOrder(
+    vehicle: AtlasVehicleCare,
+    date = todayISO(),
+  ) {
+    const normalizedVehicleName = normalizedWorkOrderText(
+      String(vehicle.name || "").replace(/^vehicle\s+/i, ""),
+    );
+    const linkedAsset =
+      (vehicle.assetId
+        ? assetRecords.find((asset) => asset.id === vehicle.assetId)
+        : undefined) ||
+      assetRecords.find(
+        (asset) =>
+          normalizedWorkOrderText(
+            String(asset.name || "").replace(/^vehicle\s+/i, ""),
+          ) === normalizedVehicleName &&
+          /vehicle|car|automobile/i.test(
+            `${asset.category || ""} ${asset.name || ""}`,
+          ),
+      );
+
+    if (!linkedAsset) {
+      showSaveToast(
+        "Link this vehicle to its real Asset before creating cleaning Work.",
+        "warning",
+      );
+      return null;
+    }
+
+    const displayName =
+      String(linkedAsset.name || "").replace(/^Vehicle\s+/i, "").trim() ||
+      linkedAsset.name;
+
+    return addWorkOrder({
+      title: `Clean ${displayName}`,
+      date,
+      assetId: linkedAsset.id,
+      locationId: linkedAsset.locationId || vehicle.locationId || "",
+      assignedTo: vehicle.assignedTo === "Addison" ? "Addison" : "Nick",
+      responsibilityArea: `Garage · ${displayName}`,
+      workCategory: "Garage",
+      priority: vehicle.priority === "High" ? "High" : "Medium",
+      notes: vehicle.notes || "Created from Garage cleaning.",
+      workType: "Work Order",
+    });
+  }
+
+  function markVehicleCleaned(vehicle: AtlasVehicleCare) {
+    const now = new Date().toISOString();
+    const interval = Math.max(1, Number(vehicle.cleaningIntervalDays || 7));
+    const nextDate = addDays(todayISO(), interval);
+    updateVehicleCareRecord(vehicle.id, {
+      lastCleaned: todayISO(),
+      history: [
+        { id: uid("fleet-history"), type: "Cleaned", date: now },
+        ...(vehicle.history || []),
+      ],
+    });
+    const linkedTask = workPlanTasks.find(
+      (task) =>
+        taskDetails(task.id).vehicleId === vehicle.id ||
+        normalizeLocationName(task.title) ===
+          normalizeLocationName(`Clean ${vehicle.name}`),
+    );
+    if (linkedTask) {
+      const meta = taskDetails(linkedTask.id);
+      updateTaskDetails(linkedTask.id, {
+        status: "Open",
+        dueDate: nextDate,
+        lastCompletedDate: todayISO(),
+        completionHistory: Array.from(
+          new Set([...(meta.completionHistory || []), todayISO()]),
+        ).sort(),
+      });
+    }
+    setCalendarItems((current) =>
+      current.map((item) =>
+        item.id === `fleet-clean-${vehicle.id}` ||
+        (linkedTask && item.linkedId === linkedTask.id)
+          ? { ...item, date: nextDate, status: "Scheduled" as const }
+          : item,
+      ),
+    );
+    showSaveToast(
+      `${vehicle.name} marked cleaned. Next cleaning ${formatDate(nextDate)}.`,
+    );
+  }
+
+  function markVehicleServiced(vehicle: AtlasVehicleCare) {
+    const now = new Date().toISOString();
+    const interval = Math.max(1, Number(vehicle.serviceIntervalDays || 180));
+    updateVehicleCareRecord(vehicle.id, {
+      lastServiced: todayISO(),
+      nextServiceDate: addDays(todayISO(), interval),
+      history: [
+        { id: uid("fleet-history"), type: "Serviced", date: now },
+        ...(vehicle.history || []),
+      ],
+    });
+    showSaveToast(`${vehicle.name} service recorded.`);
+  }
+
+  function addVehicleIssue(vehicle: AtlasVehicleCare) {
+    const notes = window.prompt(`Describe the issue for ${vehicle.name}:`, "");
+    if (!notes?.trim()) return;
+    updateVehicleCareRecord(vehicle.id, {
+      history: [
+        { id: uid("fleet-history"), type: "Issue", date: new Date().toISOString(), notes: notes.trim() },
+        ...(vehicle.history || []),
+      ],
+      notes: vehicle.notes ? `${vehicle.notes}
+${notes.trim()}` : notes.trim(),
+      priority: "High",
+    });
+    showSaveToast(`Issue added for ${vehicle.name}.`);
+  }
+
+  function createVehicleWorkOrder(vehicle: AtlasVehicleCare) {
+    const normalizedVehicleName = normalizedWorkOrderText(String(vehicle.name || "").replace(/^vehicle\s+/i, ""));
+    const linkedAsset =
+      (vehicle.assetId ? assetRecords.find((asset) => asset.id === vehicle.assetId) : undefined) ||
+      assetRecords.find(
+        (asset) =>
+          normalizedWorkOrderText(String(asset.name || "").replace(/^vehicle\s+/i, "")) === normalizedVehicleName &&
+          /vehicle|car|automobile/i.test(`${asset.category || ""} ${asset.name || ""}`),
+      );
+    if (!linkedAsset) {
+      showSaveToast("Link this vehicle to its real Asset before creating a Work Order.", "warning");
+      return;
+    }
+    const displayName = String(linkedAsset.name || "").replace(/^Vehicle\s+/i, "").trim() || linkedAsset.name;
+    addWorkOrder({
+      title: `${displayName} service / repair`,
+      assetId: linkedAsset.id,
+      locationId: linkedAsset.locationId || vehicle.locationId || "",
+      responsibilityArea: `Garage · ${displayName}`,
+      workCategory: "Garage",
+      priority: vehicle.priority === "High" ? "High" : "Medium",
+      notes: vehicle.notes || "Created from Garage.",
+    });
+  }
+
+  function addFleetVehicle() {
+    const name = newVehicleName.trim();
+    if (!name) return;
+    const normalizedName = normalizedWorkOrderText(name.replace(/^vehicle\s+/i, ""));
+    const linkedAsset = assetRecords.find(
+      (asset) =>
+        normalizedWorkOrderText(String(asset.name || "").replace(/^vehicle\s+/i, "")) === normalizedName &&
+        /vehicle|car|automobile/i.test(`${asset.category || ""} ${asset.name || ""}`),
+    );
+    if (!linkedAsset) {
+      showSaveToast("Add the vehicle as an Asset first. Garage no longer creates separate vehicle records.", "warning");
+      return;
+    }
+    setSelectedVehicleId(`asset-${linkedAsset.id}`);
+    setNewVehicleName("");
+    showSaveToast(`${linkedAsset.name} selected.`);
+  }
+
+  function ensureGraduationPartyChecklist() {
+    // Graduation Party is now fully user-controlled.
+    // Atlas must never recreate this list or its items during load, refresh,
+    // deployment, property switching, or opening the Lists screen.
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        `atlas-graduation-party-list-initialized-v2-${activePropertyId}`,
+        "ready",
+      );
+    }
+  }
+
+  function openGraduationPartyChecklist() {
+    const partyExists = checklistDefinitions().some(
+      (definition) => definition.id === "graduation-party",
+    );
+    if (partyExists) {
+      setSelectedListId("graduation-party");
+    }
+    setTasksView("lists");
+  }
+
+  const collaborativeDepartments = [
+    { id: "house", label: "House / Interior" },
+    { id: "garage", label: "Garage" },
+    { id: "pool", label: "Pool & Spa" },
+    { id: "landscaping", label: "Landscaping & Irrigation" },
+    { id: "marine", label: "Dock & Waterfront" },
+  ] as const;
+
+  function teamMemberKey(member: { id?: string; email?: string; name?: string }) {
+    return String(member.id || member.email || member.name || "").trim();
+  }
+
+  function listMetaValue<T>(listId: string, field: string, fallback: T): T {
+    const records = workPlanTasks.filter(
+      (task) =>
+        taskDetails(task.id).listId === listId ||
+        (listId === "graduation-party" &&
+          task.category === "Graduation Party Checklist"),
+    );
+    for (const record of records) {
+      const meta = taskDetails(record.id) as any;
+      if (meta[field] !== undefined) return meta[field] as T;
+    }
+    return fallback;
+  }
+
+  function updateCollaborativeListMeta(
+    listId: string,
+    listName: string,
+    patch: Record<string, unknown>,
+  ) {
+    const records = workPlanTasks.filter(
+      (task) =>
+        taskDetails(task.id).listId === listId ||
+        (listId === "graduation-party" &&
+          task.category === "Graduation Party Checklist"),
+    );
+    const ids = new Set(records.map((record) => String(record.id)));
+    const updatedAt = new Date().toISOString();
+
+    setTaskMeta((current) => {
+      const next = { ...current } as Record<string, AtlasTaskMeta>;
+      ids.forEach((id) => {
+        next[id] = {
+          ...(current[id] || taskDetails(id)),
+          listId,
+          listName,
+          ...patch,
+          updatedAt,
+        } as AtlasTaskMeta;
+      });
+      try {
+        window.localStorage.setItem(
+          `atlas-task-meta-v1-${activePropertyId}`,
+          JSON.stringify(next),
+        );
+        if (activePropertyId === "2000") {
+          window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(next));
+        }
+      } catch {}
+      return next;
+    });
+
+    records.forEach((record) => {
+      const meta = taskDetails(record.id) as any;
+      void postAtlasRecord("tasks" as AtlasTable, {
+        ...record,
+        ...meta,
+        listId,
+        listName,
+        ...patch,
+        taskMeta: {
+          ...meta,
+          listId,
+          listName,
+          ...patch,
+          updatedAt,
+        },
+        propertyId: activePropertyId,
+        updatedAt,
+      });
+    });
+  }
+
+  function listMemberLabel(memberId: string) {
+    const member = teamDirectory.find(
+      (entry) =>
+        teamMemberKey(entry) === memberId ||
+        entry.email === memberId,
+    );
+    return member?.name || memberId;
+  }
+
+  function setChecklistTaskAssignees(
+    task: WorkPlanTask,
+    assigneeIds: string[],
+    departmentIds?: string[],
+  ) {
+    const uniqueAssignees = Array.from(new Set(assigneeIds.filter(Boolean)));
+    const uniqueDepartments = Array.from(
+      new Set((departmentIds || []).filter(Boolean)),
+    );
+    const firstMember = teamDirectory.find(
+      (entry) => teamMemberKey(entry) === uniqueAssignees[0],
+    );
+    const compatibilityAssignee =
+      uniqueAssignees.length === 1
+        ? firstMember?.name || "Other"
+        : uniqueAssignees.length > 1
+          ? "Other"
+          : "Unassigned";
+
+    updateTaskDetails(
+      task.id,
+      {
+        assignee: compatibilityAssignee as any,
+        assigneeIds: uniqueAssignees,
+        departmentIds: uniqueDepartments,
+      } as any,
+    );
+  }
+
+  function checklistDefinitions() {
+    const custom = workPlanTasks
+      .filter((task) => task.category === "Atlas List Definition")
+      .map((task) => ({
+        id: taskDetails(task.id).listId || task.id,
+        name: taskDetails(task.id).listName || task.title,
+      }));
+    const graduationRecords = workPlanTasks.filter(
+      (task) =>
+        taskDetails(task.id).listId === "graduation-party" ||
+        task.category === "Graduation Party Checklist",
+    );
+    const graduation = graduationRecords.length
+      ? [{
+          id: "graduation-party",
+          name:
+            graduationRecords
+              .map((task) => taskDetails(task.id).listName || "")
+              .find(Boolean) || "Graduation Party",
+        }]
+      : [];
+    return [
+      ...graduation,
+      ...custom.filter(
+        (item, index, all) =>
+          item.id !== "graduation-party" &&
+          all.findIndex((candidate) => candidate.id === item.id) === index,
+      ),
+    ];
+  }
+
+  function checklistItems(listId: string) {
+    return workPlanTasks.filter((task) => task.category !== "Atlas List Definition" && (taskDetails(task.id).listId === listId || (listId === "graduation-party" && task.category === "Graduation Party Checklist")));
+  }
+
+  function createChecklist() {
+    const name = window.prompt("Name this checklist:", "")?.trim();
+    if (!name) return;
+    const listId = `list-${slugify(name)}-${Date.now()}`;
+    const marker: WorkPlanTask = { id: `atlas-list-definition-${listId}`, title: name, minutes: 5, priority: "Low", category: "Atlas List Definition", locationId: "general", preferredDay: "Auto", locked: true, recurring: false, fixedTime: "", notes: "Atlas checklist definition" };
+    setWorkPlanTasks((current) => [...current, marker]);
+    const creatorMemberId =
+      teamDirectory.find(
+        (member) =>
+          member.email &&
+          member.email === String(currentAtlasUser?.email || "").toLowerCase(),
+      )?.id ||
+      String(currentAtlasUser?.id || "");
+    setTaskMeta((current) => ({
+      ...current,
+      [marker.id]: {
+        status: "Open",
+        dueDate: "",
+        assignee: "Nick",
+        createdAt: new Date().toISOString(),
+        completionHistory: [],
+        flexibleTime: true,
+        skippable: true,
+        listId,
+        listName: name,
+        dashboardListPinned: false,
+        listLeadId: creatorMemberId,
+        listMemberIds: creatorMemberId ? [creatorMemberId] : [],
+        listDepartmentIds: [],
+      } as any,
+    }));
+    setSelectedListId(listId);
+    setTasksView("lists");
+    showSaveToast(`${name} list created.`);
+  }
+
+  function renameChecklist(listId: string, currentName: string) {
+    const nextName = window.prompt("Rename this list:", currentName)?.trim();
+    if (!nextName || nextName === currentName) return;
+    const recordIds = new Set<string>(
+      workPlanTasks
+        .filter((task) => taskDetails(task.id).listId === listId || (listId === "graduation-party" && task.category === "Graduation Party Checklist"))
+        .map((task) => String(task.id)),
+    );
+    setWorkPlanTasks((current) =>
+      current.map((task) =>
+        recordIds.has(task.id) && task.category === "Atlas List Definition"
+          ? { ...task, title: nextName }
+          : task,
+      ),
+    );
+    setTaskMeta((current) => {
+      const next = { ...current };
+      recordIds.forEach((id) => {
+        next[id] = {
+          ...taskDetails(id),
+          listId,
+          listName: nextName,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+      return next;
+    });
+    recordIds.forEach((id) => {
+      const task = workPlanTasks.find((item) => item.id === id);
+      if (!task) return;
+      const meta = taskDetails(id);
+      void postAtlasRecord("tasks" as AtlasTable, {
+        ...task,
+        ...meta,
+        title: task.category === "Atlas List Definition" ? nextName : task.title,
+        listId,
+        listName: nextName,
+        taskMeta: { ...meta, listId, listName: nextName },
+        propertyId: activePropertyId,
+        updatedAt: new Date().toISOString(),
+      });
+    });
+    showSaveToast(`List renamed to ${nextName}.`);
+  }
+
+  function deleteChecklist(listId: string, listName: string) {
+    const records = workPlanTasks.filter(
+      (task) =>
+        taskDetails(task.id).listId === listId ||
+        (listId === "graduation-party" && task.category === "Graduation Party Checklist"),
+    );
+    if (!records.length) return;
+    if (!window.confirm(`Delete "${listName}" and all ${records.length} item${records.length === 1 ? "" : "s"}?`)) return;
+
+    const ids = new Set<string>(records.map((task) => String(task.id)));
+    const nextTasks = workPlanTasks.filter((task) => !ids.has(task.id));
+    const nextMeta = { ...taskMeta };
+    ids.forEach((id) => delete nextMeta[id]);
+
+    setWorkPlanTasks(nextTasks);
+    setTaskMeta(nextMeta);
+    saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, nextTasks);
+    if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", nextTasks);
+    try {
+      window.localStorage.setItem(`atlas-task-meta-v1-${activePropertyId}`, JSON.stringify(nextMeta));
+      if (activePropertyId === "2000") window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(nextMeta));
+      if (listId === "graduation-party") {
+        window.localStorage.setItem(
+          `atlas-graduation-party-list-initialized-v2-${activePropertyId}`,
+          "ready",
+        );
+        window.localStorage.setItem(
+          `atlas-graduation-party-user-deleted-v1-${activePropertyId}`,
+          "true",
+        );
+        window.localStorage.setItem(
+          `atlas-graduation-party-dedupe-v1-${activePropertyId}`,
+          "ready",
+        );
+      }
+    } catch {}
+
+    ids.forEach((id) => void deleteOperationalRecord("tasks" as AtlasTable, id));
+
+    const remainingDefinitions = checklistDefinitions().filter((definition) => definition.id !== listId);
+    setSelectedListId(remainingDefinitions[0]?.id || "");
+    showSaveToast(`${listName} deleted.`);
+  }
+
+  function editChecklistItem(task: WorkPlanTask) {
+    const title = window.prompt("Edit checklist item:", task.title)?.trim();
+    if (!title || title === task.title) return;
+    const updatedAt = new Date().toISOString();
+    const updatedTask = { ...task, title };
+    const meta = taskDetails(task.id);
+    setWorkPlanTasks((current) => current.map((item) => item.id === task.id ? updatedTask : item));
+    updateTaskDetails(task.id, { updatedAt });
+    void postAtlasRecord("tasks" as AtlasTable, {
+      ...updatedTask,
+      ...meta,
+      taskMeta: { ...meta, updatedAt },
+      propertyId: activePropertyId,
+      updatedAt,
+    });
+    showSaveToast("Checklist item updated.");
+  }
+
+  function keepChecklistItemAsWeeklyTask(task: WorkPlanTask) {
+    const meta = taskDetails(task.id) as any;
+    const updatedAt = new Date().toISOString();
+    const nextTask: WorkPlanTask = {
+      ...task,
+      category:
+        task.category === "Graduation Party Checklist" ||
+        task.category === "Atlas Checklist Item"
+          ? "General"
+          : task.category,
+      recurring: true,
+      notes:
+        task.notes === "Graduation Party Checklist" ||
+        / checklist$/i.test(String(task.notes || ""))
+          ? ""
+          : task.notes,
+    };
+
+    const nextMeta = {
+      ...meta,
+      status: "Open",
+      dueDate: meta.dueDate || todayISO(),
+      recurrenceInterval: 1,
+      recurrenceUnit: "Weeks",
+      recurrenceEndDate: "",
+      listId: undefined,
+      listName: undefined,
+      dashboardListPinned: false,
+      listNotes: undefined,
+      listLeadId: undefined,
+      listMemberIds: undefined,
+      listDepartmentIds: undefined,
+      completedAt: undefined,
+      updatedAt,
+    };
+
+    setWorkPlanTasks((current) =>
+      current.map((item) => (item.id === task.id ? nextTask : item)),
+    );
+    setTaskMeta((current) => ({
+      ...current,
+      [task.id]: nextMeta,
+    }));
+
+    void postAtlasRecord("tasks" as AtlasTable, {
+      ...nextTask,
+      ...nextMeta,
+      taskMeta: nextMeta,
+      propertyId: activePropertyId,
+      updatedAt,
+    });
+
+    showSaveToast(`${task.title} is now a weekly Task.`);
+  }
+
+  function removeChecklistDuplicates(listId: string) {
+    const items = checklistItems(listId);
+    const groups = new Map<string, WorkPlanTask[]>();
+
+    items.forEach((task) => {
+      const key = task.title.trim().toLowerCase().replace(/\s+/g, " ");
+      groups.set(key, [...(groups.get(key) || []), task]);
+    });
+
+    const duplicateIds = new Set<string>();
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const ranked = [...group].sort((a, b) => {
+        const aMeta = taskDetails(a.id);
+        const bMeta = taskDetails(b.id);
+        const aCompleted = aMeta.status === "Completed" ? 1 : 0;
+        const bCompleted = bMeta.status === "Completed" ? 1 : 0;
+        if (aCompleted !== bCompleted) return bCompleted - aCompleted;
+        return String(bMeta.updatedAt || bMeta.createdAt || "").localeCompare(
+          String(aMeta.updatedAt || aMeta.createdAt || ""),
+        );
+      });
+      ranked.slice(1).forEach((task) => duplicateIds.add(String(task.id)));
+    }
+
+    if (!duplicateIds.size) {
+      showSaveToast("No duplicate items found.");
+      return;
+    }
+
+    const nextTasks = workPlanTasks.filter((task) => !duplicateIds.has(String(task.id)));
+    const nextMeta = { ...taskMeta };
+    duplicateIds.forEach((id) => delete nextMeta[id]);
+
+    setWorkPlanTasks(nextTasks);
+    setTaskMeta(nextMeta);
+    saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, nextTasks);
+    if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", nextTasks);
+
+    try {
+      window.localStorage.setItem(`atlas-task-meta-v1-${activePropertyId}`, JSON.stringify(nextMeta));
+      if (activePropertyId === "2000") {
+        window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(nextMeta));
+      }
+    } catch {}
+
+    duplicateIds.forEach((id) => void deleteOperationalRecord("tasks" as AtlasTable, id));
+    showSaveToast(`Removed ${duplicateIds.size} duplicate item${duplicateIds.size === 1 ? "" : "s"}.`);
+  }
+
+  function deleteCompletedChecklistItems(listId: string, listName: string) {
+    const completedItems = checklistItems(listId).filter(
+      (task) => taskDetails(task.id).status === "Completed",
+    );
+
+    if (!completedItems.length) {
+      showSaveToast("No completed items to remove.");
+      return;
+    }
+
+    if (!window.confirm(
+      `Delete ${completedItems.length} completed item${completedItems.length === 1 ? "" : "s"} from "${listName}"?`,
+    )) return;
+
+    const ids = new Set<string>(completedItems.map((task) => String(task.id)));
+    const nextTasks = workPlanTasks.filter((task) => !ids.has(String(task.id)));
+    const nextMeta = { ...taskMeta };
+    ids.forEach((id) => delete nextMeta[id]);
+
+    setWorkPlanTasks(nextTasks);
+    setTaskMeta(nextMeta);
+    saveStoredArray(`atlas-tasks-v1-${activePropertyId}`, nextTasks);
+    if (activePropertyId === "2000") saveStoredArray("atlas-tasks-v1", nextTasks);
+
+    try {
+      window.localStorage.setItem(`atlas-task-meta-v1-${activePropertyId}`, JSON.stringify(nextMeta));
+      if (activePropertyId === "2000") {
+        window.localStorage.setItem("atlas-task-meta-v1", JSON.stringify(nextMeta));
+      }
+    } catch {}
+
+    ids.forEach((id) => void deleteOperationalRecord("tasks" as AtlasTable, id));
+    showSaveToast(`Deleted ${ids.size} completed item${ids.size === 1 ? "" : "s"}.`);
+  }
+
+  function addGraduationPartyChecklistItem() {
+    const title = newPartyChecklistItem.trim();
+    if (!title) return;
+    const definition = checklistDefinitions().find((item) => item.id === selectedListId) || { id: "graduation-party", name: "Graduation Party" };
+    const dashboardListPinned = workPlanTasks.some((item) => taskDetails(item.id).listId === definition.id && taskDetails(item.id).dashboardListPinned);
+    const task: WorkPlanTask = { id: uid("checklist-item"), title, minutes: 30, priority: "Medium", category: definition.id === "graduation-party" ? "Graduation Party Checklist" : "Atlas Checklist Item", locationId: "general", preferredDay: "Auto", locked: false, recurring: false, fixedTime: "", notes: `${definition.name} Checklist` };
+    setWorkPlanTasks((current) => [...current, task]);
+    const inheritedMemberIds = listMetaValue<string[]>(
+      definition.id,
+      "listMemberIds",
+      [],
+    );
+    const inheritedDepartmentIds = listMetaValue<string[]>(
+      definition.id,
+      "listDepartmentIds",
+      [],
+    );
+    const inheritedLeadId = listMetaValue<string>(
+      definition.id,
+      "listLeadId",
+      "",
+    );
+    const defaultAssigneeId =
+      inheritedLeadId || inheritedMemberIds[0] || "";
+    const defaultAssigneeName =
+      listMemberLabel(defaultAssigneeId) || "Unassigned";
+    setTaskMeta((current) => ({
+      ...current,
+      [task.id]: {
+        status: "Open",
+        dueDate: "",
+        assignee: defaultAssigneeId ? defaultAssigneeName : "Unassigned",
+        assigneeIds: defaultAssigneeId ? [defaultAssigneeId] : [],
+        departmentIds: inheritedDepartmentIds,
+        createdAt: new Date().toISOString(),
+        completionHistory: [],
+        flexibleTime: true,
+        skippable: true,
+        listId: definition.id,
+        listName: definition.name,
+        dashboardListPinned,
+        listLeadId: inheritedLeadId,
+        listMemberIds: inheritedMemberIds,
+        listDepartmentIds: inheritedDepartmentIds,
+      } as any,
+    }));
+    setNewPartyChecklistItem("");
+    showSaveToast("Checklist item added.");
+  }
+
+  function renderGraduationPartyChecklist() {
+    const definitions = checklistDefinitions();
+    const selectedDefinition =
+      definitions.find((item) => item.id === selectedListId) ||
+      definitions[0] ||
+      { id: "", name: "Lists" };
+    const items = selectedDefinition.id ? checklistItems(selectedDefinition.id) : [];
+    const completed = items.filter((task) => taskDetails(task.id).status === "Completed").length;
+    const listRecords = selectedDefinition.id
+      ? workPlanTasks.filter((task) => taskDetails(task.id).listId === selectedDefinition.id || (selectedDefinition.id === "graduation-party" && task.category === "Graduation Party Checklist"))
+      : [];
+    const pinned = listRecords.some((task) => taskDetails(task.id).dashboardListPinned);
+    const listDefinitionRecord = listRecords.find(
+      (task) => task.category === "Atlas List Definition",
+    );
+    const listNotes = listDefinitionRecord
+      ? String((taskDetails(listDefinitionRecord.id) as any).listNotes ?? "")
+      : String(
+          listRecords
+            .slice()
+            .sort((a, b) =>
+              String((taskDetails(b.id) as any).updatedAt || "").localeCompare(
+                String((taskDetails(a.id) as any).updatedAt || ""),
+              ),
+            )
+            .map((task) => (taskDetails(task.id) as any).listNotes)
+            .find((value) => value !== undefined) ?? "",
+        );
+    const listLeadId = listMetaValue<string>(
+      selectedDefinition.id,
+      "listLeadId",
+      "",
+    );
+    const listMemberIds = listMetaValue<string[]>(
+      selectedDefinition.id,
+      "listMemberIds",
+      [],
+    );
+    const listDepartmentIds = listMetaValue<string[]>(
+      selectedDefinition.id,
+      "listDepartmentIds",
+      [],
+    );
+    const propertyTeamMembers = teamDirectory.filter(
+      (member) =>
+        member.active !== false &&
+        (!member.propertyIds.length ||
+          member.propertyIds.includes(activePropertyId) ||
+          ["master", "administrator"].includes(member.role)),
+    );
+    const setDashboardPinned = (nextPinned: boolean) => {
+      updateCollaborativeListMeta(
+        selectedDefinition.id,
+        selectedDefinition.name,
+        { dashboardListPinned: nextPinned },
+      );
+      showSaveToast(nextPinned ? `${selectedDefinition.name} added to Dashboard.` : `${selectedDefinition.name} removed from Dashboard.`);
+    };
+    const updateListNotes = (value: string) => {
+      updateCollaborativeListMeta(
+        selectedDefinition.id,
+        selectedDefinition.name,
+        { listNotes: value },
+      );
+    };
+    return <div style={{ display: "grid", gap: 12 }}>
+      <section style={{ ...cardStyle, padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Reusable Checklists</div><h2 style={{ margin: "3px 0", color: colors.navy }}>Lists</h2></div><button type="button" onClick={createChecklist} style={goldButtonStyle}>+ New List</button></div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>{definitions.map((definition) => <button key={definition.id} type="button" onClick={() => { setSelectedListId(definition.id); }} style={selectedDefinition.id === definition.id ? goldButtonStyle : secondaryButtonStyle}>{definition.name}</button>)}</div>
+      </section>
+      <section style={{ ...cardStyle, padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrowStyle}>Checklist</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{selectedDefinition.name}</h2><small style={mutedSmallStyle}>{completed} of {items.length} complete</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => renameChecklist(selectedDefinition.id, selectedDefinition.name)} style={secondaryButtonStyle}>Rename</button><button type="button" onClick={() => setDashboardPinned(!pinned)} style={pinned ? goldButtonStyle : secondaryButtonStyle}>{pinned ? "Remove from Dashboard" : "Add to Dashboard"}</button><button type="button" onClick={() => removeChecklistDuplicates(selectedDefinition.id)} style={secondaryButtonStyle}>Remove Duplicates</button><button type="button" onClick={() => deleteCompletedChecklistItems(selectedDefinition.id, selectedDefinition.name)} style={secondaryButtonStyle}>Delete Completed</button><button type="button" onClick={() => deleteChecklist(selectedDefinition.id, selectedDefinition.name)} style={{ ...secondaryButtonStyle, color: colors.red, borderColor: "#FDA29B" }}>Delete List</button></div></div>
+        <div style={{ display: "grid", gap: 10, marginTop: 12, padding: 11, border: `1px solid ${colors.line}`, borderRadius: 11, background: "#F8FAFC" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(180px, .7fr) minmax(0, 1.3fr)", gap: 10 }}>
+            <label style={{ display: "grid", gap: 5 }}>
+              <span style={fieldLabelStyle}>LEAD</span>
+              <select
+                value={listLeadId}
+                onChange={(event) => {
+                  const nextLeadId = event.currentTarget.value;
+                  const nextMembers = nextLeadId
+                    ? Array.from(new Set([...listMemberIds, nextLeadId]))
+                    : listMemberIds;
+                  updateCollaborativeListMeta(
+                    selectedDefinition.id,
+                    selectedDefinition.name,
+                    { listLeadId: nextLeadId, listMemberIds: nextMembers },
+                  );
+                }}
+                style={inputStyle}
+              >
+                <option value="">No lead</option>
+                {propertyTeamMembers.map((member) => (
+                  <option key={teamMemberKey(member)} value={teamMemberKey(member)}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div>
+              <span style={fieldLabelStyle}>SHARED WITH</span>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
+                {propertyTeamMembers.map((member) => {
+                  const memberId = teamMemberKey(member);
+                  const active = listMemberIds.includes(memberId);
+                  return (
+                    <button
+                      key={memberId}
+                      type="button"
+                      onClick={() => {
+                        const nextMembers = active
+                          ? listMemberIds.filter((id) => id !== memberId)
+                          : [...listMemberIds, memberId];
+                        const nextLead =
+                          listLeadId === memberId && active ? "" : listLeadId;
+                        updateCollaborativeListMeta(
+                          selectedDefinition.id,
+                          selectedDefinition.name,
+                          { listMemberIds: nextMembers, listLeadId: nextLead },
+                        );
+                      }}
+                      style={active ? goldButtonStyle : secondaryButtonStyle}
+                    >
+                      {member.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <span style={fieldLabelStyle}>DEPARTMENTS</span>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
+              {collaborativeDepartments.map((department) => {
+                const active = listDepartmentIds.includes(department.id);
+                return (
+                  <button
+                    key={department.id}
+                    type="button"
+                    onClick={() => {
+                      const nextDepartments = active
+                        ? listDepartmentIds.filter((id) => id !== department.id)
+                        : [...listDepartmentIds, department.id];
+                      updateCollaborativeListMeta(
+                        selectedDefinition.id,
+                        selectedDefinition.name,
+                        { listDepartmentIds: nextDepartments },
+                      );
+                    }}
+                    style={active ? goldButtonStyle : secondaryButtonStyle}
+                  >
+                    {department.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <small style={mutedSmallStyle}>
+            Shared members can see this checklist in My Work. Individual items can still be assigned to different people or departments.
+          </small>
+        </div>
+        <label style={{ display: "grid", gap: 5, marginTop: 12 }}>
+          <span style={fieldLabelStyle}>LIST NOTES</span>
+          <textarea
+            value={listNotes}
+            onChange={(event) => updateListNotes(event.currentTarget.value)}
+            placeholder="Add instructions, reminders, vendor details, or notes for this list…"
+            rows={3}
+            style={{ ...inputStyle, resize: "vertical", lineHeight: 1.45 }}
+          />
+        </label>
+        {listNotes ? (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+            <button
+              type="button"
+              onClick={() => {
+                const updatedAt = new Date().toISOString();
+                const listIds = new Set(listRecords.map((task) => String(task.id)));
+
+                setTaskMeta((current) => {
+                  const next = { ...current };
+                  listIds.forEach((id) => {
+                    next[id] = {
+                      ...(current[id] || taskDetails(id)),
+                      listId: selectedDefinition.id,
+                      listName: selectedDefinition.name,
+                      listNotes: "",
+                      updatedAt,
+                    } as AtlasTaskMeta;
+                  });
+
+                  try {
+                    window.localStorage.setItem(
+                      `atlas-task-meta-v1-${activePropertyId}`,
+                      JSON.stringify(next),
+                    );
+                    if (activePropertyId === "2000") {
+                      window.localStorage.setItem(
+                        "atlas-task-meta-v1",
+                        JSON.stringify(next),
+                      );
+                    }
+                  } catch {}
+
+                  return next;
+                });
+
+                listRecords.forEach((record) => {
+                  const meta = taskDetails(record.id) as any;
+                  const nextMeta = {
+                    ...meta,
+                    listId: selectedDefinition.id,
+                    listName: selectedDefinition.name,
+                    listNotes: "",
+                    updatedAt,
+                  };
+                  void postAtlasRecord("tasks" as AtlasTable, {
+                    ...record,
+                    ...nextMeta,
+                    taskMeta: nextMeta,
+                    propertyId: activePropertyId,
+                    updatedAt,
+                  });
+                });
+
+                showSaveToast("List note deleted.");
+              }}
+              style={{ ...compactUtilityButtonStyle, color: colors.red }}
+            >
+              Delete Note
+            </button>
+          </div>
+        ) : null}
+      </section>
+      <section style={{ ...cardStyle, padding: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, marginBottom: 9 }}><input value={newPartyChecklistItem} onChange={(event) => setNewPartyChecklistItem(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addGraduationPartyChecklistItem(); }} placeholder="Add checklist item" style={inputStyle}/><button type="button" onClick={addGraduationPartyChecklistItem} style={goldButtonStyle}>Add</button></div>
+        <div style={{ display: "grid", gap: 6 }}>
+          {items.map((task) => {
+            const meta = taskDetails(task.id) as any;
+            const done = meta.status === "Completed";
+            const assigneeIds = Array.isArray(meta.assigneeIds)
+              ? meta.assigneeIds.map(String)
+              : [];
+            const departmentIds = Array.isArray(meta.departmentIds)
+              ? meta.departmentIds.map(String)
+              : [];
+            const assigneeNames = assigneeIds
+              .map((id: string) => listMemberLabel(id))
+              .filter(Boolean);
+            const departmentNames = departmentIds
+              .map((id: string) => collaborativeDepartments.find((department) => department.id === id)?.label || id)
+              .filter(Boolean);
+            const assignmentSummary = [...assigneeNames, ...departmentNames].join(", ") || "Unassigned";
+
+            return <div key={task.id} style={{ display: "grid", gap: 7, padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: done ? "#F0FAF5" : "#FFFFFF" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto auto", gap: 8, alignItems: "center" }}>
+                <input type="checkbox" checked={done} aria-label={`Complete ${task.title}`} onChange={(event) => event.currentTarget.checked ? completeAtlasTask(task) : updateTaskDetails(task.id, { status: "Open", completedAt: undefined })}/>
+                <div style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", color: colors.navy, fontWeight: 800, textDecoration: done ? "line-through" : "none", opacity: done ? .68 : 1 }}>{task.title}</span>
+                  <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>{assignmentSummary}</small>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => keepChecklistItemAsWeeklyTask(task)}
+                  style={compactUtilityButtonStyle}
+                >
+                  Keep Weekly
+                </button>
+                <button type="button" onClick={() => editChecklistItem(task)} style={compactUtilityButtonStyle}>Edit</button>
+                <button type="button" aria-label={`Delete ${task.title}`} onClick={() => deleteAtlasTask(task.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
+              </div>
+
+              <details>
+                <summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 850, fontSize: 12 }}>
+                  Assign
+                </summary>
+                <div style={{ display: "grid", gap: 8, marginTop: 7, padding: 9, borderRadius: 9, background: "#F8FAFC" }}>
+                  <div>
+                    <span style={fieldLabelStyle}>PEOPLE</span>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
+                      {propertyTeamMembers.map((member) => {
+                        const memberId = teamMemberKey(member);
+                        const active = assigneeIds.includes(memberId);
+                        return (
+                          <button
+                            key={memberId}
+                            type="button"
+                            onClick={() => {
+                              const nextAssignees = active
+                                ? assigneeIds.filter((id: string) => id !== memberId)
+                                : [...assigneeIds, memberId];
+                              setChecklistTaskAssignees(task, nextAssignees, departmentIds);
+                            }}
+                            style={active ? goldButtonStyle : secondaryButtonStyle}
+                          >
+                            {member.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span style={fieldLabelStyle}>DEPARTMENTS</span>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
+                      {collaborativeDepartments.map((department) => {
+                        const active = departmentIds.includes(department.id);
+                        return (
+                          <button
+                            key={department.id}
+                            type="button"
+                            onClick={() => {
+                              const nextDepartments = active
+                                ? departmentIds.filter((id: string) => id !== department.id)
+                                : [...departmentIds, department.id];
+                              setChecklistTaskAssignees(task, assigneeIds, nextDepartments);
+                            }}
+                            style={active ? goldButtonStyle : secondaryButtonStyle}
+                          >
+                            {department.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </div>;
+          })}
+        </div>
+      </section>
+    </div>;
+  }
+  function renderOperationsIntelligence() {
+    const blocked = workPlanTasks.filter((task) => taskDetails(task.id).status === "Blocked");
+    const waiting = workPlanTasks.filter((task) => taskDetails(task.id).status === "Waiting");
+    const vehiclesDue = vehicleCare.filter((vehicle) => vehicleDueScore(vehicle) >= 14).sort((a,b) => vehicleDueScore(b) - vehicleDueScore(a));
+    return <div style={{ display: "grid", gap: 12 }}>
+      <div style={noticeStyle}>Intelligence is read-only. Atlas will not create routines, tasks, work orders, projects, or schedules from suggestions.</div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
+        {[{ label: "Blocked", value: blocked.length, detail: "Needs your decision" }, { label: "Waiting", value: waiting.length, detail: "Follow-up may be due" }, { label: "Vehicles", value: vehiclesDue.length, detail: "Onsite and becoming due" }].map((item) => <div key={item.label} style={cardStyle}><small style={fieldLabelStyle}>{item.label.toUpperCase()}</small><strong style={{ display: "block", marginTop: 4, fontSize: 21, color: colors.navy }}>{item.value}</strong><small style={mutedSmallStyle}>{item.detail}</small></div>)}
+      </div>
+    </div>;
+  }
+
+
+  function renderBacklog() {
+    return <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8 }}><input value={newBacklogTitle} onChange={(event) => setNewBacklogTitle(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addBacklogItem(); }} placeholder="Add an idea or someday item…" style={inputStyle}/><button type="button" onClick={addBacklogItem} style={goldButtonStyle}>Add to Backlog</button></div>
+      <div style={{ display: "grid", gap: 8 }}>{backlogItems.map((item) => <div key={item.id} style={{ ...cardStyle, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}><div><strong>{item.title}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 4 }}>{item.category} · Not scheduled · Cannot become overdue</small></div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => backlogToTask(item)} style={goldButtonStyle}>Make Task</button><button type="button" onClick={() => setBacklogItems((current) => current.filter((entry) => entry.id !== item.id))} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button></div></div>)}{!backlogItems.length ? <div style={noticeStyle}>The Backlog is empty. Use it for ideas that should not have a due date yet.</div> : null}</div>
+    </div>;
+  }
+
+  function renderVehicleCare() {
+    const sorted = [...vehicleCare].sort((a, b) => vehicleDueScore(b) - vehicleDueScore(a));
+    const selectedVehicle = vehicleCare.find((item) => item.id === selectedVehicleId) || sorted[0];
+    const dueCount = vehicleCare.filter((item) => vehicleDueScore(item) >= Math.max(1, Number(item.cleaningIntervalDays || 14))).length;
+    const onsiteCount = vehicleCare.filter((item) => item.onsite).length;
+    const serviceDueCount = vehicleCare.filter((item) => item.nextServiceDate && item.nextServiceDate <= todayISO()).length;
+    const vehicleTasks = selectedVehicle ? workPlanTasks.filter((task) => taskDetails(task.id).vehicleId === selectedVehicle.id || Boolean(selectedVehicle.assetId && taskDetails(task.id).assetId === selectedVehicle.assetId)) : [];
+    const vehicleWorkOrders = selectedVehicle ? serviceRecords.filter((record) => Boolean(selectedVehicle.assetId && record.assetId === selectedVehicle.assetId) || record.notes?.includes(selectedVehicle.name)) : [];
+    const vehicleDocuments = selectedVehicle ? intakeDocs.filter((document) => Boolean(selectedVehicle.assetId && (document.linkedAssetId === selectedVehicle.assetId || document.targetId === selectedVehicle.assetId)) || (document.targetName === selectedVehicle.name && document.targetType === "Asset")) : [];
+    const vehiclePhotos = vehicleDocuments.flatMap((document) => document.files || []).filter((file) => String(file.type || "").startsWith("image/") || String(file.dataUrl || "").startsWith("data:image/"));
+
+    const cleanStatus = (vehicle: AtlasVehicleCare) => {
+      if (!vehicle.onsite) return { label: "Away", tone: "Offline" };
+      if (!vehicle.lastCleaned) return { label: "No record", tone: "Open" };
+      const interval = Math.max(1, Number(vehicle.cleaningIntervalDays || 14));
+      const age = daysSince(vehicle.lastCleaned);
+      if (age >= interval) return { label: `Due · ${age}d`, tone: "Open" };
+      return { label: `Clean · ${age}d`, tone: "Completed" };
+    };
+
+    return <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>
+        {[{ label: "Garage", value: vehicleCare.length }, { label: "Onsite", value: onsiteCount }, { label: "Cleaning due", value: dueCount }, { label: "Service due", value: serviceDueCount }].map((item) => <div key={item.label} style={{ ...cardStyle, padding: 10 }}><small style={fieldLabelStyle}>{item.label.toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 23, color: colors.navy }}>{item.value}</strong></div>)}
+      </div>
+
+      <div style={{ ...cardStyle, padding: 10, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto auto", gap: 8 }}>
+        <input value={newVehicleName} onChange={(event) => setNewVehicleName(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addFleetVehicle(); }} placeholder="Add car, vehicle, boat, or equipment…" style={inputStyle} />
+        <button type="button" onClick={addFleetVehicle} style={goldButtonStyle}>Add</button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(280px,36%) minmax(0,1fr)", gap: 12, alignItems: "start" }}>
+        <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "10px 12px", borderBottom: `1px solid ${colors.line}` }}><strong>Garage</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Cars, vehicles, boats, cleaning, and service.</small></div>
+          <div style={{ maxHeight: isMobile ? 460 : "72vh", overflowY: "auto" }}>
+            {sorted.map((vehicle) => {
+              const status = cleanStatus(vehicle);
+              const selected = selectedVehicle?.id === vehicle.id;
+              return <button key={vehicle.id} type="button" onClick={() => setSelectedVehicleId(vehicle.id)} style={{ width: "100%", border: 0, borderBottom: `1px solid ${colors.line}`, background: selected ? "#F3F7FC" : "#FFFFFF", padding: "10px 11px", textAlign: "left", cursor: "pointer", display: "grid", gap: 5 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong style={{ color: colors.navy3 }}>{vehicle.name}</strong><span style={badgeStyle(status.tone)}>{status.label}</span></div>
+                <small style={mutedSmallStyle}>{vehicle.kind || "Vehicle"} · {vehicle.onsite ? "Onsite" : "Away"}{vehicle.nextServiceDate ? ` · Service ${formatDate(vehicle.nextServiceDate)}` : ""}</small>
+              </button>;
+            })}
+          </div>
+        </section>
+
+        {selectedVehicle ? <section style={{ ...cardStyle, position: isMobile ? "static" : "sticky", top: 88, maxHeight: isMobile ? "none" : "calc(100vh - 110px)", overflowY: isMobile ? "visible" : "auto" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
+            <div><div style={eyebrowStyle}>Garage record</div><h3 style={{ margin: "3px 0 0", color: colors.navy }}>{selectedVehicle.name}</h3><small style={mutedSmallStyle}>{selectedVehicle.kind || "Vehicle"} · {selectedVehicle.onsite ? "Onsite" : "Away"}</small></div>
+            <button type="button" onClick={() => { if (window.confirm(`Delete ${selectedVehicle.name}?`)) { setVehicleCare((current) => current.filter((item) => item.id !== selectedVehicle.id)); void deleteOperationalRecord("vehicle_care" as AtlasTable, selectedVehicle.id); setSelectedVehicleId(""); } }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8 }}>
+            <Field label="Name" value={selectedVehicle.name} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { name: value })} />
+            <SelectField label="Type" value={selectedVehicle.kind || "Vehicle"} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { kind: value as AtlasVehicleCare["kind"] })} options={["Vehicle", "Boat", "Watercraft", "Equipment"]} />
+            <SelectField label="Onsite" value={selectedVehicle.onsite ? "Yes" : "No"} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { onsite: value === "Yes" })} options={["Yes", "No"]} />
+            <SelectField label="Priority" value={selectedVehicle.priority} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { priority: value as AtlasVehicleCare["priority"] })} options={["Normal", "High", "Skip"]} />
+            <Field label="Last cleaned" type="date" value={selectedVehicle.lastCleaned} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { lastCleaned: value })} />
+            <Field label="Clean every (days)" type="number" value={String(selectedVehicle.cleaningIntervalDays || 14)} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { cleaningIntervalDays: Math.max(1, Number(value || 14)) })} />
+            <Field label="Last serviced" type="date" value={selectedVehicle.lastServiced || ""} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { lastServiced: value })} />
+            <Field label="Next service" type="date" value={selectedVehicle.nextServiceDate || ""} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { nextServiceDate: value })} />
+            <SelectField label="Assigned" value={selectedVehicle.assignedTo || "Nick"} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { assignedTo: value as AtlasVehicleCare["assignedTo"] })} options={["Nick", "Addison", "Other", "Unassigned"]} />
+            <SelectField
+              label="Asset"
+              value={assetRecords.find((asset) => asset.id === selectedVehicle.assetId)?.name || "Not linked"}
+              onChange={(value) =>
+                updateVehicleCareRecord(selectedVehicle.id, {
+                  assetId:
+                    value === "Not linked"
+                      ? ""
+                      : assetRecords.find((asset) => asset.name === value)?.id || "",
+                })
+              }
+              options={["Not linked", ...assetRecords.map((asset) => asset.name)]}
+            />
+            <SelectField
+              label="Location"
+              value={locations.find((location) => location.id === selectedVehicle.locationId)?.name || "Not linked"}
+              onChange={(value) =>
+                updateVehicleCareRecord(selectedVehicle.id, {
+                  locationId:
+                    value === "Not linked"
+                      ? ""
+                      : locations.find((location) => location.name === value)?.id || "",
+                })
+              }
+              options={["Not linked", ...locations.map((location) => location.name)]}
+            />
+          </div>
+
+          <div style={{ marginTop: 8 }}><Field label="Notes" multiline value={selectedVehicle.notes} onChange={(value) => updateVehicleCareRecord(selectedVehicle.id, { notes: value })} /></div>
+
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
+            <button type="button" disabled={!selectedVehicle.onsite} onClick={() => void createVehicleCleaningWorkOrder(selectedVehicle)} style={goldButtonStyle}>Cleaning Task</button>
+            <button type="button" onClick={() => markVehicleCleaned(selectedVehicle)} style={secondaryButtonStyle}>Mark Cleaned</button>
+            <button type="button" onClick={() => markVehicleServiced(selectedVehicle)} style={secondaryButtonStyle}>Mark Serviced</button>
+            <button type="button" onClick={() => addVehicleIssue(selectedVehicle)} style={secondaryButtonStyle}>Add Issue</button>
+            <button type="button" onClick={() => createVehicleWorkOrder(selectedVehicle)} style={secondaryButtonStyle}>Work Order</button>
+          </div>
+
+          <section style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${colors.line}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><div><div style={eyebrowStyle}>Connected Records</div><strong>Vehicle relationships</strong></div>{selectedVehicle.assetId ? <button type="button" onClick={() => { setSelectedAssetId(selectedVehicle.assetId || ""); setScreen("assets"); }} style={secondaryButtonStyle}>Open Asset</button> : null}</div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 9 }}>{[["Tasks",vehicleTasks.length],["Work Orders",vehicleWorkOrders.length],["Photos",vehiclePhotos.length],["Documents",vehicleDocuments.length]].map(([label,value]) => <div key={String(label)} style={{ ...recordInfoItemStyle, minWidth: 0 }}><small style={fieldLabelStyle}>{label}</small><strong>{value}</strong></div>)}</div>
+            <div style={{ display: "grid", gap: 7, marginTop: 10 }}>{vehicleTasks.map((task) => <button key={`vehicle-task-${task.id}`} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{task.title}</strong><small style={mutedSmallStyle}>Task · {taskDetails(task.id).status}</small></span><span>›</span></button>)}{vehicleWorkOrders.map((record) => <button key={`vehicle-work-${record.id}`} type="button" onClick={() => { setSelectedServiceId(record.id); setScreen("history"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{record.title}</strong><small style={mutedSmallStyle}>Work Order · {record.status}</small></span><span>›</span></button>)}{vehicleDocuments.map((document) => <button key={`vehicle-document-${document.id}`} type="button" onClick={() => { setSelectedDocumentId(document.id); setScreen("documents"); }} style={{ ...compactLinkedRowStyle, width: "100%" }}><span><strong>{document.title}</strong><small style={mutedSmallStyle}>{document.type || "Document"}</small></span><span>›</span></button>)}</div>
+            {vehiclePhotos.length ? <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 10 }}>{vehiclePhotos.map((photo) => <button key={photo.id} type="button" onClick={() => setPreviewFile(photo)} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 0, overflow: "hidden", background: "#FFFFFF", flex: "0 0 auto" }}><img src={photo.dataUrl || photo.url} alt={photo.name} style={{ width: 78, height: 60, objectFit: "cover", display: "block" }} /></button>)}</div> : null}
+          </section>
+
+          <section style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${colors.line}` }}>
+            <div style={eyebrowStyle}>History</div>
+            <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
+              {(selectedVehicle.history || []).slice(0, 12).map((entry) => <div key={entry.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 8, alignItems: "start" }}><span style={badgeStyle(entry.type === "Issue" ? "High" : entry.type === "Serviced" ? "Scheduled" : "Completed")}>{entry.type}</span><span><small style={{ display: "block", color: colors.text }}>{new Date(entry.date).toLocaleString()}</small>{entry.notes ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>{entry.notes}</small> : null}</span></div>)}
+              {!(selectedVehicle.history || []).length ? <div style={emptyStateStyle}>No Garage history recorded yet.</div> : null}
+            </div>
+          </section>
+        </section> : <div style={emptyStateStyle}>Select a fleet record.</div>}
+      </div>
+    </div>;
+  }
+  function renderSeasonalWork() {
+    return <div style={{ display: "grid", gap: 12 }}>
+      <div style={noticeStyle}>Seasonal auto-programs are retired. Add seasonal work manually from Work or Tasks when you approve it.</div>
+    </div>;
+  }
+
+
+  async function submitAddisonFieldReport(report: {
+    description: string;
+    locationId: string;
+    canHandle: boolean;
+    files: UploadedFileRecord[];
+  }) {
+    const description = report.description.trim();
+    if (!description) return { ok: false, error: "Describe what you found." };
+    const titleLine = description.split(/\r?\n/).find((line) => line.trim())?.trim() || "Field Report";
+    const title = titleLine.length > 80 ? `${titleLine.slice(0, 77)}…` : titleLine;
+    const reportLocationName = report.locationId
+      ? locationName(report.locationId)
+      : "General property";
+
+    const matchingOpenReport = inboxItems.some((item) => {
+      if (item.status === "Archived") return false;
+      const data = (item.extractedData || {}) as Record<string, unknown>;
+      return (
+        item.source === "Addison Field Report" &&
+        String(data.propertyId || "") === activePropertyId &&
+        String(item.notes || "").trim().toLowerCase() ===
+          description.toLowerCase() &&
+        String(data.locationId || item.targetId || "") === report.locationId
+      );
+    });
+    if (matchingOpenReport) {
+      showSaveToast("This report is already waiting in the Inbox.");
+      return { ok: true };
+    }
+
+    try {
+      const response = await fetch("/api/atlas-inbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          intakeType: "Work Order Issue",
+          status: "Needs Review",
+          source: "Addison Field Report",
+          notes: description,
+          pastedText: "",
+          files: report.files,
+          targetType: report.locationId ? "Location" : "General",
+          targetId: report.locationId,
+          targetName: reportLocationName,
+          proposedAction: "Attach to Existing",
+          extractedData: {
+            propertyId: activePropertyId,
+            reportType: "Field Report",
+            submittedBy: currentAtlasUser?.name || "Addison",
+            canHandle: report.canHandle,
+            locationId: report.locationId,
+            locationName: reportLocationName,
+            suggestedAction: "Create Task",
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Field Report could not be sent.");
+      }
+      const saved = payload.item as InboxItemRecord;
+      setInboxItems((current) => [
+        saved,
+        ...current.filter((item) => item.id !== saved.id),
+      ]);
+      showSaveToast("Report sent to Inbox.");
+      return { ok: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Field Report could not be sent.";
+      showSaveToast(message, "warning");
+      return { ok: false, error: message };
+    }
+  }
+
+  function renderAddisonToday() {
+    return (
+      <AtlasAddisonWork
+        workPlanTasks={workPlanTasks}
+        taskDetails={taskDetails}
+        todayISO={todayISO}
+        fileToUploadedRecord={fileToUploadedRecord}
+        updateTaskDetails={updateTaskDetails}
+        showSaveToast={showSaveToast}
+        locationName={locationName}
+        setSelectedTaskId={setSelectedTaskId}
+        setTasksView={setTasksView}
+        badgeStyle={badgeStyle}
+        mutedSmallStyle={mutedSmallStyle}
+        minutesLabel={minutesLabel}
+        formatDate={formatDate}
+        inputStyle={inputStyle}
+        noticeStyle={noticeStyle}
+        setPreviewFile={setPreviewFile}
+        goldButtonStyle={goldButtonStyle}
+        secondaryButtonStyle={secondaryButtonStyle}
+        completeAtlasTask={completeAtlasTask}
+        isAddisonUser={isAddisonUser}
+        isMobile={isMobile}
+        cardStyle={cardStyle}
+        eyebrowStyle={eyebrowStyle}
+        fieldLabelStyle={fieldLabelStyle}
+        colors={colors}
+        locations={locations}
+        submitFieldReport={submitAddisonFieldReport}
+      />
+    );
+  }
+  function renderBuildMyDay() {
+    type BuildDayItem = {
+      id: string;
+      title: string;
+      source: "Task" | "Work Order" | "Routine" | "Project" | "Vehicle";
+      minutes: number;
+      priority: "High" | "Medium" | "Low";
+      status: string;
+      location: string;
+      weatherBlocked?: boolean;
+      addisonReady?: boolean;
+      action: () => void;
+    };
+    const today = todayISO();
+    const forecast = weatherDays.find((day) => day.date === today) || weatherDays[0];
+    const wetDay = Boolean(forecast && (forecast.precipChance >= 55 || forecast.precipAmount >= 0.12));
+    const windyDay = Boolean(forecast && forecast.windMax >= 18);
+    const addisonKeywords = ["weed", "dog turf", "fountain", "sweep", "pot", "dry spot", "water plants", "walkway", "clean", "wash", "courtyard", "landscape cleanup"];
+    const addisonBlockedKeywords = ["electrical", "boiler", "hvac", "repair", "diagnose", "roof", "lift service", "chemical", "plumbing", "inspection", "high priority"];
+    const isBuildDayAddisonReady = (title: string, detail = "") => {
+      const text = `${title} ${detail}`.toLowerCase();
+      return addisonKeywords.some((keyword) => text.includes(keyword)) && !addisonBlockedKeywords.some((keyword) => text.includes(keyword));
+    };
+    const effortMinutes = (effort?: string) => effort === "5 minutes" ? 5 : effort === "15 minutes" ? 15 : effort === "30 minutes" ? 30 : effort === "1 hour" ? 60 : effort === "Half Day" ? 240 : effort === "Full Day" || effort === "Multi-Day" ? 480 : 45;
+    const taskItems: BuildDayItem[] = workPlanTasks
+      .filter((task) => {
+        const meta = taskDetails(task.id);
+        return meta.status !== "Completed" && (!meta.dueDate || meta.dueDate <= today);
+      })
+      .map((task) => {
+        const meta = taskDetails(task.id);
+        const dependency = meta.weatherDependency || "None";
+        const weatherBlocked = (wetDay && ["Dry", "No rain"].includes(dependency)) || (windyDay && dependency === "Low wind");
+        return {
+          id: `task-${task.id}`,
+          title: task.title,
+          source: "Task",
+          minutes: Math.max(5, Number(task.minutes || 30)),
+          priority: task.priority,
+          status: meta.status,
+          location: locationName(task.locationId) || "General",
+          weatherBlocked,
+          addisonReady: meta.assignee === "Addison" || isBuildDayAddisonReady(task.title, `${task.category} ${task.notes || ""}`),
+          action: () => { setSelectedTaskId(task.id); setTasksView("tasks"); },
+        };
+      });
+    const workItems: BuildDayItem[] = serviceRecords
+      .filter((record) => !["Completed", "Closed", "Cancelled"].includes(String(record.status)) && (record.date === today || Boolean(record.date && record.date < today) || record.priority === "High"))
+      .map((record) => ({
+        id: `work-${record.id}`,
+        title: record.title,
+        source: "Work Order",
+        minutes: effortMinutes(record.effort),
+        priority: record.priority === "High" ? "High" : record.priority === "Low" ? "Low" : "Medium",
+        status: String(record.status || "Open"),
+        location: locationName(record.locationId) || assetName(record.assetId) || "General",
+        addisonReady: isBuildDayAddisonReady(record.title, `${record.workCategory || ""} ${record.notes || ""}`),
+        action: () => openWorkOrderById(record.id),
+      }));
+    const routineItems: BuildDayItem[] = dashboardRoutineItems
+      .filter((item) => !completedDashboardRoutineIds.includes(item.id))
+      .map((item) => ({ id: `routine-${item.id}`, title: item.title, source: "Routine", minutes: 15, priority: "Medium", status: "Due today", location: item.detail || "Property", addisonReady: isBuildDayAddisonReady(item.title, item.detail || ""), action: () => setScreen("routines") }));
+    const projectItems: BuildDayItem[] = photoTimelineProjects
+      .filter((project) => !project.archived && project.status !== "Completed" && Boolean(project.phase?.trim()))
+      .slice(0, 4)
+      .map((project) => ({ id: `project-${project.id}`, title: project.phase || project.title, source: "Project", minutes: 30, priority: "Low", status: project.status || "Planning", location: locationName(project.locationId) || project.title, action: () => { setSelectedPhotoProjectId(project.id); setPhotoTimelineView("projects"); setProjectDetailTab("overview"); setScreen("timeline"); } }));
+    const vehicleItems: BuildDayItem[] = vehicleCare
+      .filter((vehicle) => vehicle.onsite && vehicleDueScore(vehicle) >= Math.max(1, Number(vehicle.cleaningIntervalDays || 14)))
+      .slice(0, 3)
+      .map((vehicle) => ({ id: `vehicle-${vehicle.id}`, title: `Clean ${vehicle.name}`, source: "Vehicle", minutes: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? 75 : 45, priority: vehicle.priority === "High" ? "High" : "Low", status: vehicle.lastCleaned ? `${daysSince(vehicle.lastCleaned)} days since cleaning` : "No cleaning record", location: locationName(vehicle.locationId) || "Vehicle area", addisonReady: vehicle.assignedTo === "Addison", action: () => { setSelectedVehicleId(vehicle.id); setTasksView("vehicles"); } }));
+    const all = [...taskItems, ...workItems, ...routineItems, ...projectItems, ...vehicleItems];
+    const waiting = all.filter((item) => item.weatherBlocked || /blocked|waiting|parts|vendor|owner/i.test(item.status));
+    const delegate = all.filter((item) => !waiting.includes(item) && item.addisonReady);
+    const available = all.filter((item) => !waiting.includes(item) && !delegate.includes(item));
+    const doNow = available.filter((item) => item.priority === "High" || /overdue|blocked/i.test(item.status)).sort((a, b) => b.priority.localeCompare(a.priority));
+    const doToday = available.filter((item) => !doNow.includes(item) && item.priority === "Medium");
+    const ifTime = available.filter((item) => !doNow.includes(item) && !doToday.includes(item));
+    const plannedMinutes = [...doNow, ...doToday, ...delegate].reduce((sum, item) => sum + item.minutes, 0);
+    const capacityMinutes = Math.max(1, workPlanTargetHours) * 60;
+    const overBy = Math.max(0, plannedMinutes - capacityMinutes);
+    const lane = (title: string, items: BuildDayItem[], detail: string, tone = "#F8FAFC") => (
+      <section style={{ ...cardStyle, padding: 12, background: tone }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><div><strong style={{ color: colors.navy }}>{title}</strong><small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>{detail}</small></div><span style={badgeStyle(items.length ? "Open" : "Completed")}>{items.length}</span></div>
+        <div style={{ display: "grid", gap: 7, marginTop: 9 }}>{items.map((item) => <button key={item.id} type="button" onClick={item.action} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", padding: 9, textAlign: "left", cursor: "pointer" }}><span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{item.title}</strong><small style={{ color: colors.navy, fontWeight: 900 }}>{minutesLabel(item.minutes)}</small></span><small style={{ ...mutedSmallStyle, display: "block", marginTop: 3 }}>{item.source} · {item.location} · {item.status}</small></button>)}{!items.length ? <small style={mutedSmallStyle}>Nothing here.</small> : null}</div>
+      </section>
+    );
+    return <div style={{ display: "grid", gap: 12 }}>
+      <section style={{ ...cardStyle, background: colors.navy, color: "#FFFFFF" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Estate Brain</div><h2 style={{ margin: "4px 0", color: "#FFFFFF" }}>Build My Day</h2><p style={{ margin: 0, opacity: .84, maxWidth: 700 }}>{forecast ? `${weatherText(Number(forecast.code || 0))} · ${weatherDayPlanning(forecast)}` : "Weather is loading. Atlas built the day from current work records."}</p></div><div style={{ minWidth: 190, textAlign: "right" }}><strong style={{ display: "block", fontSize: 25 }}>{minutesLabel(plannedMinutes)}</strong><small style={{ opacity: .82 }}>{capacityMinutes / 60}h available</small></div></div></section>
+      {overBy ? <div style={{ ...noticeStyle, borderColor: "#F1A7A7", background: "#FFF5F5", color: colors.red }}><strong>Over capacity by {minutesLabel(overBy)}.</strong> Move flexible work, delegate suitable items, or reschedule lower-priority work.</div> : <div style={{ ...noticeStyle, borderColor: "#B9DFC9", background: "#F3FBF6", color: colors.green }}><strong>{minutesLabel(Math.max(0, capacityMinutes - plannedMinutes))} remains.</strong> The current day fits inside your selected capacity.</div>}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>{lane("Do Now", doNow, "Urgent, overdue, or high priority", "#FFF8F8")}{lane("Do Today", doToday, "Important work that fits today")}{lane("Delegate", delegate, "Suitable for Addison", "#F4FBF7")}{lane("Waiting", waiting, "Blocked, dependent, or weather-sensitive", "#FFFBEF")}{lane("If Time Allows", ifTime, "Flexible projects and vehicle work")}</div>
+      <section style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div><strong style={{ color: colors.navy }}>Today’s Routine</strong><small style={{ ...mutedSmallStyle, display: "block" }}>{routineItems.length} routine item{routineItems.length === 1 ? "" : "s"} included in today’s plan.</small></div><button type="button" onClick={() => setScreen("routines")} style={secondaryButtonStyle}>Open Routine</button></div></section>
+    </div>;
+  }
+
+  function renderSmartRoutePlanning() {
+    type RouteItem = { id: string; title: string; source: string; minutes: number; area: string; priority: string; action: () => void };
+    const today = todayISO();
+    const routeAreas = ["Garage", "Mechanical Room", "Pool & Spa", "Dock", "East Lawn", "Courtyard", "Interior", "Other"];
+    const areaFor = (value: string) => {
+      const text = value.toLowerCase();
+      if (/garage|vehicle|driveway/.test(text)) return "Garage";
+      if (/mechanical|boiler|hvac|furnace|water heater|pump room/.test(text)) return "Mechanical Room";
+      if (/pool|spa|hot tub/.test(text)) return "Pool & Spa";
+      if (/dock|boat|cobalt|sea.?doo|marine|waterside/.test(text)) return "Dock";
+      if (/east lawn|lawn|irrigation|garden|grounds|landscap|veggie/.test(text)) return "East Lawn";
+      if (/courtyard|walkway|entrance|patio/.test(text)) return "Courtyard";
+      if (/interior|house|room|kitchen|bed|bath|office|great room|dining/.test(text)) return "Interior";
+      return "Other";
+    };
+    const effortMinutes = (effort?: string) => effort === "5 minutes" ? 5 : effort === "15 minutes" ? 15 : effort === "30 minutes" ? 30 : effort === "1 hour" ? 60 : effort === "Half Day" ? 240 : effort === "Full Day" || effort === "Multi-Day" ? 480 : 45;
+    const tasks: RouteItem[] = workPlanTasks.filter((task) => { const meta = taskDetails(task.id); return meta.status !== "Completed" && (!meta.dueDate || meta.dueDate <= today); }).map((task) => {
+      const location = locationName(task.locationId);
+      return { id: `route-task-${task.id}`, title: task.title, source: "Task", minutes: Math.max(5, Number(task.minutes || 30)), area: areaFor(`${location} ${task.category} ${task.title}`), priority: task.priority, action: () => { setSelectedTaskId(task.id); setTasksView("tasks"); } };
+    });
+    const work: RouteItem[] = serviceRecords.filter((record) => !["Completed", "Closed", "Cancelled"].includes(String(record.status)) && (record.date === today || Boolean(record.date && record.date < today) || record.priority === "High")).map((record) => {
+      const context = `${locationName(record.locationId)} ${assetName(record.assetId)} ${record.workCategory || ""} ${record.title}`;
+      return { id: `route-work-${record.id}`, title: record.title, source: "Work Order", minutes: effortMinutes(record.effort), area: areaFor(context), priority: String(record.priority || "Medium"), action: () => openWorkOrderById(record.id) };
+    });
+    const routines: RouteItem[] = dashboardRoutineItems.filter((item) => !completedDashboardRoutineIds.includes(item.id)).map((item) => ({ id: `route-routine-${item.id}`, title: item.title, source: "Routine", minutes: 15, area: areaFor(`${item.title} ${item.detail || ""}`), priority: "Medium", action: () => setScreen("routines") }));
+    const projects: RouteItem[] = photoTimelineProjects.filter((project) => !project.archived && project.status !== "Completed" && Boolean(project.phase?.trim())).slice(0, 4).map((project) => ({ id: `route-project-${project.id}`, title: project.phase || project.title, source: "Project", minutes: 30, area: areaFor(`${locationName(project.locationId)} ${project.title} ${project.category}`), priority: "Low", action: () => { setSelectedPhotoProjectId(project.id); setPhotoTimelineView("projects"); setProjectDetailTab("overview"); setScreen("timeline"); } }));
+    const vehicles: RouteItem[] = vehicleCare.filter((vehicle) => vehicle.onsite && vehicleDueScore(vehicle) >= Math.max(1, Number(vehicle.cleaningIntervalDays || 14))).map((vehicle) => ({ id: `route-vehicle-${vehicle.id}`, title: `Clean ${vehicle.name}`, source: "Vehicle", minutes: vehicle.kind === "Boat" || vehicle.kind === "Watercraft" ? 75 : 45, area: areaFor(`${locationName(vehicle.locationId)} ${vehicle.kind || ""} ${vehicle.name}`), priority: vehicle.priority === "High" ? "High" : "Low", action: () => { setSelectedVehicleId(vehicle.id); setTasksView("vehicles"); } }));
+    const all = [...tasks, ...work, ...routines, ...projects, ...vehicles];
+    const routeStops = routeAreas.map((area) => ({ area, items: all.filter((item) => item.area === area).sort((a, b) => ({ High: 0, Medium: 1, Low: 2 }[a.priority as "High" | "Medium" | "Low"] ?? 1) - ({ High: 0, Medium: 1, Low: 2 }[b.priority as "High" | "Medium" | "Low"] ?? 1)) })).filter((stop) => stop.items.length);
+    const totalMinutes = all.reduce((sum, item) => sum + item.minutes, 0);
+    return <div style={{ display: "grid", gap: 12 }}>
+      <section style={{ ...cardStyle, background: colors.navy, color: "#FFFFFF" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Smart Route Planning</div><h2 style={{ margin: "4px 0", color: "#FFFFFF" }}>{routeStops.length ? `${routeStops.length} property stops` : "No route needed yet"}</h2><p style={{ margin: 0, opacity: .84, maxWidth: 720 }}>Atlas grouped today’s work by physical area so you can finish nearby items before moving across the property.</p></div><div style={{ textAlign: "right" }}><strong style={{ display: "block", fontSize: 25 }}>{minutesLabel(totalMinutes)}</strong><small style={{ opacity: .82 }}>{all.length} work item{all.length === 1 ? "" : "s"}</small></div></div></section>
+      {routeStops.length ? <section style={{ ...cardStyle, padding: 12 }}><div style={eyebrowStyle}>Suggested route</div><div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 8 }}>{routeStops.map((stop, index) => <span key={`route-chip-${stop.area}`} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${colors.line}`, borderRadius: 999, padding: "7px 10px", background: index === 0 ? "#FFF6D8" : "#F8FAFC", color: colors.navy, fontWeight: 900, fontSize: 12 }}><span>{index + 1}</span>{stop.area}<small style={{ color: colors.muted }}>{minutesLabel(stop.items.reduce((sum, item) => sum + item.minutes, 0))}</small></span>)}</div></section> : <div style={noticeStyle}>Build today’s Tasks and Work Orders first. Atlas will create a route as soon as location-based work is due.</div>}
+      <div style={{ display: "grid", gap: 10 }}>{routeStops.map((stop, index) => {
+        const stopMinutes = stop.items.reduce((sum, item) => sum + item.minutes, 0);
+        const nextStop = routeStops[index + 1];
+        return <section key={stop.area} style={{ ...cardStyle, padding: 0, overflow: "hidden" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", padding: 13, background: index === 0 ? "#FFF9E8" : "#F8FAFC", borderBottom: `1px solid ${colors.line}` }}><div><div style={eyebrowStyle}>Stop {index + 1}</div><h3 style={{ margin: "2px 0", color: colors.navy }}>{stop.area}</h3><small style={mutedSmallStyle}>{stop.items.length} nearby item{stop.items.length === 1 ? "" : "s"}{nextStop ? ` · Next: ${nextStop.area}` : " · Final stop"}</small></div><strong style={{ color: colors.navy }}>{minutesLabel(stopMinutes)}</strong></div><div style={{ display: "grid", gap: 0 }}>{stop.items.map((item) => <button key={item.id} type="button" onClick={item.action} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, border: 0, borderBottom: `1px solid ${colors.line}`, background: "#FFFFFF", padding: 11, textAlign: "left", cursor: "pointer" }}><span><strong style={{ display: "block", color: colors.navy3 }}>{item.title}</strong><small style={mutedSmallStyle}>{item.source} · {item.priority}</small></span><strong style={{ color: colors.navy, fontSize: 12 }}>{minutesLabel(item.minutes)}</strong></button>)}</div></section>;
+      })}</div>
+    </div>;
+  }
+
+  function renderOperationsAnalytics() {
+    const today = todayISO();
+    const completedTasks = workPlanTasks.filter((task) => taskDetails(task.id).status === "Completed");
+    const openTasks = workPlanTasks.filter((task) => taskDetails(task.id).status !== "Completed");
+    const postponedTasks = openTasks.filter((task) => {
+      const due = taskDetails(task.id).dueDate;
+      return Boolean(due && due < addDays(today, -7));
+    });
+    const completionDurations = completedTasks.map((task) => {
+      const meta = taskDetails(task.id);
+      const start = new Date(meta.createdAt || "").getTime();
+      const end = new Date(meta.completedAt || "").getTime();
+      return start && end && end >= start ? (end - start) / 86400000 : 0;
+    }).filter((value) => value > 0);
+    const averageCompletionDays = completionDurations.length ? completionDurations.reduce((sum, value) => sum + value, 0) / completionDurations.length : 0;
+    const categoryMinutes = new Map<string, number>();
+    completedTasks.forEach((task) => categoryMinutes.set(task.category || "General", (categoryMinutes.get(task.category || "General") || 0) + Math.max(5, Number(task.minutes || 0))));
+    const categoryRows = [...categoryMinutes.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+    const locationCounts = new Map<string, number>();
+    completedTasks.forEach((task) => { const label = locationName(task.locationId) || "General"; locationCounts.set(label, (locationCounts.get(label) || 0) + 1); });
+    serviceRecords.forEach((record) => { const completedCount = (record.serviceHistory || []).length || (record.status === "Completed" ? 1 : 0); if (!completedCount) return; const label = locationName(record.locationId) || assetName(record.assetId) || "General"; locationCounts.set(label, (locationCounts.get(label) || 0) + completedCount); });
+    const locationRows = [...locationCounts.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+    const addisonTasks = workPlanTasks.filter((task) => taskDetails(task.id).assignee === "Addison");
+    const addisonCompleted = addisonTasks.filter((task) => taskDetails(task.id).status === "Completed");
+    const addisonMinutes = addisonTasks.filter((task) => taskDetails(task.id).status !== "Completed").reduce((sum, task) => sum + Math.max(5, Number(task.minutes || 0)), 0);
+    const recurringTasks = workPlanTasks.filter((task) => task.recurring);
+    const recurringCompliant = recurringTasks.filter((task) => taskDetails(task.id).status === "Completed" || !taskDetails(task.id).dueDate || taskDetails(task.id).dueDate >= today).length;
+    const recurringRate = recurringTasks.length ? Math.round((recurringCompliant / recurringTasks.length) * 100) : 100;
+    const vendorRows = vendorRecords.map((vendor) => {
+      const records = serviceRecords.filter((record) => record.vendorId === vendor.id || (record.assignedVendorIds || []).includes(vendor.id));
+      const completed = records.filter((record) => record.status === "Completed" || (record.serviceHistory || []).length);
+      const turnaround = completed.flatMap((record) => (record.serviceHistory || []).map((entry) => {
+        const start = new Date(`${record.date || String(entry.completedAt).slice(0, 10)}T12:00:00`).getTime();
+        const end = new Date(entry.completedAt).getTime();
+        return end >= start ? (end - start) / 86400000 : 0;
+      })).filter((days) => days >= 0);
+      return { vendor, jobs: records.length, open: records.filter((record) => record.status !== "Completed").length, averageDays: turnaround.length ? turnaround.reduce((sum, days) => sum + days, 0) / turnaround.length : 0 };
+    }).filter((row) => row.jobs).sort((a, b) => b.jobs - a.jobs).slice(0, 8);
+    const inactiveProjects = photoTimelineProjects.filter((project) => !project.archived && project.status !== "Completed").map((project) => {
+      const dates = [project.createdAt, project.startDate, ...projectTimelineEntries.filter((entry) => entry.projectId === project.id).map((entry) => entry.date || entry.createdAt), ...serviceRecords.filter((record) => record.projectId === project.id).flatMap((record) => [record.date || "", ...(record.serviceHistory || []).map((entry) => entry.completedAt)])].filter(Boolean).sort((a, b) => String(b).localeCompare(String(a)));
+      return { project, lastActivity: String(dates[0] || project.createdAt || ""), inactiveDays: daysSince(String(dates[0] || project.createdAt || "").slice(0, 10)) };
+    }).filter((row) => row.inactiveDays >= 14).sort((a, b) => b.inactiveDays - a.inactiveDays);
+    const barList = (rows: Array<{ label: string; value: number }>, formatter: (value: number) => string) => {
+      const max = Math.max(1, ...rows.map((row) => row.value));
+      return <div style={{ display: "grid", gap: 9, marginTop: 10 }}>{rows.map((row) => <div key={row.label}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 4 }}><strong style={{ fontSize: 12, color: colors.navy3 }}>{row.label}</strong><small style={mutedSmallStyle}>{formatter(row.value)}</small></div><div style={{ height: 8, borderRadius: 999, background: "#E8EEF4", overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.max(4, (row.value / max) * 100)}%`, borderRadius: 999, background: colors.gold }} /></div></div>)}{!rows.length ? <div style={noticeStyle}>Complete more work to build this analysis.</div> : null}</div>;
+    };
+    return <div style={{ display: "grid", gap: 12 }}>
+      <section style={{ ...cardStyle, background: colors.navy, color: "#FFFFFF" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}><div><div style={{ ...eyebrowStyle, color: colors.gold2 }}>Operations Analytics</div><h2 style={{ margin: "4px 0", color: "#FFFFFF" }}>What Atlas history is showing</h2><p style={{ margin: 0, opacity: .84 }}>Every metric comes from the records already stored in this property.</p></div><div style={{ textAlign: "right" }}><strong style={{ display: "block", fontSize: 25 }}>{completedTasks.length}</strong><small style={{ opacity: .82 }}>completed Tasks recorded</small></div></div></section>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 8 }}>{[["Avg completion",averageCompletionDays ? `${averageCompletionDays.toFixed(1)}d` : "—"],["Postponed",postponedTasks.length],["Recurring compliance",`${recurringRate}%`],["Inactive projects",inactiveProjects.length]].map(([label,value]) => <div key={String(label)} style={{ ...cardStyle, padding: 10 }}><small style={fieldLabelStyle}>{String(label).toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, fontSize: 22, color: label === "Postponed" && Number(value) ? colors.red : colors.navy }}>{value}</strong></div>)}</div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}><section style={cardStyle}><div style={eyebrowStyle}>Where time goes</div><h3 style={{ margin: "3px 0", color: colors.navy }}>Completed time by category</h3>{barList(categoryRows, minutesLabel)}</section><section style={cardStyle}><div style={eyebrowStyle}>Property activity</div><h3 style={{ margin: "3px 0", color: colors.navy }}>Completed work by location</h3>{barList(locationRows, (value) => `${value} record${value === 1 ? "" : "s"}`)}</section></div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}><section style={cardStyle}><div style={eyebrowStyle}>Addison</div><h3 style={{ margin: "3px 0", color: colors.navy }}>Workload and completion</h3><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 10 }}>{[["Assigned",addisonTasks.length],["Completed",addisonCompleted.length],["Open time",minutesLabel(addisonMinutes)]].map(([label,value]) => <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 9 }}><small style={fieldLabelStyle}>{String(label).toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, color: colors.navy }}>{value}</strong></div>)}</div><small style={{ ...mutedSmallStyle, display: "block", marginTop: 9 }}>Completion rate: {addisonTasks.length ? Math.round((addisonCompleted.length / addisonTasks.length) * 100) : 0}%</small></section><section style={cardStyle}><div style={eyebrowStyle}>Recurring work</div><h3 style={{ margin: "3px 0", color: colors.navy }}>{recurringRate}% currently compliant</h3><p style={mutedSmallStyle}>{recurringCompliant} of {recurringTasks.length} recurring Tasks are completed or not overdue.</p><button type="button" onClick={() => { setTaskListFilter("recurring"); setTasksView("tasks"); }} style={secondaryButtonStyle}>Review Recurring Tasks</button></section></div>
+      {postponedTasks.length ? <section style={{ ...cardStyle, borderColor: "#F1A7A7" }}><div style={eyebrowStyle}>Repeatedly delayed signal</div><h3 style={{ margin: "3px 0", color: colors.navy }}>Tasks overdue more than seven days</h3><div style={{ display: "grid", gap: 7, marginTop: 9 }}>{postponedTasks.map((task) => <button key={task.id} type="button" onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); }} style={{ ...secondaryButtonStyle, textAlign: "left", justifyContent: "space-between" }}><span>{task.title}</span><small>{formatDate(taskDetails(task.id).dueDate)}</small></button>)}</div></section> : null}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}><section style={cardStyle}><div style={eyebrowStyle}>Vendor performance</div><h3 style={{ margin: "3px 0", color: colors.navy }}>Jobs and recorded turnaround</h3><div style={{ display: "grid", gap: 7, marginTop: 9 }}>{vendorRows.map((row) => <button key={row.vendor.id} type="button" onClick={() => { setSelectedVendorId(row.vendor.id); setScreen("vendors"); }} style={{ ...secondaryButtonStyle, textAlign: "left", justifyContent: "space-between" }}><span><strong style={{ display: "block" }}>{row.vendor.name}</strong><small style={mutedSmallStyle}>{row.jobs} jobs · {row.open} open</small></span><small>{row.averageDays ? `${row.averageDays.toFixed(1)}d avg` : "No cycle time"}</small></button>)}{!vendorRows.length ? <div style={noticeStyle}>Vendor analytics will appear after work is linked to vendors.</div> : null}</div></section><section style={cardStyle}><div style={eyebrowStyle}>Project momentum</div><h3 style={{ margin: "3px 0", color: colors.navy }}>Inactive or delayed projects</h3><div style={{ display: "grid", gap: 7, marginTop: 9 }}>{inactiveProjects.map((row) => <button key={row.project.id} type="button" onClick={() => { setSelectedPhotoProjectId(row.project.id); setPhotoTimelineView("projects"); setProjectDetailTab("overview"); setScreen("timeline"); }} style={{ ...secondaryButtonStyle, textAlign: "left", justifyContent: "space-between" }}><span>{row.project.title}</span><small>{row.inactiveDays}d inactive</small></button>)}{!inactiveProjects.length ? <div style={noticeStyle}>No active project has been inactive for 14 days.</div> : null}</div></section></div>
+    </div>;
+  }
+
+  function renderWorkPlanner() {
+    const visibleWorkPlanTasks = isAddisonUser
+      ? workPlanTasks.filter((task) =>
+          String(taskDetails(task.id).assignee || "").trim().toLowerCase() === "addison"
+        )
+      : workPlanTasks;
+
+    return (
+      <AtlasTasks
+        ctx={{
+          todayISO,
+          addDays,
+          workPlanTasks: visibleWorkPlanTasks,
+          taskDetails,
+          isAddisonUser,
+          taskSearch,
+          taskListFilter,
+          selectedTaskId,
+          setSelectedTaskId,
+          fileToUploadedRecord,
+          updateTaskDetails,
+          showSaveToast,
+          setWalkVoiceListening,
+          cardStyle,
+          colors,
+          mutedSmallStyle,
+          setTasksView,
+          goldButtonStyle,
+          isMobile,
+          eyebrowStyle,
+          secondaryButtonStyle,
+          minutesLabel,
+          plannerLocationName,
+          noticeStyle,
+          completeAtlasTask,
+          skipRecurringTask,
+          moveAtlasTaskToToday,
+          moveAtlasTaskToTomorrow,
+          moveAtlasTaskToDate,
+          walkVoiceListening,
+          setPreviewFile,
+          setTaskListFilter,
+          SectionHeader,
+          tasksView,
+          backlogItems,
+          openGraduationPartyChecklist,
+          renderOperationsAnalytics,
+          renderSmartRoutePlanning,
+          renderBuildMyDay,
+          renderAddisonToday,
+          renderWeeklyPlanner,
+          renderBacklog,
+          renderVehicleCare,
+          renderSeasonalWork,
+          renderOperationsTemplates: () => null,
+          renderGraduationPartyChecklist,
+          renderOperationsIntelligence,
+          rapidTaskInputRef,
+          newTaskTitle,
+          setNewTaskTitle,
+          addAtlasTask,
+          inputStyle,
+          focusRapidTaskInput,
+          setTaskSearch,
+          badgeStyle,
+          formatDate,
+          compactUtilityButtonStyle,
+          assignTaskTo,
+          addQuickTaskNote,
+          addTaskPhoto,
+          convertTaskToWorkOrder,
+          Field,
+          updateWorkPlanTask,
+          SelectField,
+          workPlanDays,
+          photoTimelineProjects,
+          serviceRecords,
+          assetRecords,
+          locations,
+          vehicleCare,
+          vendorRecords,
+          procedureRecords,
+          contactRecords,
+          CreatableRelationshipField,
+          quickCreateProject,
+          fieldLabelStyle,
+          quickCreateAsset,
+          quickCreateLocation,
+          quickCreateVendor,
+          quickCreateContact,
+          deleteAtlasTask,
+          removeExactDuplicateTasks,
+          taskFocusMode,
+          setTaskFocusMode,
+          mapIconButtonStyle,
+          closeSymbol,
+        }}
+      />
+    );
+  }
+
+  function renderWeeklyPlanner() {
+    const plannerDates = nextWorkWeekDates();
+    const scheduledMinutes = workPlanDays.reduce<Record<WorkPlanDay, number>>(
+      (acc, day) => {
+        acc[day] = workPlanTasks
+          .filter((task) => task.scheduledDay === day)
+          .reduce((sum, task) => sum + task.minutes, 0);
+        return acc;
+      },
+      {} as Record<WorkPlanDay, number>,
+    );
+    const unscheduledTasks = workPlanTasks.filter((task) => !task.scheduledDay);
+    const totalMinutes = workPlanTasks.reduce((sum, task) => sum + task.minutes, 0);
+    const capacityMinutes = workPlanTargetHours * 60 * workPlanDays.length;
+    const overCapacity = Math.max(0, totalMinutes - capacityMinutes);
+
+    const movePlannerTask = (taskId: string, dayValue: string) => {
+      const nextDay = dayValue as WorkPlanDay;
+      updateWorkPlanTask(taskId, {
+        preferredDay: nextDay,
+        scheduledDay: nextDay,
+        scheduledDate: plannerDates[nextDay],
+      });
+    };
+
+    return (
+      <div style={{ display: "grid", gap: 12 }} onClick={(event) => event.stopPropagation()}>
+        <section style={sectionStyle}>
+          <SectionHeader
+            brand
+            eyebrow="Planning"
+            title="Plan Week"
+            detail="Arrange existing Tasks, Work Orders, Routines, and project actions across the week. Edit the records in their own sections."
+            right={
+              <div style={buttonRowStyle}>
+                <button type="button" onClick={() => { setTasksView("tasks"); setScreen("planner"); }} style={secondaryButtonStyle}>Open Tasks</button>
+                <button type="button" onClick={buildWorkPlan} style={goldButtonStyle}>Rebalance Week</button>
+              </div>
+            }
+          />
+          <div style={{ ...statGridStyle, marginTop: 10 }}>
+            <StatCard label="Planned" value={workPlanTasks.length} />
+            <StatCard label="Workload" value={minutesLabel(totalMinutes)} />
+            <StatCard label="Unscheduled" value={unscheduledTasks.length} />
+            <StatCard label="Capacity" value={overCapacity ? `${minutesLabel(overCapacity)} over` : `${minutesLabel(Math.max(0, capacityMinutes - totalMinutes))} open`} />
+          </div>
+        </section>
+
+        <section style={{ ...cardStyle, padding: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+            <div>
+              <strong style={{ display: "block", color: colors.navy }}>Weekly capacity</strong>
+              <small style={mutedSmallStyle}>Choose the normal amount of schedulable work per day, then import current Tasks or rebalance the existing plan.</small>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end" }}>
+              {[6, 6.5, 7, 7.5, 8].map((hours) => (
+                <button
+                  key={hours}
+                  type="button"
+                  onClick={() => setWorkPlanTargetHours(hours)}
+                  style={{
+                    ...secondaryButtonStyle,
+                    minWidth: 48,
+                    padding: "7px 9px",
+                    background: workPlanTargetHours === hours ? colors.gold : colors.card,
+                    color: workPlanTargetHours === hours ? colors.navy : colors.text,
+                    borderColor: workPlanTargetHours === hours ? colors.gold : colors.line,
+                  }}
+                >
+                  {hours}h
+                </button>
+              ))}
+              <button type="button" onClick={importWorkPlanTasks} style={secondaryButtonStyle}>Import Current Tasks</button>
+              <button type="button" onClick={buildWorkPlan} style={goldButtonStyle}>Build Week</button>
+            </div>
+          </div>
+          <div style={{ ...noticeStyle, marginTop: 10 }}>{workPlanMessage}</div>
+        </section>
+
+        {workPlanTasks.length ? (
+          <>
+            <section style={sectionStyle}>
+              <SectionHeader
+                eyebrow="Week"
+                title="Workload Board"
+                detail="Move work between days here. Open the original record when its details need to change."
+              />
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(5, minmax(0, 1fr))", gap: 9 }}>
+                {workPlanDays.map((day) => {
+                  const tasks = workPlanTasks.filter((task) => task.scheduledDay === day);
+                  const total = scheduledMinutes[day] || 0;
+                  const target = workPlanTargetHours * 60;
+                  const percent = Math.min(100, Math.round((total / Math.max(1, target)) * 100));
+                  const overloaded = total > target;
+                  return (
+                    <div key={day} style={{ ...cardStyle, minHeight: 180, padding: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                        <strong style={{ color: colors.navy }}>{day} · {formatDate(plannerDates[day])}</strong>
+                        <small style={{ ...mutedSmallStyle, color: overloaded ? colors.red : undefined }}>{minutesLabel(total)} / {workPlanTargetHours}h</small>
+                      </div>
+                      <div style={{ height: 5, borderRadius: 999, background: colors.line, overflow: "hidden", margin: "7px 0 9px" }}>
+                        <div style={{ width: `${percent}%`, height: "100%", background: overloaded ? colors.red : colors.gold }} />
+                      </div>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        {tasks.map((task) => (
+                          <div key={task.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: task.locked ? "#FFF9EB" : colors.card }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "flex-start" }}>
+                              <button
+                                type="button"
+                                onClick={() => { setSelectedTaskId(task.id); setTasksView("tasks"); setScreen("planner"); }}
+                                style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", color: colors.navy, fontWeight: 900, fontSize: 12, cursor: "pointer", minWidth: 0 }}
+                              >
+                                {task.title}
+                              </button>
+                              {task.locked ? <span style={{ ...calendarCompactPillStyle, flexShrink: 0 }}>Fixed</span> : null}
+                            </div>
+                            <div style={{ ...mutedSmallStyle, fontSize: 10, marginTop: 3 }}>{minutesLabel(task.minutes)} · {plannerLocationName(task.locationId)}{task.fixedTime ? ` · ${task.fixedTime}` : ""}</div>
+                            <select
+                              aria-label={`Move ${task.title}`}
+                              value={day}
+                              onChange={(event) => movePlannerTask(task.id, event.currentTarget.value)}
+                              style={{ ...selectStyle, minHeight: 28, padding: "3px 6px", fontSize: 10, marginTop: 6 }}
+                            >
+                              {workPlanDays.map((optionDay) => <option key={optionDay} value={optionDay}>Move to {optionDay}</option>)}
+                            </select>
+                          </div>
+                        ))}
+                        {!tasks.length ? <span style={{ ...mutedSmallStyle, padding: "8px 2px" }}>Open capacity</span> : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {unscheduledTasks.length ? (
+              <section style={{ ...cardStyle, padding: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                  <div><div style={eyebrowStyle}>Needs a day</div><strong style={{ color: colors.navy }}>Unscheduled Work</strong></div>
+                  <span style={calendarCompactPillStyle}>{unscheduledTasks.length}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 7 }}>
+                  {unscheduledTasks.map((task) => (
+                    <div key={task.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+                      <span><strong style={{ display: "block", color: colors.navy, fontSize: 12 }}>{task.title}</strong><small style={mutedSmallStyle}>{minutesLabel(task.minutes)} · {task.category}</small></span>
+                      <select value="" onChange={(event) => movePlannerTask(task.id, event.currentTarget.value)} style={{ ...selectStyle, minHeight: 30, padding: "4px 6px", fontSize: 10 }}>
+                        <option value="" disabled>Choose day</option>
+                        {workPlanDays.map((day) => <option key={day} value={day}>{day}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            <section style={{ ...cardStyle, padding: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div><strong style={{ display: "block", color: colors.navy }}>Finish the plan</strong><small style={mutedSmallStyle}>This board arranges work only. Task details, recurrence, notes, and completion stay in Tasks.</small></div>
+                <div style={buttonRowStyle}>
+                  <button type="button" onClick={() => { if (window.confirm("Clear this weekly plan? Tasks will remain in Tasks.")) setWorkPlanTasks([]); }} style={dangerButtonStyle}>Clear Plan</button>
+                  <button type="button" onClick={buildWorkPlan} style={secondaryButtonStyle}>Rebalance</button>
+                  <button
+                    type="button"
+                    onClick={() => void approveWorkPlan()}
+                    disabled={workPlanSaving}
+                    style={{ ...goldButtonStyle, opacity: workPlanSaving ? 0.65 : 1, cursor: workPlanSaving ? "wait" : "pointer" }}
+                  >
+                    {workPlanSaving ? "Adding to Calendar..." : "Approve & Add to Calendar"}
+                  </button>
+                </div>
+              </div>
+            </section>
+          </>
+        ) : (
+          <section style={{ ...noticeStyle, padding: 18 }}>
+            No work is loaded into Plan Week yet. Use <strong>Import Current Tasks</strong> to bring in active Tasks, then build or arrange the week.
+          </section>
+        )}
+      </div>
+    );
+  }
+
+
+  async function updateTeamAssignment(
+    record: ServiceRecord,
+    nextStatus: ServiceStatus,
+    note?: string,
+  ) {
+    const existingNotes = String(record.notes || "").trim();
+    const timestamp = new Date().toLocaleString();
+    const updatedNotes = note
+      ? [existingNotes, `[${timestamp}] ${note}`].filter(Boolean).join("\n\n")
+      : existingNotes;
+
+    if (nextStatus === "Completed") {
+      await completeWorkOrder(
+        normalizeService({ ...record, notes: updatedNotes }),
+        {
+          completedDate: todayISO(),
+          completionNote: note || "",
+          allowEarly: true,
+        },
+      );
+      return;
+    }
+
+    const updated = normalizeService({
+      ...record,
+      status: nextStatus,
+      notes: updatedNotes,
+      lastCompletedDate: record.lastCompletedDate,
+    });
+
+    const saved = await postAtlasRecord("work_orders", updated);
+    if (!saved) {
+      window.alert("Atlas could not save this assignment update.");
+      return;
+    }
+
+    setServiceRecords((current) =>
+      current.map((item) => (item.id === updated.id ? updated : item)),
+    );
+  }
+
+  async function requestTeamAssignmentHelp(record: ServiceRecord) {
+    const reason = window.prompt(
+      "What help or clarification is needed?",
+      "",
+    );
+    if (reason === null) return;
+    const cleanReason = reason.trim() || "Help or clarification requested.";
+    await updateTeamAssignment(
+      record,
+      "Waiting",
+      `TEAM HELP REQUEST: ${cleanReason}`,
+    );
+  }
+
+  async function updateLandscapeAssignment(
+    record: ServiceRecord,
+    action: "Complete" | "Follow Up" | "Skip" | "Severity" | "Crew Note",
+  ) {
+    if (action === "Complete") {
+      await updateTeamAssignment(
+        record,
+        "Completed",
+        "LANDSCAPE VISIT: Area completed.",
+      );
+      return;
+    }
+
+    if (action === "Follow Up") {
+      const note = window.prompt(
+        "What follow-up is needed for this area?",
+        "",
+      );
+      if (note === null) return;
+      await updateTeamAssignment(
+        record,
+        "Waiting",
+        `LANDSCAPE FOLLOW-UP: ${note.trim() || "Follow-up required."}`,
+      );
+      return;
+    }
+
+    if (action === "Skip") {
+      const reason = window.prompt(
+        "Why is this area being skipped?",
+        "Weather, access, or not needed this visit",
+      );
+      if (reason === null) return;
+      await updateTeamAssignment(
+        record,
+        "Open",
+        `LANDSCAPE SKIPPED: ${reason.trim() || "Skipped this visit."}`,
+      );
+      return;
+    }
+
+    if (action === "Severity") {
+      const severity = window.prompt(
+        "Enter weed severity: Low, Medium, or High",
+        "Medium",
+      );
+      if (severity === null) return;
+      const normalizedSeverity = severity.trim().toLowerCase();
+      const accepted =
+        normalizedSeverity === "low"
+          ? "Low"
+          : normalizedSeverity === "high"
+            ? "High"
+            : "Medium";
+      await updateTeamAssignment(
+        record,
+        record.status,
+        `WEED SEVERITY: ${accepted}`,
+      );
+      return;
+    }
+
+    const note = window.prompt("Add a crew note for this area:", "");
+    if (note === null || !note.trim()) return;
+    await updateTeamAssignment(
+      record,
+      record.status,
+      `CREW NOTE: ${note.trim()}`,
+    );
+  }
+
+  async function createAddisonDashboardTask(titleValue: string) {
+    const title = String(titleValue || "").trim();
+    if (!title || activePropertyId !== "2000") return "";
+
+    const workOrder = normalizeService({
+      id: uid("wo"),
+      propertyId: activePropertyId,
+      title,
+      date: todayISO(),
+      status: "Open",
+      priority: "Medium",
+      notes: "",
+      assetId: "",
+      vendorId: "",
+      procedureId: "",
+      followUpDate: "",
+      recurring: false,
+      recurrenceInterval: 1,
+      recurrenceUnit: "Weeks",
+      recurrenceEndDate: "",
+      season: seasonForDate(),
+      lastCompletedDate: "",
+      completionHistory: [],
+      workType: "Work Order",
+      workCategory: "🔧 Maintenance",
+      effort: "30 minutes",
+      responsibilityArea: "Dashboard · Addison",
+      assignedTo: "Addison",
+      photos: [],
+      documents: [],
+      checklist: [],
+      notesHistory: [],
+      serviceHistory: [],
+    });
+
+    clearWorkOrderTombstone(workOrder.id);
+    markRecordDirty("work_order", workOrder.id);
+    setDatabaseStatus(`Saving ${title}...`);
+
+    const saved = await postAtlasRecord("work_orders", workOrder);
+    if (!saved) {
+      markRecordDirty("work_order", workOrder.id);
+      return "";
+    }
+
+    clearRecordDirty("work_order", workOrder.id);
+    setServiceRecords((current) => workOrdersByIdentity([workOrder, ...current]));
+    setSelectedServiceId(workOrder.id);
+    setScreen("history");
+    setDatabaseStatus(`Saved ${title}.`);
+    recordAtlasAudit(
+      "Work assigned",
+      `${title} → Addison · ${formatDate(todayISO())}`,
+    );
+    showSaveToast("Added to Addison’s Work list.");
+    return workOrder.id;
+  }
+
+  async function updateAddisonDashboardTask(
+    taskId: string,
+    patch: { status?: "Open" | "Completed"; dueDate?: string; notes?: string },
+  ) {
+    if (activePropertyId !== "2000") return false;
+    const task = workPlanTasks.find((item) => item.id === taskId);
+    const meta = taskDetails(taskId);
+    if (!task || String(meta.assignee || "").trim().toLowerCase() !== "addison") return false;
+
+    const applyServerAddisonTasks = (records: Array<Record<string, any>>) => {
+      operationsRemoteRefreshRef.current = true;
+      if (operationsRemoteRefreshTimerRef.current) {
+        window.clearTimeout(operationsRemoteRefreshTimerRef.current);
+      }
+      operationsRemoteRefreshTimerRef.current = window.setTimeout(() => {
+        operationsRemoteRefreshRef.current = false;
+      }, 2000);
+
+      const remoteIds = new Set(records.map((record) => String(record.id || "")));
+      setWorkPlanTasks((current) => {
+        const nonAddison = current.filter((item) => {
+          if (remoteIds.has(item.id)) return false;
+          return String(taskDetails(item.id).assignee || "").trim().toLowerCase() !== "addison";
+        });
+        const remoteTasks = records.map((record) => ({
+          id: String(record.id || ""),
+          title: String(record.title || "Task"),
+          minutes: Math.max(5, Number(record.minutes || 30)),
+          priority: (record.priority || "Medium") as WorkPlanTask["priority"],
+          category: String(record.category || "General"),
+          locationId: String(record.locationId || "general"),
+          preferredDay: (record.preferredDay || "Auto") as WorkPlanTask["preferredDay"],
+          locked: Boolean(record.locked),
+          recurring: Boolean(record.recurring),
+          fixedTime: String(record.fixedTime || ""),
+          notes: String(record.notes || ""),
+        })) as WorkPlanTask[];
+        return dedupeTaskState([...remoteTasks, ...nonAddison], taskMeta).tasks;
+      });
+      setTaskMeta((current) => {
+        const next = { ...current };
+        for (const [id, existingMeta] of Object.entries(next) as Array<[string, AtlasTaskMeta]>) {
+          if (
+            String(existingMeta.assignee || "").trim().toLowerCase() === "addison" &&
+            !remoteIds.has(id)
+          ) {
+            delete next[id];
+          }
+        }
+        for (const record of records) {
+          const id = String(record.id || "");
+          const nestedMeta = record.taskMeta && typeof record.taskMeta === "object"
+            ? record.taskMeta as AtlasTaskMeta
+            : record as AtlasTaskMeta;
+          next[id] = {
+            ...(current[id] || taskDetails(id)),
+            ...nestedMeta,
+            assignee: "Addison",
+          };
+        }
+        return next;
+      });
+    };
+
+    try {
+      let body: Record<string, unknown>;
+      if (patch.status) {
+        body = { action: "task-status", taskId, status: patch.status };
+      } else {
+        const frequency = !task.recurring
+          ? "One-time"
+          : Number(meta.recurrenceInterval || 1) === 2 && meta.recurrenceUnit === "Weeks"
+            ? "Biweekly"
+            : meta.recurrenceUnit === "Days"
+              ? "Daily"
+              : meta.recurrenceUnit === "Months"
+                ? "Monthly"
+                : "Weekly";
+        body = {
+          action: "task-update",
+          taskId,
+          title: task.title,
+          dueDate: patch.dueDate ?? meta.dueDate ?? todayISO(),
+          frequency,
+          preferredDay: task.preferredDay || "Auto",
+          locationId: task.locationId || "general",
+          instructions: patch.notes ?? meta.instructions ?? meta.notes ?? task.notes ?? "",
+          priority: task.priority || "Medium",
+          minutes: task.minutes || 30,
+        };
+      }
+
+      const response = await fetch("/api/landscape-help?token=addison-2000-7f94f468dca84de3a7b8c2d942ca3819", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: "addison-2000-7f94f468dca84de3a7b8c2d942ca3819", ...body }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok || payload?.mode !== "addison") {
+        throw new Error(payload?.error || "Could not save Addison task.");
+      }
+      const records = Array.isArray(payload?.addison?.tasks) ? payload.addison.tasks : [];
+      applyServerAddisonTasks(records);
+      showSaveToast(
+        patch.status === "Completed"
+          ? `${task.title} completed.`
+          : patch.status === "Open"
+            ? `${task.title} reopened.`
+            : `${task.title} saved.`,
+      );
+      return true;
+    } catch (error) {
+      showSaveToast(
+        error instanceof Error ? error.message : "Could not save Addison task.",
+        "warning",
+      );
+      return false;
+    }
+  }
+
+  function renderDashboard() {
+    return (
+      <>
+        <AtlasDashboardWorkspace {...{
+      activePropertyId,
+      addAtlasTask,
+      createAddisonDashboardTask,
+      addDashboardWorkOrder,
+      addRoutineNote,
+      addRoutinePhoto,
+      openDashboardDepartment: (id: DepartmentKind) => {
+        setDepartmentDrilldown("");
+        setDepartmentCenter(id);
+      },
+      assetName,
+      assetRecords,
+      atlasAuditLog: atlasAuditLog.filter((entry) => entry.propertyId === activePropertyId),
+      buildWorkPlan,
+      buttonRowStyle,
+      canUseAdminTools,
+      checklistDefinitions,
+      compactUtilityButtonStyle,
+      completeAtlasTask,
+      completeWorkOrder,
+      completedDashboardRoutineIds,
+      currentAtlasUser,
+      customDashboardLayouts,
+      dashboardAddisonQuickAddRef,
+      dashboardCenterView,
+      dashboardEditMode,
+      dashboardFeedFilter,
+      dashboardLayoutId,
+      dashboardNickQuickAddRef,
+      dashboardPersonFocus,
+      dashboardReminderDate,
+      dashboardReminderDraft,
+      dashboardReminders,
+      dashboardRoutineItems,
+      dashboardTaskEditorId,
+      dashboardVendorVisitId,
+      dashboardVendorVisitNote,
+      dashboardWeatherDetailDate,
+      dashboardWidgetDropTarget,
+      dashboardWidgets,
+      databaseStatus,
+      daySessions,
+      daysSince,
+      deleteAtlasTask,
+      deleteWorkOrderRecord,
+      dismissedDashboardFeedIds,
+      draggedDashboardWidgetId,
+      eyebrowStyle,
+      fieldLabelStyle,
+      flagRoutineProblem,
+      goldButtonStyle,
+      inputStyle,
+      isAddisonUser,
+      isMobile,
+      isPatCrewUser,
+      isTeamScopedUser,
+      landscapeSearch,
+      landscapeSeverityFilter,
+      landscapeStatusFilter,
+      locationName,
+      locations,
+      mapIconButtonStyle,
+      minutesLabel,
+      morningBriefOpen,
+      mutedSmallStyle,
+      noticeStyle,
+      openWorkOrderById,
+      openTaskById,
+      openWorkOrderFilter,
+      openDashboardCalendarItem,
+      operationsSyncState,
+      photos,
+      postAtlasRecord,
+      deleteAtlasRecord,
+      prepareWeeklyOwnerUpdate,
+      quickCaptureNote,
+      quickCreateVendor,
+      recordAtlasAudit,
+      requestRecords,
+      requestTeamAssignmentHelp,
+      seasonalItems,
+      secondaryButtonStyle,
+      sectionStyle,
+      selectStyle,
+      serviceRecords,
+      setCompletedDashboardRoutineIds,
+      setCustomDashboardLayouts,
+      setDashboardCenterView,
+      setDashboardEditMode,
+      setDashboardFeedFilter,
+      setDashboardLayoutId,
+      setDashboardPersonFocus,
+      setDashboardReminderDate,
+      setDashboardReminderDraft,
+      setDashboardReminders,
+      setDashboardTaskEditorId,
+      setDashboardVendorVisitId,
+      setDashboardVendorVisitNote,
+      setDashboardWeatherDetailDate,
+      setDashboardWidgetDropTarget,
+      setDashboardWidgets,
+      setDashboardWorkFilter,
+      setDaySessions,
+      setDismissedDashboardFeedIds,
+      setDraggedDashboardWidgetId,
+      setLandscapeSearch,
+      setLandscapeSeverityFilter,
+      setLandscapeStatusFilter,
+      setMorningBriefOpen,
+      setQuickCaptureMode,
+      setQuickCaptureNote,
+      setQuickCaptureOpen,
+      setQuickCreateKind,
+      setQuickCreateName,
+      setScreen,
+      setSelectedAssetId,
+      setSelectedListId,
+      setSelectedLocationId,
+      setSelectedServiceId,
+      setSelectedTaskId,
+      setSelectedVehicleId,
+      setServiceRecords,
+      setShowLandscapeFilters,
+      setTaskMeta,
+      setTasksView,
+      setTodayLogCategory,
+      setTodayLogEntries,
+      setTodayLogText,
+      setWorkOrdersOpenKey,
+      showLandscapeFilters,
+      showSaveToast,
+      staffVisibleServiceRecords,
+      syncRoutineAssignment,
+      taskDetails,
+      teamWorkspace,
+      teamDirectory,
+      todayEvents,
+      todayLogCategory,
+      todayLogEntries,
+      todayLogText,
+      upcomingEvents,
+      updateLandscapeAssignment,
+      updateAddisonDashboardTask,
+      updateTaskDetails,
+      updateTeamAssignment,
+      updateWorkPlanTask,
+      vehicleCare,
+      vehicleDueScore,
+      vendorRecords,
+      weatherDays,
+      workPlanDays,
+      workPlanTargetHours,
+      workPlanTasks
+    }} />
+      </>
+    );
+  }
+  function renderRoutines() {
+    const today = todayISO();
+    const routineOpenCount = dashboardRoutineItems.filter(
+      (item) => !completedDashboardRoutineIds.includes(item.id),
+    ).length;
+    const todayAssignedTasks = workPlanTasks.filter((task) => {
+      const meta = taskMeta[task.id];
+      return meta?.dueDate === today && meta?.status !== "Completed";
+    });
+    const addisonCount = todayAssignedTasks.filter(
+      (task) => taskMeta[task.id]?.assignee === "Addison",
+    ).length;
+    const patCount = todayAssignedTasks.filter(
+      (task) => taskMeta[task.id]?.assignee === "Pat",
+    ).length;
+    const overdueCount = workPlanTasks.filter((task) => {
+      const meta = taskMeta[task.id];
+      return Boolean(meta?.dueDate) && meta!.dueDate < today && meta?.status !== "Completed";
+    }).length;
+    const todayWorkOrders = serviceRecords.filter(
+      (record) => record.status !== "Completed" && String(record.date || "").slice(0, 10) === today,
+    ).length;
+
+    return (
+      <div style={{ display: "grid", gap: 12 }}>
+        {!isAddisonUser ? (
+          <section style={{ ...cardStyle, padding: isMobile ? 12 : 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div>
+                <div style={eyebrowStyle}>Daily Foreman</div>
+                <strong style={{ color: colors.navy, fontSize: 18 }}>Today’s operating picture</strong>
+                <div style={{ ...mutedSmallStyle, marginTop: 3 }}>
+                  Routine and assignment status only. Nothing here is added to the Dashboard.
+                </div>
+              </div>
+              <div style={{ ...mutedSmallStyle, fontWeight: 800 }}>{formatDate(today)}</div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(5,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
+              {[
+                ["Routine open", routineOpenCount],
+                ["Work orders due", todayWorkOrders],
+                ["Addison", addisonCount],
+                ["Pat", patCount],
+                ["Overdue", overdueCount],
+              ].map(([label, value]) => (
+                <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, padding: 9, background: "#FFFFFF" }}>
+                  <span style={fieldLabelStyle}>{label}</span>
+                  <strong style={{ display: "block", marginTop: 3, color: colors.navy, fontSize: 20 }}>{value}</strong>
+                </div>
+              ))}
+            </div>
+            {overdueCount > 0 ? (
+              <div style={{ ...noticeStyle, marginTop: 10 }}>
+                {overdueCount} overdue task{overdueCount === 1 ? "" : "s"} need review in Tasks. Routine remains focused on today.
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        <AtlasRoutines
+          mode={isAddisonUser ? "dashboard" : "manager"}
+          isMobile={isMobile}
+          activePropertyId={activePropertyId}
+          teamDirectory={teamDirectory}
+          assigneeFilter={isAddisonUser ? "Addison" : undefined}
+          defaultTodayAssignee={isAddisonUser ? "Addison" : undefined}
+          employeeView={isAddisonUser}
+          allowTodayEditing={false}
+        />
+      </div>
+    );
+  }
+
+  function renderTeamWork() {
+    const createAddisonAssignment = (draft: {
+      title: string;
+      dueDate: string;
+      frequency: "One-time" | "Daily" | "Weekly" | "Biweekly" | "Monthly";
+      locationId: string;
+      instructions: string;
+      priority: "High" | "Medium" | "Low";
+      minutes: number;
+    }) => {
+      const title = draft.title.trim();
+      if (!title) return { ok: false, error: "Enter a task name." };
+
+      const dueDate = draft.dueDate || todayISO();
+      const recurrence =
+        draft.frequency === "Daily"
+          ? { recurring: true, interval: 1, unit: "Days" as WorkOrderRecurrenceUnit }
+          : draft.frequency === "Weekly"
+            ? { recurring: true, interval: 1, unit: "Weeks" as WorkOrderRecurrenceUnit }
+            : draft.frequency === "Biweekly"
+              ? { recurring: true, interval: 2, unit: "Weeks" as WorkOrderRecurrenceUnit }
+              : draft.frequency === "Monthly"
+                ? { recurring: true, interval: 1, unit: "Months" as WorkOrderRecurrenceUnit }
+                : { recurring: false, interval: 1, unit: "Weeks" as WorkOrderRecurrenceUnit };
+      const locationId = draft.locationId || "general";
+
+      const duplicate = workPlanTasks.find((task) => {
+        const meta = taskDetails(task.id);
+        return (
+          meta.status !== "Completed" &&
+          String(task.title || "").trim().toLowerCase() === title.toLowerCase() &&
+          String(meta.assignee || "").trim().toLowerCase() === "addison" &&
+          String(meta.dueDate || "").slice(0, 10) === dueDate &&
+          String(task.locationId || "general") === locationId &&
+          Boolean(task.recurring) === recurrence.recurring &&
+          (!recurrence.recurring ||
+            (Number(meta.recurrenceInterval || 1) === recurrence.interval &&
+              meta.recurrenceUnit === recurrence.unit))
+        );
+      });
+      if (duplicate) {
+        setSelectedTaskId(duplicate.id);
+        showSaveToast("That Addison assignment already exists.");
+        return { ok: false, error: "That assignment already exists." };
+      }
+
+      const createdAt = new Date().toISOString();
+      const category = inferTaskCategory(title);
+      const task: WorkPlanTask = {
+        id: uid("task"),
+        title,
+        minutes: Math.max(5, Number(draft.minutes || 30)),
+        priority: draft.priority,
+        category,
+        locationId,
+        preferredDay: inferTaskDay(title, category),
+        locked: false,
+        recurring: recurrence.recurring,
+        fixedTime: "",
+        notes: draft.instructions.trim(),
+      };
+      const meta: AtlasTaskMeta = {
+        status: "Open",
+        dueDate,
+        assignee: "Addison",
+        createdAt,
+        completedAt: undefined,
+        notes: draft.instructions.trim(),
+        instructions: draft.instructions.trim(),
+        addisonNote: "",
+        problemFlag: "",
+        recurrenceInterval: recurrence.interval,
+        recurrenceUnit: recurrence.unit,
+        recurrenceEndDate: "",
+        lastCompletedDate: "",
+        completionHistory: [],
+        season: "Year-Round",
+        weatherDependency: "None",
+        flexibleTime: true,
+        skippable: true,
+        assignmentScope: recurrence.recurring
+          ? "All future occurrences"
+          : "This occurrence",
+        needsReview: false,
+        updatedAt: createdAt,
+      };
+
+      clearTaskTombstone(task.id);
+      setWorkPlanTasks((current) => [task, ...current]);
+      setTaskMeta((current) => ({ ...current, [task.id]: meta }));
+      setSelectedTaskId(task.id);
+      recordAtlasAudit(
+        "Task assigned",
+        `${task.title} → Addison · ${draft.frequency} · ${formatDate(dueDate)}`,
+      );
+      showSaveToast(`${task.title} assigned to Addison.`);
+      return { ok: true };
+    };
+
+    return (
+      <AtlasTeamWork
+        activePropertyId={activePropertyId}
+        locations={locations}
+        createAddisonAssignment={createAddisonAssignment}
+      />
+    );
+  }
+
+  function renderTimelineOrInsights(mode: "timeline" | "insights") {
+    return <AtlasTimelineWorkspace {...{
+      mode,
+      activePropertyId,
+      addWorkOrder,
+      allDocuments,
+      assetName,
+      assetRecords,
+      calendarItems,
+      contactRecords,
+      deleteAtlasRecord,
+      deleteDocumentFromAtlasVault,
+      emptyStateStyle,
+      estateTimelineRange,
+      estateTimelineTypeFilter,
+      eyebrowStyle,
+      goldButtonStyle,
+      intakeDocs,
+      isMobile,
+      locationName,
+      locations,
+      mutedSmallStyle,
+      noticeStyle,
+      openCalendarItem,
+      photoCompareAfterId,
+      photoCompareBeforeId,
+      photoCompareOpen,
+      photoComparePosition,
+      photoLightboxDragOrigin,
+      photoLightboxDragging,
+      photoLightboxIds,
+      photoLightboxIndex,
+      photoLightboxPan,
+      photoLightboxTouchStartX,
+      photoLightboxZoom,
+      photoTimelineAssetId,
+      photoTimelineHideLogos,
+      photoTimelineMeta,
+      photoTimelineMonthFilter,
+      photoTimelineOrganizationFilter,
+      photoTimelinePaintingOnly,
+      photoTimelineProjectCategory,
+      photoTimelineProjects,
+      photoTimelineScrubber,
+      photoTimelineSearch,
+      photoTimelineTagFilter,
+      photoTimelineVendorFilter,
+      photoTimelineView,
+      photoTimelineYear,
+      photos,
+      postAtlasRecord,
+      postDocumentToAtlasVault,
+      procedureRecords,
+      projectDetailTab,
+      projectPhotoCaption,
+      projectPhotoDate,
+      projectPhotoTag,
+      projectQuickNoteDate,
+      projectQuickNoteText,
+      projectQuickNoteTitle,
+      projectQuickNoteType,
+      projectTimelineEntries,
+      replaceDocumentInVault,
+      requestRecords,
+      rowButtonStyle,
+      secondaryButtonStyle,
+      sectionStyle,
+      selectedPhotoProjectId,
+      selectedPhotoTimelineId,
+      serviceRecords,
+      setEstateTimelineRange,
+      setEstateTimelineTypeFilter,
+      setIntakeDocs,
+      setPhotoCompareAfterId,
+      setPhotoCompareBeforeId,
+      setPhotoCompareOpen,
+      setPhotoComparePosition,
+      setPhotoLightboxDragOrigin,
+      setPhotoLightboxDragging,
+      setPhotoLightboxIds,
+      setPhotoLightboxIndex,
+      setPhotoLightboxPan,
+      setPhotoLightboxTouchStartX,
+      setPhotoLightboxZoom,
+      setPhotoTimelineAssetId,
+      setPhotoTimelineMeta,
+      setPhotoTimelineMonthFilter,
+      setPhotoTimelineOrganizationFilter,
+      setPhotoTimelineProjects,
+      setPhotoTimelineScrubber,
+      setPhotoTimelineSearch,
+      setPhotoTimelineTagFilter,
+      setPhotoTimelineVendorFilter,
+      setPhotoTimelineView,
+      setPhotoTimelineYear,
+      setPhotos,
+      setProjectDetailTab,
+      setProjectPhotoCaption,
+      setProjectPhotoDate,
+      setProjectPhotoTag,
+      setProjectQuickNoteDate,
+      setProjectQuickNoteText,
+      setProjectQuickNoteTitle,
+      setProjectQuickNoteType,
+      setProjectTimelineEntries,
+      setScreen,
+      setSelectedCalendarId,
+      setSelectedDocumentId,
+      setSelectedPhotoProjectId,
+      setSelectedPhotoTimelineId,
+      setSelectedRequestId,
+      setSelectedServiceId,
+      setSelectedTaskId,
+      setSelectedVendorId,
+      setServiceRecords,
+      setTasksView,
+      showSaveToast,
+      taskDetails,
+      todayEvents,
+      todayLogEntries,
+      upcomingEvents,
+      vendorName,
+      vendorRecords,
+      weatherDays,
+      workPlanTasks
+    }} />;
+  }
+
+  function renderMap() {
+    if (activePropertyId !== "2000") {
+      const propertyName =
+        atlasProperties.find((property) => property.id === activePropertyId)
+          ?.name || activePropertyId;
+      return (
+        <section style={sectionStyle}>
+          <SectionHeader
+            eyebrow="Property Map"
+            title={`${propertyName} Map`}
+            detail="This property has a clean map workspace. A property image and labels can be added in the map expansion update."
+          />
+          <div style={emptyStateStyle}>No map has been added for {propertyName} yet.</div>
+        </section>
+      );
+    }
+
+    const today = todayISO();
+    const normalizedMapName = (value: string) =>
+      String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+
+    const operationsForLabel = (label: MapLabelRecord) => {
+      const labelName = normalizedMapName(label.label);
+      const labelWords = labelName.split(" ").filter((word) => word.length > 2);
+      const matchingLocations = locations.filter((location) => {
+        const locationName = normalizedMapName(location.name);
+        return (
+          locationName === labelName ||
+          locationName.includes(labelName) ||
+          labelName.includes(locationName) ||
+          labelWords.some((word) => locationName.includes(word))
+        );
+      });
+      const locationIds = new Set(matchingLocations.map((location) => location.id));
+      const matchingAssets = assetRecords.filter((asset) => {
+        const assetName = normalizedMapName(asset.name);
+        return (
+          assetLocationIds(asset).some((id) => locationIds.has(id)) ||
+          assetName === labelName ||
+          assetName.includes(labelName) ||
+          labelName.includes(assetName) ||
+          labelWords.some((word) => assetName.includes(word))
+        );
+      });
+      const assetIds = new Set(matchingAssets.map((asset) => asset.id));
+      const matchingWork = serviceRecords.filter((record) => {
+        const text = normalizedMapName(
+          `${record.title || ""} ${record.notes || ""} ${(record as AtlasServiceRecord).workCategory || ""}`,
+        );
+        return (
+          locationIds.has(String((record as AtlasServiceRecord).locationId || "")) ||
+          assetIds.has(String(record.assetId || "")) ||
+          (labelWords.length > 0 && labelWords.some((word) => text.includes(word)))
+        );
+      });
+      const openWork = matchingWork.filter(
+        (record) => String(record.status || "Open") !== "Completed",
+      );
+      const overdue = openWork.filter(
+        (record) => Boolean(record.date) && String(record.date) < today,
+      );
+      const critical = openWork.filter(
+        (record) => String(record.priority || "") === "High",
+      );
+      const active = openWork.filter(
+        (record) => String(record.status || "") === "In Progress",
+      );
+      const matchingDocuments = allDocuments.filter((document) => {
+        const text = normalizedMapName(
+          `${document.title || ""} ${document.area || ""} ${document.targetName || ""} ${document.notes || ""}`,
+        );
+        return (
+          locationIds.has(String(document.targetId || "")) ||
+          assetIds.has(String(document.linkedAssetId || "")) ||
+          (labelWords.length > 0 && labelWords.some((word) => text.includes(word)))
+        );
+      });
+      const matchingVendors = vendorRecords.filter((vendor) =>
+        (label.vendorIds || []).includes(vendor.id),
+      );
+
+      const status =
+        critical.length || overdue.length
+          ? "Critical"
+          : active.length
+            ? "Active"
+            : openWork.length
+              ? "Attention"
+              : "Healthy";
+
+      return {
+        locations: matchingLocations,
+        assets: matchingAssets,
+        work: matchingWork,
+        openWork,
+        overdue,
+        critical,
+        active,
+        documents: matchingDocuments,
+        vendors: matchingVendors,
+        status,
+      };
+    };
+
+    const mapOperations = mapLabels.map((label) => ({
+      label,
+      operations: operationsForLabel(label),
+    }));
+    const normalizedMapAreaSearch = mapAreaSearch.trim().toLowerCase();
+    const visibleMapOperations = mapOperations.filter(({ label, operations }) => {
+      const matchesSearch =
+        !normalizedMapAreaSearch ||
+        [
+          label.label,
+          label.category,
+          label.notes,
+          ...operations.locations.map((location) => location.name),
+          ...operations.assets.map((asset) => asset.name),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedMapAreaSearch);
+      const matchesStatus =
+        mapStatusFilter === "All" || operations.status === mapStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
+    const selectedOperations = operationsForLabel(selectedMapLabel);
+    const selectedMapVendors = vendorRecords.filter((vendor) =>
+      (selectedMapLabel.vendorIds || []).includes(vendor.id),
+    );
+    const selectedCoverPhoto =
+      (selectedMapLabel.photos || []).find(
+        (photo) => photo.id === selectedMapLabel.coverPhotoId,
+      ) || (selectedMapLabel.photos || [])[0];
+    const mapTabs =
+      selectedMapLabel.detailBoxes || normalizeMapDetailBoxes(selectedMapLabel);
+
+    const statusPalette = (status: string) => {
+      if (status === "Critical") {
+        return { background: colors.red, text: "#FFFFFF", soft: "#FEECEC" };
+      }
+      if (status === "Active") {
+        return { background: "#7C3AED", text: "#FFFFFF", soft: "#F3EEFF" };
+      }
+      if (status === "Attention") {
+        return { background: "#B54708", text: "#FFFFFF", soft: "#FFF4E5" };
+      }
+      return { background: colors.green, text: "#FFFFFF", soft: "#EAF7F1" };
+    };
+
+    const totalOpen = mapOperations.reduce(
+      (total, item) => total + item.operations.openWork.length,
+      0,
+    );
+    const criticalAreas = mapOperations.filter(
+      (item) => item.operations.status === "Critical",
+    ).length;
+    const activeAreas = mapOperations.filter(
+      (item) => item.operations.status === "Active",
+    ).length;
+    const healthyAreas = mapOperations.filter(
+      (item) => item.operations.status === "Healthy",
+    ).length;
+
+    return (
+      <div style={{ display: "grid", gap: 12 }}>
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile
+              ? "repeat(2, minmax(0, 1fr))"
+              : "repeat(4, minmax(0, 1fr))",
+            gap: 9,
+          }}
+        >
+          {[
+            { icon: "🔧", label: "Open Work", value: totalOpen, note: "Across mapped areas" },
+            { icon: "⚠", label: "Critical Areas", value: criticalAreas, note: "Overdue or high priority" },
+            { icon: "▶", label: "Active Areas", value: activeAreas, note: "Work in progress" },
+            { icon: "✓", label: "Healthy Areas", value: healthyAreas, note: "No open work" },
+          ].map((item) => (
+            <div
+              key={((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : (item as { id?: string }).id === "portfolio" ? "Properties" : item.label)}
+              style={{
+                border: `1px solid ${colors.line}`,
+                borderRadius: 14,
+                background: colors.card,
+                padding: isMobile ? 11 : 14,
+                minWidth: 0,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                }}
+              >
+                <div style={{ ...eyebrowStyle, fontSize: 10 }}>{((item as { id?: string }).id === "planner" ? "Tasks" : (item as { id?: string }).id === "timeline" ? "Projects" : item.label)}</div>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 9,
+                    display: "grid",
+                    placeItems: "center",
+                    background: colors.panel,
+                    border: `1px solid ${colors.line}`,
+                    fontSize: 13,
+                  }}
+                >
+                  {item.icon}
+                </span>
+              </div>
+              <div style={{ marginTop: 4, color: colors.navy, fontSize: 25, fontWeight: 950 }}>
+                {item.value}
+              </div>
+              <small style={mutedSmallStyle}>{item.note}</small>
+            </div>
+          ))}
+        </section>
+
+        <ListDrawerLayout
+          eyebrow="Live Operations Map"
+          title="Property Operations"
+          detail="Each map label reflects live work-order status. Labels are locked by default. Use Edit → Move Label before dragging."
+          isMobile={isMobile}
+          drawerResetKey={selectedMapLabelId || "map-empty"}
+          mobileDrawerOpen={mapMobileDrawerOpen}
+          onMobileDrawerClose={() => setMapMobileDrawerOpen(false)}
+          mobileDrawerTitle={selectedMapLabel.label || "Map Details"}
+          gridStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
+          listPanelStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden", padding: 0 } : undefined}
+          drawerStyleOverride={isMobile ? { minWidth: 0, overflowX: "hidden" } : undefined}
+          right={
+            <>
+              {selectedMapLabel.id ? (
+                mapMoveLabelId === selectedMapLabel.id ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopMapDrag();
+                      setMapMoveLabelId("");
+                      showSaveToast("Label position saved and locked.");
+                    }}
+                    style={goldButtonStyle}
+                  >
+                    Save Position
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setMapMoveLabelId(selectedMapLabel.id)}
+                    style={secondaryButtonStyle}
+                  >
+                    Edit → Move Label
+                  </button>
+                )
+              ) : null}
+              {selectedMapLabel.id ? (
+                <button
+                  type="button"
+                  onClick={() => deleteMapLabelRecord(selectedMapLabel)}
+                  style={dangerButtonStyle}
+                >
+                  Delete Label
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  addMapLabel();
+                  setActiveMapPanelTab("operations");
+                  if (isMobile) setMapMobileDrawerOpen(true);
+                }}
+                style={goldButtonStyle}
+              >
+                Add Label
+              </button>
+            </>
+          }
+          list={
+            <div style={{ display: "grid", gap: 10 }}>
+              <section
+                style={{
+                  ...cardStyle,
+                  display: "grid",
+                  gap: 8,
+                  position: isMobile ? "static" : "sticky",
+                  top: isMobile ? undefined : 0,
+                  zIndex: 6,
+                  padding: 10,
+                }}
+              >
+                <input
+                  value={mapAreaSearch}
+                  onChange={(event) => setMapAreaSearch(event.currentTarget.value)}
+                  placeholder="Search mapped areas, locations, or assets..."
+                  style={{ ...inputStyle, minHeight: isMobile ? 42 : undefined }}
+                />
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 6,
+                    alignItems: "center",
+                  }}
+                >
+                  {(["All", "Critical", "Active", "Attention", "Healthy"] as const).map(
+                    (status) => (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => setMapStatusFilter(status)}
+                        style={{
+                          ...smallSubtleButtonStyle,
+                          borderColor:
+                            mapStatusFilter === status
+                              ? colors.gold
+                              : colors.line,
+                          background:
+                            mapStatusFilter === status
+                              ? "#FFF3CF"
+                              : "#FFFFFF",
+                          color: colors.navy,
+                        }}
+                      >
+                        {status}
+                      </button>
+                    ),
+                  )}
+                  <span style={{ ...mutedSmallStyle, marginLeft: "auto" }}>
+                    {visibleMapOperations.length} of {mapOperations.length} areas
+                  </span>
+                </div>
+              </section>
+
+              {!mapImageOk ? (
+                <div
+                  style={{
+                    ...noticeStyle,
+                    borderColor: "#FACACA",
+                    background: "#FEECEC",
+                    color: colors.red,
+                  }}
+                >
+                  Map image did not load. Confirm this file exists:{" "}
+                  <strong>public/atlas-property-map.png</strong>
+                </div>
+              ) : null}
+
+              <div
+                ref={mapRef}
+                onPointerMove={handleMapPointerMove}
+                onPointerUp={stopMapDrag}
+                onPointerLeave={stopMapDrag}
+                onPointerCancel={stopMapDrag}
+                style={{
+                  ...mapShellStyle,
+                  minHeight: isMobile ? 430 : undefined,
+                  touchAction:
+                    mapMoveLabelId === selectedMapLabel.id ? "none" : "pan-x pan-y",
+                }}
+              >
+                <img
+                  src="/atlas-property-map.png"
+                  alt="Atlas property map"
+                  draggable={false}
+                  onError={() => setMapImageOk(false)}
+                  onLoad={() => setMapImageOk(true)}
+                  style={mapImageStyle}
+                />
+
+                {visibleMapOperations.map(({ label, operations }) => {
+                  const selected = label.id === selectedMapLabel.id;
+                  const palette = statusPalette(operations.status);
+                  return (
+                    <button
+                      key={label.id}
+                      type="button"
+                      title={mapMoveLabelId === label.id ? "Drag to move this label" : `${operations.status} · ${operations.openWork.length} open work item${operations.openWork.length === 1 ? "" : "s"}`}
+                      onPointerDown={(event) =>
+                        handleMapLabelPointerDown(event, label.id)
+                      }
+                      onClick={() => {
+                        setSelectedMapLabelId(label.id);
+                        setActiveMapPanelTab("operations");
+                        if (isMobile) setMapMobileDrawerOpen(true);
+                      }}
+                      style={{
+                        ...mapPinStyle,
+                        cursor: mapMoveLabelId === label.id ? "grab" : "pointer",
+                        outline: mapMoveLabelId === label.id ? `3px solid ${colors.gold}` : undefined,
+                        left: `${label.x}%`,
+                        top: `${label.y}%`,
+                        background: selected ? colors.gold : palette.background,
+                        color: selected ? colors.navy : palette.text,
+                        borderColor: selected ? colors.navy : "#FFFFFF",
+                        boxShadow: selected
+                          ? "0 0 0 3px rgba(201,154,61,0.35), 0 8px 18px rgba(15,23,42,0.25)"
+                          : "0 5px 14px rgba(15,23,42,0.22)",
+                        zIndex: selected ? 5 : 4,
+                      }}
+                    >
+                      {label.label}
+                      {operations.openWork.length ? (
+                        <span
+                          style={{
+                            marginLeft: 6,
+                            minWidth: 18,
+                            height: 18,
+                            padding: "0 5px",
+                            borderRadius: 999,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: selected ? colors.navy : "rgba(255,255,255,0.92)",
+                            color: selected ? "#FFFFFF" : palette.background,
+                            fontSize: 10,
+                            fontWeight: 950,
+                          }}
+                        >
+                          {operations.openWork.length}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  padding: "10px 4px 0",
+                }}
+              >
+                {[
+                  ["Healthy", colors.green],
+                  ["Attention", "#B54708"],
+                  ["Active Work", "#7C3AED"],
+                  ["Critical", colors.red],
+                ].map(([label, color]) => (
+                  <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 800, color: colors.muted }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 999, background: color }} />
+                    {label}
+                  </span>
+                ))}
+              </div>
+
+              <section
+                style={{
+                  ...cardStyle,
+                  display: "grid",
+                  gap: 8,
+                  padding: 10,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMapAreaNavigatorOpen((current) => !current)
+                  }
+                  style={{
+                    width: "100%",
+                    border: 0,
+                    background: "transparent",
+                    padding: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    color: colors.navy,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <span>
+                    <strong style={{ display: "block" }}>
+                      Operational Area Navigator
+                    </strong>
+                    <span style={mutedSmallStyle}>
+                      Open any mapped area without tapping a small map pin
+                    </span>
+                  </span>
+                  <span aria-hidden="true">
+                    {mapAreaNavigatorOpen ? "−" : "+"}
+                  </span>
+                </button>
+
+                {mapAreaNavigatorOpen ? (
+                  visibleMapOperations.length ? (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile
+                          ? "1fr"
+                          : "repeat(2, minmax(0, 1fr))",
+                        gap: 7,
+                      }}
+                    >
+                      {visibleMapOperations.map(({ label, operations }) => {
+                        const palette = statusPalette(operations.status);
+                        const selected = selectedMapLabel.id === label.id;
+                        return (
+                          <button
+                            key={label.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedMapLabelId(label.id);
+                              setActiveMapPanelTab("operations");
+                              if (isMobile) setMapMobileDrawerOpen(true);
+                            }}
+                            style={{
+                              border: `1px solid ${
+                                selected ? colors.gold : colors.line
+                              }`,
+                              borderRadius: 12,
+                              background: selected ? "#FFF9E8" : "#FFFFFF",
+                              padding: 9,
+                              display: "grid",
+                              gridTemplateColumns: "10px minmax(0, 1fr) auto",
+                              gap: 8,
+                              alignItems: "center",
+                              minWidth: 0,
+                              textAlign: "left",
+                              cursor: "pointer",
+                              boxShadow: selected
+                                ? "0 6px 16px rgba(172,121,0,0.11)"
+                                : "none",
+                            }}
+                          >
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                width: 10,
+                                height: 10,
+                                borderRadius: 999,
+                                background: palette.background,
+                              }}
+                            />
+                            <span style={{ minWidth: 0 }}>
+                              <strong
+                                style={{
+                                  display: "block",
+                                  color: colors.navy,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {label.label}
+                              </strong>
+                              <span style={mutedSmallStyle}>
+                                {operations.assets.length} assets ·{" "}
+                                {operations.documents.length} documents
+                              </span>
+                            </span>
+                            <span
+                              style={{
+                                minWidth: 28,
+                                height: 24,
+                                borderRadius: 999,
+                                display: "grid",
+                                placeItems: "center",
+                                padding: "0 7px",
+                                background: palette.soft,
+                                color: palette.background,
+                                fontSize: 10,
+                                fontWeight: 950,
+                              }}
+                            >
+                              {operations.openWork.length}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div style={emptyStateStyle}>
+                      No mapped areas match the current search and status filter.
+                    </div>
+                  )
+                ) : null}
+              </section>
+            </div>
+          }
+          drawer={
+            <div style={mapInfoPanelStyle}>
+              <div style={mapInfoHeaderStyle}>
+                <div style={mapInfoTitleRowStyle}>
+                  <div style={{ minWidth: 0 }}>
+                    <h3 style={mapInfoTitleStyle}>{selectedMapLabel.label || "Select a map area"}</h3>
+                    {selectedMapLabel.id ? (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          marginTop: 6,
+                          borderRadius: 999,
+                          padding: "4px 8px",
+                          background: statusPalette(selectedOperations.status).soft,
+                          color: statusPalette(selectedOperations.status).background,
+                          fontSize: 11,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {selectedOperations.status} · {selectedOperations.openWork.length} open
+                      </span>
+                    ) : null}
+                  </div>
+                  <div style={mapInfoIconRowStyle}>
+                    <button
+                      type="button"
+                      title="Edit this location"
+                      style={mapIconButtonStyle}
+                      onClick={() => {
+                        const location = selectedOperations.locations[0];
+                        if (location) {
+                          setSelectedLocationId(location.id);
+                          setLocationEditorOpen(true);
+                          setScreen("locations");
+                          if (isMobile) setLocationMobileDrawerOpen(true);
+                          return;
+                        }
+                        const record: AtlasLocationRecord = {
+                          id: uid("location"),
+                          name: selectedMapLabel.label,
+                          type: selectedMapLabel.category || "Property Area",
+                          zone: "2000",
+                          notes: selectedMapLabel.notes || "",
+                          parentId: "",
+                          customDetails: [],
+                          vendorIds: selectedMapLabel.vendorIds || [],
+                        };
+                        setLocations((current) => byName([record, ...current]));
+                        setSelectedLocationId(record.id);
+                        setLocationEditorOpen(true);
+                        markRecordDirty("location", record.id);
+                        setScreen("locations");
+                        if (isMobile) setLocationMobileDrawerOpen(true);
+                      }}
+                    >
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isMobile) setMapMobileDrawerOpen(false);
+                        else setActiveMapPanelTab("operations");
+                      }}
+                      style={mapIconButtonStyle}
+                      aria-label={isMobile ? "Close map details" : "Show map operations"}
+                    >
+                      {closeSymbol}
+                    </button>
+                  </div>
+                </div>
+                {selectedCoverPhoto?.dataUrl || selectedCoverPhoto?.url ? (
+                  <div style={mapHeaderPhotoShellStyle}>
+                    <img
+                      src={selectedCoverPhoto.dataUrl || selectedCoverPhoto.url}
+                      alt={selectedMapLabel.label}
+                      style={mapHeaderPhotoStyle}
+                    />
+                    <div style={{ position: "absolute", right: 8, bottom: 8, display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <label style={{ ...mapHeaderPhotoChangeStyle, position: "static" }}>Take Photo<input type="file" accept="image/*" capture="environment" onChange={handleMapHeaderPhotoUpload} style={{ display: "none" }} /></label>
+                      <label style={{ ...mapHeaderPhotoChangeStyle, position: "static" }}>Upload from Library<input type="file" accept="image/*" onChange={handleMapHeaderPhotoUpload} style={{ display: "none" }} /></label>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ ...mapHeaderPhotoEmptyStyle, display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
+                    <label style={secondaryButtonStyle}>Take Photo<input type="file" accept="image/*" capture="environment" onChange={handleMapHeaderPhotoUpload} style={{ display: "none" }} /></label>
+                    <label style={secondaryButtonStyle}>Upload from Library<input type="file" accept="image/*" onChange={handleMapHeaderPhotoUpload} style={{ display: "none" }} /></label>
+                  </div>
+                )}
+              </div>
+
+              <div style={mapPanelTabsStyle}>
+                {[
+                  ["operations", "Operations"],
+                  ["info", "Info"],
+                  ["vendors", "Vendors"],
+                  ["photos", "Photos"],
+                  ["tabs", "Tabs"],
+                ].map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() =>
+                      setActiveMapPanelTab(
+                        id as "operations" | "info" | "vendors" | "photos" | "tabs",
+                      )
+                    }
+                    style={
+                      activeMapPanelTab === id
+                        ? mapPanelTabActiveStyle
+                        : mapPanelTabStyle
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div style={mapPanelBodyStyle}>
+                {activeMapPanelTab === "operations" ? (
+                  <div style={mapPanelFormStackStyle}>
+                    {!selectedMapLabel.id ? (
+                      <p style={mapEmptyNoteStyle}>Select a map label to view live operations.</p>
+                    ) : (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                          {[
+                            ["Open Work", selectedOperations.openWork.length],
+                            ["Overdue", selectedOperations.overdue.length],
+                            ["Assets", selectedOperations.assets.length],
+                            ["Documents", selectedOperations.documents.length],
+                          ].map(([label, value]) => (
+                            <div key={String(label)} style={{ border: `1px solid ${colors.line}`, borderRadius: 11, background: "#F8FAFC", padding: 10 }}>
+                              <small style={mutedSmallStyle}>{label}</small>
+                              <div style={{ marginTop: 3, color: colors.navy, fontSize: 21, fontWeight: 950 }}>{value}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div>
+                          <div style={{ ...fieldLabelStyle, marginBottom: 7 }}>Open Work Orders</div>
+                          <div style={{ display: "grid", gap: 7 }}>
+                            {selectedOperations.openWork.slice(0, 8).map((record) => (
+                              <button
+                                key={record.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedServiceId(record.id);
+                                  setScreen("history");
+                                }}
+                                style={{ border: `1px solid ${colors.line}`, borderRadius: 10, background: colors.card, padding: "9px 10px", textAlign: "left", cursor: "pointer", color: colors.text }}
+                              >
+                                <strong style={{ display: "block" }}>{record.title}</strong>
+                                <small style={mutedSmallStyle}>
+                                  {record.date ? `${record.date < today ? "Overdue" : "Due"} ${formatDate(record.date)}` : "No due date"} · {record.status || "Open"}
+                                </small>
+                              </button>
+                            ))}
+                            {!selectedOperations.openWork.length ? (
+                              <p style={mapEmptyNoteStyle}>No open work orders for this area.</p>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const firstLocation = selectedOperations.locations[0];
+                              if (firstLocation) setSelectedLocationId(firstLocation.id);
+                              setScreen("locations");
+                            }}
+                            style={secondaryButtonStyle}
+                          >
+                            View Location
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const firstAsset = selectedOperations.assets[0];
+                              if (firstAsset) setSelectedAssetId(firstAsset.id);
+                              setScreen("assets");
+                            }}
+                            style={secondaryButtonStyle}
+                          >
+                            View Assets
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : null}
+
+                {activeMapPanelTab === "info" ? (
+                  <div style={mapPanelFormStackStyle}>
+                    <Field
+                      label="Name"
+                      value={selectedMapLabel.label}
+                      onChange={(value) =>
+                        updateSelectedMapLabel({ label: value })
+                      }
+                    />
+                    <Field
+                      label="Type"
+                      value={selectedMapLabel.category}
+                      onChange={(value) =>
+                        updateSelectedMapLabel({ category: value })
+                      }
+                    />
+                    <label style={{ display: "grid", gap: 7 }}>
+                      <span style={fieldLabelStyle}>Description</span>
+                      <textarea
+                        value={selectedMapLabel.notes || ""}
+                        onChange={(event) =>
+                          updateSelectedMapLabel({
+                            notes: event.currentTarget.value,
+                          })
+                        }
+                        placeholder="Add a short note"
+                        style={{
+                          ...inputStyle,
+                          minHeight: 88,
+                          resize: "vertical",
+                        }}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+
+                {activeMapPanelTab === "vendors" ? (
+                  <div style={mapPanelFormStackStyle}>
+                    <label style={{ display: "grid", gap: 7 }}>
+                      <span style={fieldLabelStyle}>Add Vendor</span>
+                      <select
+                        value=""
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          if (value) toggleMapLabelVendor(value);
+                        }}
+                        style={inputStyle}
+                      >
+                        <option value="">Choose vendor</option>
+                        {vendorRecords
+                          .filter(
+                            (vendor) =>
+                              !(selectedMapLabel.vendorIds || []).includes(
+                                vendor.id,
+                              ),
+                          )
+                          .map((vendor) => (
+                            <option key={vendor.id} value={vendor.id}>
+                              {vendor.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+
+                    {selectedMapVendors.length ? (
+                      <div style={mapVendorChipListStyle}>
+                        {selectedMapVendors.map((vendor) => (
+                          <button
+                            key={vendor.id}
+                            type="button"
+                            onClick={() => toggleMapLabelVendor(vendor.id)}
+                            style={mapVendorChipStyle}
+                          >
+                            {vendor.name} {closeSymbol}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={mapEmptyNoteStyle}>No vendors linked.</p>
+                    )}
+                  </div>
+                ) : null}
+
+                {activeMapPanelTab === "photos" ? (
+                  <div style={mapPanelFormStackStyle}>
+                    <label
+                      style={{
+                        ...secondaryButtonStyle,
+                        display: "inline-flex",
+                        cursor: "pointer",
+                        width: "fit-content",
+                      }}
+                    >
+                      Take Photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleMapLabelPhotoUpload}
+                        style={{ display: "none" }}
+                      />
+                    </label>
+                    <label style={{ ...secondaryButtonStyle, display: "inline-flex", cursor: "pointer", width: "fit-content" }}>
+                      Upload from Library
+                      <input type="file" accept="image/*" multiple onChange={handleMapLabelPhotoUpload} style={{ display: "none" }} />
+                    </label>
+
+                    {selectedMapLabel.photos?.length ? (
+                      <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card }}>
+                        <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Photos ({selectedMapLabel.photos.length})</summary>
+                        <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", overflowX: "hidden", padding: "0 8px 8px" }}>
+                        {selectedMapLabel.photos.map((photo) => (
+                          <div key={photo.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "minmax(0, 1fr) auto auto", alignItems: "center", gap: 6, minWidth: 0, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
+                              <button type="button" onClick={() => openUploadedFile(photo)} style={{ border: 0, padding: 0, background: "transparent", color: colors.navy, textAlign: "left", fontWeight: 800, cursor: "pointer" }}>{photo.name || "Map photo"}</button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateSelectedMapLabel({
+                                    coverPhotoId: photo.id,
+                                  })
+                                }
+                                style={smallSubtleButtonStyle}
+                              >
+                                Use Header
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeMapLabelPhoto(photo.id)}
+                                style={dangerMiniButtonStyle}
+                              >
+                                Remove
+                              </button>
+                          </div>
+                        ))}
+                        </div>
+                      </details>
+                    ) : (
+                      <p style={mapEmptyNoteStyle}>No photos added.</p>
+                    )}
+                  </div>
+                ) : null}
+
+                {activeMapPanelTab === "tabs" ? (
+                  <div style={mapPanelFormStackStyle}>
+                    <div style={mapTabListStyle}>
+                      {mapTabs.map((box) => (
+                        <div key={box.id} style={mapTabEditorStyle}>
+                          <div style={mapBoxHeaderStyle}>
+                            <input
+                              aria-label="Tab title"
+                              value={box.title}
+                              onChange={(event) =>
+                                updateMapDetailBox(box.id, {
+                                  title: event.currentTarget.value,
+                                })
+                              }
+                              placeholder="Tab name"
+                              style={mapBoxTitleInputStyle}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeMapDetailBox(box.id)}
+                              style={mapBoxRemoveButtonStyle}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          <textarea
+                            aria-label={`${box.title || "Tab"} details`}
+                            value={box.body}
+                            onChange={(event) =>
+                              updateMapDetailBox(box.id, {
+                                body: event.currentTarget.value,
+                              })
+                            }
+                            placeholder="Add details"
+                            style={mapBoxTextareaStyle}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addMapDetailBox}
+                      style={mapAddTabButtonStyle}
+                    >
+                      + Add Tab
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          }
+        />
+      </div>
+    );
+  }
+
+  function renderLocations() {
+    return <AtlasLocationsWorkspace {...{
+      addAsset,
+      addLinkedPhotoFiles,
+      addLocation,
+      addLocationCustomDetail,
+      addSubLocation,
+      assetCardHintStyle,
+      assetFileDeleteButtonStyle,
+      assetFileListRowStyle,
+      assetPanelScrollTimerRef,
+      assetRecords,
+      assignAssetToLocation,
+      buttonRowStyle,
+      collapsedLocationIds,
+      compactLinkedListStyle,
+      compactLinkedRowStyle,
+      compactUploadButtonStyle,
+      dangerButtonStyle,
+      deleteLinkedImage,
+      deleteSelectedLocation,
+      detailSectionHeaderStyle,
+      detailSectionStyle,
+      editorHeaderStyle,
+      eyebrowStyle,
+      fieldLabelStyle,
+      formGridStyle,
+      goldButtonStyle,
+      imageFilesFromPasteEvent,
+      inputStyle,
+      intakeDocs,
+      isMobile,
+      isRecordDirty,
+      isSeanMarineUser,
+      linkedImageFilesFor,
+      listStyle,
+      locationEditorOpen,
+      locationFiltersOpen,
+      locationHoveredId,
+      locationMobileDrawerOpen,
+      locationSearch,
+      locationVisibilityFilters,
+      locations,
+      mutedSmallStyle,
+      noticeStyle,
+      openUploadedFile,
+      pasteLinkedPhoto,
+      recordInfoGridStyle,
+      recordInfoItemStyle,
+      recordNotesStyle,
+      removeAssetFromLocation,
+      removeLocationCustomDetail,
+      renderLinkedDocuments,
+      saveDirtyRecord,
+      seanVisibleAssetRecords,
+      seanVisibleLocationRecords,
+      secondaryButtonStyle,
+      selectedLocation,
+      selectedLocationId,
+      serviceRecords,
+      setAssetPanelScrolling,
+      setCollapsedLocationIds,
+      setLocationEditorOpen,
+      setLocationFiltersOpen,
+      setLocationHoveredId,
+      setLocationMobileDrawerOpen,
+      setLocationSearch,
+      setLocationVisibilityFilters,
+      setScreen,
+      setSelectedAssetId,
+      setSelectedLocationId,
+      setSelectedServiceId,
+      setSelectedTaskId,
+      setTaskListFilter,
+      setTasksView,
+      showSaveToast,
+      stackStyle,
+      staffVisibleServiceRecords,
+      taskDetails,
+      updateLocation,
+      updateLocationCustomDetail,
+      workPlanTasks,
+    }} />;
+  }
+
+  function renderAssets() {
+    return <AtlasAssetsWorkspace {...{
+      activePropertyId,
+      addAsset,
+      addAssetPhotoFiles,
+      addWorkOrder,
+      assetActionButtonStyle,
+      assetActionRowStyle,
+      assetAddVendorSelectStyle,
+      assetAlphabeticalListStyle,
+      assetBulkMode,
+      assetCardHeaderStyle,
+      assetCardHintStyle,
+      assetCardStyle,
+      assetClearFieldButtonStyle,
+      assetCompactInputStyle,
+      assetDeleteBottomButtonStyle,
+      assetEditButtonStyle,
+      assetEditorOpen,
+      assetEmptyStateStyle,
+      assetFileSummaryStyle,
+      assetFiltersOpen,
+      assetFixedPanelStyle,
+      assetHeroPhotoImageStyle,
+      assetHeroPhotoStyle,
+      assetHistoryHeaderActionsStyle,
+      assetHistoryOrderStyle,
+      assetIconButtonStyle,
+      assetInfoItemStyle,
+      assetInfoLabelStyle,
+      assetInfoValueStyle,
+      assetInformationGridStyle,
+      assetInlineEditorStyle,
+      assetListControlsStyle,
+      assetListDensity,
+      assetListNameStyle,
+      assetListRowStyle,
+      assetListSearch,
+      assetListThumbStyle,
+      assetMiddleGridStyle,
+      assetNotesEditorStyle,
+      assetNotesTextStyle,
+      assetPanelCustomizeOpen,
+      assetPanelFooterStyle,
+      assetPanelScrolling,
+      assetPanelSection,
+      assetPanelTitleRowStyle,
+      assetPanelTitleStyle,
+      assetPhotoDeleteIconStyle,
+      assetPhotoHeaderActionsStyle,
+      assetPhotoLabelButtonStyle,
+      assetPrimaryActionButtonStyle,
+      assetQuickAccessOpen,
+      assetRecordQualityOpen,
+      assetRecords,
+      assetSortOrder,
+      assetSortSelectStyle,
+      assetTinyButtonStyle,
+      assetTinyUploadStyle,
+      assetTopGridStyle,
+      assetVendorBlockStyle,
+      assetVendorChipStyle,
+      assetVendorRemoveStyle,
+      assetVendorRowStyle,
+      assetVisibleSections,
+      clearRecordDirty,
+      dangerButtonStyle,
+      deleteManualRecord,
+      deleteSelectedDocument,
+      deleteAssetPhoto,
+      deleteAssetRecord,
+      excludedAssetCategories,
+      excludedAssetStatuses,
+      favoriteAssetIds,
+      filesFromClipboardPayload,
+      filteredAssets,
+      findManualForAsset,
+      goldButtonStyle,
+      imagePayloadFromPasteEvent,
+      inputStyle,
+      intakeDocs,
+      isMobile,
+      isRecordDirty,
+      isSeanMarineUser,
+      locationName,
+      locations,
+      manualsForAsset,
+      mutedSmallStyle,
+      noticeStyle,
+      openPhotoPreview,
+      openFileInBrowser,
+      openUploadedFile,
+      partRecords,
+      pasteAssetPhoto,
+      photoTimelineProjects,
+      photos,
+      postAtlasRecord,
+      procedureRecords,
+      recentAssetIds,
+      recordListIdentityStyle,
+      recordListThumbImageStyle,
+      renameAssetPhoto,
+      saveDirtyRecord,
+      seanVisibleAssetRecords,
+      selectedAsset,
+      selectedAssetId,
+      selectedAssetIds,
+      selectedAssetPhotos,
+      serviceRecords,
+      setAssetBulkMode,
+      setAssetEditorOpen,
+      setAssetFiltersOpen,
+      setAssetListDensity,
+      setAssetListSearch,
+      setAssetPanelCustomizeOpen,
+      setAssetPanelSection,
+      setAssetQuickAccessOpen,
+      setAssetRecordQualityOpen,
+      setAssetRecords,
+      setAssetSortOrder,
+      setAssetVisibleSections,
+      setDatabaseStatus,
+      setDocumentSearch,
+      setExcludedAssetCategories,
+      setExcludedAssetStatuses,
+      setFavoriteAssetIds,
+      setPhotoTimelineView,
+      setRecentAssetIds,
+      setLocations,
+      setScreen,
+      setSelectedAssetId,
+      setSelectedAssetIds,
+      setSelectedDocumentId,
+      setSelectedLocationId,
+      setSelectedManualId,
+      setSelectedPhotoProjectId,
+      setSelectedServiceId,
+      setSelectedTaskId,
+      setTasksView,
+      showSaveToast,
+      staffVisibleServiceRecords,
+      startManualForAsset,
+      uploadManualForAsset,
+      taskDetails,
+      updateAsset,
+      vendorName,
+      vendorRecords,
+      workPlanTasks,
+    }} />;
+  }
+
+  function renderContacts() {
+    return (
+      <AtlasContacts
+        selectedContactId={selectedContactId}
+        setSelectedContactId={setSelectedContactId}
+        contactRecords={contactRecords}
+        vendorRecords={vendorRecords}
+        teamDirectory={teamDirectory}
+        activePropertyId={activePropertyId}
+        openVendor={(vendorId: string) => {
+          setSelectedVendorId(vendorId);
+          setScreen("vendors");
+        }}
+        isMobile={isMobile}
+        startNewContact={startNewContact}
+        goldButtonStyle={goldButtonStyle}
+        colors={colors}
+        eyebrowStyle={eyebrowStyle}
+        mutedSmallStyle={mutedSmallStyle}
+        cardStyle={cardStyle}
+        contactSearch={contactSearch}
+        setContactSearch={setContactSearch}
+        inputStyle={inputStyle}
+        contactListShellStyle={contactListShellStyle}
+        filteredContacts={filteredContacts}
+        editContact={editContact}
+        contactRowStyle={contactRowStyle}
+        contactAvatarStyle={contactAvatarStyle}
+        contactNameStyle={contactNameStyle}
+        contactSecondaryLineStyle={contactSecondaryLineStyle}
+        noticeStyle={noticeStyle}
+        contactEditorOpen={contactEditorOpen}
+        setContactEditorOpen={setContactEditorOpen}
+        stackStyle={stackStyle}
+        contactDetailHeaderStyle={contactDetailHeaderStyle}
+        contactDraft={contactDraft}
+        contactAvatarLargeStyle={contactAvatarLargeStyle}
+        editorHeaderStyle={editorHeaderStyle}
+        badgeStyle={badgeStyle}
+        detailSectionStyle={detailSectionStyle}
+        buttonRowStyle={buttonRowStyle}
+        secondaryButtonStyle={secondaryButtonStyle}
+        contactMessage={contactMessage}
+        setContactMessage={setContactMessage}
+        formGridStyle={formGridStyle}
+        updateContactDraft={updateContactDraft}
+        saveContact={saveContact}
+        dangerButtonStyle={dangerButtonStyle}
+        deleteContact={deleteContact}
+      />
+    );
+  }
+
+  const vendorDepartmentNames: Record<VendorDepartmentKey, string> = {
+    house: "House & Maintenance",
+    garage: "Garage",
+    pool: "Pool & Spa",
+    landscaping: "Landscaping & Irrigation",
+    marine: "Dock & Waterfront",
+  };
+
+  function vendorDepartmentsFor(vendor: VendorRecord): VendorDepartmentKey[] {
+    const vendorRecord = vendor as AtlasDepartmentVendor;
+    const vendorText = recordSearchText(vendor).toLowerCase();
+
+    // These known companies have an exact operating-area assignment. Sunstream
+    // intentionally remains Dock only even if a linked record mentions a garage.
+    if (/\bsunstream\b/i.test(vendorText)) return ["marine"];
+
+    const explicit = Array.isArray(vendorRecord.departments)
+      ? vendorRecord.departments.filter((department): department is VendorDepartmentKey =>
+          ["house", "garage", "pool", "landscaping", "marine"].includes(department),
+        )
+      : [];
+    if (explicit.length) return Array.from(new Set(explicit));
+
+    const departments = new Set<VendorDepartmentKey>();
+    const addFromText = (textValue: string) => {
+      const text = textValue.toLowerCase();
+      if (/\b(oryan marine|i[\s-]?90 motorsports?|190 motorsports?|seaborn|seaborne|dock|marine|boat|watercraft|lift box|liftbox)\b/i.test(text)) departments.add("marine");
+      if (/\b(cascade spray|lanken|advanced irrigation|landscap|irrigation|sprinkler|lawn|garden|grounds|tree|shrub)\b/i.test(text)) departments.add("landscaping");
+      if (/\b(north sound boilers?|psf mechanical|best plumbing|maple valley electric|appliance service station|precision garage door|high tech living|hvac|boiler|plumb|electric|appliance|house maintenance|cleaning)\b/i.test(text)) departments.add("house");
+      if (/\b(aqua quip|krisco|pool|spa|hot tub|sundance|desert aire)\b/i.test(text)) departments.add("pool");
+      if (/\b(autonation|les schwab|rivian service|mercedes|porsche|lucid|vehicle|automotive|car service|garage vehicle)\b/i.test(text)) departments.add("garage");
+    };
+
+    addFromText(vendorText);
+    assetRecords
+      .filter((asset) => (asset.vendorIds || []).includes(vendor.id))
+      .forEach((asset) => addFromText(recordSearchText(asset)));
+    serviceRecords
+      .filter((record) => record.vendorId === vendor.id)
+      .forEach((record) => addFromText(recordSearchText(record)));
+
+    return Array.from(departments);
+  }
+
+  function createVendorWorkOrder(vendor: VendorRecord) {
+    const record = normalizeService({
+      id: uid("service"),
+      vendorId: vendor.id,
+      date: todayISO(),
+      title: `${vendor.name || "Vendor"} service`,
+      status: "Open",
+      priority: "Medium",
+      workType: "Work Order",
+      notes: "",
+    });
+    setServiceRecords((current) => workOrdersByIdentity([record, ...current]));
+    setSelectedServiceId(record.id);
+    markRecordDirty("work_order", record.id);
+    setScreen("history");
+  }
+
+  function renderVendors() {
+    return <AtlasVendorsWorkspace {...{
+      addLinkedPhotoFiles,
+      addVendor,
+      assetName,
+      assetRecords,
+      colors,
+      buttonRowStyle,
+      compactLinkedListStyle,
+      compactLinkedRowStyle,
+      compactUploadButtonStyle,
+      dangerButtonStyle,
+      deleteLinkedImage,
+      deleteVendorRecord,
+      detailSectionHeaderStyle,
+      detailSectionStyle,
+      editorHeaderStyle,
+      eyebrowStyle,
+      filteredVendors,
+      formGridStyle,
+      goldButtonStyle,
+      imageFilesFromPasteEvent,
+      isMobile,
+      isRecordDirty,
+      linkedImageFilesFor,
+      listStyle,
+      mutedSmallStyle,
+      noticeStyle,
+      openUploadedFile,
+      pasteLinkedPhoto,
+      photoDeleteButtonStyle,
+      recordListIdentityStyle,
+      renderLinkedDocuments,
+      rowButtonStyle,
+      saveDirtyRecord,
+      secondaryButtonStyle,
+      selectedVendor,
+      selectedVendorId,
+      serviceRecords,
+      setScreen,
+      setSelectedAssetId,
+      setSelectedServiceId,
+      setSelectedTaskId,
+      setSelectedVendorId,
+      setTasksView,
+      setVendorRecords,
+      stackStyle,
+      taskDetails,
+      updateVendor,
+      createVendorWorkOrder,
+      vendorDepartmentNames,
+      vendorDepartmentsFor,
+      vendorDetailHeaderStyle,
+      vendorLogoFor,
+      vendorLogoImageStyle,
+      vendorLogoLargeStyle,
+      vendorLogoThumbStyle,
+      workPlanTasks
+    }} />;
+  }
+
+  function renderWorkOrders() {
+    if (activePropertyId === "4725") {
+      return (
+        <AtlasHomeWorkspace
+          isMobile={isMobile}
+          colors={colors}
+          choreRecords={serviceRecords}
+          onCreateChore={addWorkOrder}
+          onCompleteChore={completeWorkOrder}
+          initialTab="chores"
+          hideHomeHeader
+        />
+      );
+    }
+
+    if (!ready || !operationsHydrated) {
+      return (
+        <div className="atlas-work-orders-page" style={{ minHeight: 360, display: "grid", placeItems: "center" }}>
+          <div style={{ color: colors.muted, fontSize: 13, fontWeight: 700 }}>Loading Work…</div>
+        </div>
+      );
+    }
+    return (
+      <div className="atlas-work-orders-page">
+        {dashboardWorkFilter ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              marginBottom: 12,
+              padding: "10px 12px",
+              border: `1px solid ${colors.gold}`,
+              borderRadius: 12,
+              background: "#FFFBEB",
+              color: colors.navy,
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 900 }}>
+              Showing only {{ "__overdue__": "overdue", "__today__": "due today", "__high__": "high priority", "__completed-today__": "completed today" }[dashboardWorkFilter] || dashboardWorkFilter} work orders
+            </span>
+            <button
+              type="button"
+              onClick={() => setDashboardWorkFilter("")}
+              style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "5px 9px" }}
+            >
+              Show All
+            </button>
+          </div>
+        ) : null}
+              <style>{`
+        @keyframes atlasPropertyLoading {
+          from { transform: translateX(-18%); opacity: 0.65; }
+          to { transform: translateX(72%); opacity: 1; }
+        }
+        .atlas-dashboard-greeting {
+          margin-top: 7px !important;
+          font-size: 27px !important;
+          line-height: 1 !important;
+        }
+        @media (max-width: 760px) {
+          .atlas-dashboard-greeting {
+            margin-top: 6px !important;
+            font-size: 22px !important;
+          }
+        }
+          .atlas-work-orders-page input[placeholder*="Search work"] {
+            border: 2px solid #8EA5B8 !important;
+            box-shadow: none !important;
+          }
+        `}</style>
+        {false && selectedService?.id ? (
+          <div style={{ marginBottom: 12, padding: 14, border: `2px solid ${colors.gold}`, borderRadius: 12, background: "#FFFBEB" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+              <div><div style={eyebrowStyle}>Schedule & estimate</div><strong style={{ color: colors.navy }}>Edit when this work is due and how long it should take</strong></div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {(selectedService.status === "Completed" || (selectedService.serviceHistory || []).length > 0) ? (
+                  <button
+                    type="button"
+                    onClick={() => void reopenWorkOrder(selectedService as AtlasServiceRecord)}
+                    style={{ ...secondaryButtonStyle, width: "auto" }}
+                  >
+                    Undo Done / Reopen
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void deleteWorkOrderRecord(selectedService)}
+                  style={{ ...dangerButtonStyle, width: "auto" }}
+                >
+                  Delete Work Order
+                </button>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(170px,0.7fr) minmax(190px,0.8fr) minmax(220px,1.5fr)", gap: 10, alignItems: "end" }}>
+              <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Due date</span><input type="date" value={selectedService.date || ""} onChange={(event) => updateWorkOrder({ date: event.currentTarget.value })} style={inputStyle} /></label>
+              <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Estimated time</span><select value={selectedService.effort || ""} onChange={(event) => updateWorkOrder({ effort: (event.currentTarget.value || undefined) as WorkEffort | undefined })} style={inputStyle}><option value="">No estimate</option>{(["5 minutes", "15 minutes", "30 minutes", "1 hour", "Half Day", "Full Day", "Multi-Day"] as WorkEffort[]).map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label>
+              {selectedService.responsibilityArea ? <div style={{ minWidth: 0 }}><span style={fieldLabelStyle}>Created from</span><div style={{ marginTop: 5, padding: "9px 10px", border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF", color: colors.navy, fontSize: 12, fontWeight: 850 }}>{selectedService.responsibilityArea}</div></div> : <div />}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 10, marginTop: 12 }}>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={fieldLabelStyle}>Assigned people</span>
+                <select
+                  value=""
+                  onChange={(event) => {
+                    const personId = event.target.value;
+                    if (!personId) return;
+                    updateWorkOrder({
+                      assignedPersonIds: Array.from(
+                        new Set([...(selectedService.assignedPersonIds || []), personId]),
+                      ),
+                    });
+                    event.currentTarget.value = "";
+                  }}
+                  style={{ ...inputStyle, minHeight: 40 }}
+                >
+                  <option value="">Add a person...</option>
+                  {contactRecords
+                    .filter((contact) => !(selectedService.assignedPersonIds || []).includes(contact.id))
+                    .map((contact) => (
+                      <option key={contact.id} value={contact.id}>
+                        {contact.name}{contact.organization ? ` · ${contact.organization}` : ""}
+                      </option>
+                    ))}
+                </select>
+                {(selectedService.assignedPersonIds || []).length ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {(selectedService.assignedPersonIds || []).map((personId) => {
+                      const person = contactRecords.find((contact) => contact.id === personId);
+                      return (
+                        <button
+                          key={personId}
+                          type="button"
+                          onClick={() => updateWorkOrder({
+                            assignedPersonIds: (selectedService.assignedPersonIds || []).filter((id) => id !== personId),
+                          })}
+                          style={{ ...secondaryButtonStyle, width: "auto", minHeight: 28, padding: "3px 8px", fontSize: 11 }}
+                          title="Remove person"
+                        >
+                          {person?.name || "Unknown person"} ×
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </label>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={fieldLabelStyle}>Assigned vendors</span>
+                <select
+                  value=""
+                  onChange={(event) => {
+                    const vendorId = event.target.value;
+                    if (!vendorId) return;
+                    const nextVendorIds = Array.from(
+                      new Set([...(selectedService.assignedVendorIds || []), vendorId]),
+                    );
+                    updateWorkOrder({
+                      assignedVendorIds: nextVendorIds,
+                      vendorId: nextVendorIds[0] || "",
+                    });
+                    event.currentTarget.value = "";
+                  }}
+                  style={{ ...inputStyle, minHeight: 40 }}
+                >
+                  <option value="">Add a vendor...</option>
+                  {vendorRecords
+                    .filter((vendor) => !(selectedService.assignedVendorIds || []).includes(vendor.id))
+                    .map((vendor) => (
+                      <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+                    ))}
+                </select>
+                {(selectedService.assignedVendorIds || []).length ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {(selectedService.assignedVendorIds || []).map((vendorId) => {
+                      const vendor = vendorRecords.find((item) => item.id === vendorId);
+                      return (
+                        <button
+                          key={vendorId}
+                          type="button"
+                          onClick={() => {
+                            const nextVendorIds = (selectedService.assignedVendorIds || []).filter((id) => id !== vendorId);
+                            updateWorkOrder({
+                              assignedVendorIds: nextVendorIds,
+                              vendorId: nextVendorIds[0] || "",
+                            });
+                          }}
+                          style={{ ...secondaryButtonStyle, width: "auto", minHeight: 28, padding: "3px 8px", fontSize: 11 }}
+                          title="Remove vendor"
+                        >
+                          {vendor?.name || "Unknown vendor"} ×
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </label>
+              <label style={{ display: "grid", gap: 5 }}><span style={fieldLabelStyle}>Linked project</span><select value={selectedService.projectId || ""} onChange={(event) => updateWorkOrder({ projectId: event.currentTarget.value })} style={inputStyle}><option value="">No project</option>{photoTimelineProjects.filter((project) => !project.archived || project.id === selectedService.projectId).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label>
+            </div>
+          </div>
+        ) : null}
+        <AtlasWorkOrders
+        ListDrawerLayout={ListDrawerLayout}
+        Field={Field}
+        SelectField={SelectField}
+        isMobile={isMobile}
+        addWorkOrder={addWorkOrder}
+        goldButtonStyle={goldButtonStyle}
+        stackStyle={stackStyle}
+        eyebrowStyle={eyebrowStyle}
+        serviceRecords={isTeamScopedUser ? staffVisibleServiceRecords : serviceRecords}
+        colors={colors}
+        filteredServices={
+          (dashboardWorkFilter
+            ? staffVisibleServiceRecords.filter((record) => {
+                const item = record as AtlasServiceRecord;
+                if (dashboardWorkFilter === "__overdue__") return item.status !== "Completed" && Boolean(item.date) && String(item.date).slice(0, 10) < todayISO();
+                if (dashboardWorkFilter === "__today__") return item.status !== "Completed" && String(item.date || "").slice(0, 10) === todayISO();
+                if (dashboardWorkFilter === "__high__") return item.status !== "Completed" && item.priority === "High";
+                if (dashboardWorkFilter === "__completed-today__") return item.status === "Completed" && String(item.lastCompletedDate || item.serviceHistory?.[0]?.completedAt || "").slice(0, 10) === todayISO();
+                const text = `${item.workCategory || ""} ${item.title || ""} ${item.notes || ""}`.toLowerCase();
+                return text.includes(dashboardWorkFilter.toLowerCase());
+              })
+            : staffVisibleServiceRecords
+          ).filter((record) => {
+            if (activePropertyId !== "4725" || home4725PersonFilter === "All") return true;
+            return String((record as AtlasServiceRecord).assignedTo || "Family") === home4725PersonFilter;
+          })
+        }
+        listStyle={listStyle}
+        setSelectedServiceId={setSelectedServiceId}
+        rowButtonStyle={rowButtonStyle}
+        selectedService={selectedService}
+        mutedSmallStyle={mutedSmallStyle}
+        formatDate={formatDate}
+        assetName={assetName}
+        vendorName={vendorName}
+        recurrenceLabel={recurrenceLabel}
+        workOrderListBadgesStyle={workOrderListBadgesStyle}
+        recurringBadgeStyle={recurringBadgeStyle}
+        badgeStyle={badgeStyle}
+        noticeStyle={noticeStyle}
+        editorHeaderStyle={editorHeaderStyle}
+        detailSectionStyle={detailSectionStyle}
+        formGridStyle={formGridStyle}
+        updateWorkOrder={updateWorkOrder}
+        updateWorkOrderRecord={updateWorkOrderRecord}
+        fieldLabelStyle={fieldLabelStyle}
+        inputStyle={inputStyle}
+        byName={byName}
+        assetRecords={assetRecords}
+        vendorRecords={vendorRecords}
+        locationRecords={locations}
+        contactRecords={contactRecords}
+        procedureRecords={procedureRecords}
+        documentRecords={intakeDocs}
+        calendarItems={calendarItems}
+        weatherDays={weatherDays}
+        detailSectionHeaderStyle={detailSectionHeaderStyle}
+        recurrenceToggleStyle={recurrenceToggleStyle}
+        recurrenceGridStyle={recurrenceGridStyle}
+        recurrenceHistoryStyle={recurrenceHistoryStyle}
+        buttonRowStyle={buttonRowStyle}
+        isRecordDirty={isRecordDirty}
+        saveWorkOrderRecord={saveWorkOrderRecord}
+        completeWorkOrder={completeWorkOrder}
+        reopenWorkOrder={reopenWorkOrder}
+        secondaryButtonStyle={secondaryButtonStyle}
+        deleteWorkOrderRecord={deleteWorkOrderRecord}
+        dangerButtonStyle={dangerButtonStyle}
+        renderLinkedDocuments={renderLinkedDocuments}
+        openResetKey={workOrdersOpenKey}
+      />
+      </div>
+    );
+  }
+
+  function renderCalendar() {
+    const seanProperty = String(selectedCalendar.propertyId || (seanCalendarPropertyFilter === "all" ? "2000" : seanCalendarPropertyFilter));
+    const homeFamilyMembers = ["All", "Nick", "Chelsea", "Cooper", "Leni"];
+    const matchesHomePersonFilter = (item: CalendarItem) => {
+      if (home4725PersonFilter === "All") return true;
+      const area = String(item.area || "");
+      const notes = String(item.notes || "");
+      const title = String(item.title || "");
+      const person = home4725PersonFilter.toLowerCase();
+      return [area, notes, title].some((value) =>
+        value.toLowerCase().includes(person),
+      );
+    };
+    const homeChoreSortTime = (item: CalendarItem) => {
+      if (!item.allDay) return item.time || "";
+      const source = String(item.source || "").toLowerCase();
+      const isHomeChore =
+        String(item.categoryLabel || "").toLowerCase() === "chore" ||
+        source.startsWith("home-chore");
+      if (!isHomeChore) return item.time || "";
+      const linkedChore = serviceRecords.find(
+        (record) => String(record.id || "") === String(item.linkedId || ""),
+      );
+      const person = String(linkedChore?.assignedTo || item.area || "Family").trim();
+      if (person === "Leni") return "00:01";
+      if (person === "Nick") return "08:00";
+      if (person === "Family") return "12:00";
+      if (person === "Chelsea") return "16:00";
+      if (person === "Cooper") return "23:58";
+      return item.time || "";
+    };
+    const orderHomeCalendarChores = (items: CalendarItem[]) =>
+      items.map((item) => {
+        if (activePropertyId !== "4725" || !item.allDay) return item;
+        const sortTime = homeChoreSortTime(item);
+        return sortTime === String(item.time || "") ? item : { ...item, time: sortTime };
+      });
+    const homeVisibleCalendarItems = orderHomeCalendarChores(
+      activePropertyId === "4725"
+        ? expandedCalendarItems.filter(matchesHomePersonFilter)
+        : expandedCalendarItems,
+    );
+    const homeVisibleSelectedDayEvents = orderHomeCalendarChores(
+      activePropertyId === "4725"
+        ? selectedDayEvents.filter(matchesHomePersonFilter)
+        : selectedDayEvents,
+    );
+    const propertyPalette: Record<string, string> = {
+      "2000": "#175CD3",
+      "6855": "#7C3AED",
+      "3661": "#087443",
+      hangar: "#B54708",
+    };
+
+    return (
+      <div style={{ display: "grid", gap: 14 }}>
+        {home4725ChoreMovePrompt ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Move recurring chore"
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 2200,
+              background: "rgba(7, 27, 47, 0.48)",
+              display: "grid",
+              placeItems: "center",
+              padding: 16,
+            }}
+            onMouseDown={(event) => {
+              if (event.currentTarget === event.target) {
+                resolveHome4725ChoreMoveScope(null);
+              }
+            }}
+          >
+            <section
+              style={{
+                width: "min(470px, 100%)",
+                background: "#FFFFFF",
+                border: `1px solid ${colors.line}`,
+                borderRadius: 18,
+                boxShadow: "0 24px 70px rgba(7,27,47,.24)",
+                padding: isMobile ? 16 : 20,
+                display: "grid",
+                gap: 14,
+              }}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                <strong style={{ color: colors.navy3, fontSize: 18 }}>Move recurring chore</strong>
+                <button
+                  type="button"
+                  onClick={() => resolveHome4725ChoreMoveScope(null)}
+                  style={{ ...secondaryButtonStyle, minWidth: 38, padding: "6px 10px" }}
+                  aria-label="Close"
+                >
+                  {closeSymbol}
+                </button>
+              </div>
+              <div style={{ color: colors.text, lineHeight: 1.45 }}>
+                Move <strong>{home4725ChoreMovePrompt.title}</strong> from {formatDate(home4725ChoreMovePrompt.fromDate)} to {formatDate(home4725ChoreMovePrompt.toDate)}?
+              </div>
+              <div style={{ display: "grid", gap: 8, gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr" }}>
+                <button
+                  type="button"
+                  onClick={() => resolveHome4725ChoreMoveScope("one")}
+                  style={secondaryButtonStyle}
+                >
+                  Just this event
+                </button>
+                <button
+                  type="button"
+                  onClick={() => resolveHome4725ChoreMoveScope("all")}
+                  style={goldButtonStyle}
+                >
+                  All of these events
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+        {activePropertyId === "4725" ? (
+          <section style={{ ...sectionStyle, padding: isMobile ? 12 : 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => setHome4725CalendarMode("family")}
+                  style={{
+                    ...secondaryButtonStyle,
+                    background: home4725CalendarMode === "family" ? colors.gold : "#FFFFFF",
+                    borderColor: home4725CalendarMode === "family" ? colors.gold : colors.line,
+                  }}
+                >
+                  Family Calendar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHome4725CalendarMode("chores")}
+                  style={{
+                    ...secondaryButtonStyle,
+                    background: home4725CalendarMode === "chores" ? colors.gold : "#FFFFFF",
+                    borderColor: home4725CalendarMode === "chores" ? colors.gold : colors.line,
+                  }}
+                >
+                  Chore Board
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {homeFamilyMembers.map((person) => {
+                  const active = home4725PersonFilter === person;
+                  return (
+                    <button
+                      key={person}
+                      type="button"
+                      onClick={() => setHome4725PersonFilter(person)}
+                      style={{
+                        ...secondaryButtonStyle,
+                        minHeight: 34,
+                        padding: "5px 9px",
+                        background: active ? "#FFF4CC" : "#FFFFFF",
+                        borderColor: active ? colors.gold : colors.line,
+                      }}
+                    >
+                      {person === "All" ? "All Family" : person}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {activePropertyId === "4725" && home4725CalendarMode === "chores" ? (
+          <AtlasHomeWorkspace
+            isMobile={isMobile}
+            colors={colors}
+            choreRecords={serviceRecords}
+            onCreateChore={addWorkOrder}
+            onOpenChore={(id) => {
+              setSelectedServiceId(id);
+              setWorkOrdersOpenKey((current) => current + 1);
+              setScreen("history");
+            }}
+            onCompleteChore={completeWorkOrder}
+            initialTab="chores"
+            hideHomeHeader
+          />
+        ) : (
+          <>
+        {isSeanMarineUser ? (
+          <section style={{ ...sectionStyle, padding: isMobile ? 14 : 18 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div>
+                <div style={eyebrowStyle}>Sean Personal Calendar</div>
+                <h2 style={{ margin: "4px 0 6px", color: colors.navy3 }}>All Properties Schedule</h2>
+                <p style={{ ...mutedSmallStyle, margin: 0 }}>One private, editable calendar for marine work, appointments, travel, vendors, pickups, and personal reminders across every assigned property.</p>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[{ id: "all", name: "All Properties" }, ...atlasProperties].map((property) => {
+                  const active = seanCalendarPropertyFilter === property.id;
+                  return (
+                    <button
+                      key={property.id}
+                      type="button"
+                      onClick={() => setSeanCalendarPropertyFilter(property.id)}
+                      style={{
+                        ...secondaryButtonStyle,
+                        borderColor: active ? colors.gold : colors.line,
+                        background: active ? "#FFF8E8" : colors.card,
+                        boxShadow: active ? "0 0 0 2px rgba(201,154,61,.14)" : "none",
+                      }}
+                    >
+                      {property.id !== "all" ? <span style={{ width: 9, height: 9, borderRadius: 999, background: propertyPalette[property.id], display: "inline-block", marginRight: 7 }} /> : null}
+                      {property.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 340px) 1fr", gap: 12, alignItems: "end" }}>
+              <label style={fieldLabelStyle}>
+                Event property
+                <select
+                  value={seanProperty}
+                  onChange={(event) => {
+                    setCalendarDirty(true);
+                    setCalendarDraft((current) => ({
+                      ...current,
+                      propertyId: event.target.value,
+                      calendarOwner: "sean",
+                      ownerUserId: String(currentAtlasUser?.id || currentAtlasUser?.email || "sean"),
+                    }));
+                  }}
+                  style={inputStyle}
+                >
+                  {atlasProperties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
+                </select>
+              </label>
+              <div style={{ ...noticeStyle, margin: 0 }}>Property colors identify where Sean is scheduled. Event category colors remain fully editable inside each calendar entry.</div>
+            </div>
+          </section>
+        ) : null}
+      <AtlasCalendar
+        Field={Field}
+        ListDrawerLayout={ListDrawerLayout}
+        addCalendarItem={addCalendarItem}
+        applyCalendarIntake={applyCalendarIntake}
+        assetRecords={assetRecords}
+        blankCalendarItem={blankCalendarItem}
+        buttonRowStyle={buttonRowStyle}
+        byName={byName}
+        byTitle={byTitle}
+        calendarCategoryFilters={calendarCategoryFilters}
+        calendarCellStyle={calendarCellStyle}
+        calendarColorDotStyle={calendarColorDotStyle}
+        calendarColors={calendarColors}
+        calendarColorsBoxStyle={calendarColorsBoxStyle}
+        calendarCompactCellStyle={calendarCompactCellStyle}
+        calendarCompactControlPanelStyle={calendarCompactControlPanelStyle}
+        calendarCompactMoreStyle={calendarCompactMoreStyle}
+        calendarCompactPillStyle={calendarCompactPillStyle}
+        calendarControlPanelStyle={calendarControlPanelStyle}
+        calendarCursor={calendarCursor}
+        calendarDayNameStyle={calendarDayNameStyle}
+        calendarDoneBadgeStyle={calendarDoneBadgeStyle}
+        calendarDoneMiniStyle={calendarDoneMiniStyle}
+        calendarFilterDropdownStyle={calendarFilterDropdownStyle}
+        calendarFilterLabels={calendarFilterLabels}
+        calendarFilterListItemStyle={calendarFilterListItemStyle}
+        calendarFilterListStyle={calendarFilterListStyle}
+        calendarFilterSummaryStyle={calendarFilterSummaryStyle}
+        calendarGridStyle={calendarGridStyle}
+        calendarHeaderStyle={calendarHeaderStyle}
+        calendarIntakeMessage={calendarIntakeMessage}
+        calendarIntakeText={calendarIntakeText}
+        calendarMonthWhitePanelStyle={calendarMonthWhitePanelStyle}
+        calendarMoreStyle={calendarMoreStyle}
+        calendarNavyShellStyle={calendarNavyShellStyle}
+        calendarPillContentStyle={calendarPillContentStyle}
+        calendarPillStyle={calendarPillStyle}
+        calendarPlainColors={calendarPlainColors}
+        calendarSelectedEventRowStyle={calendarSelectedEventRowStyle}
+        calendarTodayBoxStyle={calendarTodayBoxStyle}
+        calendarTodayItemStyle={calendarTodayItemStyle}
+        calendarView={calendarView}
+        calendarWeatherIconStyle={calendarWeatherIconStyle}
+        calendarWeekStyle={calendarWeekStyle}
+        calendarWhiteDrawerStyle={calendarWhiteDrawerStyle}
+        calendarWhitePanelStyle={calendarWhitePanelStyle}
+        categoryToColorId={categoryToColorId}
+        checkboxLineStyle={checkboxLineStyle}
+        colorForEvent={colorForEvent}
+        colors={colors}
+        compactAddBoxStyle={compactAddBoxStyle}
+        dangerButtonStyle={dangerButtonStyle}
+        deleteCalendarItem={deleteCalendarItem}
+        editorHeaderStyle={editorHeaderStyle}
+        expandedCalendarItems={isSeanMarineUser ? seanVisibleCalendarItems : homeVisibleCalendarItems}
+        eyebrowStyle={eyebrowStyle}
+        fieldLabelStyle={fieldLabelStyle}
+        formGridStyle={formGridStyle}
+        formatDate={formatDate}
+        goldButtonStyle={goldButtonStyle}
+        inputStyle={inputStyle}
+        isMobile={isMobile}
+        linkTypeOptions={linkTypeOptions}
+        locations={locations}
+        monthCells={monthCells}
+        monthName={monthName}
+        moveCalendarPeriod={moveCalendarPeriod}
+        moveCalendarYear={moveCalendarYear}
+        mutedSmallStyle={mutedSmallStyle}
+        openCalendarItem={openCalendarItem}
+        onOpenLinkedRecord={openCalendarLinkedRecord}
+        onConvertToWorkOrder={convertCalendarItemToWorkOrder}
+        onCreateWorkOrder={(date) => addWorkOrder({ date })}
+        reminderOptions={reminderOptions}
+        repeatOptions={repeatOptions}
+        saveCalendarItem={saveCalendarItem}
+        secondaryButtonStyle={secondaryButtonStyle}
+        selectedCalendar={selectedCalendar}
+        selectedCalendarDate={selectedCalendarDate}
+        selectedCalendarId={selectedCalendarId}
+        selectedCalendarOccurrenceDate={selectedCalendarOccurrenceDate}
+        onSaveOccurrence={saveCalendarOccurrenceOnly}
+        onDeleteOccurrence={deleteCalendarOccurrenceOnly}
+        selectedDayEvents={homeVisibleSelectedDayEvents}
+        serviceRecords={serviceRecords}
+        setCalendarCategoryFilters={setCalendarCategoryFilters}
+        setCalendarCursor={setCalendarCursor}
+        setCalendarDraft={setCalendarDraft}
+        setCalendarIntakeMessage={setCalendarIntakeMessage}
+        setCalendarIntakeText={setCalendarIntakeText}
+        setCalendarView={setCalendarView}
+        setSelectedCalendarDate={setSelectedCalendarDate}
+        setSelectedCalendarId={setSelectedCalendarId}
+        setShowJewishHolidays={setShowJewishHolidays}
+        setShowUsHolidays={setShowUsHolidays}
+        showCalendarSave={showCalendarSave}
+        showJewishHolidays={showJewishHolidays}
+        showUsHolidays={showUsHolidays}
+        stackStyle={stackStyle}
+        standardCalendarCategoryLabels={
+          activePropertyId === "4725"
+            ? Array.from(new Set([
+                ...standardCalendarCategoryLabels,
+                "Meal",
+                "Chore",
+                "School",
+                "No School",
+                "Appointment",
+                "Payday",
+                "Grocery",
+                "Bill",
+                "Activity",
+                "Reminder",
+              ]))
+            : standardCalendarCategoryLabels
+        }
+        todayISO={todayISO}
+        updateCalendarItem={updateCalendarItem}
+        vendorRecords={vendorRecords}
+        weatherByDate={weatherByDate}
+        weatherIcon={weatherIcon}
+        weatherText={weatherText}
+        weekCells={weekCells}
+      />
+          </>
+        )}
+      </div>
+    );
+  }
+
+  function renderWeather() {
+    return (
+      <AtlasWeather
+        sectionStyle={sectionStyle}
+        loadWeather={loadWeather}
+        goldButtonStyle={goldButtonStyle}
+        stackStyle={stackStyle}
+        noticeStyle={noticeStyle}
+        weatherStatus={weatherStatus}
+        mutedSmallStyle={mutedSmallStyle}
+        weatherStripStyle={weatherStripStyle}
+        weatherDays={weatherDays}
+        setSelectedWeatherDate={setSelectedWeatherDate}
+        selectedWeather={selectedWeather}
+        colors={colors}
+        weatherCardStyle={weatherCardStyle}
+        weatherCardTopStyle={weatherCardTopStyle}
+        weatherIcon={weatherIcon}
+        weatherIconStyle={weatherIconStyle}
+        weatherTempStyle={weatherTempStyle}
+        weatherLowStyle={weatherLowStyle}
+        weatherBarTrackStyle={weatherBarTrackStyle}
+        weatherBarFillStyle={weatherBarFillStyle}
+        weatherMiniGridStyle={weatherMiniGridStyle}
+        irrigationAdvice={irrigationAdvice}
+        weatherAdviceSmallStyle={weatherAdviceSmallStyle}
+        weatherDetailPanelStyle={weatherDetailPanelStyle}
+        weatherDetailHeaderStyle={weatherDetailHeaderStyle}
+        eyebrowStyle={eyebrowStyle}
+        weatherDetailTitleStyle={weatherDetailTitleStyle}
+        weatherText={weatherText}
+        weatherDetailConditionStyle={weatherDetailConditionStyle}
+        weatherDetailIconStyle={weatherDetailIconStyle}
+        weatherDetailGridStyle={weatherDetailGridStyle}
+        weatherDetailMetricStyle={weatherDetailMetricStyle}
+        weatherDetailNotesGridStyle={weatherDetailNotesGridStyle}
+        weatherDetailNoteStyle={weatherDetailNoteStyle}
+        weatherDayPlanning={weatherDayPlanning}
+      />
+    );
+  }
+
+  function renderManuals() {
+    const normalizedSearch = manualSearch.trim().toLowerCase();
+
+    const selectedManual =
+      allManualRecords.find((manual) => manual.id === selectedManualId) ||
+      allManualRecords[0];
+
+    const filteredManuals = [...allManualRecords]
+      .filter((manual) => {
+        const matchesSearch =
+          !normalizedSearch ||
+          [
+            manual.title,
+            manual.category,
+            manual.linkedAssetName,
+            manual.manufacturer,
+            manual.model,
+            manual.documentNumber,
+            manual.sourceLabel,
+            manual.notes,
+            ...(manual.files || []).map((file) => file.name),
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(normalizedSearch);
+
+        const matchesCategory =
+          manualCategoryFilter === "All" ||
+          manual.category === manualCategoryFilter;
+
+        const isLinked = Boolean(
+          manual.linkedAssetId || manual.linkedAssetName,
+        );
+        const matchesLinked =
+          manualLinkedFilter === "All" ||
+          (manualLinkedFilter === "Linked" && isLinked) ||
+          (manualLinkedFilter === "Unlinked" && !isLinked);
+
+        return matchesSearch && matchesCategory && matchesLinked;
+      })
+      .sort((a, b) => {
+        if (manualSortOrder === "Newest") {
+          return String(b.createdAt || "").localeCompare(
+            String(a.createdAt || ""),
+          );
+        }
+        if (manualSortOrder === "Category") {
+          return (
+            a.category.localeCompare(b.category) ||
+            a.title.localeCompare(b.title)
+          );
+        }
+        return a.title.localeCompare(b.title);
+      });
+
+    function startNewManual() {
+      setSelectedManualId("");
+      setManualEditingId("");
+      setManualDraft(blankManual());
+      setManualAddOpen(true);
+      setManualMessage("");
+    }
+
+    function startEditingManual(manual: ManualRecord) {
+      setSelectedManualId(manual.id);
+      setManualEditingId(manual.id);
+      setManualDraft(normalizeManualRecord(manual));
+      setManualAddOpen(true);
+      setManualMessage("");
+    }
+
+    function updateManualDraft(patch: Partial<ManualRecord>) {
+      setManualDraft((current) =>
+        normalizeManualRecord({ ...current, ...patch, id: "" }),
+      );
+    }
+
+    async function saveManual() {
+      const existing = manualEditingId
+        ? manualRecords.find((manual) => manual.id === manualEditingId)
+        : undefined;
+      const prepared = normalizeManualRecord({
+        ...manualDraft,
+        id: existing?.id || `manual-${Date.now()}`,
+        createdAt: existing?.createdAt || manualDraft.createdAt,
+        linkedAssetName:
+          assetRecords.find((asset) => asset.id === manualDraft.linkedAssetId)
+            ?.name ||
+          manualDraft.linkedAssetName ||
+          "",
+      });
+
+      if (!prepared.title.trim()) {
+        setManualMessage("Add a manual title before saving.");
+        return;
+      }
+
+      const next = existing
+        ? manualRecords.map((manual) =>
+            manual.id === existing.id ? prepared : manual,
+          )
+        : [prepared, ...manualRecords];
+      setManualRecords(next);
+      saveStoredArray(storageKeys.manuals[0], next);
+
+      const linkedAsset = prepared.linkedAssetId
+        ? assetRecords.find((asset) => asset.id === prepared.linkedAssetId)
+        : undefined;
+      const documentRecord = normalizeDocument({
+        id: uid("doc"),
+        title: prepared.title,
+        area: linkedAsset
+          ? locationName(linkedAsset.locationId)
+          : prepared.linkedAssetName || "General",
+        type: prepared.category,
+        targetType: linkedAsset ? "Asset" : "General",
+        targetId: linkedAsset?.id || "",
+        targetName: linkedAsset?.name || "General",
+        linkedAssetId: linkedAsset?.id,
+        notes: [
+          prepared.manufacturer ? `Manufacturer: ${prepared.manufacturer}` : "",
+          prepared.model ? `Model: ${prepared.model}` : "",
+          prepared.documentNumber
+            ? `Document number: ${prepared.documentNumber}`
+            : "",
+          prepared.sourceLabel ? `Source: ${prepared.sourceLabel}` : "",
+          prepared.notes,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        href: prepared.href,
+        files: prepared.files,
+        createdAt: prepared.createdAt,
+      });
+
+      replaceDocumentInVault(documentRecord);
+      try {
+        await postDocumentToAtlasVault(documentRecord);
+        setManualMessage(
+          existing
+            ? "Manual updated and synced to Atlas."
+            : "Manual saved and synced to Atlas.",
+        );
+      } catch {
+        setManualMessage(
+          "Manual saved on this browser. Atlas document sync did not complete.",
+        );
+      }
+
+      setSelectedManualId(prepared.id);
+      setManualEditingId("");
+      setManualDraft(blankManual());
+      setManualAddOpen(false);
+    }
+
+    async function addManualFiles(fileList: FileList | null) {
+      if (!fileList?.length) return;
+      const records = await Promise.all(
+        Array.from(fileList).map(fileToUploadedRecord),
+      );
+      updateManualDraft({
+        files: [...(manualDraft.files || []), ...records],
+      });
+    }
+
+    const selectedManualUrl = selectedManual
+      ? openManualUrl(selectedManual)
+      : "";
+    const selectedAsset = selectedManual?.linkedAssetId
+      ? assetRecords.find(
+          (asset) => asset.id === selectedManual.linkedAssetId,
+        )
+      : undefined;
+
+    return (
+      <ListDrawerLayout
+        isMobile={isMobile}
+        drawerResetKey={selectedManualId || "manual-new"}
+        outerStyle={{ minHeight: isMobile ? undefined : "calc(100vh - 150px)" }}
+        gridStyleOverride={{
+          gridTemplateColumns: isMobile
+            ? "minmax(0, 1fr)"
+            : "minmax(270px, 32%) minmax(0, 68%)",
+          gap: 12,
+        }}
+        right={
+          <>
+            <button
+              type="button"
+              onClick={startNewManual}
+              style={goldButtonStyle}
+            >
+              Add Manual
+            </button>
+          </>
+        }
+        list={
+          <div style={{ ...stackStyle, minWidth: 0 }}>
+            <section
+              style={{
+                border: `1px solid ${colors.line}`,
+                borderRadius: 12,
+                background: "#FFFFFF",
+                padding: 8,
+                position: isMobile ? "static" : "sticky",
+                top: isMobile ? undefined : 0,
+                zIndex: 4,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <input
+                value={manualSearch}
+                onChange={(event) => setManualSearch(event.currentTarget.value)}
+                placeholder="Search manuals..."
+                style={{ ...inputStyle, minHeight: isMobile ? 42 : undefined }}
+              />
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: 7,
+                }}
+              >
+                <select
+                  value={manualCategoryFilter}
+                  onChange={(event) =>
+                    setManualCategoryFilter(
+                      event.currentTarget.value as ManualCategory | "All",
+                    )
+                  }
+                  style={inputStyle}
+                >
+                  <option value="All">All categories</option>
+                  {manualCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={manualLinkedFilter}
+                  onChange={(event) =>
+                    setManualLinkedFilter(
+                      event.currentTarget.value as
+                        | "All"
+                        | "Linked"
+                        | "Unlinked",
+                    )
+                  }
+                  style={inputStyle}
+                >
+                  <option value="All">All relationships</option>
+                  <option value="Linked">Linked to an asset</option>
+                  <option value="Unlinked">Not linked</option>
+                </select>
+
+                <select
+                  value={manualSortOrder}
+                  onChange={(event) =>
+                    setManualSortOrder(
+                      event.currentTarget.value as
+                        | "Alphabetical"
+                        | "Newest"
+                        | "Category",
+                    )
+                  }
+                  style={inputStyle}
+                >
+                  <option value="Alphabetical">Alphabetical</option>
+                  <option value="Newest">Newest first</option>
+                  <option value="Category">Category</option>
+                </select>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 7,
+                }}
+              >
+                <span style={mutedSmallStyle}>
+                  {filteredManuals.length} of {allManualRecords.length} manuals
+                </span>
+                {manualSearch ||
+                manualCategoryFilter !== "All" ||
+                manualLinkedFilter !== "All" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualSearch("");
+                      setManualCategoryFilter("All");
+                      setManualLinkedFilter("All");
+                    }}
+                    style={smallSubtleButtonStyle}
+                  >
+                    Clear Filters
+                  </button>
+                ) : null}
+              </div>
+            </section>
+
+            {manualAddOpen ? (
+              <section style={{ ...cardStyle, display: "grid", gap: 10 }}>
+                <div style={manualInlineFormHeaderStyle}>
+                  <div>
+                    <strong>{manualEditingId ? "Edit Manual" : "Add Manual"}</strong>
+                    <div style={mutedSmallStyle}>
+                      {manualEditingId
+                        ? "Update the selected manual record."
+                        : "Upload a PDF or paste an official manual link."}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualAddOpen(false);
+                      setManualEditingId("");
+                      setManualDraft(blankManual());
+                      setManualMessage("");
+                    }}
+                    style={smallSubtleButtonStyle}
+                  >
+                    Close
+                  </button>
+                </div>
+
+                {manualMessage ? (
+                  <p style={mutedSmallStyle}>{manualMessage}</p>
+                ) : null}
+
+                <div style={formGridStyle}>
+                  <Field
+                    label="Manual title"
+                    value={manualDraft.title}
+                    onChange={(title) => updateManualDraft({ title })}
+                    placeholder="Official manual title"
+                  />
+
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Category</span>
+                    <select
+                      value={manualDraft.category}
+                      onChange={(event) =>
+                        updateManualDraft({
+                          category: event.currentTarget
+                            .value as ManualCategory,
+                        })
+                      }
+                      style={inputStyle}
+                    >
+                      {manualCategories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Attached asset</span>
+                    <select
+                      value={manualDraft.linkedAssetId || ""}
+                      onChange={(event) => {
+                        const asset = assetRecords.find(
+                          (item) => item.id === event.currentTarget.value,
+                        );
+                        updateManualDraft({
+                          linkedAssetId: event.currentTarget.value,
+                          linkedAssetName: asset?.name || "",
+                        });
+                      }}
+                      style={inputStyle}
+                    >
+                      <option value="">Not linked</option>
+                      {byName(assetRecords).map((asset) => (
+                        <option key={asset.id} value={asset.id}>
+                          {asset.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <Field
+                    label="PDF / manual link"
+                    value={manualDraft.href}
+                    onChange={(href) => updateManualDraft({ href })}
+                    placeholder="Paste the official PDF or web URL"
+                  />
+
+                  <Field
+                    label="Manufacturer"
+                    value={manualDraft.manufacturer}
+                    onChange={(manufacturer) =>
+                      updateManualDraft({ manufacturer })
+                    }
+                  />
+
+                  <Field
+                    label="Model"
+                    value={manualDraft.model}
+                    onChange={(model) => updateManualDraft({ model })}
+                  />
+
+                  <Field
+                    label="Document number"
+                    value={manualDraft.documentNumber}
+                    onChange={(documentNumber) =>
+                      updateManualDraft({ documentNumber })
+                    }
+                  />
+
+                  <Field
+                    label="Source"
+                    value={manualDraft.sourceLabel}
+                    onChange={(sourceLabel) =>
+                      updateManualDraft({ sourceLabel })
+                    }
+                  />
+
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Upload PDF</span>
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      onChange={(event) =>
+                        void addManualFiles(event.currentTarget.files)
+                      }
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <label
+                    style={{
+                      display: "grid",
+                      gap: 6,
+                      gridColumn: "1 / -1",
+                    }}
+                  >
+                    <span style={fieldLabelStyle}>Notes</span>
+                    <textarea
+                      value={manualDraft.notes}
+                      onChange={(event) =>
+                        updateManualDraft({
+                          notes: event.currentTarget.value,
+                        })
+                      }
+                      style={{ ...inputStyle, minHeight: 90, resize: "vertical" }}
+                    />
+                  </label>
+                </div>
+
+                <div style={{ ...buttonRowStyle, marginTop: 2 }}>
+                  <button
+                    type="button"
+                    onClick={() => void saveManual()}
+                    style={goldButtonStyle}
+                  >
+                    {manualEditingId ? "Save Changes" : "Save Manual"}
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
+            {filteredManuals.length ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr)",
+                  gap: 9,
+                }}
+              >
+                {filteredManuals.map((manual) => {
+                  const manualOpenUrl = openManualUrl(manual);
+                  const selected = selectedManual?.id === manual.id;
+                  const firstFile = (manual.files || [])[0];
+
+                  return (
+                    <article
+                      key={manual.id}
+                      style={{
+                        border: `1px solid ${
+                          selected ? colors.gold : colors.line
+                        }`,
+                        borderRadius: 14,
+                        background: selected ? "#FFF9E8" : "#FFFFFF",
+                        padding: 10,
+                        minWidth: 0,
+                        boxShadow: selected
+                          ? "0 8px 20px rgba(172, 121, 0, 0.11)"
+                          : "0 3px 11px rgba(15, 42, 67, 0.04)",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedManualId(manual.id)}
+                        style={{
+                          width: "100%",
+                          border: 0,
+                          background: "transparent",
+                          padding: 0,
+                          textAlign: "left",
+                          cursor: "pointer",
+                          display: "grid",
+                          gridTemplateColumns: "54px minmax(0, 1fr)",
+                          gap: 10,
+                          minWidth: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 54,
+                            height: 68,
+                            borderRadius: 10,
+                            border: `1px solid ${colors.line}`,
+                            background: "#F4F7FA",
+                            display: "grid",
+                            placeItems: "center",
+                            overflow: "hidden",
+                            color: colors.navy,
+                            fontWeight: 900,
+                            fontSize: 11,
+                          }}
+                        >
+                          {firstFile?.type?.startsWith("image/") &&
+                          (firstFile.url || firstFile.dataUrl) ? (
+                            <img
+                              src={firstFile.url || firstFile.dataUrl}
+                              alt=""
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                              }}
+                            />
+                          ) : (
+                            <span>PDF</span>
+                          )}
+                        </div>
+
+                        <div style={{ minWidth: 0 }}>
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              border: `1px solid ${colors.line}`,
+                              borderRadius: 999,
+                              background: colors.panel,
+                              padding: "3px 7px",
+                              fontSize: 8,
+                              fontWeight: 850,
+                              color: colors.navy,
+                              marginBottom: 5,
+                            }}
+                          >
+                            {manual.category}
+                          </span>
+                          <strong
+                            style={{
+                              display: "block",
+                              color: colors.navy,
+                              fontSize: 12,
+                              lineHeight: 1.35,
+                              overflowWrap: "anywhere",
+                            }}
+                          >
+                            {manual.title}
+                          </strong>
+                          <span
+                            style={{
+                              ...mutedSmallStyle,
+                              display: "block",
+                              marginTop: 5,
+                            }}
+                          >
+                            {manual.linkedAssetName || "Not linked to an asset"}
+                          </span>
+                          <span
+                            style={{
+                              ...mutedSmallStyle,
+                              display: "block",
+                              marginTop: 3,
+                            }}
+                          >
+                            {[manual.manufacturer, manual.model]
+                              .filter(Boolean)
+                              .join(" · ") || "Manufacturer not recorded"}
+                          </span>
+                        </div>
+                      </button>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          flexWrap: "wrap",
+                          gap: 6,
+                          marginTop: 9,
+                          paddingTop: 8,
+                          borderTop: `1px solid ${colors.line}`,
+                        }}
+                      >
+                        <span style={mutedSmallStyle}>
+                          {(manual.files || []).length} file
+                          {(manual.files || []).length === 1 ? "" : "s"}
+                        </span>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: 5,
+                          }}
+                        >
+                          {manualOpenUrl ? (
+                            <a
+                              href={manualOpenUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={manualCompactFileStyle}
+                            >
+                              Open
+                            </a>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedManualId(manual.id)}
+                            style={smallSubtleButtonStyle}
+                          >
+                            Details
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void deleteManualRecord(manual)}
+                            style={{
+                              ...manualDeleteButtonStyle,
+                              width: 30,
+                              minWidth: 30,
+                              padding: 0,
+                              fontSize: 15,
+                            }}
+                            title="Delete manual"
+                            aria-label={`Delete ${manual.title}`}
+                          >
+                            🗑
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <section
+                style={{
+                  ...cardStyle,
+                  display: "grid",
+                  placeItems: "center",
+                  textAlign: "center",
+                  minHeight: 170,
+                  padding: 20,
+                }}
+              >
+                <div>
+                  <strong
+                    style={{
+                      display: "block",
+                      color: colors.navy,
+                      marginBottom: 6,
+                    }}
+                  >
+                    No manuals match
+                  </strong>
+                  <span style={mutedSmallStyle}>
+                    Clear the filters or add a new manual record.
+                  </span>
+                </div>
+              </section>
+            )}
+          </div>
+        }
+        drawer={
+          selectedManual ? (
+            <div style={{ ...stackStyle, minWidth: 0 }}>
+              <section
+                style={{
+                  ...cardStyle,
+                  display: "grid",
+                  gap: 10,
+                  minWidth: 0,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: 9,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <h3
+                      style={{
+                        ...editorHeaderStyle,
+                        margin: 0,
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {selectedManual.title}
+                    </h3>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span
+                      style={{
+                        border: `1px solid ${colors.line}`,
+                        borderRadius: 999,
+                        background: colors.panel,
+                        padding: "4px 8px",
+                        fontSize: 9,
+                        fontWeight: 850,
+                        color: colors.navy,
+                      }}
+                    >
+                      {selectedManual.category}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => startEditingManual(selectedManual)}
+                      style={smallSubtleButtonStyle}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteManualRecord(selectedManual)}
+                      style={{
+                        ...manualDeleteButtonStyle,
+                        width: 30,
+                        minWidth: 30,
+                        padding: 0,
+                        fontSize: 15,
+                      }}
+                      title="Delete manual"
+                      aria-label={`Delete ${selectedManual.title}`}
+                    >
+                      🗑
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 13,
+                    background: "#F4F7FA",
+                    minHeight: isMobile ? 180 : 260,
+                    display: "grid",
+                    placeItems: "center",
+                    overflow: "hidden",
+                  }}
+                >
+                  {selectedManualUrl ? (
+                    <iframe
+                      title={selectedManual.title}
+                      src={selectedManualUrl}
+                      style={{
+                        width: "100%",
+                        height: isMobile ? 220 : 360,
+                        border: 0,
+                        background: "#FFFFFF",
+                      }}
+                    />
+                  ) : (
+                    <div style={{ textAlign: "center", padding: 18 }}>
+                      <strong
+                        style={{
+                          display: "block",
+                          color: colors.navy,
+                          marginBottom: 6,
+                        }}
+                      >
+                        No preview available
+                      </strong>
+                      <span style={mutedSmallStyle}>
+                        Add a PDF, uploaded file, or official web link.
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(2, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  {[
+                    ["Asset", selectedManual.linkedAssetName || "Not linked"],
+                    [
+                      "Manufacturer",
+                      selectedManual.manufacturer || "Not recorded",
+                    ],
+                    ["Model", selectedManual.model || "Not recorded"],
+                    [
+                      "Document number",
+                      selectedManual.documentNumber || "Not recorded",
+                    ],
+                    ["Source", selectedManual.sourceLabel || "Not recorded"],
+                    [
+                      "Files",
+                      String((selectedManual.files || []).length),
+                    ],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} style={recordInfoItemStyle}>
+                      <span style={fieldLabelStyle}>{label}</span>
+                      <strong
+                        style={{
+                          overflowWrap: "anywhere",
+                          whiteSpace: "normal",
+                        }}
+                      >
+                        {value}
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+
+                {selectedManual.notes ? (
+                  <div
+                    style={{
+                      border: `1px solid ${colors.line}`,
+                      borderRadius: 11,
+                      background: "#FFFFFF",
+                      padding: 10,
+                    }}
+                  >
+                    <span style={fieldLabelStyle}>Notes</span>
+                    <p
+                      style={{
+                        ...mutedSmallStyle,
+                        margin: "6px 0 0",
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      {selectedManual.notes}
+                    </p>
+                  </div>
+                ) : null}
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 7,
+                  }}
+                >
+                  {selectedManualUrl ? (
+                    <a
+                      href={selectedManualUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        ...goldButtonStyle,
+                        textDecoration: "none",
+                        textAlign: "center",
+                        flex: isMobile ? "1 1 140px" : undefined,
+                      }}
+                    >
+                      Open Full Manual
+                    </a>
+                  ) : null}
+                  {selectedAsset ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAssetId(selectedAsset.id);
+                        setScreen("assets");
+                      }}
+                      style={{
+                        ...secondaryButtonStyle,
+                        flex: isMobile ? "1 1 140px" : undefined,
+                      }}
+                    >
+                      Open Linked Asset
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocumentSearch(selectedManual.title);
+                      setScreen("documents");
+                    }}
+                    style={{
+                      ...secondaryButtonStyle,
+                      flex: isMobile ? "1 1 140px" : undefined,
+                    }}
+                  >
+                    Find in Documents
+                  </button>
+                </div>
+              </section>
+            </div>
+          ) : undefined
+        }
+      />
+    );
+  }
+
+  function renderDocuments() {
+    return <AtlasDocumentsWorkspace {...{
+      activePropertyId,
+      allDocuments,
+      assetRecords,
+      blueprintPage,
+      buttonRowStyle,
+      cardStyle,
+      deleteSelectedDocument,
+      documentCategoryFilter,
+      documentLinkFilter,
+      documentListScrollYRef,
+      documentOverlayScrollRef,
+      documentQualityOpen,
+      documentQuickAccessOpen,
+      documentSearch,
+      documentSort,
+      documentTargetOptionsFor,
+      editorHeaderStyle,
+      eyebrowStyle,
+      favoriteDocumentIds,
+      fieldLabelStyle,
+      fileTileStyle,
+      formGridStyle,
+      goldButtonStyle,
+      hideDocumentLogos,
+      inputStyle,
+      isMobile,
+      locations,
+      mutedSmallStyle,
+      noticeStyle,
+      openBlueprintSection,
+      openDocumentTarget,
+      openFileInBrowser,
+      openUploadedFile,
+      recentDocumentIds,
+      recordInfoItemStyle,
+      refreshDocumentVault,
+      replaceSelectedDocumentFile,
+      saveSelectedDocument,
+      secondaryButtonStyle,
+      selectedDocumentFileIndex,
+      selectedDocumentId,
+      serviceRecords,
+      setBlueprintPage,
+      setDocumentCategoryFilter,
+      setDocumentLinkFilter,
+      setDocumentQualityOpen,
+      setDocumentQuickAccessOpen,
+      setDocumentSearch,
+      setDocumentSort,
+      setFavoriteDocumentIds,
+      setHideDocumentLogos,
+      setIntakeNotes,
+      setIntakeTargetKind,
+      setIntakeTitle,
+      setIntakeType,
+      setOpenBlueprintSection,
+      setRecentDocumentIds,
+      setScreen,
+      setSelectedDocumentFileIndex,
+      setSelectedDocumentId,
+      smallSubtleButtonStyle,
+      targetNameFor,
+      tinyDangerButtonStyle,
+      updateSelectedDocument,
+      vendorRecords
+    }} />;
+  }
+
+  async function createInboxItemFromDraft() {
+    if (
+      !intakeFiles.length &&
+      !intakePastedText.trim() &&
+      !intakeNotes.trim()
+    ) {
+      setIntakeMessage(
+        "Add a file, pasted text, or notes before saving to the Inbox.",
+      );
+      return null;
+    }
+
+    if (intakePhotoNeedsName) {
+      setIntakeMessage(
+        "Name this photo before continuing so it will be easy to find later.",
+      );
+      intakePhotoNameRef.current?.focus();
+      return null;
+    }
+
+    const title =
+      intakeTitle.trim() ||
+      fastIntakeRecordName.trim() ||
+      intakeFiles[0]?.name?.replace(/\.[^.]+$/, "") ||
+      intakePastedText.trim().slice(0, 48) ||
+      "Untitled Inbox item";
+
+    setIntakeMessage("Saving to the permanent Atlas Inbox...");
+
+    try {
+      const response = await fetch("/api/atlas-inbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          intakeType: fastIntakeKind,
+          status: "New",
+          source: "Fast Intake",
+          notes: intakeNotes.trim(),
+          pastedText: intakePastedText.trim(),
+          files: intakeFiles,
+          targetType: intakeTargetKind,
+          targetId: intakeTargetKind === "General" ? "" : intakeTargetId,
+          targetName: targetNameFor(intakeTargetKind, intakeTargetId),
+          proposedAction: fastIntakeSaveMode,
+          extractedData: {},
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Inbox save failed.");
+      }
+
+      const saved = payload.item as InboxItemRecord;
+      setInboxItems((current) => [
+        saved,
+        ...current.filter((item) => item.id !== saved.id),
+      ]);
+      setSelectedInboxId(saved.id);
+      setIntakeMessage("Saved to Atlas Inbox. Nothing else was changed.");
+      resetIntakeDraft();
+      setScreen("inbox");
+      return saved;
+    } catch (error) {
+      setIntakeMessage(
+        error instanceof Error ? error.message : "Inbox save failed.",
+      );
+      return null;
+    }
+  }
+
+  async function updateInboxItem(id: string, patch: Partial<InboxItemRecord>) {
+    setInboxMessage("Saving Inbox item...");
+    try {
+      const response = await fetch("/api/atlas-inbox", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, ...patch }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Inbox update failed.");
+      }
+      const saved = payload.item as InboxItemRecord;
+      setInboxItems((current) =>
+        current.map((item) => (item.id === saved.id ? saved : item)),
+      );
+      setInboxMessage("Inbox item saved.");
+    } catch (error) {
+      setInboxMessage(
+        error instanceof Error ? error.message : "Inbox update failed.",
+      );
+    }
+  }
+
+  async function deleteInboxItem(item: InboxItemRecord) {
+    if (!window.confirm(`Delete \"${item.title}\" from the Atlas Inbox?`))
+      return;
+
+    setInboxMessage("Deleting Inbox item...");
+    try {
+      const response = await fetch("/api/atlas-inbox", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Inbox delete failed.");
+      }
+      setInboxItems((current) =>
+        current.filter((entry) => entry.id !== item.id),
+      );
+      setSelectedInboxId((current) => (current === item.id ? "" : current));
+      setInboxMessage("Inbox item deleted.");
+    } catch (error) {
+      setInboxMessage(
+        error instanceof Error ? error.message : "Inbox delete failed.",
+      );
+    }
+  }
+
+  function inboxAnalysisText(value: unknown) {
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  function inboxAnalysisTokens(value: string) {
+    return Array.from(
+      new Set(
+        value
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, " ")
+          .split(" ")
+          .map((token) => token.trim())
+          .filter((token) => token.length >= 3),
+      ),
+    );
+  }
+
+  function firstInboxMatch(text: string, pattern: RegExp) {
+    const match = text.match(pattern);
+    return match?.[1]?.trim() || "";
+  }
+
+  function buildInboxReviewDraft(
+    data: Record<string, unknown>,
+  ): InboxReviewDraft {
+    const readingData = (data.readings || {}) as Record<string, unknown>;
+    return {
+      documentType:
+        inboxAnalysisText(data.documentType) || inboxAnalysisText(data.type),
+      summary: inboxAnalysisText(data.summary),
+      manufacturer: inboxAnalysisText(data.manufacturer),
+      model: inboxAnalysisText(data.model),
+      serial: inboxAnalysisText(data.serial),
+      invoiceNumber: inboxAnalysisText(data.invoiceNumber),
+      amount: inboxAnalysisText(data.amount),
+      date: inboxAnalysisText(data.date),
+      psi: inboxAnalysisText(readingData.psi),
+      temperature: inboxAnalysisText(readingData.temperature),
+      ph: inboxAnalysisText(readingData.ph),
+      hours: inboxAnalysisText(readingData.hours),
+      assetId: "",
+      locationId: "",
+      vendorId: "",
+      workOrderId: "",
+      notes: "",
+    };
+  }
+
+  function openInboxReview(item: InboxItemRecord) {
+    setSelectedInboxId(item.id);
+    setInboxReviewDraft(
+      buildInboxReviewDraft(
+        (item.extractedData || {}) as Record<string, unknown>,
+      ),
+    );
+    setInboxReviewOpen(true);
+  }
+
+  async function analyzeInboxItem(item: InboxItemRecord) {
+    if (analyzingInboxId) return;
+
+    const usableFiles = (item.files || [])
+      .filter((file) => Boolean(file.dataUrl || file.url))
+      .slice(0, 3)
+      .map((file) => ({
+        name: file.name,
+        type: file.type || "application/octet-stream",
+        dataUrl: file.dataUrl || "",
+        url: file.url || "",
+      }));
+
+    const fileNames = usableFiles.map((file) => file.name).join("\n");
+    const existingText = [item.title, item.notes, item.pastedText, fileNames]
+      .filter(Boolean)
+      .join("\n");
+
+    if (!existingText.trim() && !usableFiles.length) {
+      setInboxMessage(
+        "Add a file, title, notes, or pasted text before analyzing.",
+      );
+      return;
+    }
+
+    setAnalyzingInboxId(item.id);
+    setInboxReviewDraft(
+      buildInboxReviewDraft(
+        (item.extractedData || {}) as Record<string, unknown>,
+      ),
+    );
+    setInboxReviewOpen(true);
+    setInboxMessage(
+      "Atlas is reading the selected file and preparing suggestions...",
+    );
+
+    let visionData: Record<string, unknown> = {};
+    try {
+      const response = await fetch("/api/atlas-inbox-analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          item: {
+            id: item.id,
+            title: item.title,
+            intakeType: item.intakeType,
+            notes: item.notes,
+            pastedText: item.pastedText,
+            files: usableFiles,
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Photo/PDF analysis failed.");
+      }
+      visionData = (payload.analysis || {}) as Record<string, unknown>;
+    } catch (error) {
+      setInboxMessage(
+        error instanceof Error ? error.message : "Photo/PDF analysis failed.",
+      );
+      setAnalyzingInboxId("");
+      return;
+    }
+
+    const aiReadings = (visionData.readings || {}) as Record<string, unknown>;
+    const rawText = inboxAnalysisText(visionData.rawText);
+    const combinedText = [
+      existingText,
+      rawText,
+      inboxAnalysisText(visionData.manufacturer),
+      inboxAnalysisText(visionData.model),
+      inboxAnalysisText(visionData.serial),
+      inboxAnalysisText(visionData.invoiceNumber),
+      inboxAnalysisText(visionData.vendorName),
+      inboxAnalysisText(visionData.assetName),
+      inboxAnalysisText(visionData.locationName),
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const serial =
+      inboxAnalysisText(visionData.serial) ||
+      firstInboxMatch(
+        combinedText,
+        /(?:serial(?:\s*(?:number|no\.?))?|s\s*\/\s*n|\bsn\b)\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{3,})/i,
+      );
+    const model =
+      inboxAnalysisText(visionData.model) ||
+      firstInboxMatch(
+        combinedText,
+        /(?:model(?:\s*(?:number|no\.?))?|m\s*\/\s*n)\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{2,})/i,
+      );
+    const invoiceNumber =
+      inboxAnalysisText(visionData.invoiceNumber) ||
+      firstInboxMatch(
+        combinedText,
+        /(?:invoice|inv(?:oice)?)(?:\s*(?:number|no\.?))?\s*[:#-]?\s*([a-z0-9][a-z0-9._\/-]{2,})/i,
+      );
+    const amount =
+      inboxAnalysisText(visionData.amount) ||
+      firstInboxMatch(combinedText, /(\$\s?\d[\d,]*(?:\.\d{2})?)/i);
+    const date =
+      inboxAnalysisText(visionData.date) ||
+      firstInboxMatch(
+        combinedText,
+        /\b((?:0?[1-9]|1[0-2])[\/-](?:0?[1-9]|[12]\d|3[01])[\/-](?:19|20)?\d{2})\b/,
+      );
+    const psi =
+      inboxAnalysisText(aiReadings.psi) ||
+      firstInboxMatch(combinedText, /\b(\d+(?:\.\d+)?)\s*psi\b/i);
+    const temperature =
+      inboxAnalysisText(aiReadings.temperature) ||
+      firstInboxMatch(
+        combinedText,
+        /\b(\d+(?:\.\d+)?)\s*(?:°\s*)?(?:f|fahrenheit)\b/i,
+      );
+    const ph =
+      inboxAnalysisText(aiReadings.ph) ||
+      firstInboxMatch(combinedText, /\bph\s*[:=]?\s*(\d+(?:\.\d+)?)\b/i);
+    const hours =
+      inboxAnalysisText(aiReadings.hours) ||
+      firstInboxMatch(combinedText, /\b(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b/i);
+
+    const knownManufacturers = [
+      "Viessmann",
+      "Carrier",
+      "Honeywell",
+      "Mitsubishi",
+      "Pentair",
+      "Sundance",
+      "Sunstream",
+      "Bosch",
+      "Electrolux",
+      "Kohler",
+      "Cobalt",
+      "Sea-Doo",
+      "Fisher & Paykel",
+      "Desert Aire",
+      "Hunter",
+      "Hydrawise",
+      "Starlink",
+    ];
+    const manufacturer =
+      inboxAnalysisText(visionData.manufacturer) ||
+      knownManufacturers.find((name) =>
+        combinedText.toLowerCase().includes(name.toLowerCase()),
+      ) ||
+      "";
+
+    const sourceTokens = inboxAnalysisTokens(combinedText);
+    const normalizedSerial = serial.toLowerCase();
+    const normalizedModel = model.toLowerCase();
+
+    const assetMatches = assetRecords
+      .map((asset) => {
+        const searchable = [
+          asset.name,
+          asset.make,
+          asset.model,
+          asset.serial,
+          asset.category,
+          asset.notes,
+        ]
+          .filter(Boolean)
+          .join(" ");
+        const assetTokens = inboxAnalysisTokens(searchable);
+        let score = sourceTokens.filter((token) =>
+          assetTokens.includes(token),
+        ).length;
+        const reasons: string[] = [];
+        if (
+          normalizedSerial &&
+          asset.serial?.toLowerCase() === normalizedSerial
+        ) {
+          score += 20;
+          reasons.push("Exact serial number");
+        }
+        if (
+          normalizedModel &&
+          asset.model?.toLowerCase().includes(normalizedModel)
+        ) {
+          score += 10;
+          reasons.push("Matching model");
+        }
+        if (
+          manufacturer &&
+          asset.make?.toLowerCase().includes(manufacturer.toLowerCase())
+        ) {
+          score += 6;
+          reasons.push("Matching manufacturer");
+        }
+        if (combinedText.toLowerCase().includes(asset.name.toLowerCase())) {
+          score += 8;
+          reasons.push("Asset name appears in analysis");
+        }
+        return { asset, score, reasons };
+      })
+      .filter((match) => match.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    const vendorMatches = vendorRecords
+      .map((vendor) => {
+        const vendorText = [vendor.name, vendor.category, vendor.notes]
+          .filter(Boolean)
+          .join(" ");
+        const vendorTokens = inboxAnalysisTokens(vendorText);
+        let score = sourceTokens.filter((token) =>
+          vendorTokens.includes(token),
+        ).length;
+        if (combinedText.toLowerCase().includes(vendor.name.toLowerCase()))
+          score += 10;
+        return { vendor, score };
+      })
+      .filter((match) => match.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    const workOrderMatches = serviceRecords
+      .map((workOrder) => {
+        const workOrderText = [workOrder.title, workOrder.notes, workOrder.date]
+          .filter(Boolean)
+          .join(" ");
+        const workOrderTokens = inboxAnalysisTokens(workOrderText);
+        const score = sourceTokens.filter((token) =>
+          workOrderTokens.includes(token),
+        ).length;
+        return { workOrder, score };
+      })
+      .filter((match) => match.score >= 2)
+      .sort((a, b) => b.score - a.score);
+
+    const bestAsset = assetMatches[0];
+    const bestVendor = vendorMatches[0];
+    const bestWorkOrder = workOrderMatches[0];
+    const bestScore = Math.max(
+      bestAsset?.score || 0,
+      bestVendor?.score || 0,
+      bestWorkOrder?.score || 0,
+    );
+    const confidence =
+      bestScore >= 20
+        ? "High"
+        : bestScore >= 8
+          ? "Medium"
+          : bestScore > 0
+            ? "Low"
+            : "None";
+
+    const suggestedMatch =
+      bestAsset && bestAsset.score === bestScore
+        ? {
+            type: "Asset",
+            id: bestAsset.asset.id,
+            name: bestAsset.asset.name,
+            confidence,
+            reasons: bestAsset.reasons,
+          }
+        : bestVendor && bestVendor.score === bestScore
+          ? {
+              type: "Vendor",
+              id: bestVendor.vendor.id,
+              name: bestVendor.vendor.name,
+              confidence,
+              reasons: ["Vendor name or related terms appear in analysis"],
+            }
+          : bestWorkOrder && bestWorkOrder.score === bestScore
+            ? {
+                type: "Work Order",
+                id: bestWorkOrder.workOrder.id,
+                name: bestWorkOrder.workOrder.title,
+                confidence,
+                reasons: ["Related work-order terms appear in analysis"],
+              }
+            : null;
+
+    const extractedData: Record<string, unknown> = {
+      ...visionData,
+      analyzedAt: new Date().toISOString(),
+      analyzer: "Atlas secure photo/PDF analyzer",
+      manufacturer,
+      model,
+      serial,
+      invoiceNumber,
+      amount,
+      date,
+      readings: { psi, temperature, ph, hours },
+      suggestedMatch,
+      candidateAssets: assetMatches
+        .slice(0, 3)
+        .map((match) => ({
+          id: match.asset.id,
+          name: match.asset.name,
+          score: match.score,
+        })),
+      candidateVendors: vendorMatches
+        .slice(0, 3)
+        .map((match) => ({
+          id: match.vendor.id,
+          name: match.vendor.name,
+          score: match.score,
+        })),
+      candidateWorkOrders: workOrderMatches
+        .slice(0, 3)
+        .map((match) => ({
+          id: match.workOrder.id,
+          name: match.workOrder.title,
+          score: match.score,
+        })),
+    };
+
+    setInboxItems((current) =>
+      current.map((entry) =>
+        entry.id === item.id
+          ? {
+              ...entry,
+              extractedData,
+              status: "Analyzed",
+              updatedAt: new Date().toISOString(),
+            }
+          : entry,
+      ),
+    );
+    await updateInboxItem(item.id, { extractedData, status: "Analyzed" });
+    setInboxReviewDraft(buildInboxReviewDraft(extractedData));
+    setInboxReviewOpen(true);
+    setInboxMessage(
+      "Analysis complete. Review the detected information before approving anything.",
+    );
+    setAnalyzingInboxId("");
+  }
+
+  async function approveInboxPhotoToAsset(
+    item: InboxItemRecord,
+    assetId: string,
+  ) {
+    if (savingInboxApprovalId) return;
+    const asset = assetRecords.find((record) => record.id === assetId);
+    if (!asset) {
+      setInboxMessage("The matched asset could not be found. Nothing was saved.");
+      return;
+    }
+
+    setSavingInboxApprovalId(item.id);
+    setInboxMessage(`Saving photo and missing details to ${asset.name}...`);
+
+    try {
+      const updatedAsset = normalizeAsset({
+        ...asset,
+        make: asset.make || inboxReviewDraft.manufacturer.trim(),
+        manufacturer:
+          asset.manufacturer || inboxReviewDraft.manufacturer.trim(),
+        model: asset.model || inboxReviewDraft.model.trim(),
+        serial: asset.serial || inboxReviewDraft.serial.trim(),
+        notes: inboxReviewDraft.notes.trim()
+          ? appendIntakeNote(asset.notes, inboxReviewDraft.notes)
+          : asset.notes,
+      });
+      const savedAsset = await postAtlasRecord("assets", updatedAsset);
+      if (!savedAsset) throw new Error("Asset details did not save.");
+      setAssetRecords((current) =>
+        current.map((record) =>
+          record.id === updatedAsset.id ? updatedAsset : record,
+        ),
+      );
+
+      const imageFiles = (item.files || []).filter(
+        (file) => (file.type || "").startsWith("image/") && file.dataUrl,
+      );
+      const imagePhotos: PhotoRecord[] = imageFiles.map((file, index) => ({
+        id: uid("photo"),
+        assetId: asset.id,
+        name:
+          imageFiles.length > 1 ? `${item.title} ${index + 1}` : item.title,
+        dataUrl: file.dataUrl,
+        createdAt: file.createdAt || new Date().toISOString(),
+      }));
+
+      if (imagePhotos.length) {
+        await cachePhotoRecords(imagePhotos);
+        setPhotos((current) => {
+          const next = mergePhotoRecords(imagePhotos, current);
+          persistPhotoRecords(next);
+          return next;
+        });
+        await Promise.all(
+          imagePhotos.map((photo) => postAtlasRecord("asset_photos", photo)),
+        );
+      }
+
+      const linkedDocument: DocumentRecord = {
+        id: uid("doc"),
+        title: item.title,
+        area: asset.name,
+        type: item.intakeType || "Asset Label",
+        linkedAssetId: asset.id,
+        targetType: "Asset",
+        targetId: asset.id,
+        targetName: asset.name,
+        notes:
+          inboxReviewDraft.summary.trim() ||
+          item.notes ||
+          "Asset label analyzed and approved in Atlas Inbox.",
+        pastedText: item.pastedText || "",
+        files: item.files || [],
+        createdAt: new Date().toISOString(),
+      };
+      const nextDocs = mergeDocuments([linkedDocument], intakeDocs);
+      setIntakeDocs(nextDocs);
+      saveStoredArray(storageKeys.intakeDocs[0], nextDocs);
+      try {
+        await postDocumentToAtlasVault(linkedDocument);
+      } catch {
+        setDocumentSyncStatus(
+          "The asset and photo saved, but document-vault sync needs attention.",
+        );
+      }
+
+      await updateInboxItem(item.id, {
+        extractedData: {
+          ...(item.extractedData || {}),
+          ...inboxReviewDraft,
+          readings: {
+            psi: inboxReviewDraft.psi,
+            temperature: inboxReviewDraft.temperature,
+            ph: inboxReviewDraft.ph,
+            hours: inboxReviewDraft.hours,
+          },
+        },
+        targetType: "Asset",
+        targetId: asset.id,
+        targetName: asset.name,
+        status: "Saved",
+      });
+
+      setInboxMessage(`Saved to ${asset.name}.`);
+      showSaveToast(
+        `${item.title} and missing label details were saved to ${asset.name}.`,
+      );
+      openSavedAsset(asset.id);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "The asset update did not save.";
+      setInboxMessage(message);
+      showSaveToast(message, "warning");
+    } finally {
+      setSavingInboxApprovalId("");
+    }
+  }
+
+  function openInboxItemInFastIntake(item: InboxItemRecord) {
+    const analysis = (item.extractedData || {}) as Record<string, unknown>;
+    const manufacturer = inboxAnalysisText(analysis.manufacturer);
+    const model = inboxAnalysisText(analysis.model);
+    const serial = inboxAnalysisText(analysis.serial);
+    const assetName = inboxAnalysisText(analysis.assetName);
+    const documentType = inboxAnalysisText(analysis.documentType);
+    const summary = inboxAnalysisText(analysis.summary);
+    const suggestedMatch = (analysis.suggestedMatch || {}) as Record<string, unknown>;
+    const hasReliableAssetMatch =
+      inboxAnalysisText(suggestedMatch.type) === "Asset" &&
+      ["High", "Medium"].includes(inboxAnalysisText(suggestedMatch.confidence));
+    const looksLikeNewAsset =
+      !hasReliableAssetMatch && Boolean(assetName || manufacturer || model || serial);
+    const proposedName =
+      assetName ||
+      [manufacturer, documentType && !/label|photo|image/i.test(documentType) ? documentType : ""]
+        .filter(Boolean)
+        .join(" ") ||
+      item.title ||
+      model ||
+      "New Asset";
+    const category = /appliance|refrigerator|freezer|dishwasher|washer|dryer|range|oven/i.test(
+      [documentType, summary, proposedName].join(" "),
+    )
+      ? "Appliance"
+      : documentType && !/label|photo|image/i.test(documentType)
+        ? documentType
+        : "Equipment";
+    const locationNameHint = inboxAnalysisText(analysis.locationName).toLowerCase();
+    const suggestedLocation = locations.find((location) =>
+      locationNameHint &&
+      [location.name, location.type, location.zone]
+        .join(" ")
+        .toLowerCase()
+        .includes(locationNameHint),
+    );
+
+    setFastIntakeKind(item.intakeType || "Document");
+    setFastIntakeSaveMode(
+      looksLikeNewAsset
+        ? "Create Asset"
+        : hasReliableAssetMatch
+          ? "Attach to Existing"
+          : item.proposedAction || "Attach to Existing",
+    );
+    setIntakeTitle(item.title || "");
+    setFastIntakeRecordName(looksLikeNewAsset ? proposedName : "");
+    setFastIntakeCategory(looksLikeNewAsset ? category : "General");
+    setFastIntakeManufacturer(manufacturer);
+    setFastIntakeModel(model);
+    setFastIntakeSerial(serial);
+    setFastIntakeLocationId(suggestedLocation?.id || "general");
+    setIntakeNotes(
+      [item.notes, summary ? `AI photo review: ${summary}` : ""]
+        .filter(Boolean)
+        .join("\n"),
+    );
+    setIntakePastedText(item.pastedText || "");
+    setIntakeFiles(Array.isArray(item.files) ? item.files : []);
+    setIntakeTargetKind(
+      hasReliableAssetMatch ? "Asset" : item.targetType || "General",
+    );
+    setIntakeTargetId(
+      hasReliableAssetMatch
+        ? inboxAnalysisText(suggestedMatch.id)
+        : item.targetId || "",
+    );
+    setIntakeMessage(
+      hasReliableAssetMatch
+        ? `Matched to ${inboxAnalysisText(suggestedMatch.name)}. Approve once to save missing details and attach the photo.`
+        : "Loaded from Atlas Inbox. Review everything before saving.",
+    );
+    void updateInboxItem(item.id, { status: "Needs Review" });
+    setScreen("intake");
+  }
+
+  function fieldReportInfo(item: InboxItemRecord) {
+    const data = (item.extractedData || {}) as Record<string, unknown>;
+    return {
+      isFieldReport:
+        item.source === "Addison Field Report" ||
+        String(data.reportType || "") === "Field Report",
+      submittedBy: String(data.submittedBy || "Addison"),
+      canHandle: Boolean(data.canHandle),
+      locationId: String(data.locationId || item.targetId || ""),
+      locationName: String(
+        data.locationName || item.targetName || "General property",
+      ),
+      convertedId: String(data.convertedId || ""),
+    };
+  }
+
+  async function archiveConvertedFieldReport(
+    item: InboxItemRecord,
+    convertedTo: "Task" | "Work Order" | "Dismissed",
+    convertedId = "",
+  ) {
+    await updateInboxItem(item.id, {
+      status: "Archived",
+      extractedData: {
+        ...(item.extractedData || {}),
+        convertedTo,
+        convertedId,
+        convertedAt: new Date().toISOString(),
+      },
+    });
+    setSelectedInboxId("");
+  }
+
+  async function createWorkOrderFromFieldReport(item: InboxItemRecord) {
+    const info = fieldReportInfo(item);
+    if (info.convertedId) {
+      showSaveToast("This report has already been converted.");
+      return;
+    }
+    if (convertingFieldReportsRef.current.has(item.id)) return;
+    convertingFieldReportsRef.current.add(item.id);
+
+    try {
+      const workOrderId = uid("wo");
+      const created = await addWorkOrder({
+        id: workOrderId,
+        title: item.title,
+        date: todayISO(),
+        status: "Open",
+        priority: "Medium",
+        notes: item.notes || "",
+        locationId: info.locationId,
+        assignedTo: info.canHandle ? "Addison" : "",
+        workType: "Work Order",
+        workCategory: "Maintenance",
+        responsibilityArea: "Field Report",
+        photos: Array.isArray(item.files) ? item.files : [],
+      });
+      if (!created) return;
+
+      await archiveConvertedFieldReport(item, "Work Order", workOrderId);
+      showSaveToast("Work order created from Addison’s report.");
+    } finally {
+      convertingFieldReportsRef.current.delete(item.id);
+    }
+  }
+
+  async function dismissFieldReport(item: InboxItemRecord) {
+    if (convertingFieldReportsRef.current.has(item.id)) return;
+    convertingFieldReportsRef.current.add(item.id);
+    try {
+      await archiveConvertedFieldReport(item, "Dismissed");
+      showSaveToast("Field report dismissed.");
+    } finally {
+      convertingFieldReportsRef.current.delete(item.id);
+    }
+  }
+
+  function renderInbox() {
+    const propertyInboxItems = inboxItems.filter((item) => {
+      const data = (item.extractedData || {}) as Record<string, unknown>;
+      const propertyId = String(data.propertyId || "").trim();
+      return propertyId
+        ? propertyId === activePropertyId
+        : activePropertyId === "2000";
+    });
+    const seenFieldReports = new Set<string>();
+    const filtered = propertyInboxItems.filter((item) => {
+      if (item.status === "Archived") return false;
+      const data = (item.extractedData || {}) as Record<string, unknown>;
+      const isFieldReport =
+        item.source === "Addison Field Report" ||
+        String(data.reportType || "") === "Field Report";
+      if (isFieldReport) {
+        const identity = [
+          activePropertyId,
+          String(item.title || "").trim().toLowerCase(),
+          String(item.notes || "").trim().toLowerCase(),
+          String(data.locationId || item.targetId || ""),
+        ].join("||");
+        if (seenFieldReports.has(identity)) return false;
+        seenFieldReports.add(identity);
+      }
+      const haystack = [
+        item.title,
+        item.intakeType,
+        item.status,
+        item.source,
+        item.notes,
+        item.pastedText,
+        item.targetName,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(inboxSearch.trim().toLowerCase());
+    });
+
+    const selected =
+      filtered.find((item) => item.id === selectedInboxId) || filtered[0];
+    const analysis = (selected?.extractedData || {}) as Record<string, unknown>;
+    const fieldReport = selected ? fieldReportInfo(selected) : null;
+    const suggestedMatch = analysis.suggestedMatch as
+      | {
+          type?: string;
+          id?: string;
+          name?: string;
+          confidence?: string;
+          reasons?: string[];
+        }
+      | null
+      | undefined;
+    const reliableAssetMatch =
+      suggestedMatch?.type === "Asset" &&
+      Boolean(suggestedMatch.id) &&
+      (suggestedMatch.confidence === "High" ||
+        suggestedMatch.confidence === "Medium");
+    const readings = (analysis.readings || {}) as Record<string, unknown>;
+    const analysisFields = [
+      ["Manufacturer", analysis.manufacturer],
+      ["Model", analysis.model],
+      ["Serial", analysis.serial],
+      ["Invoice #", analysis.invoiceNumber],
+      ["Amount", analysis.amount],
+      ["Date", analysis.date],
+      ["PSI", readings.psi],
+      [
+        "Temperature",
+        readings.temperature ? `${String(readings.temperature)}°F` : "",
+      ],
+      ["pH", readings.ph],
+      ["Hours", readings.hours],
+    ].filter(([, value]) => typeof value === "string" && value.trim());
+
+    return (
+      <>
+        <ListDrawerLayout
+          eyebrow="Atlas Inbox"
+          title="Review Before Anything Changes"
+          detail="Photos, screenshots, PDFs, labels, invoices, readings, and notes can wait here until you decide what they should become."
+          isMobile={isMobile}
+          drawerResetKey={`${selected?.id || "inbox-empty"}:${String(analysis.analyzedAt || "not-analyzed")}`}
+          gridStyleOverride={
+            isMobile
+              ? undefined
+              : {
+                  gridTemplateColumns:
+                    "minmax(300px, 0.78fr) minmax(520px, 1.22fr)",
+                }
+          }
+          drawerStyleOverride={isMobile ? undefined : { paddingLeft: 10 }}
+          list={
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={cardStyle}>
+                <Field
+                  label="Search Inbox"
+                  value={inboxSearch}
+                  onChange={setInboxSearch}
+                  placeholder="Title, type, status, notes, destination..."
+                />
+                <div style={buttonRowStyle}>
+                  <button
+                    type="button"
+                    onClick={() => setScreen("intake")}
+                    style={goldButtonStyle}
+                  >
+                    Add to Inbox
+                  </button>
+                </div>
+                <p style={mutedSmallStyle}>{inboxMessage}</p>
+              </div>
+
+              {filtered.length ? (
+                <div style={listStyle}>
+                  {filtered.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setSelectedInboxId(item.id)}
+                      style={
+                        item.id === selected?.id
+                          ? {
+                              ...rowButtonStyle,
+                              borderColor: colors.gold,
+                              background: "#FFF8E8",
+                            }
+                          : rowButtonStyle
+                      }
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <strong>{item.title}</strong>
+                        <p style={mutedSmallStyle}>
+                          {item.intakeType} · {item.status} ·{" "}
+                          {(item.files || []).length} file(s)
+                        </p>
+                      </div>
+                      <span style={mutedSmallStyle}>
+                        {formatDate(item.updatedAt || item.createdAt)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div style={emptyStateStyle}>
+                  No Inbox items match this search.
+                </div>
+              )}
+            </div>
+          }
+          drawer={
+            selected ? (
+              <div style={{ display: "grid", gap: 14 }}>
+                <div style={cardStyle}>
+                  <div style={eyebrowStyle}>Selected Inbox Item</div>
+                  <h3 style={{ ...detailTitleStyle, marginBottom: 4 }}>
+                    {selected.title}
+                  </h3>
+                  <p style={{ ...mutedSmallStyle, marginTop: 0 }}>
+                    {selected.intakeType} · {selected.source || "Manual"} ·{" "}
+                    {selected.status}
+                  </p>
+
+                  {fieldReport?.isFieldReport ? (
+                    <div
+                      style={{
+                        ...noticeStyle,
+                        display: "grid",
+                        gridTemplateColumns: isMobile
+                          ? "minmax(0,1fr)"
+                          : "repeat(3,minmax(0,1fr))",
+                        gap: 10,
+                        marginBottom: 12,
+                      }}
+                    >
+                      <div>
+                        <small style={fieldLabelStyle}>REPORTED BY</small>
+                        <strong style={{ display: "block", marginTop: 3 }}>
+                          {fieldReport.submittedBy}
+                        </strong>
+                      </div>
+                      <div>
+                        <small style={fieldLabelStyle}>LOCATION</small>
+                        <strong style={{ display: "block", marginTop: 3 }}>
+                          {fieldReport.locationName}
+                        </strong>
+                      </div>
+                      <div>
+                        <small style={fieldLabelStyle}>CAN HANDLE THIS</small>
+                        <strong style={{ display: "block", marginTop: 3 }}>
+                          {fieldReport.canHandle ? "Yes" : "No"}
+                        </strong>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {(selected.files || []).length ? (
+                    <div style={{ display: "grid", gap: 10 }}>
+                      {(selected.files || []).map((file, index) => (
+                        <div
+                          key={file.id}
+                          style={{ ...photoCardStyle, padding: 12 }}
+                        >
+                          {file.dataUrl?.startsWith("data:image/") ? (
+                            <img
+                              src={file.dataUrl}
+                              alt={file.name}
+                              style={{
+                                ...photoStyle,
+                                maxHeight: index === 0 ? 420 : 220,
+                                objectFit: "contain",
+                                background: colors.panel,
+                              }}
+                            />
+                          ) : (
+                            <div style={{ ...fileTileStyle, minHeight: 150 }}>
+                              {file.type?.includes("pdf") ? "PDF" : "FILE"}
+                            </div>
+                          )}
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: 10,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <strong style={{ overflowWrap: "anywhere" }}>
+                              {file.name}
+                            </strong>
+                            <button
+                              type="button"
+                              onClick={() => openUploadedFile(file)}
+                              style={tinyButtonStyle}
+                            >
+                              Preview
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={emptyStateStyle}>
+                      No original file attached.
+                    </div>
+                  )}
+
+                  {!fieldReport?.isFieldReport ? (
+                    <div
+                      style={{
+                        ...buttonRowStyle,
+                        marginTop: 12,
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          openInboxReview(selected);
+                          void analyzeInboxItem(selected);
+                        }}
+                        disabled={analyzingInboxId === selected.id}
+                        style={{
+                          ...goldButtonStyle,
+                          opacity: analyzingInboxId === selected.id ? 0.65 : 1,
+                          cursor:
+                            analyzingInboxId === selected.id ? "wait" : "pointer",
+                        }}
+                      >
+                        {analyzingInboxId === selected.id
+                          ? "Reading File..."
+                          : analysis.analyzedAt
+                            ? "Analyze Again"
+                            : "Analyze Item"}
+                      </button>
+                      {analysis.analyzedAt ? (
+                        <span style={mutedSmallStyle}>
+                          Last analyzed {formatDate(String(analysis.analyzedAt))}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+
+                {!fieldReport?.isFieldReport ? (
+                  <div style={cardStyle}>
+                    <div style={eyebrowStyle}>Atlas Review</div>
+                    <h3 style={detailTitleStyle}>
+                      Analysis Opens in a Separate Review Drawer
+                    </h3>
+                    <p style={mutedSmallStyle}>
+                      The review drawer keeps the original file, detected
+                      information, editable fields, and any reliable match
+                      together. Destination fields stay blank unless you choose
+                      them.
+                    </p>
+                    <div style={buttonRowStyle}>
+                      <button
+                        type="button"
+                        onClick={() => openInboxReview(selected)}
+                        style={secondaryButtonStyle}
+                      >
+                        {analysis.analyzedAt
+                          ? "Open AI Review"
+                          : "Open Review Drawer"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div style={cardStyle}>
+                  <div style={eyebrowStyle}>Review and Edit</div>
+                  <div style={formGridStyle}>
+                    <Field
+                      label="Title"
+                      value={selected.title}
+                      onChange={(value) =>
+                        setInboxItems((current) =>
+                          current.map((item) =>
+                            item.id === selected.id
+                              ? { ...item, title: value }
+                              : item,
+                          ),
+                        )
+                      }
+                    />
+                    <label style={{ display: "grid", gap: 6 }}>
+                      <span style={fieldLabelStyle}>Status</span>
+                      <select
+                        value={selected.status}
+                        onChange={(event) =>
+                          void updateInboxItem(selected.id, {
+                            status: event.currentTarget.value as InboxStatus,
+                          })
+                        }
+                        style={inputStyle}
+                      >
+                        {[
+                          "New",
+                          "Analyzed",
+                          "Needs Review",
+                          "Approved",
+                          "Saved",
+                          "Archived",
+                          "Error",
+                        ].map((status) => (
+                          <option key={status} value={status}>
+                            {status}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <Field
+                      label="Notes"
+                      value={selected.notes}
+                      onChange={(value) =>
+                        setInboxItems((current) =>
+                          current.map((item) =>                            item.id === selected.id
+                              ? { ...item, notes: value }
+                              : item,
+                          ),
+                        )
+                      }
+                      multiline
+                    />
+                    <Field
+                      label="Pasted text"
+                      value={selected.pastedText}
+                      onChange={(value) =>
+                        setInboxItems((current) =>
+                          current.map((item) =>
+                            item.id === selected.id
+                              ? { ...item, pastedText: value }
+                              : item,
+                          ),
+                        )
+                      }
+                      multiline
+                    />
+                  </div>
+
+                  <div style={buttonRowStyle}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void updateInboxItem(selected.id, {
+                          title: selected.title,
+                          notes: selected.notes,
+                          pastedText: selected.pastedText,
+                        })
+                      }
+                      style={secondaryButtonStyle}
+                    >
+                      Save Edits
+                    </button>
+                    {fieldReport?.isFieldReport ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void createWorkOrderFromFieldReport(selected)}
+                          style={goldButtonStyle}
+                        >
+                          Create Work Order
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void dismissFieldReport(selected)}
+                          style={secondaryButtonStyle}
+                        >
+                          Dismiss
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openInboxItemInFastIntake(selected)}
+                          style={goldButtonStyle}
+                        >
+                          Review in Fast Intake
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void updateInboxItem(selected.id, {
+                              status: "Archived",
+                            })
+                          }
+                          style={secondaryButtonStyle}
+                        >
+                          Archive
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void deleteInboxItem(selected)}
+                      style={dangerButtonStyle}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
+                <div style={noticeStyle}>
+                  <strong>
+                    {fieldReport?.isFieldReport
+                      ? "Manager approval required."
+                      : "No automatic changes."}
+                  </strong>
+                  <p style={mutedSmallStyle}>
+                    {fieldReport?.isFieldReport
+                      ? "The report stays in this property’s Inbox until you create a task, convert it to a work order, or dismiss it."
+                      : "This Inbox item cannot alter Assets, Vendors, Work Orders, Documents, Calendar, or Readings until you open it in Fast Intake and approve the final save."}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div style={emptyStateStyle}>Select an Inbox item.</div>
+            )
+          }
+        />
+
+        {inboxReviewOpen && selected ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Atlas Review"
+            onMouseDown={(event) => {
+              if (event.currentTarget === event.target)
+                setInboxReviewOpen(false);
+            }}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 1000,
+              background: "rgba(4, 18, 32, 0.72)",
+              display: "flex",
+              justifyContent: "flex-end",
+            }}
+          >
+            <div
+              style={{
+                width: isMobile ? "100%" : "min(760px, 94vw)",
+                height: "100%",
+                background: colors.bg,
+                overflowY: "auto",
+                boxShadow: "-18px 0 48px rgba(0,0,0,0.28)",
+                padding: isMobile ? 14 : 22,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  gap: 12,
+                  marginBottom: 14,
+                }}
+              >
+                <div>
+                  <div style={eyebrowStyle}>Atlas Review</div>
+                  <h2 style={{ ...detailTitleStyle, margin: "4px 0" }}>
+                    {selected.title}
+                  </h2>
+                  <p style={{ ...mutedSmallStyle, margin: 0 }}>
+                    Review and edit everything before choosing what Atlas should
+                    do.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setInboxReviewOpen(false)}
+                  style={secondaryButtonStyle}
+                >
+                  Close
+                </button>
+              </div>
+
+              {analyzingInboxId === selected.id ? (
+                <div style={{ ...cardStyle, display: "grid", gap: 10 }}>
+                  <h3 style={{ ...detailTitleStyle, margin: 0 }}>
+                    Analyzing image...
+                  </h3>
+                  {[
+                    "Reading the file",
+                    "Extracting visible text",
+                    "Finding identifying fields",
+                    "Searching Atlas records",
+                    "Preparing review",
+                  ].map((step, index) => (
+                    <div
+                      key={step}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        padding: "10px 0",
+                        borderBottom:
+                          index === 4 ? "none" : `1px solid ${colors.line}`,
+                      }}
+                    >
+                      <span>{step}</span>
+                      <strong>{index === 0 ? "Working..." : "Queued"}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 14 }}>
+                  <div style={cardStyle}>
+                    <div style={eyebrowStyle}>Original File</div>
+                    {(selected.files || [])[0]?.dataUrl?.startsWith(
+                      "data:image/",
+                    ) ? (
+                      <img
+                        src={(selected.files || [])[0].dataUrl}
+                        alt={(selected.files || [])[0].name}
+                        style={{
+                          ...photoStyle,
+                          maxHeight: 360,
+                          objectFit: "contain",
+                          background: colors.panel,
+                        }}
+                      />
+                    ) : (selected.files || []).length ? (
+                      <div style={{ ...fileTileStyle, minHeight: 120 }}>
+                        {(selected.files || [])[0].type?.includes("pdf")
+                          ? "PDF"
+                          : "FILE"}
+                      </div>
+                    ) : (
+                      <div style={emptyStateStyle}>
+                        No original file attached.
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={cardStyle}>
+                    <div style={eyebrowStyle}>What Atlas Detected</div>
+                    <div style={formGridStyle}>
+                      <Field
+                        label="Document / image type"
+                        value={inboxReviewDraft.documentType}
+                        onChange={(value) =>
+                          setInboxReviewDraft((current) => ({
+                            ...current,
+                            documentType: value,
+                          }))
+                        }
+                      />
+                      <Field
+                        label="Summary"
+                        value={inboxReviewDraft.summary}
+                        onChange={(value) =>
+                          setInboxReviewDraft((current) => ({
+                            ...current,
+                            summary: value,
+                          }))
+                        }
+                        multiline
+                      />
+                      <Field
+                        label="Manufacturer"
+                        value={inboxReviewDraft.manufacturer}
+                        onChange={(value) =>
+                          setInboxReviewDraft((current) => ({
+                            ...current,
+                            manufacturer: value,
+                          }))
+                        }
+                      />
+                      <Field
+                        label="Model"
+                        value={inboxReviewDraft.model}
+                        onChange={(value) =>
+                          setInboxReviewDraft((current) => ({
+                            ...current,
+                            model: value,
+                          }))
+                        }
+                      />
+                      <Field
+                        label="Serial number"
+                        value={inboxReviewDraft.serial}
+                        onChange={(value) =>
+                          setInboxReviewDraft((current) => ({
+                            ...current,
+                            serial: value,
+                          }))
+                        }
+                      />
+                      <Field
+                        label="Invoice number"
+                        value={inboxReviewDraft.invoiceNumber}
+                        onChange={(value) =>
+                          setInboxReviewDraft((current) => ({
+                            ...current,
+                            invoiceNumber: value,
+                          }))
+                        }
+                      />
+                      <Field
+                        label="Amount"
+                        value={inboxReviewDraft.amount}
+                        onChange={(value) =>
+                          setInboxReviewDraft((current) => ({
+                            ...current,
+                            amount: value,
+                          }))
+                        }
+                      />
+                      <Field
+                        label="Date"
+                        value={inboxReviewDraft.date}
+                        onChange={(value) =>
+                          setInboxReviewDraft((current) => ({
+                            ...current,
+                            date: value,
+                          }))
+                        }
+                      />
+                      <Field
+                        label="PSI"
+                        value={inboxReviewDraft.psi}
+                        onChange={(value) =>
+                          setInboxReviewDraft((current) => ({
+                            ...current,
+                            psi: value,
+                          }))
+                        }
+                      />
+                      <Field
+                        label="Temperature"
+                        value={inboxReviewDraft.temperature}
+                        onChange={(value) =>
+                          setInboxReviewDraft((current) => ({
+                            ...current,
+                            temperature: value,
+                          }))
+                        }
+                      />
+                      <Field
+                        label="pH"
+                        value={inboxReviewDraft.ph}
+                        onChange={(value) =>
+                          setInboxReviewDraft((current) => ({
+                            ...current,
+                            ph: value,
+                          }))
+                        }
+                      />
+                      <Field
+                        label="Hours"
+                        value={inboxReviewDraft.hours}
+                        onChange={(value) =>
+                          setInboxReviewDraft((current) => ({
+                            ...current,
+                            hours: value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {!reliableAssetMatch ? (
+                  <div style={cardStyle}>
+                    <div style={eyebrowStyle}>Where Should This Go?</div>
+                    <p style={mutedSmallStyle}>
+                      These fields intentionally start blank. Atlas will not
+                      label something as a boiler, vehicle, vendor, or other
+                      record unless you choose it or there is a reliable match.
+                    </p>
+                    <div style={formGridStyle}>
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span style={fieldLabelStyle}>Asset</span>
+                        <select
+                          value={inboxReviewDraft.assetId}
+                          onChange={(e) =>
+                            setInboxReviewDraft((c) => ({
+                              ...c,
+                              assetId: e.currentTarget.value,
+                            }))
+                          }
+                          style={inputStyle}
+                        >
+                          <option value="">No asset selected</option>
+                          {assetRecords.map((asset) => (
+                            <option key={asset.id} value={asset.id}>
+                              {asset.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span style={fieldLabelStyle}>Location</span>
+                        <select
+                          value={inboxReviewDraft.locationId}
+                          onChange={(e) =>
+                            setInboxReviewDraft((c) => ({
+                              ...c,
+                              locationId: e.currentTarget.value,
+                            }))
+                          }
+                          style={inputStyle}
+                        >
+                          <option value="">No location selected</option>
+                          {locations.map((location) => (
+                            <option key={location.id} value={location.id}>
+                              {location.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span style={fieldLabelStyle}>Vendor</span>
+                        <select
+                          value={inboxReviewDraft.vendorId}
+                          onChange={(e) =>
+                            setInboxReviewDraft((c) => ({
+                              ...c,
+                              vendorId: e.currentTarget.value,
+                            }))
+                          }
+                          style={inputStyle}
+                        >
+                          <option value="">No vendor selected</option>
+                          {vendorRecords.map((vendor) => (
+                            <option key={vendor.id} value={vendor.id}>
+                              {vendor.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span style={fieldLabelStyle}>Work Order</span>
+                        <select
+                          value={inboxReviewDraft.workOrderId}
+                          onChange={(e) =>
+                            setInboxReviewDraft((c) => ({
+                              ...c,
+                              workOrderId: e.currentTarget.value,
+                            }))
+                          }
+                          style={inputStyle}
+                        >
+                          <option value="">No work order selected</option>
+                          {serviceRecords.map((workOrder) => (
+                            <option key={workOrder.id} value={workOrder.id}>
+                              {workOrder.title}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                  ) : null}
+
+                  <div style={cardStyle}>
+                    <div style={eyebrowStyle}>Reliable Match Check</div>
+                    {suggestedMatch?.name &&
+                    (suggestedMatch.confidence === "High" ||
+                      suggestedMatch.confidence === "Medium") ? (
+                      <>
+                        <h3 style={{ ...detailTitleStyle, margin: "6px 0" }}>
+                          {suggestedMatch.type}: {suggestedMatch.name}
+                        </h3>
+                        <p style={mutedSmallStyle}>
+                          Confidence: {suggestedMatch.confidence}
+                          {Array.isArray(suggestedMatch.reasons) &&
+                          suggestedMatch.reasons.length
+                            ? ` · ${suggestedMatch.reasons.join(" · ")}`
+                            : ""}
+                        </p>
+                        {suggestedMatch.type === "Asset" &&
+                        suggestedMatch.id ? (
+                          <button
+                            type="button"
+                            disabled={savingInboxApprovalId === selected.id}
+                            onClick={() =>
+                              void approveInboxPhotoToAsset(
+                                selected,
+                                suggestedMatch.id || "",
+                              )
+                            }
+                            style={{
+                              ...goldButtonStyle,
+                              width: "100%",
+                              opacity:
+                                savingInboxApprovalId === selected.id ? 0.65 : 1,
+                              cursor:
+                                savingInboxApprovalId === selected.id
+                                  ? "wait"
+                                  : "pointer",
+                            }}
+                          >
+                            {savingInboxApprovalId === selected.id
+                              ? `Saving to ${suggestedMatch.name}...`
+                              : `Approve and Save to ${suggestedMatch.name}`}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (suggestedMatch.type === "Vendor")
+                                setInboxReviewDraft((c) => ({
+                                  ...c,
+                                  vendorId: suggestedMatch.id || "",
+                                }));
+                              if (suggestedMatch.type === "Work Order")
+                                setInboxReviewDraft((c) => ({
+                                  ...c,
+                                  workOrderId: suggestedMatch.id || "",
+                                }));
+                            }}
+                            style={secondaryButtonStyle}
+                          >
+                            Use This Match
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <p style={mutedSmallStyle}>
+                        No reliable match found. Nothing has been selected for
+                        you.
+                      </p>
+                    )}
+                  </div>
+
+                  {!reliableAssetMatch ? (
+                  <div style={cardStyle}>
+                    <Field
+                      label="Review notes"
+                      value={inboxReviewDraft.notes}
+                      onChange={(value) =>
+                        setInboxReviewDraft((current) => ({
+                          ...current,
+                          notes: value,
+                        }))
+                      }
+                      multiline
+                    />
+                    <div style={buttonRowStyle}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void updateInboxItem(selected.id, {
+                            extractedData: {
+                              ...analysis,
+                              ...inboxReviewDraft,
+                              readings: {
+                                psi: inboxReviewDraft.psi,
+                                temperature: inboxReviewDraft.temperature,
+                                ph: inboxReviewDraft.ph,
+                                hours: inboxReviewDraft.hours,
+                              },
+                            },
+                            targetType: inboxReviewDraft.assetId
+                              ? "Asset"
+                              : inboxReviewDraft.vendorId
+                                ? "Vendor"
+                                : inboxReviewDraft.workOrderId
+                                  ? "Work Order"
+                                  : inboxReviewDraft.locationId
+                                    ? "Location"
+                                    : "General",
+                            targetId:
+                              inboxReviewDraft.assetId ||
+                              inboxReviewDraft.vendorId ||
+                              inboxReviewDraft.workOrderId ||
+                              inboxReviewDraft.locationId ||
+                              "",
+                            targetName: inboxReviewDraft.assetId
+                              ? assetRecords.find(
+                                  (r) => r.id === inboxReviewDraft.assetId,
+                                )?.name || ""
+                              : inboxReviewDraft.vendorId
+                                ? vendorRecords.find(
+                                    (r) => r.id === inboxReviewDraft.vendorId,
+                                  )?.name || ""
+                                : inboxReviewDraft.workOrderId
+                                  ? serviceRecords.find(
+                                      (r) =>
+                                        r.id === inboxReviewDraft.workOrderId,
+                                    )?.title || ""
+                                  : inboxReviewDraft.locationId
+                                    ? locations.find(
+                                        (r) =>
+                                          r.id === inboxReviewDraft.locationId,
+                                      )?.name || ""
+                                    : "",
+                            status: "Needs Review",
+                          })
+                        }
+                        style={secondaryButtonStyle}
+                      >
+                        Save Review Only (Does Not Update Asset)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInboxReviewOpen(false);
+                          openInboxItemInFastIntake(selected);
+                        }}
+                        style={goldButtonStyle}
+                      >
+                        Continue to Update Asset
+                      </button>
+                    </div>
+                    <p style={mutedSmallStyle}>
+                      Saving this review only updates the Inbox item. It does
+                      not create or overwrite an Atlas record.
+                    </p>
+                  </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </>
+    );
+  }
+
+  function renderIntake() {
+    const selectedTargetName = targetNameFor(intakeTargetKind, intakeTargetId);
+    const reviewName =
+      fastIntakeRecordName.trim() ||
+      intakeTitle.trim() ||
+      intakeFiles[0]?.name?.replace(/\.[^.]+$/, "") ||
+      "Untitled intake";
+
+    return (
+      <section style={sectionStyle}>
+        <SectionHeader
+          eyebrow="Fast Intake"
+          title="Scan, Review, Save"
+          detail="Take a photo or upload a file, review exactly where it will go, then approve the save. Atlas will never change a record until you tap Save."
+          right={
+            <button
+              type="button"
+              onClick={() => setScreen("inbox")}
+              style={secondaryButtonStyle}
+            >
+              Open Inbox
+            </button>
+          }
+        />
+
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={cardStyle}>
+            <div style={eyebrowStyle}>1. What are you adding?</div>
+            <div style={{ ...buttonRowStyle, marginTop: 10 }}>
+              {(
+                [
+                  "Asset Label",
+                  "Invoice / Receipt",
+                  "Work Order Issue",
+                  "Document",
+                  "Gauge / Meter Reading",
+                  "General Photo",
+                ] as FastIntakeKind[]
+              ).map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => applyFastIntakeKind(kind)}
+                  style={
+                    fastIntakeKind === kind
+                      ? goldButtonStyle
+                      : secondaryButtonStyle
+                  }
+                >
+                  {kind}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div
+            style={
+              isMobile
+                ? { ...intakeLayoutStyle, gridTemplateColumns: "1fr" }
+                : intakeLayoutStyle
+            }
+          >
+            <div style={cardStyle}>
+              <div style={eyebrowStyle}>2. Capture or upload</div>
+              <h3 style={detailTitleStyle}>{fastIntakeKind}</h3>
+              <p style={mutedSmallStyle}>
+                Take Photo opens the phone camera. Upload from Library supports photos,
+                screenshots, PDFs, text files, and common documents.
+              </p>
+
+              <div style={buttonRowStyle}>
+                <label style={uploadButtonStyle}>
+                  Take Photo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(event) => {
+                      void addIntakeFiles(event.currentTarget.files);
+                      event.currentTarget.value = "";
+                    }}
+                    style={{ display: "none" }}
+                  />
+                </label>
+                <label style={secondaryUploadButtonStyle}>
+                  Upload from Library
+                  <input
+                    type="file"
+                    accept="image/*,.pdf,.txt,.doc,.docx"
+                    multiple
+                    onChange={(event) => {
+                      void addIntakeFiles(event.currentTarget.files);
+                      event.currentTarget.value = "";
+                    }}
+                    style={{ display: "none" }}
+                  />
+                </label>
+              </div>
+
+              {intakeHasPhoto ? (
+                <label
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    marginTop: 14,
+                    padding: 12,
+                    border: `2px solid ${
+                      intakePhotoNeedsName ? colors.gold : colors.green
+                    }`,
+                    borderRadius: 10,
+                    background: intakePhotoNeedsName ? "#FFF8E8" : "#EFFAF2",
+                  }}
+                >
+                  <span style={{ ...fieldLabelStyle, fontSize: 13 }}>
+                    Name this photo before continuing
+                  </span>
+                  <input
+                    ref={intakePhotoNameRef}
+                    value={intakeTitle}
+                    onChange={(event) => setIntakeTitle(event.currentTarget.value)}
+                    placeholder="Example: Basement Freezer label"
+                    style={inputStyle}
+                  />
+                  <span style={mutedSmallStyle}>
+                    Use a useful searchable name—not the camera filename.
+                  </span>
+                </label>
+              ) : null}
+
+              {intakeFiles.length ? (
+                <details style={{ marginTop: 14, border: `1px solid ${colors.line}`, borderRadius: 9, background: colors.card }} open>
+                  <summary style={{ padding: "8px 10px", cursor: "pointer", fontWeight: 800 }}>Attached Files ({intakeFiles.length})</summary>
+                  <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", padding: "0 8px 8px" }}>
+                  {intakeFiles.map((file) => (
+                    <div key={file.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 6, padding: "6px 8px", border: `1px solid ${colors.line}`, borderRadius: 8 }}>
+                      <strong>{file.name}</strong>
+                        <button
+                          type="button"
+                          onClick={() => openUploadedFile(file)}
+                          style={tinyButtonStyle}
+                        >
+                          Preview
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeIntakeFile(file.id)}
+                          style={tinyDangerButtonStyle}
+                        >
+                          Remove
+                        </button>
+                    </div>
+                  ))}
+                  </div>
+                </details>
+              ) : (
+                <div style={emptyStateStyle}>No file attached yet.</div>
+              )}
+            </div>
+
+            <div style={cardStyle}>
+              <div style={eyebrowStyle}>3. Choose what Atlas should do</div>
+              <div style={formGridStyle}>
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span style={fieldLabelStyle}>Save action</span>
+                  <select
+                    value={fastIntakeSaveMode}
+                    onChange={(event) =>
+                      setFastIntakeSaveMode(
+                        event.currentTarget.value as FastIntakeSaveMode,
+                      )
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="Attach to Existing">
+                      Attach to Existing
+                    </option>
+                    <option value="Create Work Order">Create Work Order</option>
+                    <option value="Create Asset">Create Asset</option>
+                    <option value="Create Vendor">Create Vendor</option>
+                    <option value="Document Only">Document Only</option>
+                  </select>
+                </label>
+
+                <Field
+                  label="Intake title"
+                  value={intakeTitle}
+                  onChange={setIntakeTitle}
+                  placeholder="Invoice, equipment label, issue, reading..."
+                />
+
+                {fastIntakeSaveMode === "Create Work Order" ||
+                fastIntakeSaveMode === "Create Asset" ||
+                fastIntakeSaveMode === "Create Vendor" ? (
+                  <Field
+                    label={
+                      fastIntakeSaveMode === "Create Work Order"
+                        ? "Work order title"
+                        : fastIntakeSaveMode === "Create Asset"
+                          ? "Asset name"
+                          : "Vendor name"
+                    }
+                    value={fastIntakeRecordName}
+                    onChange={setFastIntakeRecordName}
+                    placeholder="Required before creating a new record"
+                  />
+                ) : null}
+
+                {fastIntakeSaveMode === "Create Work Order" ? (
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span style={fieldLabelStyle}>Priority</span>
+                    <select
+                      value={fastIntakePriority}
+                      onChange={(event) =>
+                        setFastIntakePriority(
+                          event.currentTarget.value as WorkOrderPriority,
+                        )
+                      }
+                      style={inputStyle}
+                    >
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                    </select>
+                  </label>
+                ) : null}
+
+                {fastIntakeSaveMode === "Create Work Order" ? (
+                  <div style={{ gridColumn: "1 / -1", display: "grid", gap: 10, padding: 12, border: `1px solid ${colors.line}`, borderRadius: 12, background: colors.panel }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                      <input type="checkbox" checked={fastIntakeRecurring} onClick={(event) => event.stopPropagation()} onChange={(event) => { event.preventDefault(); setFastIntakeRecurring(event.currentTarget.checked); }} style={{ width: 20, height: 20 }} />
+                      <span><strong style={{ display: "block", color: colors.navy }}>Recurring work order</strong><small style={mutedSmallStyle}>This updates only the draft. Nothing is sent until Approve and Save.</small></span>
+                    </label>
+                    {fastIntakeRecurring ? (
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+                        <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Repeat every</span><input type="number" min="1" value={fastIntakeRecurrenceInterval} onClick={(event) => event.stopPropagation()} onChange={(event) => { event.preventDefault(); setFastIntakeRecurrenceInterval(Math.max(1, Number(event.currentTarget.value) || 1)); }} style={inputStyle} /></label>
+                        <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Frequency</span><select value={fastIntakeRecurrenceUnit} onClick={(event) => event.stopPropagation()} onChange={(event) => { event.preventDefault(); setFastIntakeRecurrenceUnit(event.currentTarget.value as WorkOrderRecurrenceUnit); }} style={inputStyle}>{(["Days", "Weeks", "Months", "Years"] as WorkOrderRecurrenceUnit[]).map((unit) => <option key={unit} value={unit}>{unit}</option>)}</select></label>
+                        <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>End date (optional)</span><input type="date" value={fastIntakeRecurrenceEndDate} onClick={(event) => event.stopPropagation()} onChange={(event) => { event.preventDefault(); setFastIntakeRecurrenceEndDate(event.currentTarget.value); }} style={inputStyle} /></label>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {fastIntakeSaveMode === "Create Asset" ? (
+                  <>
+                    <Field
+                      label="Category"
+                      value={fastIntakeCategory}
+                      onChange={setFastIntakeCategory}
+                      placeholder="HVAC, Appliance, Watercraft..."
+                    />
+                    <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                      <span style={fieldLabelStyle}>Location</span>
+                      <select
+                        value={fastIntakeLocationId}
+                        onChange={(event) =>
+                          setFastIntakeLocationId(event.currentTarget.value)
+                        }
+                        style={inputStyle}
+                      >
+                        {byName(locations).map((location) => (
+                          <option key={location.id} value={location.id}>
+                            {location.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <Field
+                      label="Manufacturer"
                       value={fastIntakeManufacturer}
                       onChange={setFastIntakeManufacturer}
                     />
