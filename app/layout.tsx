@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./atlas-typography.css";
 import "./atlas-visual-system.css";
 import AtlasLocationsPolish from "./components/AtlasLocationsPolish";
+import AtlasLocationsAssetStyle from "./components/AtlasLocationsAssetStyle";
 import AtlasLocationsViewportPolish from "./components/AtlasLocationsViewportPolish";
 import AtlasLocationDetailPolish from "./components/AtlasLocationDetailPolish";
 import AtlasLocationPhotoEditor from "./components/AtlasLocationPhotoEditor";
@@ -79,6 +80,7 @@ export default function RootLayout({
       <body>
         <AtlasVendorContactsPersistence />
         <AtlasLocationsPolish />
+        <AtlasLocationsAssetStyle />
         <AtlasLocationsViewportPolish />
         <AtlasLocationDetailPolish />
         <AtlasLocationPhotoEditor />
