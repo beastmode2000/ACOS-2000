@@ -24,7 +24,7 @@ function applyDefaultUpcoming() {
     if (!section) continue;
 
     const heading = Array.from(section.querySelectorAll<HTMLElement>("h1,h2,h3,strong")).find(
-      (node) => normalized(node.textContent) === "addison" || normalized(node.textContent) === "nick upcoming",
+      (node) => normalized(node.textContent) === "addison" || normalized(node.textContent) === "upcoming",
     );
     if (!heading) continue;
 
@@ -33,7 +33,7 @@ function applyDefaultUpcoming() {
     );
     const upcomingButton = Array.from(
       switcher.querySelectorAll<HTMLButtonElement>("button"),
-    ).find((button) => normalized(button.textContent) === "nick upcoming");
+    ).find((button) => normalized(button.textContent) === "upcoming");
 
     if (!select || !upcomingButton) continue;
 
