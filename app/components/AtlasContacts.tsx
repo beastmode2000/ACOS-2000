@@ -31,14 +31,6 @@ type DirectoryEntry = {
   source: ContactRecord | VendorRecord | TeamMember;
 };
 
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.slice(0, 1).toUpperCase())
-    .join("") || "C";
-
 const titleCase = (value: string) =>
   value
     .replace(/[-_]+/g, " ")
@@ -56,7 +48,6 @@ export default function AtlasContacts(props: any) {
     startNewContact,
     goldButtonStyle,
     colors,
-    eyebrowStyle,
     mutedSmallStyle,
     cardStyle,
     contactSearch,
@@ -65,10 +56,7 @@ export default function AtlasContacts(props: any) {
     editContact,
     noticeStyle,
     setContactEditorOpen,
-    stackStyle,
     contactDraft,
-    contactAvatarLargeStyle,
-    editorHeaderStyle,
     buttonRowStyle,
     secondaryButtonStyle,
     contactMessage,
@@ -82,7 +70,8 @@ export default function AtlasContacts(props: any) {
 
   const [filter, setFilter] = useState<DirectoryFilter>("all");
   const [selected, setSelected] = useState<{ kind: DirectoryKind; id: string } | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
   const entries = useMemo<DirectoryEntry[]>(() => {
     const coworkers = (teamDirectory as TeamMember[])
@@ -160,139 +149,248 @@ export default function AtlasContacts(props: any) {
   }, [contactSearch, entries, filter]);
 
   const selectedEntry = selected
-    ? entries.find(
-        (entry) => entry.kind === selected.kind && entry.id === selected.id,
-      ) || null
+    ? entries.find((entry) => entry.kind === selected.kind && entry.id === selected.id) || null
     : null;
-
-  const closeDetail = () => {
-    setDetailOpen(false);
-    setContactMessage("");
-    setContactEditorOpen?.(false);
-  };
-
-  useEffect(() => {
-    if (!selectedContactId) return;
-    setSelected({ kind: "contact", id: selectedContactId });
-  }, [selectedContactId]);
-
-  useEffect(() => {
-    if (!detailOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeDetail();
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  });
-
-  const openEntry = (entry: DirectoryEntry) => {
-    setSelected({ kind: entry.kind, id: entry.id });
-    setContactMessage("");
-    if (entry.kind === "contact") editContact(entry.source as ContactRecord);
-    else setContactEditorOpen?.(false);
-    setDetailOpen(true);
-  };
-
-  const addContact = () => {
-    startNewContact();
-    setSelected({ kind: "contact", id: "new" });
-    setContactMessage("");
-    setDetailOpen(true);
-  };
 
   const selectedStoredContact =
     selected?.kind === "contact" && selected.id !== "new"
       ? (contactRecords as ContactRecord[]).find((item) => item.id === selected.id)
       : undefined;
 
+  useEffect(() => {
+    if (!selectedContactId) return;
+    setSelected({ kind: "contact", id: selectedContactId });
+    setEditing(false);
+  }, [selectedContactId]);
+
+  useEffect(() => {
+    if (selected || !visibleEntries.length) return;
+    setSelected({ kind: visibleEntries[0].kind, id: visibleEntries[0].id });
+  }, [selected, visibleEntries]);
+
   const kindLabel = (kind: DirectoryKind) =>
     kind === "coworker" ? "Coworker" : kind === "vendor" ? "Vendor" : "Contact";
 
-  const quickActions = (entry: DirectoryEntry) => (
-    <div style={{ ...buttonRowStyle, marginTop: 10, alignItems: "stretch" }}>
-      {entry.phone ? (
-        <a href={`tel:${entry.phone.replace(/[^+\d]/g, "")}`} style={secondaryButtonStyle}>
-          Call
-        </a>
-      ) : null}
-      {entry.email ? (
-        <a href={`mailto:${entry.email.trim()}`} style={secondaryButtonStyle}>
-          Email
-        </a>
-      ) : null}
-      {entry.website ? (
-        <a
-          href={/^https?:\/\//i.test(entry.website) ? entry.website : `https://${entry.website}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={secondaryButtonStyle}
-        >
-          Website
-        </a>
-      ) : null}
-      {entry.kind === "vendor" ? (
-        <button type="button" onClick={() => openVendor?.(entry.id)} style={goldButtonStyle}>
-          Open Vendor
-        </button>
-      ) : null}
-    </div>
-  );
+  const openEntry = (entry: DirectoryEntry) => {
+    setSelected({ kind: entry.kind, id: entry.id });
+    setEditing(false);
+    setContactEditorOpen?.(false);
+    setContactMessage("");
+    if (isMobile) setMobileDetailOpen(true);
+  };
 
-  const renderReadOnlyDetail = (entry: DirectoryEntry) => (
-    <div style={{ ...stackStyle, gap: 12 }}>
-      <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
-        <div style={contactAvatarLargeStyle}>{initials(entry.name)}</div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={eyebrowStyle}>{kindLabel(entry.kind)}</div>
-          <h2 style={{ ...editorHeaderStyle, overflowWrap: "anywhere" }}>{entry.name}</h2>
-          <p style={{ ...mutedSmallStyle, marginTop: 3, overflowWrap: "anywhere" }}>
-            {[entry.organization, entry.role].filter(Boolean).join(" · ")}
-          </p>
-        </div>
+  const beginEdit = () => {
+    if (!selectedStoredContact) return;
+    editContact(selectedStoredContact);
+    setContactEditorOpen?.(true);
+    setEditing(true);
+    setContactMessage("");
+  };
+
+  const addContact = () => {
+    startNewContact();
+    setSelected({ kind: "contact", id: "new" });
+    setContactEditorOpen?.(true);
+    setEditing(true);
+    setContactMessage("");
+    if (isMobile) setMobileDetailOpen(true);
+  };
+
+  const stopEditing = () => {
+    setEditing(false);
+    setContactEditorOpen?.(false);
+    setContactMessage("");
+    if (selected?.id === "new") setSelected(null);
+  };
+
+  const infoRow = (label: string, value: string, href?: string) => {
+    const clean = String(value || "").trim();
+    if (!clean) return null;
+    return (
+      <div
+        key={label}
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "minmax(120px, .32fr) minmax(0, 1fr)",
+          gap: isMobile ? 3 : 12,
+          alignItems: "start",
+          padding: "10px 0",
+          borderBottom: `1px solid ${colors.line}`,
+        }}
+      >
+        <span style={{ ...mutedSmallStyle, fontWeight: 800 }}>{label}</span>
+        {href ? (
+          <a
+            href={href}
+            target={href.startsWith("http") ? "_blank" : undefined}
+            rel={href.startsWith("http") ? "noopener noreferrer" : undefined}
+            style={{ color: colors.navy, fontWeight: 750, textDecoration: "none", overflowWrap: "anywhere" }}
+          >
+            {clean}
+          </a>
+        ) : (
+          <strong style={{ color: colors.navy, fontSize: 13, overflowWrap: "anywhere" }}>{clean}</strong>
+        )}
       </div>
-      {quickActions(entry)}
-      <section style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: isMobile ? 12 : 16, minWidth: 0 }}>
-        <div style={eyebrowStyle}>Contact Information</div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10, marginTop: 10 }}>
-          {[
-            ["Phone", entry.phone],
-            ["Email", entry.email],
-            ["Company", entry.organization],
-            ["Role", entry.role],
-            ["Website", entry.website],
-          ].map(([label, value]) =>
-            value ? (
-              <div key={label} style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 10, minWidth: 0, background: "#FFFFFF" }}>
-                <span style={{ ...mutedSmallStyle, display: "block" }}>{label}</span>
-                <strong style={{ color: colors.navy, display: "block", marginTop: 3, overflowWrap: "anywhere" }}>{value}</strong>
+    );
+  };
+
+  const renderReadOnlyDetail = (entry: DirectoryEntry) => {
+    const contact = entry.kind === "contact" ? (entry.source as ContactRecord) : null;
+    const address = contact?.address || "";
+    const birthday = contact?.birthday || "";
+    const category = contact?.category || "";
+
+    return (
+      <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+        <section
+          style={{
+            border: `1px solid ${colors.line}`,
+            borderRadius: 12,
+            background: "#FFFFFF",
+            padding: isMobile ? 12 : 14,
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ margin: 0, color: colors.navy, fontSize: isMobile ? 20 : 22, lineHeight: 1.15 }}>
+                {entry.name}
+              </h2>
+              <div style={{ ...mutedSmallStyle, marginTop: 4 }}>
+                {[entry.organization, entry.role].filter(Boolean).join(" · ") || kindLabel(entry.kind)}
               </div>
-            ) : null,
+            </div>
+            <div style={{ ...buttonRowStyle, gap: 6 }}>
+              {entry.phone ? (
+                <a href={`tel:${entry.phone.replace(/[^+\d]/g, "")}`} style={{ ...secondaryButtonStyle, textDecoration: "none" }}>
+                  Call
+                </a>
+              ) : null}
+              {entry.email ? (
+                <a href={`mailto:${entry.email.trim()}`} style={{ ...secondaryButtonStyle, textDecoration: "none" }}>
+                  Email
+                </a>
+              ) : null}
+              {entry.kind === "vendor" ? (
+                <button type="button" onClick={() => openVendor?.(entry.id)} style={goldButtonStyle}>
+                  Open Vendor
+                </button>
+              ) : null}
+              {entry.kind === "contact" ? (
+                <button type="button" onClick={beginEdit} style={goldButtonStyle}>
+                  Edit Contact
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
+        <section
+          style={{
+            border: `1px solid ${colors.line}`,
+            borderRadius: 12,
+            background: "#FFFFFF",
+            padding: "4px 14px 8px",
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              padding: "10px 0 4px",
+              color: colors.navy,
+              fontSize: 12,
+              fontWeight: 900,
+            }}
+          >
+            Contact Information
+          </div>
+          {infoRow("Company / Organization", entry.organization)}
+          {infoRow("Role / Title", entry.role)}
+          {infoRow("Category", category)}
+          {infoRow("Phone", entry.phone, entry.phone ? `tel:${entry.phone.replace(/[^+\d]/g, "")}` : undefined)}
+          {infoRow("Email", entry.email, entry.email ? `mailto:${entry.email.trim()}` : undefined)}
+          {infoRow(
+            "Website",
+            entry.website,
+            entry.website
+              ? /^https?:\/\//i.test(entry.website)
+                ? entry.website
+                : `https://${entry.website}`
+              : undefined,
           )}
-        </div>
-        {entry.notes ? <p style={{ margin: "12px 0 0", color: colors.text, lineHeight: 1.55, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{entry.notes}</p> : null}
-      </section>
-    </div>
-  );
+          {infoRow("Address", address)}
+          {infoRow("Birthday", birthday)}
+        </section>
+
+        {entry.notes ? (
+          <section
+            style={{
+              border: `1px solid ${colors.line}`,
+              borderRadius: 12,
+              background: "#FFFFFF",
+              padding: 14,
+            }}
+          >
+            <div style={{ color: colors.navy, fontSize: 12, fontWeight: 900, marginBottom: 7 }}>Notes</div>
+            <div style={{ color: colors.text, lineHeight: 1.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+              {entry.notes}
+            </div>
+          </section>
+        ) : null}
+      </div>
+    );
+  };
 
   const renderContactEditor = () => (
-    <div style={{ ...stackStyle, gap: 12 }}>
-      <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
-        <div style={contactAvatarLargeStyle}>{initials(String(contactDraft.name || ""))}</div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={eyebrowStyle}>Contact</div>
-          <h2 style={{ ...editorHeaderStyle, overflowWrap: "anywhere" }}>
-            {String(contactDraft.name || "").trim() || (selectedStoredContact ? "Edit Contact" : "New Contact")}
-          </h2>
-          <p style={{ ...mutedSmallStyle, marginTop: 3 }}>
-            {[contactDraft.organization, contactDraft.role].filter(Boolean).join(" · ") || "Contact information"}
-          </p>
+    <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+      <section
+        style={{
+          border: `1px solid ${colors.line}`,
+          borderRadius: 12,
+          background: "#FFFFFF",
+          padding: isMobile ? 12 : 14,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            alignItems: "center",
+            flexWrap: "wrap",
+            marginBottom: 12,
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0, color: colors.navy, fontSize: isMobile ? 20 : 22 }}>
+              {String(contactDraft.name || "").trim() || (selectedStoredContact ? "Edit Contact" : "New Contact")}
+            </h2>
+            <div style={{ ...mutedSmallStyle, marginTop: 3 }}>Contact Information</div>
+          </div>
+          <div style={{ ...buttonRowStyle, gap: 6 }}>
+            <button type="button" onClick={stopEditing} style={secondaryButtonStyle}>Cancel</button>
+            <button type="button" onClick={saveContact} style={goldButtonStyle}>Save Contact</button>
+          </div>
         </div>
-      </div>
 
-      {contactMessage ? <div style={noticeStyle}>{contactMessage}</div> : null}
+        {contactMessage ? <div style={{ ...noticeStyle, marginBottom: 10 }}>{contactMessage}</div> : null}
 
-      <section style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: isMobile ? 12 : 16, minWidth: 0 }}>
-        <div style={{ ...formGridStyle, gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>
+        <div
+          style={{
+            ...formGridStyle,
+            gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))",
+            gap: 10,
+          }}
+        >
           <Field label="Name" value={contactDraft.name} onChange={(name) => updateContactDraft({ name })} />
           <Field label="Company / Organization" value={contactDraft.organization} onChange={(organization) => updateContactDraft({ organization })} />
           <Field label="Role / Title" value={contactDraft.role} onChange={(role) => updateContactDraft({ role })} />
@@ -304,64 +402,237 @@ export default function AtlasContacts(props: any) {
           <Field label="Birthday" value={contactDraft.birthday || ""} onChange={(birthday) => updateContactDraft({ birthday })} type="date" />
           <Field label="Notes" value={contactDraft.notes} onChange={(notes) => updateContactDraft({ notes })} multiline />
         </div>
-        <div style={{ ...buttonRowStyle, marginTop: 12 }}>
-          <button type="button" onClick={saveContact} style={goldButtonStyle}>Save Contact</button>
-          {selectedStoredContact ? (
-            <button type="button" onClick={() => { deleteContact(selectedStoredContact); closeDetail(); }} style={dangerButtonStyle}>Delete Contact</button>
-          ) : null}
-        </div>
+
+        {selectedStoredContact ? (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+            <button
+              type="button"
+              onClick={() => {
+                deleteContact(selectedStoredContact);
+                setSelected(null);
+                setEditing(false);
+                if (isMobile) setMobileDetailOpen(false);
+              }}
+              style={dangerButtonStyle}
+            >
+              Delete Contact
+            </button>
+          </div>
+        ) : null}
       </section>
     </div>
   );
 
+  const detailContent = editing
+    ? renderContactEditor()
+    : selectedEntry
+      ? renderReadOnlyDetail(selectedEntry)
+      : (
+          <div style={noticeStyle}>
+            <strong>Select a contact.</strong>
+            <p style={{ ...mutedSmallStyle, marginBottom: 0 }}>Choose someone from the list to see their information.</p>
+          </div>
+        );
+
   return (
-    <section style={{ ...cardStyle, padding: isMobile ? 10 : 14, minWidth: 0, overflow: "hidden" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <div>
-          <div style={eyebrowStyle}>People</div>
-          <h1 style={{ margin: "2px 0 0", color: colors.navy, fontSize: isMobile ? 22 : 26 }}>Contacts</h1>
-        </div>
+    <section
+      style={{
+        ...cardStyle,
+        padding: isMobile ? 8 : 12,
+        minWidth: 0,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 10,
+          alignItems: "center",
+          flexWrap: "wrap",
+          marginBottom: 10,
+        }}
+      >
+        <h1 style={{ margin: 0, color: colors.navy, fontSize: isMobile ? 22 : 26 }}>Contacts</h1>
         <button type="button" onClick={addContact} style={goldButtonStyle}>Add Contact</button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(240px,1fr) auto", gap: 8, marginTop: 12, alignItems: "stretch" }}>
-        <input value={contactSearch} onChange={(event) => setContactSearch(event.currentTarget.value)} placeholder="Search people, companies, phone, or email" aria-label="Search contact directory" style={{ ...inputStyle, minWidth: 0, width: "100%" }} />
-        <div role="group" aria-label="Contact type" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {([
-            ["all", "All"],
-            ["coworker", "Coworkers"],
-            ["vendor", "Vendors"],
-            ["contact", "Contacts"],
-          ] as Array<[DirectoryFilter, string]>).map(([value, label]) => (
-            <button key={value} type="button" onClick={() => setFilter(value)} style={filter === value ? goldButtonStyle : secondaryButtonStyle}>{label}</button>
-          ))}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "minmax(260px,34%) minmax(0,66%)",
+          gap: 12,
+          alignItems: "start",
+          minWidth: 0,
+        }}
+      >
+        <div
+          style={{
+            minWidth: 0,
+            height: isMobile ? "auto" : "calc(100dvh - 190px)",
+            maxHeight: isMobile ? "none" : "calc(100dvh - 190px)",
+            overflowY: isMobile ? "visible" : "auto",
+            overflowX: "hidden",
+            paddingRight: isMobile ? 0 : 5,
+          }}
+        >
+          <div
+            style={{
+              position: isMobile ? "static" : "sticky",
+              top: 0,
+              zIndex: 4,
+              background: colors.panel,
+              paddingBottom: 8,
+              display: "grid",
+              gap: 6,
+            }}
+          >
+            <input
+              value={contactSearch}
+              onChange={(event) => setContactSearch(event.currentTarget.value)}
+              placeholder="Search contacts..."
+              aria-label="Search contact directory"
+              style={{ ...inputStyle, minWidth: 0, width: "100%", height: 36 }}
+            />
+            <div role="group" aria-label="Contact type" style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+              {([
+                ["all", "All"],
+                ["contact", "Contacts"],
+                ["vendor", "Vendors"],
+                ["coworker", "Coworkers"],
+              ] as Array<[DirectoryFilter, string]>).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setFilter(value)}
+                  style={{
+                    ...secondaryButtonStyle,
+                    minHeight: 30,
+                    padding: "5px 8px",
+                    fontSize: 11,
+                    background: filter === value ? "#FFF3CF" : "#FFFFFF",
+                    borderColor: filter === value ? colors.gold : colors.line,
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span style={{ ...mutedSmallStyle, fontSize: 10.5 }}>
+              {visibleEntries.length} result{visibleEntries.length === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          <div style={{ display: "grid", gap: 6 }}>
+            {visibleEntries.map((entry) => {
+              const active = selected?.kind === entry.kind && selected?.id === entry.id;
+              return (
+                <button
+                  key={entry.key}
+                  type="button"
+                  onClick={() => openEntry(entry)}
+                  className="atlas-gold-hover-card"
+                  style={{
+                    width: "100%",
+                    minWidth: 0,
+                    minHeight: 54,
+                    border: `1px solid ${active ? colors.gold : colors.line}`,
+                    borderRadius: 9,
+                    background: active ? "#FFFDF6" : "#FFFFFF",
+                    padding: "8px 10px",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    boxShadow: "none",
+                  }}
+                >
+                  <strong
+                    style={{
+                      display: "block",
+                      color: colors.navy,
+                      fontSize: 12.5,
+                      lineHeight: 1.25,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {entry.name}
+                  </strong>
+                  <span
+                    style={{
+                      ...mutedSmallStyle,
+                      display: "block",
+                      marginTop: 3,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {[entry.organization, entry.role].filter(Boolean).join(" · ") || kindLabel(entry.kind)}
+                  </span>
+                </button>
+              );
+            })}
+            {!visibleEntries.length ? <div style={noticeStyle}>No contacts match this search.</div> : null}
+          </div>
         </div>
+
+        {!isMobile ? (
+          <div
+            style={{
+              minWidth: 0,
+              height: "calc(100dvh - 190px)",
+              maxHeight: "calc(100dvh - 190px)",
+              overflowY: "auto",
+              overflowX: "hidden",
+              paddingRight: 4,
+            }}
+          >
+            {detailContent}
+          </div>
+        ) : null}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(250px,1fr))", gap: 8, marginTop: 12, minWidth: 0 }}>
-        {visibleEntries.map((entry) => (
-          <button key={entry.key} type="button" onClick={() => openEntry(entry)} style={{ display: "grid", gridTemplateColumns: "42px minmax(0,1fr)", gap: 10, alignItems: "center", width: "100%", minWidth: 0, border: `1px solid ${colors.line}`, borderRadius: 12, background: "#FFFFFF", padding: 10, textAlign: "left", cursor: "pointer" }}>
-            <div style={{ width: 42, height: 42, borderRadius: 999, display: "grid", placeItems: "center", background: entry.kind === "vendor" ? "#FFF4D6" : entry.kind === "coworker" ? "#EAF2FB" : "#F1F3F5", color: colors.navy, fontWeight: 900 }}>{initials(entry.name)}</div>
-            <div style={{ minWidth: 0 }}>
-              <strong style={{ display: "block", color: colors.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</strong>
-              <span style={{ ...mutedSmallStyle, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[entry.organization, entry.role].filter(Boolean).join(" · ") || kindLabel(entry.kind)}</span>
-              <span style={{ display: "block", marginTop: 3, color: colors.text, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.phone || entry.email || "No phone or email saved"}</span>
-            </div>
-          </button>
-        ))}
-        {!visibleEntries.length ? <div style={noticeStyle}>No directory entries match this search.</div> : null}
-      </div>
-
-      {detailOpen ? (
-        <div role="dialog" aria-modal="true" aria-label="Contact details" onClick={(event) => { if (event.currentTarget === event.target) closeDetail(); }} style={{ position: "fixed", inset: 0, zIndex: 260, background: "rgba(7,27,47,.72)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? 0 : 20 }}>
-          <div style={{ width: "100%", maxWidth: isMobile ? "none" : 920, height: isMobile ? "100dvh" : "min(86vh,850px)", minWidth: 0, background: colors.card, borderRadius: isMobile ? 0 : 18, overflow: "hidden", display: "grid", gridTemplateRows: "auto minmax(0,1fr)", boxShadow: "0 28px 80px rgba(0,0,0,.28)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", padding: "10px 14px", borderBottom: `1px solid ${colors.line}`, background: "#FFFFFF" }}>
-              <strong style={{ color: colors.navy }}>{selected?.id === "new" ? "New Contact" : selectedEntry?.name || "Contact"}</strong>
-              <button type="button" onClick={closeDetail} aria-label="Close contact" style={{ ...secondaryButtonStyle, width: 42, minWidth: 42, height: 42, padding: 0, borderRadius: 999, fontSize: 24, lineHeight: 1 }}>×</button>
-            </div>
-            <div style={{ minWidth: 0, overflowY: "auto", overflowX: "hidden", padding: isMobile ? 12 : 18, WebkitOverflowScrolling: "touch" }}>
-              {selected?.kind === "contact" ? renderContactEditor() : selectedEntry ? renderReadOnlyDetail(selectedEntry) : null}
-            </div>
+      {isMobile && mobileDetailOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Contact details"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 260,
+            background: colors.card,
+            display: "grid",
+            gridTemplateRows: "auto minmax(0,1fr)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 10,
+              alignItems: "center",
+              padding: "10px 12px",
+              borderBottom: `1px solid ${colors.line}`,
+              background: "#FFFFFF",
+            }}
+          >
+            <strong style={{ color: colors.navy }}>{selectedEntry?.name || "Contact"}</strong>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileDetailOpen(false);
+                if (editing) stopEditing();
+              }}
+              aria-label="Close contact"
+              style={{ ...secondaryButtonStyle, width: 40, minWidth: 40, height: 40, padding: 0, borderRadius: 999, fontSize: 22 }}
+            >
+              ×
+            </button>
+          </div>
+          <div style={{ minWidth: 0, overflowY: "auto", overflowX: "hidden", padding: 10 }}>
+            {detailContent}
           </div>
         </div>
       ) : null}
