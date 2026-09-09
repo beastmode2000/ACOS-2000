@@ -290,7 +290,7 @@ export default function AtlasDashboardUpcomingWork() {
     return () => {
       observer.disconnect();
       document.removeEventListener("click", schedule, true);
-      document.removeEventListener("change", schedule, true);
+      document.removeEventListener("change", schedule);
       window.removeEventListener("resize", schedule);
       window.removeEventListener("popstate", schedule);
       if (frame) window.cancelAnimationFrame(frame);
@@ -433,7 +433,7 @@ export default function AtlasDashboardUpcomingWork() {
         data-active={mode === UPCOMING_MODE}
         onClick={() => setMode(UPCOMING_MODE)}
       >
-        Nick Upcoming
+        Upcoming
       </button>
     </div>
   );
@@ -565,7 +565,7 @@ export default function AtlasDashboardUpcomingWork() {
       {mode !== "Addison" ? (
         <div className="atlas-secondary-custom-list">
           <div className="atlas-secondary-custom-head">
-            <strong>{mode === UPCOMING_MODE ? "Nick Upcoming" : displayName(mode)}</strong>
+            <strong>{mode === UPCOMING_MODE ? "Upcoming" : displayName(mode)}</strong>
             <span className="atlas-secondary-custom-count">{customRows.length}</span>
           </div>
           <button type="button" className="atlas-secondary-open-all" onClick={openWorkPage}>
