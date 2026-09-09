@@ -136,8 +136,21 @@ function ensureVisibleAtlasMain() {
     const children = Array.from(main.children).filter(
       (child): child is HTMLElement => child instanceof HTMLElement,
     );
+
+    // A mounted House & Maintenance takeover is itself the valid visible
+    // content for this main. Do not remove its active class just because the
+    // native children are intentionally hidden underneath it.
+    const houseHost = children.find(
+      (child) => child.dataset.atlasHouseMaintenanceHost === "true",
+    );
+    if (houseHost) {
+      const hostStyle = window.getComputedStyle(houseHost);
+      if (hostStyle.display !== "none" && hostStyle.visibility !== "hidden") {
+        continue;
+      }
+    }
+
     const visibleChild = children.some((child) => {
-      if (child.dataset.atlasHouseMaintenanceHost === "true") return false;
       const style = window.getComputedStyle(child);
       return style.display !== "none" && style.visibility !== "hidden";
     });
