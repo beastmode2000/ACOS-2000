@@ -1,6 +1,77 @@
 "use client";
 
+import { useEffect } from "react";
+
 export default function AtlasMobileVisualFixes() {
+  useEffect(() => {
+    let frame = 0;
+
+    const neutralize = () => {
+      frame = 0;
+
+      // Assets can carry selected/current state in several layers. Keep the
+      // actual list-card surface neutral regardless of that internal state.
+      document
+        .querySelectorAll<HTMLElement>(".atlas-assets-viewport-root .atlas-gold-hover-card")
+        .forEach((card) => {
+          card.style.setProperty("background", "#ffffff", "important");
+          card.style.setProperty("background-color", "#ffffff", "important");
+          card.style.setProperty("box-shadow", "none", "important");
+
+          // Older list markup can put the blue selected fill on an inner wrapper
+          // rather than the outer card. Only neutralize the known selected fill.
+          card.querySelectorAll<HTMLElement>("div, button").forEach((node) => {
+            const background = window.getComputedStyle(node).backgroundColor;
+            if (background === "rgb(244, 248, 253)") {
+              node.style.setProperty("background", "#ffffff", "important");
+              node.style.setProperty("background-color", "#ffffff", "important");
+              node.style.setProperty("box-shadow", "none", "important");
+            }
+          });
+        });
+
+      // Dashboard work rows are rendered inside the person-lane scroll area.
+      // Neutralize only the known stray selected fill, leaving status/action
+      // colors (gold buttons, red warnings, green completion, etc.) untouched.
+      document
+        .querySelectorAll<HTMLElement>(".atlas-dashboard-polish-person-lane")
+        .forEach((lane) => {
+          lane.querySelectorAll<HTMLElement>("div, button").forEach((node) => {
+            const background = window.getComputedStyle(node).backgroundColor;
+            if (background === "rgb(244, 248, 253)") {
+              node.style.setProperty("background", "#ffffff", "important");
+              node.style.setProperty("background-color", "#ffffff", "important");
+              node.style.setProperty("box-shadow", "none", "important");
+            }
+          });
+        });
+    };
+
+    const schedule = () => {
+      if (!frame) frame = window.requestAnimationFrame(neutralize);
+    };
+
+    schedule();
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style"],
+    });
+    document.addEventListener("click", schedule, true);
+    document.addEventListener("change", schedule, true);
+    window.addEventListener("resize", schedule);
+
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("click", schedule, true);
+      document.removeEventListener("change", schedule, true);
+      window.removeEventListener("resize", schedule);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
   return (
     <style jsx global>{`
       /* Asset list rows stay visually neutral even when Atlas keeps internal
