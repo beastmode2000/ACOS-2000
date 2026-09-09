@@ -1,13 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type MobileNavItem = {
   label: string;
   key: string;
 };
 
-const PRIMARY_KEYS = ["dashboard", "work", "assets", "calendar"] as const;
+const PRIMARY_NAV: MobileNavItem[] = [
+  { label: "Dashboard", key: "dashboard" },
+  { label: "Work", key: "work" },
+  { label: "Assets", key: "assets" },
+  { label: "Calendar", key: "calendar" },
+];
+
+const PRIMARY_KEYS = new Set(PRIMARY_NAV.map((item) => item.key));
 
 function normalized(value: unknown) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -16,22 +23,35 @@ function normalized(value: unknown) {
 function visible(element: HTMLElement) {
   const style = window.getComputedStyle(element);
   const rect = element.getBoundingClientRect();
-  return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+  return (
+    style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    rect.width > 0 &&
+    rect.height > 0
+  );
 }
 
 function isOwnMobileControl(element: Element) {
-  return Boolean(element.closest(".atlas-mobile-shell-nav, .atlas-mobile-shell-overlay"));
+  return Boolean(
+    element.closest(".atlas-mobile-shell-nav, .atlas-mobile-shell-overlay"),
+  );
 }
 
 function sidebarRoot() {
-  const candidates = Array.from(document.querySelectorAll<HTMLElement>("aside, nav"))
+  const candidates = Array.from(
+    document.querySelectorAll<HTMLElement>("aside, nav"),
+  )
     .filter((element) => !isOwnMobileControl(element))
     .map((element) => {
-      const labels = Array.from(element.querySelectorAll<HTMLElement>("button, a"))
+      const labels = Array.from(
+        element.querySelectorAll<HTMLElement>("button, a"),
+      )
         .map((control) => normalized(control.textContent))
         .filter(Boolean);
       const required = ["dashboard", "work", "assets", "calendar", "locations"];
-      const score = required.filter((label) => labels.includes(label)).length * 100 + labels.length;
+      const score =
+        required.filter((label) => labels.includes(label)).length * 100 +
+        labels.length;
       return { element, score };
     })
     .sort((a, b) => b.score - a.score);
@@ -39,21 +59,25 @@ function sidebarRoot() {
   return candidates[0]?.score >= 400 ? candidates[0].element : null;
 }
 
-function navItems() {
+function navItems(): MobileNavItem[] {
   const root = sidebarRoot();
-  if (!root) return [] as MobileNavItem[];
+  if (!root) return [];
 
   const seen = new Set<string>();
   const items: MobileNavItem[] = [];
 
-  Array.from(root.querySelectorAll<HTMLElement>("button, a")).forEach((control) => {
-    if (isOwnMobileControl(control)) return;
-    const label = String(control.textContent || "").trim().replace(/\s+/g, " ");
-    const key = normalized(label);
-    if (!label || !key || key === "menu" || seen.has(key)) return;
-    seen.add(key);
-    items.push({ label, key });
-  });
+  Array.from(root.querySelectorAll<HTMLElement>("button, a")).forEach(
+    (control) => {
+      if (isOwnMobileControl(control)) return;
+      const label = String(control.textContent || "")
+        .trim()
+        .replace(/\s+/g, " ");
+      const key = normalized(label);
+      if (!label || !key || key === "menu" || seen.has(key)) return;
+      seen.add(key);
+      items.push({ label, key });
+    },
+  );
 
   return items;
 }
@@ -62,8 +86,12 @@ function clickNav(key: string) {
   const root = sidebarRoot();
   if (!root) return false;
 
-  const control = Array.from(root.querySelectorAll<HTMLElement>("button, a")).find(
-    (candidate) => !isOwnMobileControl(candidate) && normalized(candidate.textContent) === normalized(key),
+  const control = Array.from(
+    root.querySelectorAll<HTMLElement>("button, a"),
+  ).find(
+    (candidate) =>
+      !isOwnMobileControl(candidate) &&
+      normalized(candidate.textContent) === normalized(key),
   );
 
   if (!control) return false;
@@ -72,8 +100,9 @@ function clickNav(key: string) {
 }
 
 function currentScreenKey() {
-  const heading = Array.from(document.querySelectorAll<HTMLElement>("main h1, main h2"))
-    .find((node) => visible(node));
+  const heading = Array.from(
+    document.querySelectorAll<HTMLElement>("main h1, main h2"),
+  ).find((node) => visible(node));
   return normalized(heading?.textContent);
 }
 
@@ -91,32 +120,25 @@ function normalizeMobileDom() {
     main.classList.add("atlas-mobile-shell-main");
   });
 
-  Array.from(document.querySelectorAll<HTMLElement>("main .atlas-page")).forEach((page) => {
-    page.classList.add("atlas-mobile-shell-page");
-  });
+  Array.from(
+    document.querySelectorAll<HTMLElement>("main .atlas-page"),
+  ).forEach((page) => page.classList.add("atlas-mobile-shell-page"));
 
-  Array.from(document.querySelectorAll<HTMLButtonElement>("button")).forEach((button) => {
-    if (isOwnMobileControl(button)) return;
-    if (String(button.textContent || "").trim() !== "+") return;
-    const style = window.getComputedStyle(button);
-    const rect = button.getBoundingClientRect();
-    if (style.position !== "fixed" && style.position !== "absolute" && rect.width < 64 && rect.height < 64) return;
-    button.classList.add("atlas-mobile-shell-fab");
-    button.style.setProperty("position", "fixed", "important");
-    button.style.setProperty("left", "auto", "important");
-    button.style.setProperty("right", "12px", "important");
-    button.style.setProperty("bottom", "calc(78px + env(safe-area-inset-bottom))", "important");
-    button.style.setProperty("width", "42px", "important");
-    button.style.setProperty("max-width", "42px", "important");
-    button.style.setProperty("min-width", "42px", "important");
-    button.style.setProperty("height", "42px", "important");
-    button.style.setProperty("max-height", "42px", "important");
-    button.style.setProperty("min-height", "42px", "important");
-    button.style.setProperty("padding", "0", "important");
-    button.style.setProperty("border-radius", "999px", "important");
-    button.style.setProperty("font-size", "20px", "important");
-    button.style.setProperty("line-height", "1", "important");
-  });
+  Array.from(document.querySelectorAll<HTMLButtonElement>("button")).forEach(
+    (button) => {
+      if (isOwnMobileControl(button)) return;
+      if (String(button.textContent || "").trim() !== "+") return;
+      const style = window.getComputedStyle(button);
+      const rect = button.getBoundingClientRect();
+      const looksFloating =
+        style.position === "fixed" ||
+        style.position === "absolute" ||
+        rect.width >= 64 ||
+        rect.height >= 64;
+      if (!looksFloating) return;
+      button.classList.add("atlas-mobile-shell-fab");
+    },
+  );
 }
 
 export default function AtlasMobileShell() {
@@ -132,6 +154,7 @@ export default function AtlasMobileShell() {
       frame = 0;
       const isMobile = window.innerWidth <= 900;
       setMobile(isMobile);
+
       if (!isMobile) {
         setMenuOpen(false);
         document.documentElement.classList.remove("atlas-mobile-shell-active");
@@ -148,8 +171,10 @@ export default function AtlasMobileShell() {
     };
 
     schedule();
+
     const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style"] });
+    observer.observe(document.body, { childList: true, subtree: true });
+
     window.addEventListener("resize", schedule);
     window.addEventListener("popstate", schedule);
     window.addEventListener("atlas:data-changed", schedule as EventListener);
@@ -163,11 +188,6 @@ export default function AtlasMobileShell() {
     };
   }, []);
 
-  const primary = useMemo(() => {
-    const map = new Map(navItems().map((item) => [item.key, item]));
-    return PRIMARY_KEYS.map((key) => map.get(key) || { label: key[0].toUpperCase() + key.slice(1), key });
-  }, [screen, mobile]);
-
   const openMenu = () => {
     setItems(navItems());
     setMenuOpen(true);
@@ -177,8 +197,11 @@ export default function AtlasMobileShell() {
 
   return (
     <>
-      <nav className="atlas-mobile-shell-nav" aria-label="Atlas mobile navigation">
-        {primary.map((item) => (
+      <nav
+        className="atlas-mobile-shell-nav"
+        aria-label="Atlas mobile navigation"
+      >
+        {PRIMARY_NAV.map((item) => (
           <button
             key={item.key}
             type="button"
@@ -191,20 +214,40 @@ export default function AtlasMobileShell() {
             {item.label}
           </button>
         ))}
-        <button type="button" data-active={PRIMARY_KEYS.includes(screen as (typeof PRIMARY_KEYS)[number]) ? "false" : "true"} onClick={openMenu}>
+        <button
+          type="button"
+          data-active={PRIMARY_KEYS.has(screen) ? "false" : "true"}
+          onClick={openMenu}
+        >
           More
         </button>
       </nav>
 
       {menuOpen ? (
-        <div className="atlas-mobile-shell-overlay" onMouseDown={(event) => event.target === event.currentTarget && setMenuOpen(false)}>
-          <section className="atlas-mobile-shell-sheet" role="dialog" aria-modal="true" aria-label="All Atlas sections">
+        <div
+          className="atlas-mobile-shell-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setMenuOpen(false);
+          }}
+        >
+          <section
+            className="atlas-mobile-shell-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label="All Atlas sections"
+          >
             <header>
               <div>
                 <strong>Atlas</strong>
                 <span>All sections</span>
               </div>
-              <button type="button" aria-label="Close" onClick={() => setMenuOpen(false)}>×</button>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setMenuOpen(false)}
+              >
+                ×
+              </button>
             </header>
             <div className="atlas-mobile-shell-grid">
               {items.map((item) => (
@@ -272,10 +315,24 @@ export default function AtlasMobileShell() {
           }
 
           .atlas-mobile-shell-fab {
+            position: fixed !important;
+            left: auto !important;
+            right: 12px !important;
+            bottom: calc(78px + env(safe-area-inset-bottom)) !important;
+            width: 42px !important;
+            max-width: 42px !important;
+            min-width: 42px !important;
+            height: 42px !important;
+            max-height: 42px !important;
+            min-height: 42px !important;
+            padding: 0 !important;
+            border-radius: 999px !important;
             z-index: 94990 !important;
             display: inline-flex !important;
             align-items: center !important;
             justify-content: center !important;
+            font-size: 20px !important;
+            line-height: 1 !important;
           }
 
           .atlas-mobile-shell-nav {
@@ -293,6 +350,7 @@ export default function AtlasMobileShell() {
             background: rgba(255, 255, 255, 0.98) !important;
             box-shadow: 0 8px 24px rgba(7, 24, 39, 0.18) !important;
             backdrop-filter: blur(12px) !important;
+            box-sizing: border-box !important;
           }
 
           .atlas-mobile-shell-nav button {
@@ -323,6 +381,7 @@ export default function AtlasMobileShell() {
             justify-content: center !important;
             padding: 8px 8px calc(72px + env(safe-area-inset-bottom)) !important;
             background: rgba(7, 24, 39, 0.52) !important;
+            box-sizing: border-box !important;
           }
 
           .atlas-mobile-shell-sheet {
@@ -334,6 +393,7 @@ export default function AtlasMobileShell() {
             border-radius: 16px !important;
             background: #ffffff !important;
             box-shadow: 0 18px 50px rgba(7, 24, 39, 0.3) !important;
+            box-sizing: border-box !important;
           }
 
           .atlas-mobile-shell-sheet header {
