@@ -44,6 +44,11 @@ export default function AtlasTimelineWorkspace(props: any) {
     color: colors.navy,
   });
 
+  const projectProps = {
+    ...props,
+    setScreen: (screen: string) => props.setScreen?.(screen === "work" ? "history" : screen),
+  };
+
   return (
     <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
@@ -51,7 +56,7 @@ export default function AtlasTimelineWorkspace(props: any) {
         <button type="button" style={switchButton(view === "timeline")} onClick={() => setView("timeline")}>Timeline</button>
       </div>
       {view === "projects" ? (
-        <AtlasProjectsWorkspace {...props} />
+        <AtlasProjectsWorkspace {...projectProps} />
       ) : (
         <AtlasTimelineWorkspaceLegacy {...props} projectTimelineEntries={projectTimelineEntries} />
       )}
