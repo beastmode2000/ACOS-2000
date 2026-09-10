@@ -390,6 +390,15 @@ function dedupeItems(items: ReportItem[]) {
   });
 }
 
+function sortReportItems(items: ReportItem[]) {
+  return [...items].sort(
+    (a, b) =>
+      String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) ||
+      a.person.localeCompare(b.person) ||
+      a.title.localeCompare(b.title),
+  );
+}
+
 function reportTitle(start: string, end: string) {
   if (!start || !end) return "Owner Report";
   const format = (value: string) =>
@@ -509,11 +518,13 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
 
   const filteredSourceItems = useMemo(
     () =>
-      sourceItems.filter(
-        (item) =>
-          !excludedSourceKeys.includes(item.sourceKey) &&
-          (!periodStart || item.date >= periodStart) &&
-          (!periodEnd || item.date <= periodEnd),
+      sortReportItems(
+        sourceItems.filter(
+          (item) =>
+            !excludedSourceKeys.includes(item.sourceKey) &&
+            (!periodStart || item.date >= periodStart) &&
+            (!periodEnd || item.date <= periodEnd),
+        ),
       ),
     [sourceItems, excludedSourceKeys, periodStart, periodEnd],
   );
@@ -580,7 +591,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         if (currentReport) {
           setActiveReportId(currentReport.id);
           setStatus(currentReport.status);
-          setItems(Array.isArray(currentReport.items) ? currentReport.items : []);
+          setItems(sortReportItems(Array.isArray(currentReport.items) ? currentReport.items : []));
         }
       }
     }
@@ -694,7 +705,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
           periodEnd,
           title: reportTitle(periodStart, periodEnd),
           status: nextStatus,
-          items: nextItems,
+          items: sortReportItems(nextItems),
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -760,7 +771,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     setPeriodStart(report.periodStart);
     setPeriodEnd(report.periodEnd);
     setStatus(report.status);
-    setItems(Array.isArray(report.items) ? report.items : []);
+    setItems(sortReportItems(Array.isArray(report.items) ? report.items : []));
     setDraftTouched(false);
     setShowSavedReports(false);
     setMessage(`Opened ${report.title}.`);
@@ -1125,7 +1136,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         </summary>
         <div style={{ display: "grid", gap: 7, marginTop: 4 }}>
           {items.length ? (
-            items.map((item) => (
+            sortReportItems(items).map((item) => (
               <div
                 key={item.id}
                 style={{
