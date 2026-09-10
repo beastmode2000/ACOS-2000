@@ -514,15 +514,21 @@ export default function AtlasDashboardUpcomingWork() {
           overflow-y: auto;
           padding-right: 2px;
         }
-        .atlas-secondary-custom-row {
+        .atlas-secondary-custom-row,
+        .atlas-secondary-custom-row:hover,
+        .atlas-secondary-custom-row:focus,
+        .atlas-secondary-custom-row:focus-visible,
+        .atlas-secondary-custom-row:active {
           width: 100%;
-          border: 1px solid #D8E0E8;
+          border: 1px solid #D8E0E8 !important;
           border-radius: 9px;
-          background: #FFFFFF;
+          background: #FFFFFF !important;
           padding: 8px;
           text-align: left;
           cursor: pointer;
-          color: #17324D;
+          color: #17324D !important;
+          box-shadow: none !important;
+          transform: none !important;
         }
         .atlas-secondary-custom-row strong {
           display: block;

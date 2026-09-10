@@ -290,7 +290,7 @@ export default function AtlasDashboardWorkspace(props: any) {
   const [dashboardWorkTitle, setDashboardWorkTitle] = useState("");
   const [dashboardWorkNote, setDashboardWorkNote] = useState("");
   const [dashboardCompletionNotes, setDashboardCompletionNotes] = useState<Record<string, string>>({});
-  const [dashboardWorkUpdateOpen, setDashboardWorkUpdateOpen] = useState<Record<string, boolean>>({});
+  const [dashboardWorkNoteOpen, setDashboardWorkNoteOpen] = useState<Record<string, boolean>>({});
   const [dashboardWorkAssignee, setDashboardWorkAssignee] = useState(initialDashboardAssignee);
   const [dashboardWorkDate, setDashboardWorkDate] = useState(() => todayISO());
   const [dashboardWorkListFilter, setDashboardWorkListFilter] = useState<"Today" | "All" | "Upcoming" | "Overdue">("Today");
@@ -2437,7 +2437,6 @@ export default function AtlasDashboardWorkspace(props: any) {
               <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: isMobile ? 340 : 470, overflowY: "auto", paddingRight: 2 }}>
                 {records.map((record) => {
                   const completionNote = dashboardCompletionNotes[String(record.id)] || "";
-                  const assigned = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) || person;
                   return <div key={record.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF" }}>
                     <div style={{ display: "grid", gap: 7 }}>
                       <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: "pointer" }}>
@@ -2445,29 +2444,41 @@ export default function AtlasDashboardWorkspace(props: any) {
                         <small style={{ color: colors.muted, display: "block", marginTop: 2, fontSize: 12, lineHeight: 1.3, fontWeight: 500 }}>{record.date ? `${String(record.date).slice(0,10) < todayISO() ? "Overdue · " : ""}${formatDate(String(record.date).slice(0,10))}` : "No due date"} · {record.recurring ? `Recurring ${recurrenceLabel(record as AtlasServiceRecord)}` : "One time"}</small>
                       </button>
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                        <button type="button" onClick={async () => { await completeWorkOrder(record as AtlasServiceRecord, { completionNote }); setDashboardCompletionNotes((current) => { const next = { ...current }; delete next[String(record.id)]; return next; }); }} style={{ ...goldButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Done</button>
-                        <button type="button" onClick={() => void didntGetToDashboardWork(record)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Didn’t Get To It</button>
-                        <button type="button" onClick={() => void rescheduleDashboardWork(record)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Reschedule</button>
-                        <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Edit</button>
+                        <button type="button" onClick={async () => { await completeWorkOrder(record as AtlasServiceRecord, { completionNote }); setDashboardCompletionNotes((current) => { const next = { ...current }; delete next[String(record.id)]; return next; }); setDashboardWorkNoteOpen((current) => ({ ...current, [String(record.id)]: false })); }} style={{ ...goldButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Done</button>
+                        <select
+                          value=""
+                          onChange={(event) => {
+                            const action = event.currentTarget.value;
+                            event.currentTarget.value = "";
+                            if (action) void handleDashboardWorkAction(record, action);
+                          }}
+                          aria-label={`Actions for ${record.title}`}
+                          style={{ ...selectStyle, width: "auto", minHeight: 28, padding: "3px 26px 3px 8px", fontSize: 11, fontWeight: 800 }}
+                        >
+                          <option value="">Actions</option>
+                          <option value="in-progress">In Progress</option>
+                          {record.recurring ? <option value="not-needed">Not Needed</option> : null}
+                          <option value="didnt-get-to-it">Didn’t Get To It</option>
+                          <option value="reschedule">Reschedule</option>
+                          <option value="tomorrow">Move Tomorrow</option>
+                          <option value="edit">Edit</option>
+                          <option value="delete">Delete</option>
+                        </select>
+                        <button type="button" onClick={() => setDashboardWorkNoteOpen((current) => ({ ...current, [String(record.id)]: !current[String(record.id)] }))} aria-expanded={Boolean(dashboardWorkNoteOpen[String(record.id)])} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Add Note</button>
                       </div>
-                    </div>
-                    <div style={{ marginTop: 6 }}>
-                      <button type="button" onClick={() => setDashboardWorkUpdateOpen((current) => ({ ...current, [String(record.id)]: !current[String(record.id)] }))} aria-expanded={Boolean(dashboardWorkUpdateOpen[String(record.id)])} style={{ border: 0, padding: 0, background: "transparent", cursor: "pointer", color: colors.navy, fontSize: 11, fontWeight: 800 }}>{dashboardWorkUpdateOpen[String(record.id)] ? "▾" : "▸"} Update</button>
-                      {dashboardWorkUpdateOpen[String(record.id)] ? <div style={{ display: "grid", gap: 6, marginTop: 7 }}>
-                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 6 }}>
-                          <input type="date" value={String(record.date || "").slice(0,10)} onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => void syncWorkOrderPatch(record, { date: event.currentTarget.value })} style={{ ...inputStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}/>
-                          <select value={assigned} onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}>{dashboardWorkPeople.map((name) => <option key={name} value={name}>{name === "Patrick Tanner" ? "Pat" : name === "Sean Powell" ? "Sean" : name}</option>)}</select>
-                          <select value={record.recurring ? "Recurring" : "One time"} onChange={(event) => void syncWorkOrderPatch(record, event.currentTarget.value === "Recurring" ? { recurring: true, recurrenceInterval: record.recurrenceInterval || 1, recurrenceUnit: record.recurrenceUnit || "Weeks" } : { recurring: false })} style={{ ...selectStyle, minHeight: 30, padding: "3px 5px", fontSize: 11 }}><option>One time</option><option>Recurring</option></select>
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 6 }}>
-                          <input value={completionNote} onChange={(event) => setDashboardCompletionNotes((current) => ({ ...current, [String(record.id)]: event.currentTarget.value }))} onKeyDown={(event) => { if (event.key === "Enter") void saveDashboardWorkUpdate(record); }} placeholder="Add update note" style={{ ...inputStyle, minHeight: 30, padding: "4px 7px", fontSize: 11 }}/>
-                          <button type="button" onClick={() => void saveDashboardWorkUpdate(record)} disabled={!completionNote.trim()} style={{ ...secondaryButtonStyle, minHeight: 30, padding: "4px 9px", fontSize: 11, opacity: completionNote.trim() ? 1 : .55 }}>Save Update</button>
-                        </div>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {record.recurring ? <button type="button" onClick={() => void notNeededDashboardWork(record)} style={secondaryButtonStyle}>Not Needed</button> : null}
-                          <button type="button" onClick={() => void syncWorkOrderPatch(record, { date: addDays(todayISO(), 1) })} style={secondaryButtonStyle}>Move Tomorrow</button>
-                          <button type="button" onClick={() => { if (window.confirm(`Delete ${record.title}? This removes it from Work and Calendar.`)) void deleteWorkOrderRecord(record); }} style={{ ...secondaryButtonStyle, color: colors.red }}>Delete</button>
-                        </div>
+                      {dashboardWorkNoteOpen[String(record.id)] ? <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 6 }}>
+                        <input
+                          autoFocus
+                          value={completionNote}
+                          onChange={(event) => setDashboardCompletionNotes((current) => ({ ...current, [String(record.id)]: event.currentTarget.value }))}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && completionNote.trim()) void saveDashboardWorkUpdate(record);
+                          }}
+                          placeholder="Add work note"
+                          aria-label={`Note for ${record.title}`}
+                          style={{ ...inputStyle, minHeight: 32, padding: "5px 7px", fontSize: 12 }}
+                        />
+                        <button type="button" onClick={() => void saveDashboardWorkUpdate(record)} disabled={!completionNote.trim()} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "4px 9px", fontSize: 11, opacity: completionNote.trim() ? 1 : .55 }}>Save Note</button>
                       </div> : null}
                     </div>
                   </div>;
@@ -2736,6 +2747,7 @@ export default function AtlasDashboardWorkspace(props: any) {
         delete next[String(record.id)];
         return next;
       });
+      setDashboardWorkNoteOpen((current) => ({ ...current, [String(record.id)]: false }));
     }
     showSaveToast(
       saved ? `Update saved to ${updated.title}.` : `${updated.title} update did not sync.`,
@@ -2793,6 +2805,32 @@ export default function AtlasDashboardWorkspace(props: any) {
       return;
     }
     await syncWorkOrderPatch(record, { date: nextDate, status: "Scheduled" });
+  };
+  const markDashboardWorkInProgress = async (record: ServiceRecord) => {
+    const atlasRecord = record as AtlasServiceRecord;
+    const notesHistory = [
+      {
+        id: uid("note"),
+        text: "STARTED / IN PROGRESS",
+        createdAt: new Date().toISOString(),
+      },
+      ...(atlasRecord.notesHistory || []),
+    ];
+    await syncWorkOrderPatch(record, { status: "In Progress", notesHistory });
+  };
+  const handleDashboardWorkAction = async (record: ServiceRecord, action: string) => {
+    if (action === "in-progress") return markDashboardWorkInProgress(record);
+    if (action === "not-needed") return notNeededDashboardWork(record);
+    if (action === "didnt-get-to-it") return didntGetToDashboardWork(record);
+    if (action === "reschedule") return rescheduleDashboardWork(record);
+    if (action === "tomorrow") return syncWorkOrderPatch(record, { date: addDays(todayISO(), 1), status: "Scheduled" });
+    if (action === "edit") {
+      openWorkOrderById(record.id);
+      return;
+    }
+    if (action === "delete" && window.confirm(`Delete ${record.title}? This removes it from Work and Calendar.`)) {
+      await deleteWorkOrderRecord(record);
+    }
   };
 
   const compactWorkList = (title: string, records: ServiceRecord[], emptyText: string) => (

@@ -494,6 +494,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   const [message, setMessage] = useState("");
   const [showSavedReports, setShowSavedReports] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [draftTouched, setDraftTouched] = useState(false);
 
   const sourceItems = useMemo(
     () =>
@@ -590,6 +591,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     setStatus("Draft");
     setItems([]);
     setExcludedSourceKeys([]);
+    setDraftTouched(false);
     void loadSavedReports(true).catch(() => setMessage("Saved owner reports could not be loaded."));
   }, [propertyId]);
 
@@ -619,22 +621,25 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   }, []);
 
   useEffect(() => {
-    if (!activeReportId) setItems(filteredSourceItems);
-  }, [filteredSourceItems, activeReportId]);
+    if (!activeReportId && !draftTouched) setItems(filteredSourceItems);
+  }, [filteredSourceItems, activeReportId, draftTouched]);
 
   function refreshFromAtlas() {
     setActiveReportId("");
     setStatus("Draft");
     setItems(filteredSourceItems);
+    setDraftTouched(false);
     setMessage("Report refreshed from Atlas work activity.");
   }
 
   function updateItem(id: string, patch: Partial<ReportItem>) {
+    setDraftTouched(true);
     setItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   }
 
   function addManualItem() {
     const id = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setDraftTouched(true);
     setItems((current) => [
       ...current,
       {
@@ -699,6 +704,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
 
       setActiveReportId(id);
       setStatus(nextStatus);
+      setDraftTouched(false);
       setMessage(
         successMessage ||
           (nextStatus === "Final" ? "Owner report finalized and saved." : "Owner report saved."),
@@ -715,6 +721,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     const deletedItem = items.find((item) => item.id === itemId);
     if (!deletedItem) return;
     const nextItems = items.filter((item) => item.id !== itemId);
+    setDraftTouched(true);
     setItems(nextItems);
     if (deletedItem.sourceType !== "Manual" && deletedItem.sourceKey) {
       setExcludedSourceKeys((current) =>
@@ -734,9 +741,11 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         if (!response.ok || !payload.ok) {
           throw new Error(String(payload.error || "Report item could not be deleted."));
         }
-      } catch {
-        // Keep the item removed from this saved report even if the permanent
-        // source exclusion request needs to be retried on a later delete.
+      } catch (error) {
+        setItems(items);
+        setExcludedSourceKeys((current) => current.filter((key) => key !== deletedItem.sourceKey));
+        setMessage(error instanceof Error ? error.message : "Report item could not be deleted.");
+        return;
       }
     }
     await saveReport(
@@ -752,6 +761,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     setPeriodEnd(report.periodEnd);
     setStatus(report.status);
     setItems(Array.isArray(report.items) ? report.items : []);
+    setDraftTouched(false);
     setShowSavedReports(false);
     setMessage(`Opened ${report.title}.`);
   }
@@ -1033,6 +1043,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
             value={periodStart}
             onChange={(event) => {
               setActiveReportId("");
+              setDraftTouched(false);
               setPeriodStart(event.currentTarget.value);
             }}
             style={controlStyle}
@@ -1047,6 +1058,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
             value={periodEnd}
             onChange={(event) => {
               setActiveReportId("");
+              setDraftTouched(false);
               setPeriodEnd(event.currentTarget.value);
             }}
             style={controlStyle}
