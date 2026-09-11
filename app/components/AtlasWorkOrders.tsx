@@ -691,7 +691,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     workType: WorkItemType;
     workCategory: string;
     assignedTo: string;
-    description: string;
     date: string;
     recurrenceDays: number[];
   }>({
@@ -699,7 +698,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     workType: "Work Order",
     workCategory: "🔧 Maintenance",
     assignedTo: "",
-    description: "",
     date: "",
     recurrenceDays: [],
   });
@@ -907,7 +905,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       workType: template.workType,
       workCategory: template.workCategory,
       assignedTo: template.defaultAssignee || "",
-      description: "",
       date: template.workType === "Quick Task" ? todayKey() : "",
       recurrenceDays:
         template.workType === "Preventive Maintenance"
@@ -1446,7 +1443,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             ? "📋 Project"
             : "🔧 Maintenance",
       assignedTo: "",
-      description: "",
       date:
         workType === "Quick Task"
           ? new Date().toISOString().slice(0, 10)
@@ -1469,7 +1465,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       workType: newWorkDraft.workType,
       workCategory: newWorkDraft.workCategory,
       priority: "Medium",
-      notes: newWorkDraft.description.trim(),
       date:
         newWorkDraft.workType === "Preventive Maintenance"
           ? alignDateToSelectedDay(newWorkDraft.date, newWorkDraft.recurrenceDays)
@@ -2122,17 +2117,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     placeholder="Work order title"
                     style={controlStyle}
                   />
-                  <textarea
-                    value={newWorkDraft.description}
-                    onChange={(event) => {
-                      const description = event.currentTarget.value;
-                      setNewWorkDraft((current) => ({ ...current, description }));
-                    }}
-                    placeholder="Description / What to do"
-                    aria-label="Description and instructions"
-                    rows={3}
-                    style={{ ...controlStyle, minHeight: 88, resize: "vertical" }}
-                  />
                   <select
                     value={newWorkDraft.workType}
                     onChange={(event) => {
@@ -2608,9 +2592,12 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                           <h2 style={{ margin: isMobile ? "10px 0 0" : "6px 0 0", color: colors.text, fontSize: isMobile ? 23 : 27, lineHeight: 1.12, letterSpacing: "-.02em", maxWidth: "100%" }}>
                             {selectedService.title || "Untitled Work"}
                           </h2>
-                          {selectedService.notes ? (
-                            <p style={{ margin: isMobile ? "9px 0 0" : "5px 0 0", color: colors.muted, fontSize: 14, lineHeight: 1.45, maxWidth: "100%" }}>{selectedService.notes}</p>
-                          ) : null}
+                          <div style={{ display: "grid", gap: 4, marginTop: isMobile ? 12 : 8, padding: isMobile ? 11 : 9, borderRadius: 10, border: `1px solid ${colors.line}`, background: "#FFFFFF" }}>
+                            <span style={fieldLabelStyle}>Description / What to Do</span>
+                            <div style={{ color: selectedService.notes ? colors.text : colors.muted, fontSize: 14, lineHeight: 1.45 }}>
+                              {selectedService.notes || "No description added."}
+                            </div>
+                          </div>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end", width: "100%" }}>
                           {!isClosedWorkStatus(selectedService.status) ? (
@@ -2695,7 +2682,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     </div>
                     <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, fontSize: 20, fontWeight: 800 }} />
                     <label style={{ display: "grid", gap: 5 }}>
-                      <span style={fieldLabelStyle}>What to do</span>
+                      <span style={fieldLabelStyle}>Description / What to Do</span>
                       <textarea value={selectedService.notes || ""} onChange={(event) => updateWorkOrder({ notes: event.currentTarget.value })} rows={3} style={{ ...inputStyle, minHeight: 78, resize: "vertical" }} />
                     </label>
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))", gap: 9 }}>
