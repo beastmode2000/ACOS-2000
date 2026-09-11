@@ -81,20 +81,51 @@ function sizeDesktopSidebar(root: HTMLElement) {
 }
 
 function markSidebarScrollers() {
+  const previouslyMarked = Array.from(
+    document.querySelectorAll<HTMLElement>(
+      ".atlas-sidebar-shell, .atlas-sidebar-scrollbar-hidden",
+    ),
+  );
+
+  for (const element of previouslyMarked) {
+    element.classList.remove(
+      "atlas-sidebar-shell",
+      "atlas-sidebar-scrollbar-hidden",
+    );
+    element.style.removeProperty("min-height");
+    element.style.removeProperty("height");
+    element.style.removeProperty("max-height");
+  }
+
   const elements = Array.from(
     document.querySelectorAll<HTMLElement>("aside, nav, div, section"),
   );
 
-  const sidebarRoots = elements.filter(isLeftSidebarArea);
+  const candidates = elements.filter(isLeftSidebarArea);
+  if (!candidates.length) return;
 
-  for (const root of sidebarRoots) {
-    root.classList.add("atlas-sidebar-shell");
-    sizeDesktopSidebar(root);
+  const outermost = candidates.filter(
+    (candidate) =>
+      !candidates.some(
+        (other) => other !== candidate && other.contains(candidate),
+      ),
+  );
 
-    if (isScrollable(root)) {
-      root.classList.add("atlas-sidebar-scrollbar-hidden");
-    }
+  const pool = outermost.length ? outermost : candidates;
+  pool.sort((a, b) => {
+    const aRect = a.getBoundingClientRect();
+    const bRect = b.getBoundingClientRect();
+    return bRect.width * bRect.height - aRect.width * aRect.height;
+  });
 
+  const root = pool[0];
+  if (!root) return;
+
+  root.classList.add("atlas-sidebar-shell");
+  sizeDesktopSidebar(root);
+
+  if (isScrollable(root)) {
+    root.classList.add("atlas-sidebar-scrollbar-hidden");
   }
 }
 
