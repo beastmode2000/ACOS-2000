@@ -555,69 +555,38 @@ export default function AtlasTeamPeoplePolish() {
     };
 
     setAddPersonBusy(true);
-    setAddPersonMessage("Creating person…");
+    setAddPersonMessage("Adding person…");
     setNewPersonInviteLink("");
-
-    try {
-      const createResponse = await fetch("/api/atlas-team", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ members: [member] }),
-      });
-      const createData = await createResponse.json().catch(() => ({}));
-      if (!createResponse.ok || createData?.ok === false) {
-        throw new Error(createData?.error || "Could not create person.");
-      }
-
-      const linkResponse = await fetch("/api/atlas-team-invite-link", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ memberId: member.id }),
-      });
-      const linkData = await linkResponse.json().catch(() => ({}));
-      if (!linkResponse.ok || linkData?.ok === false || !linkData?.invitePath) {
-        throw new Error(linkData?.error || "Person was created, but the invite link could not be created.");
-      }
-
-      const link = `${window.location.origin}${linkData.invitePath}`;
-      setNewPersonInviteLink(link);
-      setAddPersonMessage(`${name} created. Copy the invite link and send it to them.`);
-      await loadTeam();
-      window.dispatchEvent(new CustomEvent("atlas:data-changed"));
-    } catch (error) {
-      setAddPersonMessage(error instanceof Error ? error.message : "Could not create person.");
-    } finally {
-      setAddPersonBusy(false);
-    }
-  };
-
-  const removePerson = async () => {
-    if (!selected || normalized(selected.role) === "master") return;
-    if (!window.confirm(`Remove ${selected.name} from Team?`)) return;
 
     try {
       const response = await fetch("/api/atlas-team", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          action: "delete",
-          memberId: selected.id,
-          email: selected.email || "",
-          name: selected.name,
-        }),
+        body: JSON.stringify({ action: "invite", member }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data?.ok === false) {
-        throw new Error(data?.error || "Could not remove person.");
+        throw new Error(data?.error || "Could not add person.");
       }
-      setSelectedId("");
+
+      const link = data?.invitePath
+        ? `${window.location.origin}${data.invitePath}`
+        : "";
+      setNewPersonInviteLink(link);
+      setAddPersonMessage(
+        data?.emailSent
+          ? `${name} added. Invite sent automatically.`
+          : data?.inviteStatus === "Failed"
+            ? `${name} added. Email could not be sent; use Copy Invite Link.`
+            : `${name} added. Email delivery is not configured; use Copy Invite Link.`,
+      );
       await loadTeam();
       window.dispatchEvent(new CustomEvent("atlas:data-changed"));
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "Could not remove person.");
+      setAddPersonMessage(error instanceof Error ? error.message : "Could not add person.");
+    } finally {
+      setAddPersonBusy(false);
     }
   };
 
@@ -771,7 +740,7 @@ export default function AtlasTeamPeoplePolish() {
                   <button type="button" onClick={() => setShowAddPerson(false)}>Close</button>
                   {!newPersonInviteLink ? (
                     <button type="button" onClick={() => void addPerson()} disabled={addPersonBusy}>
-                      {addPersonBusy ? "Creating…" : "Create Person"}
+                      {addPersonBusy ? "Adding…" : "Add Person"}
                     </button>
                   ) : null}
                 </div>
