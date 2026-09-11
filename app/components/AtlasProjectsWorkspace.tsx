@@ -674,10 +674,32 @@ export default function AtlasProjectsWorkspace(props: any) {
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(240px,31%) minmax(0,1fr)", gap: 12, alignItems: "start" }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: isMobile ? "minmax(0,1fr)" : "300px minmax(0,1fr)",
+        gridTemplateAreas: isMobile ? '"list" "detail"' : '"list detail"',
+        gap: 12,
+        alignItems: "start",
+        width: "100%",
+        minWidth: 0,
+      }}
+    >
       <input ref={captureInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={onCaptured} />
 
-      <aside style={{ ...card, padding: 10, position: isMobile ? "static" : "sticky", top: 8, maxHeight: isMobile ? "none" : "calc(100vh - 120px)", overflow: "auto" }}>
+      <aside
+        style={{
+          ...card,
+          gridArea: "list",
+          width: "100%",
+          minWidth: 0,
+          padding: 10,
+          position: isMobile ? "static" : "sticky",
+          top: 8,
+          maxHeight: isMobile ? "none" : "calc(100vh - 120px)",
+          overflow: "auto",
+        }}
+      >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 9 }}>
           <strong style={{ color: colors.navy, fontSize: 15 }}>Projects</strong>
           <button type="button" style={goldButtonStyle} onClick={() => { setShowNewProject(true); setNewDraft(emptyDraft()); }}>+ Project</button>
@@ -703,7 +725,7 @@ export default function AtlasProjectsWorkspace(props: any) {
         </div>
       </aside>
 
-      <main style={{ minWidth: 0 }}>
+      <main style={{ gridArea: "detail", width: "100%", minWidth: 0, overflow: "hidden" }}>
         {showNewProject ? (
           <section style={{ ...card, padding: isMobile ? 11 : 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 12 }}>
@@ -722,7 +744,21 @@ export default function AtlasProjectsWorkspace(props: any) {
                 </div>
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                   <button type="button" style={tinyButton} onClick={() => setScreen("ownerReport")}>Owner Report</button>
-                  {editing ? <><button type="button" style={tinyButton} onClick={() => { setDraft(projectDraft(selectedProject)); setEditing(false); }}>Cancel</button><button type="button" style={goldButtonStyle} onClick={saveProjectDetails}>Save</button><button type="button" style={{ ...tinyButton, color: colors.red }} onClick={() => deleteProject(String(selectedProject.id))}>Delete Project</button></> : <button type="button" style={goldButtonStyle} onClick={() => { setDraft(projectDraft(selectedProject)); setEditing(true); }}>Edit</button>}
+                  {editing ? (
+                    <>
+                      <button type="button" style={tinyButton} onClick={() => { setDraft(projectDraft(selectedProject)); setEditing(false); }}>Cancel</button>
+                      <button type="button" style={goldButtonStyle} onClick={saveProjectDetails}>Save</button>
+                    </>
+                  ) : (
+                    <button type="button" style={goldButtonStyle} onClick={() => { setDraft(projectDraft(selectedProject)); setEditing(true); }}>Edit</button>
+                  )}
+                  <button
+                    type="button"
+                    style={{ ...tinyButton, color: colors.red, borderColor: colors.red }}
+                    onClick={() => deleteProject(String(selectedProject.id))}
+                  >
+                    Delete Project
+                  </button>
                 </div>
               </div>
 
