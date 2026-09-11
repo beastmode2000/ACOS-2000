@@ -1961,6 +1961,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         title="Work"
         detail=""
         isMobile={isMobile}
+        mobileDrawerOpen={detailOpen && Boolean(selectedService.id)}
+        onMobileDrawerClose={() => {
+          setDetailOpen(false);
+          setSelectedServiceId("");
+          setWorkEditorOpen(false);
+        }}
+        mobileDrawerTitle={selectedService.title || "Work Details"}
         outerStyle={
           isMobile
             ? undefined
