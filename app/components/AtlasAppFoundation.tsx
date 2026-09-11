@@ -692,6 +692,7 @@ export const atlasPrimaryNavigationSections = atlasNavigationSections
 export type WorkCompletionEntry = {
   id: string;
   completedAt: string;
+  completedBy?: string;
   statusBefore: string;
   dueDate: string;
   notes: string;

@@ -97,6 +97,10 @@ function markSidebarScrollers() {
     element.style.removeProperty("max-height");
   }
 
+  // The mobile shell has its own navigation and scrolling behavior. Never
+  // classify or resize mobile containers as the desktop sidebar.
+  if (window.innerWidth < 900) return;
+
   const elements = Array.from(
     document.querySelectorAll<HTMLElement>("aside, nav, div, section"),
   );
@@ -180,12 +184,13 @@ export default function AtlasSidebarScrollbarPolish() {
 
   return (
     <style jsx global>{`
-      .atlas-sidebar-shell,
-      .atlas-sidebar-shell *,
-      .atlas-sidebar-scrollbar-hidden {
-        scrollbar-width: none !important;
-        -ms-overflow-style: none !important;
-      }
+      @media (min-width: 900px) {
+        .atlas-sidebar-shell,
+        .atlas-sidebar-shell *,
+        .atlas-sidebar-scrollbar-hidden {
+          scrollbar-width: none !important;
+          -ms-overflow-style: none !important;
+        }
 
       .atlas-sidebar-shell {
         overflow-y: auto !important;
@@ -205,12 +210,13 @@ export default function AtlasSidebarScrollbarPolish() {
         overflow-y: visible !important;
       }
 
-      .atlas-sidebar-shell::-webkit-scrollbar,
-      .atlas-sidebar-shell *::-webkit-scrollbar,
-      .atlas-sidebar-scrollbar-hidden::-webkit-scrollbar {
-        width: 0 !important;
-        height: 0 !important;
-        display: none !important;
+        .atlas-sidebar-shell::-webkit-scrollbar,
+        .atlas-sidebar-shell *::-webkit-scrollbar,
+        .atlas-sidebar-scrollbar-hidden::-webkit-scrollbar {
+          width: 0 !important;
+          height: 0 !important;
+          display: none !important;
+        }
       }
     `}</style>
   );

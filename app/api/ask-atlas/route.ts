@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { NextRequest, NextResponse } from "next/server";
+import { answerAskAtlasFree } from "./free-answer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -1236,16 +1237,7 @@ async function callOpenAI(
 }
 
 export async function POST(request: NextRequest) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Ask Atlas is not connected. Add OPENAI_API_KEY in Vercel and redeploy.",
-      },
-      { status: 503 },
-    );
-  }
+  const apiKey = process.env.OPENAI_API_KEY || "";
 
   let body: AskAtlasRequest;
   try {
@@ -1273,6 +1265,14 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+
+  // Ask Atlas now answers from the supplied Atlas records without calling a
+  // paid AI provider. The existing UI and record-opening results stay intact.
+  return NextResponse.json({
+    ok: true,
+    ...answerAskAtlasFree(question, body.atlas),
+    mode: "atlas-record-search",
+  });
 
   const home4725 = snapshotIs4725(body.atlas ?? {});
   const scopedSnapshot = scope4725Snapshot(body.atlas ?? {});

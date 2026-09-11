@@ -227,7 +227,7 @@ function completedWorkOrderItems(workOrders: Row[]) {
         person: displayPerson(historyEntry ? { ...row, ...historyEntry } : row),
         department: inferDepartment(row),
         title: String(row.title || row.name || "Work order completed"),
-        notes: String(historyEntry?.notes || row.completionNotes || "Completed"),
+        notes: String(historyEntry?.notes || row.completionNotes || ""),
       });
     }
   }
