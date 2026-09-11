@@ -593,6 +593,29 @@ export default function AtlasTeamPeoplePolish() {
     }
   };
 
+  const removePerson = async () => {
+    if (!selected || normalized(selected.role) === "master") return;
+    if (!window.confirm(`Remove ${selected.name} from Team?`)) return;
+
+    try {
+      const response = await fetch("/api/atlas-team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: "delete", memberId: selected.id }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) {
+        throw new Error(data?.error || "Could not remove person.");
+      }
+      setSelectedId("");
+      await loadTeam();
+      window.dispatchEvent(new CustomEvent("atlas:data-changed"));
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Could not remove person.");
+    }
+  };
+
   const assignWork = async () => {
     if (!selected) return;
     const title = window.prompt(`Add work for ${selected.name}`);
@@ -941,6 +964,15 @@ export default function AtlasTeamPeoplePolish() {
                     >
                       Save Access
                     </button>
+                    {normalized(selected.role) !== "master" ? (
+                      <button
+                        type="button"
+                        className="atlas-team-remove-person"
+                        onClick={() => void removePerson()}
+                      >
+                        Delete Person
+                      </button>
+                    ) : null}
                   </div>
                 </details>
               </>
@@ -1371,6 +1403,17 @@ function TeamPeopleStyles() {
         border-radius: 9px !important;
         background: #1f6fd1 !important;
         color: #fff !important;
+        padding: 7px 11px !important;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .atlas-team-remove-person {
+        min-height: 36px !important;
+        border: 1px solid #b42318 !important;
+        border-radius: 9px !important;
+        background: #fff !important;
+        color: #b42318 !important;
         padding: 7px 11px !important;
         font-weight: 800;
         cursor: pointer;
