@@ -691,6 +691,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     workType: WorkItemType;
     workCategory: string;
     assignedTo: string;
+    description: string;
     date: string;
     recurrenceDays: number[];
   }>({
@@ -698,6 +699,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     workType: "Work Order",
     workCategory: "🔧 Maintenance",
     assignedTo: "",
+    description: "",
     date: "",
     recurrenceDays: [],
   });
@@ -905,6 +907,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       workType: template.workType,
       workCategory: template.workCategory,
       assignedTo: template.defaultAssignee || "",
+      description: "",
       date: template.workType === "Quick Task" ? todayKey() : "",
       recurrenceDays:
         template.workType === "Preventive Maintenance"
@@ -1443,6 +1446,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
             ? "📋 Project"
             : "🔧 Maintenance",
       assignedTo: "",
+      description: "",
       date:
         workType === "Quick Task"
           ? new Date().toISOString().slice(0, 10)
@@ -1465,6 +1469,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       workType: newWorkDraft.workType,
       workCategory: newWorkDraft.workCategory,
       priority: "Medium",
+      notes: newWorkDraft.description.trim(),
       date:
         newWorkDraft.workType === "Preventive Maintenance"
           ? alignDateToSelectedDay(newWorkDraft.date, newWorkDraft.recurrenceDays)
@@ -2114,7 +2119,19 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     ref={newWorkTitleRef}
                     defaultValue=""
                     autoFocus
+                    placeholder="Work order title"
                     style={controlStyle}
+                  />
+                  <textarea
+                    value={newWorkDraft.description}
+                    onChange={(event) => {
+                      const description = event.currentTarget.value;
+                      setNewWorkDraft((current) => ({ ...current, description }));
+                    }}
+                    placeholder="Description / What to do"
+                    aria-label="Description and instructions"
+                    rows={3}
+                    style={{ ...controlStyle, minHeight: 88, resize: "vertical" }}
                   />
                   <select
                     value={newWorkDraft.workType}
@@ -2750,7 +2767,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     value={newHistoryNote}
                     onChange={(event) => setNewHistoryNote(event.currentTarget.value)}
                     onKeyDown={(event) => { if (event.key === "Enter") void addHistoryNote(); }}
-                    placeholder="Add a note — e.g. Didn't get to this week"
+                    placeholder="Add a work note…"
                     style={inputStyle}
                   />
                   <button type="button" onClick={() => void addHistoryNote()} style={{ ...secondaryButtonStyle, width: "auto" }}>Add Note</button>
