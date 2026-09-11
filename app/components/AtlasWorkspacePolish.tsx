@@ -13,6 +13,26 @@ function pageMain(title: string) {
   return (heading?.closest("main") as HTMLElement | null) || null;
 }
 
+function hideLegacyLoadStatus() {
+  const legacyPhrases = [
+    "loading atlas records",
+    "loading atlas records...",
+    "no unsaved atlas changes",
+    "no unsaved atlas changes.",
+  ];
+
+  for (const element of Array.from(
+    document.querySelectorAll<HTMLElement>("header *, main > div *, body > div *"),
+  )) {
+    if (element.children.length > 0) continue;
+    const text = normalized(element.textContent);
+    if (!text) continue;
+    if (!legacyPhrases.includes(text)) continue;
+    element.classList.add("atlas-legacy-load-status-hidden");
+    element.setAttribute("aria-hidden", "true");
+  }
+}
+
 function hideProceduresNavigation() {
   const scopes = Array.from(document.querySelectorAll<HTMLElement>("nav, aside, header"));
   for (const scope of scopes) {
@@ -196,6 +216,7 @@ export default function AtlasWorkspacePolish() {
 
     const apply = () => {
       frame = 0;
+      hideLegacyLoadStatus();
       hideProceduresNavigation();
 
       const notes = pageMain("notes");
@@ -250,6 +271,10 @@ export default function AtlasWorkspacePolish() {
       .atlas-polish-empty-secondary,
       .atlas-polish-explanatory-text,
       .atlas-polish-location-description {
+        display: none !important;
+      }
+
+      .atlas-legacy-load-status-hidden {
         display: none !important;
       }
 
