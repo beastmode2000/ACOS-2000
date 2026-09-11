@@ -46,6 +46,7 @@ import AtlasSidebarScrollbarPolish from "./components/AtlasSidebarScrollbarPolis
 import AtlasGraduationPartyCleanup from "./components/AtlasGraduationPartyCleanup";
 import AtlasAskAtlasFreeLabels from "./components/AtlasAskAtlasFreeLabels";
 import AtlasGeneratedWorkCommentsCleanup from "./components/AtlasGeneratedWorkCommentsCleanup";
+import AtlasDropdownDismissBehavior from "./components/AtlasDropdownDismissBehavior";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -89,6 +90,7 @@ export default function RootLayout({
         <AtlasSidebarScrollbarPolish />
         <AtlasAskAtlasFreeLabels />
         <AtlasGeneratedWorkCommentsCleanup />
+        <AtlasDropdownDismissBehavior />
         <AtlasVendorContactsPersistence />
         <AtlasLocationsPolish />
         <AtlasLocationsAssetStyle />
