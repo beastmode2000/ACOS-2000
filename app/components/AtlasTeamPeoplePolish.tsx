@@ -253,6 +253,7 @@ export default function AtlasTeamPeoplePolish() {
   const [addPersonBusy, setAddPersonBusy] = useState(false);
   const [addPersonMessage, setAddPersonMessage] = useState("");
   const [newPersonInviteLink, setNewPersonInviteLink] = useState("");
+  const [teamActionMessage, setTeamActionMessage] = useState("");
 
   useEffect(() => {
     let frame = 0;
@@ -593,6 +594,9 @@ export default function AtlasTeamPeoplePolish() {
   const removePerson = async () => {
     if (!selected || normalized(selected.role) === "master") return;
     if (!window.confirm(`Remove ${selected.name} from Team?`)) return;
+    const removedId = selected.id;
+    const removedName = selected.name;
+    setTeamActionMessage(`Removing ${removedName}…`);
 
     try {
       const response = await fetch("/api/atlas-team", {
@@ -611,10 +615,15 @@ export default function AtlasTeamPeoplePolish() {
         throw new Error(data?.error || "Could not remove person.");
       }
       setSelectedId("");
-      await loadTeam();
-      window.dispatchEvent(new CustomEvent("atlas:data-changed"));
+      setPayload((current) => current ? {
+        ...current,
+        members: (current.members || []).filter((member) => member.id !== removedId),
+      } : current);
+      setTeamActionMessage(`${removedName} was removed.`);
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "Could not remove person.");
+      const message = error instanceof Error ? error.message : "Could not remove person.";
+      setTeamActionMessage(message);
+      window.alert(message);
     }
   };
 
@@ -799,6 +808,7 @@ export default function AtlasTeamPeoplePolish() {
           </aside>
 
           <div className="atlas-team-person-detail">
+            {teamActionMessage ? <div role="status" className="atlas-team-action-message">{teamActionMessage}</div> : null}
             {!selected ? (
               <div className="atlas-team-people-empty">Select a team member.</div>
             ) : (
@@ -970,7 +980,11 @@ export default function AtlasTeamPeoplePolish() {
                       <button
                         type="button"
                         className="atlas-team-remove-person"
-                        onClick={() => void removePerson()}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          void removePerson();
+                        }}
                       >
                         Delete Person
                       </button>
@@ -1014,6 +1028,17 @@ function TeamPeopleStyles() {
         border-radius: 14px;
         background: ${colors.card};
         box-shadow: 0 8px 22px rgba(7, 27, 47, 0.05);
+      }
+
+      .atlas-team-action-message {
+        margin: 10px;
+        padding: 9px 11px;
+        border: 1px solid #b8dfc8;
+        border-radius: 9px;
+        background: #eaf8ef;
+        color: #087443;
+        font-size: 13px;
+        font-weight: 750;
       }
 
       .atlas-team-people-list {
