@@ -107,24 +107,27 @@ export default function AtlasTeamInviteActions() {
     [members, selectedName],
   );
 
-  const createManualInviteLink = async (member: TeamMember) => {
+  const createInvite = async (member: TeamMember, sendEmail: boolean) => {
     const response = await fetch("/api/atlas-team-invite-link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ memberId: member.id }),
+      body: JSON.stringify({ memberId: member.id, sendEmail }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || payload?.ok === false || !payload?.invitePath) {
-      throw new Error(String(payload?.error || "Atlas could not create the invite link."));
+      throw new Error(String(payload?.error || "Atlas could not create the invite."));
     }
 
     const link = `${window.location.origin}${String(payload.invitePath)}`;
     setInviteLink(link);
-    await navigator.clipboard?.writeText(link);
     await loadTeam();
     window.dispatchEvent(new CustomEvent("atlas:data-changed"));
-    return link;
+    return {
+      link,
+      emailSent: payload?.emailSent === true,
+      emailError: String(payload?.emailError || ""),
+    };
   };
 
   const copyInviteLink = async () => {
@@ -132,7 +135,8 @@ export default function AtlasTeamInviteActions() {
     setSending(true);
     setMessage("Creating invite link...");
     try {
-      await createManualInviteLink(selected);
+      const result = await createInvite(selected, false);
+      await navigator.clipboard?.writeText(result.link);
       setMessage("Invite link copied ✓");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Atlas could not create the invite link.");
@@ -148,50 +152,19 @@ export default function AtlasTeamInviteActions() {
     setInviteLink("");
 
     try {
-      const response = await fetch("/api/atlas-team", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          action: "invite",
-          member: {
-            id: selected.id,
-            name: selected.name,
-            email: selected.email,
-            role: selected.role,
-            active: selected.active !== false,
-            propertyIds: selected.propertyIds || ["2000"],
-            permissions: selected.permissions || {},
-            accessProfiles: selected.accessProfiles || [],
-          },
-        }),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) {
-        const emailError = String(payload?.error || "Atlas could not send the invitation.");
-        try {
-          await createManualInviteLink(selected);
-          setMessage(`Email failed — invite link copied ✓ (${emailError})`);
-        } catch (linkError) {
-          const linkMessage = linkError instanceof Error ? linkError.message : "Invite link could not be created.";
-          setMessage(`${emailError} ${linkMessage}`);
-        }
-        return;
+      const result = await createInvite(selected, true);
+      if (result.emailSent) {
+        setMessage("Invite sent ✓");
+      } else {
+        await navigator.clipboard?.writeText(result.link);
+        setMessage(
+          result.emailError
+            ? `Email failed — invite link copied ✓ (${result.emailError})`
+            : "Email failed — invite link copied ✓",
+        );
       }
-
-      setMessage("Invite sent ✓");
-      await loadTeam();
-      window.dispatchEvent(new CustomEvent("atlas:data-changed"));
     } catch (error) {
-      const emailError = error instanceof Error ? error.message : "Atlas could not send the invitation.";
-      try {
-        await createManualInviteLink(selected);
-        setMessage(`Email failed — invite link copied ✓ (${emailError})`);
-      } catch (linkError) {
-        const linkMessage = linkError instanceof Error ? linkError.message : "Invite link could not be created.";
-        setMessage(`${emailError} ${linkMessage}`);
-      }
+      setMessage(error instanceof Error ? error.message : "Atlas could not send the invitation.");
     } finally {
       setSending(false);
     }
