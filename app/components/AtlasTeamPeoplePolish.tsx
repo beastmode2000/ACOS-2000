@@ -245,6 +245,13 @@ export default function AtlasTeamPeoplePolish() {
   const [addisonPayload, setAddisonPayload] = useState<AddisonPayload | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [search, setSearch] = useState("");
+  const [showAddPerson, setShowAddPerson] = useState(false);
+  const [newPersonName, setNewPersonName] = useState("");
+  const [newPersonEmail, setNewPersonEmail] = useState("");
+  const [newPersonRole, setNewPersonRole] = useState("employee");
+  const [newPersonProperties, setNewPersonProperties] = useState<string[]>(["2000"]);
+  const [addPersonBusy, setAddPersonBusy] = useState(false);
+  const [addPersonMessage, setAddPersonMessage] = useState("");
 
   useEffect(() => {
     let frame = 0;
@@ -518,6 +525,62 @@ export default function AtlasTeamPeoplePolish() {
     [selected],
   );
 
+  const addPerson = async () => {
+    const name = newPersonName.trim();
+    const email = newPersonEmail.trim().toLowerCase();
+    if (!name || !email) {
+      setAddPersonMessage("Enter a name and email.");
+      return;
+    }
+    if (addPersonBusy) return;
+
+    const role = newPersonRole || "employee";
+    const permissionsByRole: Record<string, Record<string, boolean>> = {
+      administrator: { view: true, edit: true, approve: true, delete: true, manageUsers: true },
+      manager: { view: true, edit: true, approve: true, delete: false, manageUsers: false },
+      employee: { view: true, edit: true, approve: false, delete: false, manageUsers: false },
+      vendor: { view: true, edit: false, approve: false, delete: false, manageUsers: false },
+      viewer: { view: true, edit: false, approve: false, delete: false, manageUsers: false },
+    };
+    const member = {
+      id: `team-${Date.now()}`,
+      name,
+      email,
+      role,
+      active: true,
+      propertyIds: newPersonProperties.length ? newPersonProperties : [propertyId],
+      permissions: permissionsByRole[role] || permissionsByRole.employee,
+      accessProfiles: [],
+    };
+
+    setAddPersonBusy(true);
+    setAddPersonMessage("Creating invitation…");
+    try {
+      const response = await fetch("/api/atlas-team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: "invite", member }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) {
+        throw new Error(data?.error || "Could not create invitation.");
+      }
+      setNewPersonName("");
+      setNewPersonEmail("");
+      setNewPersonRole("employee");
+      setNewPersonProperties([propertyId]);
+      setShowAddPerson(false);
+      setAddPersonMessage("");
+      await loadTeam();
+      window.dispatchEvent(new CustomEvent("atlas:data-changed"));
+    } catch (error) {
+      setAddPersonMessage(error instanceof Error ? error.message : "Could not create invitation.");
+    } finally {
+      setAddPersonBusy(false);
+    }
+  };
+
   const assignWork = async () => {
     if (!selected) return;
     const title = window.prompt(`Add work for ${selected.name}`);
@@ -582,12 +645,77 @@ export default function AtlasTeamPeoplePolish() {
       {createPortal(
         <div className="atlas-team-people-shell">
           <aside className="atlas-team-people-list">
+            <div className="atlas-team-people-list-head">
+              <strong>People</strong>
+              <button
+                type="button"
+                className="atlas-team-add-person-button"
+                onClick={() => {
+                  setShowAddPerson((open) => !open);
+                  setNewPersonProperties([propertyId]);
+                  setAddPersonMessage("");
+                }}
+              >
+                + Add Person
+              </button>
+            </div>
             <input
               className="atlas-team-people-search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search team"
             />
+            {showAddPerson ? (
+              <div className="atlas-team-add-person-panel">
+                <label>
+                  <span>Name</span>
+                  <input value={newPersonName} onChange={(event) => setNewPersonName(event.target.value)} />
+                </label>
+                <label>
+                  <span>Email</span>
+                  <input type="email" value={newPersonEmail} onChange={(event) => setNewPersonEmail(event.target.value)} />
+                </label>
+                <label>
+                  <span>Role</span>
+                  <select value={newPersonRole} onChange={(event) => setNewPersonRole(event.target.value)}>
+                    <option value="administrator">Administrator</option>
+                    <option value="manager">Manager</option>
+                    <option value="employee">Employee</option>
+                    <option value="vendor">Vendor</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                </label>
+                <div>
+                  <span className="atlas-team-add-person-label">Properties</span>
+                  <div className="atlas-team-property-checks">
+                    {["2000", "6855", "3661", "hangar"].map((id) => (
+                      <label key={id}>
+                        <input
+                          type="checkbox"
+                          checked={newPersonProperties.includes(id)}
+                          onChange={(event) =>
+                            setNewPersonProperties((current) => {
+                              const next = event.target.checked
+                                ? Array.from(new Set([...current, id]))
+                                : current.filter((item) => item !== id);
+                              return next.length ? next : current;
+                            })
+                          }
+                        />
+                        {id}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                {addPersonMessage ? <div className="atlas-team-add-person-message">{addPersonMessage}</div> : null}
+                <div className="atlas-team-add-person-actions">
+                  <button type="button" onClick={() => setShowAddPerson(false)}>Cancel</button>
+                  <button type="button" onClick={() => void addPerson()} disabled={addPersonBusy}>
+                    {addPersonBusy ? "Sending…" : "Send Invite"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <div className="atlas-team-people-rows">
               {members.map((member) => (
                 <button
@@ -824,6 +952,92 @@ function TeamPeopleStyles() {
       .atlas-team-people-list {
         overflow: hidden;
         align-self: start;
+      }
+
+      .atlas-team-people-list-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 10px 10px 0;
+      }
+
+      .atlas-team-people-list-head strong {
+        color: ${colors.text};
+        font-size: 13px;
+      }
+
+      .atlas-team-add-person-button {
+        min-height: 34px !important;
+        padding: 6px 9px !important;
+        border: 1px solid #1f6fd1 !important;
+        border-radius: 8px !important;
+        background: #1f6fd1 !important;
+        color: #fff !important;
+        font-size: 11px !important;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .atlas-team-add-person-panel {
+        display: grid;
+        gap: 8px;
+        margin: 0 10px 10px;
+        padding: 10px;
+        border: 1px solid ${colors.line};
+        border-radius: 10px;
+        background: ${colors.panel};
+      }
+
+      .atlas-team-add-person-panel > label {
+        display: grid;
+        gap: 4px;
+      }
+
+      .atlas-team-add-person-panel span,
+      .atlas-team-add-person-label {
+        color: ${colors.muted};
+        font-size: 10px;
+        font-weight: 800;
+      }
+
+      .atlas-team-add-person-panel input,
+      .atlas-team-add-person-panel select {
+        width: 100%;
+        min-height: 36px;
+        border: 1px solid ${colors.line};
+        border-radius: 8px;
+        background: #fff;
+        padding: 6px 8px;
+      }
+
+      .atlas-team-add-person-message {
+        color: ${colors.text};
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .atlas-team-add-person-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 7px;
+      }
+
+      .atlas-team-add-person-actions button {
+        min-height: 34px !important;
+        padding: 6px 9px !important;
+        border: 1px solid ${colors.line} !important;
+        border-radius: 8px !important;
+        background: #fff !important;
+        color: ${colors.text} !important;
+        font-size: 11px !important;
+        font-weight: 800;
+      }
+
+      .atlas-team-add-person-actions button:last-child {
+        border-color: #1f6fd1 !important;
+        background: #1f6fd1 !important;
+        color: #fff !important;
       }
 
       .atlas-team-people-search {
