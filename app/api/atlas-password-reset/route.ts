@@ -17,20 +17,6 @@ const defaultUsers = [
     role: "master",
     propertyIds: ["2000", "6855", "3661", "hangar"],
   },
-  {
-    id: "steve",
-    name: "Steve",
-    email: "stevem@arcticmgnt.com",
-    role: "administrator",
-    propertyIds: ["2000"],
-  },
-  {
-    id: "kenji",
-    name: "Kenji",
-    email: "kenjij@arcticmgnt.com",
-    role: "administrator",
-    propertyIds: ["2000"],
-  },
 ];
 
 type DatabaseRow = Record<string, unknown>;
@@ -49,7 +35,7 @@ function escapeHtml(value: unknown) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
+    .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
 
@@ -314,4 +300,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
