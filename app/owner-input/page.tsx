@@ -104,6 +104,19 @@ export default function OwnerInputPage() {
             <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.3, color: "#0A2841", marginBottom: 10 }}>{item.question}</div>
             {item.context ? <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, fontSize: 14, background: "#F7F9FB", border: "1px solid #E3E9EE", borderRadius: 9, padding: 12, marginBottom: 16 }}>{item.context}</div> : null}
 
+            {Array.isArray(item.photos) && item.photos.length ? (
+              <div style={{ display: "grid", gridTemplateColumns: item.photos.length === 1 ? "1fr" : "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginBottom: 18 }}>
+                {item.photos.map((photo: any, index: number) => (
+                  <figure key={photo.id || index} style={{ margin: 0, border: "1px solid #D9E2EA", borderRadius: 10, overflow: "hidden", background: "#FFFFFF" }}>
+                    <a href={photo.dataUrl} target="_blank" rel="noreferrer" style={{ display: "block" }}>
+                      <img src={photo.dataUrl} alt={photo.caption || photo.name || `Decision photo ${index + 1}`} style={{ display: "block", width: "100%", maxHeight: 360, objectFit: "cover" }} />
+                    </a>
+                    {photo.caption ? <figcaption style={{ padding: "8px 9px", fontSize: 12, color: "#6B7C8C" }}>{photo.caption}</figcaption> : null}
+                  </figure>
+                ))}
+              </div>
+            ) : null}
+
             {item.status === "Answered" && saved ? (
               <div style={{ border: "1px solid #B9DDCA", background: "#F1FBF5", color: "#087443", borderRadius: 9, padding: 12, fontWeight: 700 }}>Thank you. Your response has been saved in Atlas.</div>
             ) : (
