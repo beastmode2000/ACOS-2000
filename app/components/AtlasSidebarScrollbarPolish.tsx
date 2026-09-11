@@ -95,18 +95,6 @@ function markSidebarScrollers() {
       root.classList.add("atlas-sidebar-scrollbar-hidden");
     }
 
-    for (const child of Array.from(
-      root.querySelectorAll<HTMLElement>("aside, nav, div, section"),
-    )) {
-      if (!isVisible(child)) continue;
-
-      const rect = child.getBoundingClientRect();
-      if (rect.left > 40 || rect.width < 140 || rect.width > 440) continue;
-
-      if (isScrollable(child)) {
-        child.classList.add("atlas-sidebar-scrollbar-hidden");
-      }
-    }
   }
 }
 
@@ -172,6 +160,18 @@ export default function AtlasSidebarScrollbarPolish() {
         overflow-y: auto !important;
         overflow-x: hidden !important;
         overscroll-behavior: contain;
+      }
+
+      .atlas-sidebar-shell > *,
+      .atlas-sidebar-shell nav,
+      .atlas-sidebar-shell section,
+      .atlas-sidebar-shell div {
+        max-height: none !important;
+      }
+
+      .atlas-sidebar-shell nav,
+      .atlas-sidebar-shell section {
+        overflow-y: visible !important;
       }
 
       .atlas-sidebar-shell::-webkit-scrollbar,
