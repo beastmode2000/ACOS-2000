@@ -602,7 +602,12 @@ export default function AtlasTeamPeoplePolish() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ action: "delete", memberId: selected.id }),
+        body: JSON.stringify({
+          action: "delete",
+          memberId: selected.id,
+          email: selected.email || "",
+          name: selected.name,
+        }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data?.ok === false) {
