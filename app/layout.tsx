@@ -44,6 +44,7 @@ import AtlasOwnerReportHeaderPolish from "./components/AtlasOwnerReportHeaderPol
 import AtlasServiceLinkPolish from "./components/AtlasServiceLinkPolish";
 import AtlasWorkHistorySearch from "./components/AtlasWorkHistorySearch";
 import AtlasSidebarScrollbarPolish from "./components/AtlasSidebarScrollbarPolish";
+import AtlasAppsMasterOnlyGuard from "./components/AtlasAppsMasterOnlyGuard";
 import AtlasGraduationPartyCleanup from "./components/AtlasGraduationPartyCleanup";
 import AtlasAskAtlasFreeLabels from "./components/AtlasAskAtlasFreeLabels";
 import AtlasGeneratedWorkCommentsCleanup from "./components/AtlasGeneratedWorkCommentsCleanup";
@@ -90,6 +91,7 @@ export default function RootLayout({
       <body>
         <AtlasGraduationPartyCleanup />
         <AtlasSidebarScrollbarPolish />
+        <AtlasAppsMasterOnlyGuard />
         <AtlasAskAtlasFreeLabels />
         <AtlasGeneratedWorkCommentsCleanup />
         <AtlasDropdownDismissBehavior />
