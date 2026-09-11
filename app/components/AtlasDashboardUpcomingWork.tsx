@@ -206,7 +206,8 @@ export default function AtlasDashboardUpcomingWork() {
   const [propertyId, setPropertyId] = useState("2000");
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [workRows, setWorkRows] = useState<WorkRow[]>([]);
-  const [mode, setMode] = useState("Addison");
+  const [workLists, setWorkLists] = useState<any[]>([]);
+  const [mode, setMode] = useState("");
 
   useEffect(() => {
     let frame = 0;
@@ -306,8 +307,6 @@ export default function AtlasDashboardUpcomingWork() {
     if (!nativeLane) return;
     restoreLaneChildren(nativeLane);
 
-    if (mode === "Addison") return;
-
     Array.from(nativeLane.children).forEach((child) => {
       if (!(child instanceof HTMLElement)) return;
       if (child.dataset.atlasSecondaryWorkHost === "true") return;
@@ -344,6 +343,7 @@ export default function AtlasDashboardUpcomingWork() {
         );
 
       setMembers(activeMembers);
+      setWorkLists(Array.isArray(team?.workLists) ? team.workLists : []);
       setWorkRows(
         Array.isArray(atlas?.serviceRecords)
           ? atlas.serviceRecords
@@ -374,18 +374,14 @@ export default function AtlasDashboardUpcomingWork() {
       if (!names.has(key)) names.set(key, clean);
     });
 
-    return [...names.values()].sort((a, b) => {
-      const rank = (name: string) =>
-        /^addison(?:\s|$)/i.test(name)
-          ? 0
-          : /^sean(?:\s|$)/i.test(name)
-            ? 1
-            : /^patrick(?:\s|$)|^pat(?:\s|$)/i.test(name)
-              ? 2
-              : 3;
-      return rank(a) - rank(b) || a.localeCompare(b);
-    });
+    return [...names.values()].sort((a, b) => displayName(a).localeCompare(displayName(b)));
   }, [members]);
+
+  useEffect(() => {
+    if (!employeeOptions.length) return;
+    if (mode === UPCOMING_MODE) return;
+    if (!employeeOptions.includes(mode)) setMode(employeeOptions[0]);
+  }, [employeeOptions, mode]);
 
   const customRows = useMemo(() => {
     const now = new Date();
@@ -413,13 +409,67 @@ export default function AtlasDashboardUpcomingWork() {
       .slice(0, 20);
   }, [mode, workRows]);
 
+  async function addWorkForSelectedPerson() {
+    if (!mode || mode === UPCOMING_MODE) return;
+    const title = window.prompt(`Add work for ${displayName(mode)}`);
+    if (!title?.trim()) return;
+
+    const directId = `direct-assignments-${propertyId}`;
+    const task = {
+      id: `team-task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      title: title.trim(),
+      assignee: mode,
+      location: "",
+      notes: "",
+      status: "Open",
+      requirePhoto: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    const existing = workLists.find((list) => String(list?.id) === directId);
+    const nextLists = existing
+      ? workLists.map((list) =>
+          String(list?.id) === directId
+            ? { ...list, tasks: [...(Array.isArray(list.tasks) ? list.tasks : []), task] }
+            : list,
+        )
+      : [
+          {
+            id: directId,
+            name: "Direct Assignments",
+            description: "One-off work assigned directly to team members.",
+            defaultAssignee: mode,
+            propertyIds: [propertyId],
+            schedule: "As needed",
+            active: true,
+            tasks: [task],
+          },
+          ...workLists,
+        ];
+
+    try {
+      const response = await fetch("/api/atlas-team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: "team-work-lists-save", workLists: nextLists }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || "Could not add work.");
+      setWorkLists(nextLists);
+      window.dispatchEvent(new CustomEvent("atlas:data-changed"));
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Could not add work.");
+    }
+  }
+
   if (!host) return null;
 
   const selector = (
     <div className="atlas-secondary-work-switcher" aria-label="Choose secondary work list">
       <select
         aria-label="Choose employee work list"
-        defaultValue="Addison"
+        value={mode === UPCOMING_MODE ? "" : mode}
         onChange={(event) => setMode(event.target.value)}
       >
         {employeeOptions.map((name) => (
@@ -428,6 +478,13 @@ export default function AtlasDashboardUpcomingWork() {
           </option>
         ))}
       </select>
+      <button
+        type="button"
+        disabled={!mode || mode === UPCOMING_MODE}
+        onClick={() => void addWorkForSelectedPerson()}
+      >
+        Add Work
+      </button>
       <button
         type="button"
         data-active={mode === UPCOMING_MODE}
@@ -568,7 +625,7 @@ export default function AtlasDashboardUpcomingWork() {
         }
       `}</style>
       {selector}
-      {mode !== "Addison" ? (
+      {mode ? (
         <div className="atlas-secondary-custom-list">
           <div className="atlas-secondary-custom-head">
             <strong>{mode === UPCOMING_MODE ? "Upcoming" : displayName(mode)}</strong>
