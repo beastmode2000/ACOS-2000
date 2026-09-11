@@ -341,6 +341,10 @@ export default function AtlasTeamWork({
     setFieldEmployeePropertyId(activePropertyId);
   }, [activePropertyId]);
 
+  useEffect(() => {
+    if (teamView === "addison") setTeamView("people");
+  }, [teamView]);
+
   async function loadAddisonWork(showLoading = false) {
     if (activePropertyId !== "2000") {
       setAddisonWork(null);
@@ -1093,7 +1097,7 @@ export default function AtlasTeamWork({
       <div style={heroStyle}>
         <div>
           <div style={eyebrowStyle}>TEAM OPERATIONS</div>
-          <h1 style={titleStyle}>{teamView === "addison" ? "Addison" : "Team"}</h1>
+          <h1 style={titleStyle}>Team</h1>
           <p style={heroCopyStyle}>
             {teamView === "addison"
               ? "Add tasks here. Changes sync directly with Addison."
@@ -1130,7 +1134,7 @@ export default function AtlasTeamWork({
       </div>
 
       <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-        {([['addison','Addison'],['people','Users & Roles'],['assignments','Other Assignments']] as const).map(([value,label]) => (
+        {([['people','People & Access'],['assignments','Work Lists']] as const).map(([value,label]) => (
           <button key={value} type="button" onClick={() => setTeamView(value)} style={{...lightButtonStyle, background:teamView===value?colors.navy3:colors.card, color:teamView===value?'#fff':colors.text, borderColor:teamView===value?colors.navy3:colors.line}}>{label}</button>
         ))}
       </div>
