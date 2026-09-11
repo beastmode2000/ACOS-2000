@@ -47,6 +47,7 @@ import AtlasGraduationPartyCleanup from "./components/AtlasGraduationPartyCleanu
 import AtlasAskAtlasFreeLabels from "./components/AtlasAskAtlasFreeLabels";
 import AtlasGeneratedWorkCommentsCleanup from "./components/AtlasGeneratedWorkCommentsCleanup";
 import AtlasDropdownDismissBehavior from "./components/AtlasDropdownDismissBehavior";
+import AtlasScrollSafety from "./components/AtlasScrollSafety";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -132,6 +133,7 @@ export default function RootLayout({
         <AtlasOwnerReportHeaderPolish />
         <AtlasServiceLinkPolish />
         <AtlasWorkHistorySearch />
+        <AtlasScrollSafety />
         {children}
       </body>
     </html>
