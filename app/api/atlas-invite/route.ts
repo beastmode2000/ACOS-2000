@@ -17,7 +17,18 @@ export async function POST(request: NextRequest) {
     if (!memberId) return NextResponse.json({ ok:false, error:"This invitation is invalid or expired." }, { status:400 });
     const salt = randomBytes(16).toString("hex");
     const passwordHash = pbkdf2Sync(password, salt, 210000, 32, "sha256").toString("hex");
-    await sql`UPDATE atlas_team_access SET password_hash=${passwordHash}, password_salt=${salt}, active=true, updated_at=NOW() WHERE id=${memberId}`;
+    const updated = await sql`
+      UPDATE atlas_team_access
+      SET password_hash=${passwordHash}, password_salt=${salt}, active=true, updated_at=NOW()
+      WHERE id=${memberId}
+      RETURNING id
+    `;
+    if (!updated.length) {
+      return NextResponse.json(
+        { ok:false, error:"This invitation is linked to an old Atlas account. Ask the administrator to send a new invite." },
+        { status:400 },
+      );
+    }
     await sql`UPDATE atlas_team_invites SET used_at=NOW() WHERE token_hash=${tokenHash}`;
     return NextResponse.json({ ok:true });
   } catch (error) {
