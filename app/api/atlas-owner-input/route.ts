@@ -7,6 +7,14 @@ export const runtime = "nodejs";
 
 type Row = Record<string, unknown>;
 
+type OwnerInputPhoto = {
+  id: string;
+  name: string;
+  caption: string;
+  dataUrl: string;
+  createdAt: string;
+};
+
 function getSql() {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.NEON_DATABASE_URL;
   if (!connectionString) throw new Error("Missing DATABASE_URL");
@@ -27,6 +35,25 @@ function cleanDate(value: unknown) {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "";
 }
 
+function cleanPhotos(value: unknown): OwnerInputPhoto[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, 3)
+    .map((entry, index) => {
+      const photo = entry && typeof entry === "object" ? (entry as Row) : {};
+      const dataUrl = cleanText(photo.dataUrl, 2_000_000);
+      if (!dataUrl.startsWith("data:image/")) return null;
+      return {
+        id: cleanText(photo.id, 200) || `owner-input-photo-${Date.now()}-${index}`,
+        name: cleanText(photo.name, 240) || `Photo ${index + 1}`,
+        caption: cleanText(photo.caption, 500),
+        dataUrl,
+        createdAt: cleanText(photo.createdAt, 100) || new Date().toISOString(),
+      };
+    })
+    .filter(Boolean) as OwnerInputPhoto[];
+}
+
 async function ensureTable(sql: ReturnType<typeof neon>) {
   await sql`
     CREATE TABLE IF NOT EXISTS atlas_owner_input (
@@ -37,6 +64,7 @@ async function ensureTable(sql: ReturnType<typeof neon>) {
       question text NOT NULL,
       context text NOT NULL DEFAULT '',
       due_date date,
+      photos jsonb NOT NULL DEFAULT '[]'::jsonb,
       status text NOT NULL DEFAULT 'Awaiting Owner',
       response text NOT NULL DEFAULT '',
       response_name text NOT NULL DEFAULT '',
@@ -47,6 +75,7 @@ async function ensureTable(sql: ReturnType<typeof neon>) {
       updated_at timestamptz NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE atlas_owner_input ADD COLUMN IF NOT EXISTS photos jsonb NOT NULL DEFAULT '[]'::jsonb`;
   await sql`
     CREATE INDEX IF NOT EXISTS atlas_owner_input_property_status_idx
     ON atlas_owner_input(property_id, status, created_at DESC)
@@ -62,6 +91,7 @@ function mapRow(row: Row, includeToken = false) {
     question: String(row.question || ""),
     context: String(row.context || ""),
     dueDate: row.due_date ? String(row.due_date).slice(0, 10) : "",
+    photos: Array.isArray(row.photos) ? row.photos : [],
     status: String(row.status || "Awaiting Owner"),
     response: String(row.response || ""),
     responseName: String(row.response_name || ""),
@@ -144,14 +174,16 @@ export async function POST(request: NextRequest) {
     const projectTitle = cleanText(body.projectTitle, 500);
     const context = cleanText(body.context, 8000);
     const dueDate = cleanDate(body.dueDate);
+    const photos = cleanPhotos(body.photos);
 
     const rows = await sql`
       INSERT INTO atlas_owner_input (
-        id, property_id, project_id, project_title, question, context, due_date,
+        id, property_id, project_id, project_title, question, context, due_date, photos,
         status, response, response_name, response_choice, share_token, created_at, updated_at
       ) VALUES (
         ${id}, ${propertyId}, ${projectId}, ${projectTitle}, ${question}, ${context},
-        ${dueDate || null}::date, 'Awaiting Owner', '', '', '', ${shareToken}, NOW(), NOW()
+        ${dueDate || null}::date, ${JSON.stringify(photos)}::jsonb,
+        'Awaiting Owner', '', '', '', ${shareToken}, NOW(), NOW()
       )
       RETURNING *
     `;
