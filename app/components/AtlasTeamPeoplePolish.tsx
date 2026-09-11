@@ -379,7 +379,6 @@ export default function AtlasTeamPeoplePolish() {
     const query = normalized(search);
     return (payload?.members || [])
       .filter((member) => member.active !== false)
-      .filter((member) => !isHiddenAdmin(member))
       .filter(
         (member) =>
           !member.propertyIds?.length || member.propertyIds.includes(propertyId),
@@ -519,31 +518,59 @@ export default function AtlasTeamPeoplePolish() {
     [selected],
   );
 
-  const assignWork = () => {
+  const assignWork = async () => {
     if (!selected) return;
+    const title = window.prompt(`Add work for ${selected.name}`);
+    if (!title?.trim()) return;
 
-    if (/^addison(?:\s|$)/i.test(selected.name)) {
-      clickNativeTeamButton("Addison");
-      window.setTimeout(() => clickNativeTeamButton("Add Task"), 80);
-      return;
-    }
+    const directId = `direct-assignments-${propertyId}`;
+    const currentLists = Array.isArray(payload?.workLists) ? payload!.workLists! : [];
+    const now = new Date().toISOString();
+    const task = {
+      id: `team-task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      title: title.trim(),
+      assignee: selected.name,
+      location: "",
+      notes: "",
+      status: "Open",
+      requirePhoto: false,
+      createdAt: now,
+    };
 
-    if (!nativePeople) return;
-    const matchingInput = Array.from(
-      nativePeople.querySelectorAll<HTMLInputElement>("input"),
-    ).find((input) => normalized(input.value) === normalized(selected.name));
-    if (!matchingInput) return;
+    const existing = currentLists.find((list) => String(list.id) === directId);
+    const nextLists = existing
+      ? currentLists.map((list) =>
+          String(list.id) === directId
+            ? { ...list, tasks: [...(Array.isArray(list.tasks) ? list.tasks : []), task] }
+            : list,
+        )
+      : [
+          {
+            id: directId,
+            name: "Direct Assignments",
+            description: "One-off work assigned directly to team members.",
+            defaultAssignee: selected.name,
+            propertyIds: [propertyId],
+            schedule: "As needed",
+            active: true,
+            tasks: [task],
+          },
+          ...currentLists,
+        ];
 
-    let card = matchingInput.parentElement as HTMLElement | null;
-    while (card && card !== nativePeople) {
-      const addTask = Array.from(card.querySelectorAll<HTMLButtonElement>("button")).find(
-        (button) => normalized(button.textContent) === "+ add task",
-      );
-      if (addTask) {
-        addTask.click();
-        return;
-      }
-      card = card.parentElement;
+    try {
+      const response = await fetch("/api/atlas-team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: "team-work-lists-save", workLists: nextLists }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || "Could not assign work.");
+      setPayload((current) => current ? { ...current, workLists: nextLists } : current);
+      window.dispatchEvent(new CustomEvent("atlas:data-changed"));
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Could not assign work.");
     }
   };
 
@@ -669,18 +696,90 @@ export default function AtlasTeamPeoplePolish() {
                     <span aria-hidden="true">⌄</span>
                   </summary>
                   <div className="atlas-team-access-content">
-                    <div>
+                    <label>
                       <span>Role</span>
-                      <strong>{selected.role || "Team member"}</strong>
-                    </div>
+                      <select
+                        value={selected.role || "employee"}
+                        disabled={normalized(selected.role) === "master"}
+                        onChange={(event) => {
+                          const role = event.target.value;
+                          setPayload((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  members: (current.members || []).map((member) =>
+                                    member.id === selected.id ? { ...member, role } : member,
+                                  ),
+                                }
+                              : current,
+                          );
+                        }}
+                      >
+                        <option value="administrator">Administrator</option>
+                        <option value="manager">Manager</option>
+                        <option value="employee">Employee</option>
+                        <option value="vendor">Vendor</option>
+                        <option value="viewer">Viewer</option>
+                        {normalized(selected.role) === "master" ? <option value="master">Master</option> : null}
+                      </select>
+                    </label>
                     <div>
                       <span>Properties</span>
-                      <strong>{selected.propertyIds?.length ? selected.propertyIds.join(", ") : "None"}</strong>
+                      <div className="atlas-team-property-checks">
+                        {["2000", "6855", "3661", "hangar"].map((id) => (
+                          <label key={id}>
+                            <input
+                              type="checkbox"
+                              checked={(selected.propertyIds || []).includes(id)}
+                              disabled={normalized(selected.role) === "master"}
+                              onChange={(event) => {
+                                const currentIds = selected.propertyIds || [];
+                                const propertyIds = event.target.checked
+                                  ? Array.from(new Set([...currentIds, id]))
+                                  : currentIds.filter((item) => item !== id);
+                                if (!propertyIds.length) return;
+                                setPayload((current) =>
+                                  current
+                                    ? {
+                                        ...current,
+                                        members: (current.members || []).map((member) =>
+                                          member.id === selected.id ? { ...member, propertyIds } : member,
+                                        ),
+                                      }
+                                    : current,
+                                );
+                              }}
+                            />
+                            {id}
+                          </label>
+                        ))}
+                      </div>
                     </div>
                     <div>
                       <span>Operating areas</span>
                       <strong>{responsibilities.length ? responsibilities.join(", ") : "None"}</strong>
                     </div>
+                    <button
+                      type="button"
+                      className="atlas-team-save-access"
+                      onClick={async () => {
+                        try {
+                          const response = await fetch("/api/atlas-team", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            credentials: "include",
+                            body: JSON.stringify({ members: payload?.members || [] }),
+                          });
+                          const data = await response.json().catch(() => ({}));
+                          if (!response.ok || data?.ok === false) throw new Error(data?.error || "Could not save access.");
+                          window.dispatchEvent(new CustomEvent("atlas:data-changed"));
+                        } catch (error) {
+                          window.alert(error instanceof Error ? error.message : "Could not save access.");
+                        }
+                      }}
+                    >
+                      Save Access
+                    </button>
                   </div>
                 </details>
               </>
@@ -973,6 +1072,40 @@ function TeamPeopleStyles() {
         gap: 8px;
         padding: 0 13px 13px;
       }
+      .atlas-team-access-content select {
+        width: 100%;
+        min-height: 36px;
+        border: 1px solid ${colors.line};
+        border-radius: 8px;
+        background: #fff;
+        padding: 6px 8px;
+      }
+
+      .atlas-team-property-checks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px 12px;
+        margin-top: 5px;
+      }
+
+      .atlas-team-property-checks label {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+      }
+
+      .atlas-team-save-access {
+        min-height: 36px !important;
+        border: 1px solid #1f6fd1 !important;
+        border-radius: 9px !important;
+        background: #1f6fd1 !important;
+        color: #fff !important;
+        padding: 7px 11px !important;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
 
       .atlas-team-access-content > div {
         display: grid;
