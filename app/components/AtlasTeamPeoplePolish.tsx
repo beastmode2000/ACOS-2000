@@ -252,6 +252,7 @@ export default function AtlasTeamPeoplePolish() {
   const [newPersonProperties, setNewPersonProperties] = useState<string[]>(["2000"]);
   const [addPersonBusy, setAddPersonBusy] = useState(false);
   const [addPersonMessage, setAddPersonMessage] = useState("");
+  const [newPersonInviteLink, setNewPersonInviteLink] = useState("");
 
   useEffect(() => {
     let frame = 0;
@@ -554,28 +555,39 @@ export default function AtlasTeamPeoplePolish() {
     };
 
     setAddPersonBusy(true);
-    setAddPersonMessage("Creating invitation…");
+    setAddPersonMessage("Creating person…");
+    setNewPersonInviteLink("");
+
     try {
-      const response = await fetch("/api/atlas-team", {
+      const createResponse = await fetch("/api/atlas-team", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ action: "invite", member }),
+        body: JSON.stringify({ members: [member] }),
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || data?.ok === false) {
-        throw new Error(data?.error || "Could not create invitation.");
+      const createData = await createResponse.json().catch(() => ({}));
+      if (!createResponse.ok || createData?.ok === false) {
+        throw new Error(createData?.error || "Could not create person.");
       }
-      setNewPersonName("");
-      setNewPersonEmail("");
-      setNewPersonRole("employee");
-      setNewPersonProperties([propertyId]);
-      setShowAddPerson(false);
-      setAddPersonMessage("");
+
+      const linkResponse = await fetch("/api/atlas-team-invite-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ memberId: member.id }),
+      });
+      const linkData = await linkResponse.json().catch(() => ({}));
+      if (!linkResponse.ok || linkData?.ok === false || !linkData?.invitePath) {
+        throw new Error(linkData?.error || "Person was created, but the invite link could not be created.");
+      }
+
+      const link = `${window.location.origin}${linkData.invitePath}`;
+      setNewPersonInviteLink(link);
+      setAddPersonMessage(`${name} created. Copy the invite link and send it to them.`);
       await loadTeam();
       window.dispatchEvent(new CustomEvent("atlas:data-changed"));
     } catch (error) {
-      setAddPersonMessage(error instanceof Error ? error.message : "Could not create invitation.");
+      setAddPersonMessage(error instanceof Error ? error.message : "Could not create person.");
     } finally {
       setAddPersonBusy(false);
     }
@@ -654,6 +666,7 @@ export default function AtlasTeamPeoplePolish() {
                   setShowAddPerson((open) => !open);
                   setNewPersonProperties([propertyId]);
                   setAddPersonMessage("");
+                  setNewPersonInviteLink("");
                 }}
               >
                 + Add Person
@@ -708,11 +721,31 @@ export default function AtlasTeamPeoplePolish() {
                   </div>
                 </div>
                 {addPersonMessage ? <div className="atlas-team-add-person-message">{addPersonMessage}</div> : null}
+                {newPersonInviteLink ? (
+                  <div className="atlas-team-invite-link-box">
+                    <input value={newPersonInviteLink} readOnly aria-label="Invite link" />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(newPersonInviteLink);
+                          setAddPersonMessage("Invite link copied.");
+                        } catch {
+                          setAddPersonMessage("Copy the invite link from the field above.");
+                        }
+                      }}
+                    >
+                      Copy Invite Link
+                    </button>
+                  </div>
+                ) : null}
                 <div className="atlas-team-add-person-actions">
-                  <button type="button" onClick={() => setShowAddPerson(false)}>Cancel</button>
-                  <button type="button" onClick={() => void addPerson()} disabled={addPersonBusy}>
-                    {addPersonBusy ? "Sending…" : "Send Invite"}
-                  </button>
+                  <button type="button" onClick={() => setShowAddPerson(false)}>Close</button>
+                  {!newPersonInviteLink ? (
+                    <button type="button" onClick={() => void addPerson()} disabled={addPersonBusy}>
+                      {addPersonBusy ? "Creating…" : "Create Person"}
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -1021,6 +1054,29 @@ function TeamPeopleStyles() {
         display: flex;
         justify-content: flex-end;
         gap: 7px;
+      }
+
+      .atlas-team-invite-link-box {
+        display: grid;
+        gap: 7px;
+        padding-top: 2px;
+      }
+
+      .atlas-team-invite-link-box input {
+        width: 100%;
+        font-size: 11px !important;
+      }
+
+      .atlas-team-invite-link-box button {
+        min-height: 34px !important;
+        border: 1px solid #1f6fd1 !important;
+        border-radius: 8px !important;
+        background: #1f6fd1 !important;
+        color: #fff !important;
+        padding: 6px 9px !important;
+        font-size: 11px !important;
+        font-weight: 800;
+        cursor: pointer;
       }
 
       .atlas-team-add-person-actions button {
