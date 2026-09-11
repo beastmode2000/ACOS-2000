@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import AtlasOwnerReportLegacy from "./AtlasOwnerReportLegacy";
+import AtlasOwnerInputPanel from "./AtlasOwnerInputPanel";
 
 const REPORT_CACHE_PREFIX = "atlas-owner-report-projects-v1:";
 
@@ -258,6 +259,12 @@ export default function AtlasOwnerReport(props: any) {
 
   return (
     <div ref={rootRef} onClickCapture={armPrint} style={{ display: "grid", gap: 12 }}>
+      <AtlasOwnerInputPanel
+        propertyId={propertyId}
+        projects={projects}
+        isMobile={props.isMobile}
+        colors={props.colors}
+      />
       <AtlasOwnerReportLegacy {...props} workOrders={workOrders} />
       {reportPhotos.length ? (
         <section style={{ border: `1px solid ${props.colors?.line || "#D9E2EA"}`, borderRadius: 12, background: "#FFFFFF", padding: props.isMobile ? 10 : 13 }}>
