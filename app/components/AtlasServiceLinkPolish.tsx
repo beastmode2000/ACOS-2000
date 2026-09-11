@@ -546,6 +546,22 @@ export default function AtlasServiceLinkPolish() {
 
   return (
     <style jsx global>{`
+      @media (min-width: 901px) {
+        .atlas-sidebar-polished {
+          position: sticky !important;
+          top: 0 !important;
+          align-self: start !important;
+          height: 100dvh !important;
+          min-height: 100dvh !important;
+          max-height: 100dvh !important;
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+          overscroll-behavior: contain !important;
+          box-sizing: border-box !important;
+          scrollbar-gutter: stable !important;
+        }
+      }
+
       .atlas-sidebar-polished .atlas-sidebar-item-polished {
         background: transparent !important;
         border-color: transparent !important;
