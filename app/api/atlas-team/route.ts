@@ -588,6 +588,7 @@ export async function POST(request: NextRequest) {
       member?: Member;
       memberId?: string;
       name?: string;
+      email?: string;
       propertyId?: string;
       workLists?: unknown[];
     };
@@ -750,35 +751,56 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.action === "delete") {
-      const memberId = String(body.memberId || "").trim();
+      const requestedId = String(body.memberId || "").trim();
+      const requestedEmail = String(body.email || "").trim().toLowerCase();
+      const requestedName = String(body.name || "").trim();
 
-      if (!memberId) {
+      if (!requestedId && !requestedEmail && !requestedName) {
         return NextResponse.json(
-          { ok: false, error: "Missing Atlas user id." },
+          { ok: false, error: "Missing Atlas user." },
           { status: 400 },
         );
       }
 
-      const existing = (await sql`
-        SELECT id, email, role
-        FROM atlas_team_access
-        WHERE id = ${memberId}
-        LIMIT 1
-      `) as unknown as Array<{ id: string; email: string; role: string }>;
+      let existing = requestedId
+        ? ((await sql`
+            SELECT id, name, email, role
+            FROM atlas_team_access
+            WHERE id = ${requestedId}
+            LIMIT 1
+          `) as unknown as Array<{ id: string; name: string; email: string; role: string }>)
+        : [];
 
-      if (!existing.length) {
-        return NextResponse.json(
-          { ok: false, error: "Atlas user not found." },
-          { status: 404 },
-        );
+      if (!existing.length && requestedEmail) {
+        existing = (await sql`
+          SELECT id, name, email, role
+          FROM atlas_team_access
+          WHERE lower(email) = ${requestedEmail}
+          LIMIT 1
+        `) as unknown as Array<{ id: string; name: string; email: string; role: string }>;
       }
 
-      const existingEmail = String(existing[0].email || "").toLowerCase();
-      const existingRole = normalizeRole(existing[0].role);
+      if (!existing.length && requestedName) {
+        existing = (await sql`
+          SELECT id, name, email, role
+          FROM atlas_team_access
+          WHERE lower(name) = lower(${requestedName})
+          ORDER BY updated_at DESC
+          LIMIT 1
+        `) as unknown as Array<{ id: string; name: string; email: string; role: string }>;
+      }
+
+      if (!existing.length) {
+        return NextResponse.json({ ok: true, alreadyDeleted: true });
+      }
+
+      const target = existing[0];
+      const targetEmail = String(target.email || "").toLowerCase();
+      const targetRole = normalizeRole(target.role);
       if (
-        memberId === "nick" ||
-        existingEmail === "nthornton87@yahoo.com" ||
-        existingRole === "master"
+        target.id === "nick" ||
+        targetEmail === "nthornton87@yahoo.com" ||
+        targetRole === "master"
       ) {
         return NextResponse.json(
           { ok: false, error: "The Master account cannot be deleted." },
@@ -788,15 +810,15 @@ export async function POST(request: NextRequest) {
 
       await sql`
         DELETE FROM atlas_team_invites
-        WHERE member_id = ${memberId}
+        WHERE member_id = ${target.id}
       `;
 
       await sql`
         DELETE FROM atlas_team_access
-        WHERE id = ${memberId}
+        WHERE id = ${target.id}
       `;
 
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true, deletedId: target.id });
     }
 
     if (body.action === "invite" && body.member) {
