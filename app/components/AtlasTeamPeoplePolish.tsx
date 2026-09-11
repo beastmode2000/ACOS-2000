@@ -590,6 +590,34 @@ export default function AtlasTeamPeoplePolish() {
     }
   };
 
+  const removePerson = async () => {
+    if (!selected || normalized(selected.role) === "master") return;
+    if (!window.confirm(`Remove ${selected.name} from Team?`)) return;
+
+    try {
+      const response = await fetch("/api/atlas-team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "delete",
+          memberId: selected.id,
+          email: selected.email || "",
+          name: selected.name,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) {
+        throw new Error(data?.error || "Could not remove person.");
+      }
+      setSelectedId("");
+      await loadTeam();
+      window.dispatchEvent(new CustomEvent("atlas:data-changed"));
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Could not remove person.");
+    }
+  };
+
   const assignWork = async () => {
     if (!selected) return;
     const title = window.prompt(`Add work for ${selected.name}`);
