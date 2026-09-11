@@ -685,6 +685,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [newWorkOpen, setNewWorkOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [workEditorOpen, setWorkEditorOpen] = useState(false);
+  const [workOrderSaving, setWorkOrderSaving] = useState(false);
   const [newWorkDraft, setNewWorkDraft] = useState<{
     title: string;
     workType: WorkItemType;
@@ -1492,6 +1493,17 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     setPendingTemplate(null);
   }
 
+  async function saveOpenWorkOrder() {
+    if (workOrderSaving || !selectedService?.id) return;
+    setWorkOrderSaving(true);
+    try {
+      await saveWorkOrderRecord();
+      setWorkEditorOpen(false);
+    } finally {
+      setWorkOrderSaving(false);
+    }
+  }
+
   function safeSelectChange(
     event: React.ChangeEvent<HTMLSelectElement>,
     patch: Record<string, unknown>,
@@ -2202,7 +2214,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     onClick={() => void createNewWork()}
                     style={goldButtonStyle}
                   >
-                    Create Work
+                    Save New Work Order
                   </button>
                 </div>
               </section>
@@ -2664,9 +2676,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: 11 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, position: "sticky", top: isMobile ? 58 : 0, zIndex: 7, padding: "8px 0", background: "#FFFFFF", borderBottom: `1px solid ${colors.line}` }}>
                       <div style={eyebrowStyle}>Edit Work</div>
-                      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={async () => { await saveWorkOrderRecord(); setWorkEditorOpen(false); }} style={{ ...goldButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Save</button><button type="button" onClick={() => void deleteWorkOrderRecord(selectedService)} style={{ ...dangerButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Delete</button><select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: "auto", minWidth: 120, minHeight: 32, color: colors.text, fontSize: 12, fontWeight: 700, background: "#FFFFFF" }} aria-label="Work order actions"><option value="">Actions</option>{isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : <><option value="reschedule">{selectedService.recurring ? "Reschedule This Time" : "Reschedule"}</option>{selectedService.recurring ? <><option value="not-needed">Not Needed This Time</option><option value="edit-series">Edit Series</option><option value="stop-series">Stop Series</option></> : null}</>}<option value="delete">Delete</option></select><button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 32, padding: "6px 9px" }}>Cancel</button></div>
+                      <button type="button" disabled={workOrderSaving} onClick={() => void saveOpenWorkOrder()} style={{ ...goldButtonStyle, width: "auto", minHeight: 42, padding: "9px 16px", opacity: workOrderSaving ? 0.65 : 1 }}>{workOrderSaving ? "Saving…" : "Save Changes"}</button>
                     </div>
                     <input value={selectedService.title || ""} onChange={(event) => updateWorkOrder({ title: event.currentTarget.value })} style={{ ...inputStyle, fontSize: 20, fontWeight: 800 }} />
                     <label style={{ display: "grid", gap: 5 }}>
@@ -3013,10 +3025,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 ) : null}
               </section> : null}
 
-              {isRecordDirty("work_orders", selectedService.id) ? (
-                <div style={{ position: "sticky", bottom: 0, zIndex: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: 10, border: `1px solid ${colors.gold}`, borderRadius: 12, background: "rgba(255,255,255,.97)", boxShadow: "0 -6px 20px rgba(15,42,67,.12)" }}>
-                  <span style={{ ...mutedSmallStyle, fontWeight: 800 }}>Unsaved changes</span>
-                  <button type="button" onClick={() => void saveWorkOrderRecord()} style={{ ...goldButtonStyle, width: "auto", minHeight: 38 }}>Save Work</button>
+              {workEditorOpen ? (
+                <div style={{ position: "sticky", bottom: 0, zIndex: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: 10, border: `1px solid ${colors.gold}`, borderRadius: 12, background: "rgba(255,255,255,.98)", boxShadow: "0 -6px 20px rgba(15,42,67,.12)" }}>
+                  <span style={{ ...mutedSmallStyle, fontWeight: 800 }}>{isRecordDirty("work_orders", selectedService.id) ? "Unsaved changes" : "Work order editor"}</span>
+                  <div style={{ display: "flex", gap: 7 }}>
+                    <button type="button" onClick={() => setWorkEditorOpen(false)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 42 }}>Cancel</button>
+                    <button type="button" disabled={workOrderSaving} onClick={() => void saveOpenWorkOrder()} style={{ ...goldButtonStyle, width: "auto", minHeight: 42, opacity: workOrderSaving ? 0.65 : 1 }}>{workOrderSaving ? "Saving…" : "Save Changes"}</button>
+                  </div>
                 </div>
               ) : null}
 
