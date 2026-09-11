@@ -893,6 +893,27 @@ export async function POST(request: NextRequest) {
 
       const invitePath = `/invite?token=${token}`;
       const inviteUrl = new URL(invitePath, request.nextUrl.origin).toString();
+      const emailConfigured =
+        Boolean(process.env.RESEND_API_KEY) &&
+        Boolean(process.env.ATLAS_INVITE_FROM);
+
+      if (!emailConfigured) {
+        await sql`
+          UPDATE atlas_team_invites
+          SET
+            email_status = 'Not Sent',
+            email_error = NULL
+          WHERE token_hash = ${hash}
+        `;
+
+        return NextResponse.json({
+          ok: true,
+          emailSent: false,
+          inviteStatus: "Not Sent",
+          invitePath,
+          email: member.email.toLowerCase(),
+        });
+      }
 
       try {
         const emailMessageId = await sendInviteEmail({
@@ -916,6 +937,7 @@ export async function POST(request: NextRequest) {
           ok: true,
           emailSent: true,
           inviteStatus: "Sent",
+          invitePath,
           email: member.email.toLowerCase(),
         });
       } catch (emailError) {
@@ -932,15 +954,14 @@ export async function POST(request: NextRequest) {
           WHERE token_hash = ${hash}
         `;
 
-        return NextResponse.json(
-          {
-            ok: false,
-            emailSent: false,
-            inviteStatus: "Failed",
-            error: emailErrorMessage,
-          },
-          { status: 502 },
-        );
+        return NextResponse.json({
+          ok: true,
+          emailSent: false,
+          inviteStatus: "Failed",
+          invitePath,
+          email: member.email.toLowerCase(),
+          emailError: emailErrorMessage,
+        });
       }
     }
 
