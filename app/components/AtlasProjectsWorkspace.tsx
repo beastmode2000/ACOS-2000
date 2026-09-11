@@ -239,11 +239,11 @@ export default function AtlasProjectsWorkspace(props: any) {
     propertyProjects.find((project: any) => String(project.id) === String(selectedProjectId)) || null;
 
   useEffect(() => {
-    if (!selectedProjectId && propertyProjects.length) setSelectedProjectId(String(propertyProjects[0].id));
+    if (!isMobile && !selectedProjectId && propertyProjects.length) setSelectedProjectId(String(propertyProjects[0].id));
     if (selectedProjectId && !propertyProjects.some((project: any) => String(project.id) === String(selectedProjectId))) {
       setSelectedProjectId(propertyProjects.length ? String(propertyProjects[0].id) : "");
     }
-  }, [propertyProjects, selectedProjectId]);
+  }, [propertyProjects, selectedProjectId, isMobile]);
 
   useEffect(() => {
     setEditing(false);
@@ -698,6 +698,7 @@ export default function AtlasProjectsWorkspace(props: any) {
           top: 8,
           maxHeight: isMobile ? "none" : "calc(100vh - 120px)",
           overflow: "auto",
+          display: isMobile && (Boolean(selectedProject) || showNewProject) ? "none" : "block",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 9 }}>
@@ -725,11 +726,11 @@ export default function AtlasProjectsWorkspace(props: any) {
         </div>
       </aside>
 
-      <main style={{ gridArea: "detail", width: "100%", minWidth: 0, overflow: "hidden" }}>
+      <main style={{ gridArea: "detail", width: "100%", minWidth: 0, overflow: "hidden", display: isMobile && !selectedProject && !showNewProject ? "none" : "block" }}>
         {showNewProject ? (
           <section style={{ ...card, padding: isMobile ? 11 : 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 12 }}>
-              <strong style={{ color: colors.navy, fontSize: 17 }}>New Project</strong>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{isMobile ? <button type="button" style={tinyButton} onClick={() => setShowNewProject(false)}>← Projects</button> : null}<strong style={{ color: colors.navy, fontSize: 17 }}>New Project</strong></div>
               <div style={{ display: "flex", gap: 7 }}><button type="button" style={tinyButton} onClick={() => setShowNewProject(false)}>Cancel</button><button type="button" style={goldButtonStyle} onClick={createProject}>Save Project</button></div>
             </div>
             <ProjectFields value={newDraft} onChange={setNewDraft} />
@@ -737,7 +738,8 @@ export default function AtlasProjectsWorkspace(props: any) {
         ) : selectedProject ? (
           <div style={{ display: "grid", gap: 12 }}>
             <section style={{ ...card, padding: isMobile ? 11 : 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+              {isMobile ? <button type="button" style={{ ...tinyButton, marginBottom: 10 }} onClick={() => { setSelectedProjectId(""); setEditing(false); }}>← Projects</button> : null}
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap", position: editing ? "sticky" : "static", top: 0, zIndex: 5, padding: editing ? "8px 0" : 0, background: "#FFFFFF", borderBottom: editing ? `1px solid ${colors.line}` : 0 }}>
                 <div>
                   <h2 style={{ margin: 0, color: colors.navy, fontSize: isMobile ? 19 : 22 }}>{selectedProject.title || selectedProject.name || "Project"}</h2>
                   <div style={{ ...mutedSmallStyle, marginTop: 4 }}>{[selectedProject.status || "Planning", vendorRecords.find((vendor: any) => vendor.id === selectedProject.vendorId)?.name, locations.find((location: any) => location.id === selectedProject.locationId)?.name].filter(Boolean).join(" · ")}</div>
@@ -747,7 +749,7 @@ export default function AtlasProjectsWorkspace(props: any) {
                   {editing ? (
                     <>
                       <button type="button" style={tinyButton} onClick={() => { setDraft(projectDraft(selectedProject)); setEditing(false); }}>Cancel</button>
-                      <button type="button" style={goldButtonStyle} onClick={saveProjectDetails}>Save</button>
+                      <button type="button" style={{ ...goldButtonStyle, minHeight: 42 }} onClick={saveProjectDetails}>Save Changes</button>
                     </>
                   ) : (
                     <button type="button" style={goldButtonStyle} onClick={() => { setDraft(projectDraft(selectedProject)); setEditing(true); }}>Edit</button>

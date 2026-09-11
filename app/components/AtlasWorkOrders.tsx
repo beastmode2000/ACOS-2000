@@ -703,6 +703,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   });
   const [newChecklistText, setNewChecklistText] = useState("");
   const [newHistoryNote, setNewHistoryNote] = useState("");
+  const [noteAuthor, setNoteAuthor] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
+  const pendingDeleteTimerRef = useRef<number | null>(null);
   const [completionNoteDraft, setCompletionNoteDraft] = useState("");
   const [undoCompletion, setUndoCompletion] = useState<{ id: string; title: string } | null>(null);
   const undoCompletionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -749,6 +752,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   useEffect(() => () => {
     if (undoCompletionTimerRef.current) clearTimeout(undoCompletionTimerRef.current);
+    if (pendingDeleteTimerRef.current) clearTimeout(pendingDeleteTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -1197,6 +1201,24 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   const favoriteRecords = useMemo(() => favoriteIds.map((id) => displayServices.find((record: any) => record.id === id)).filter(Boolean), [favoriteIds, displayServices]);
   const recentRecords = useMemo(() => recentIds.map((id) => displayServices.find((record: any) => record.id === id)).filter(Boolean), [recentIds, displayServices]);
+  const workActivity = useMemo(() => {
+    if (!selectedService?.id) return [];
+    const notes = (selectedService.notesHistory || []).map((note: any) => ({
+      id: `note-${note.id}`,
+      type: "Note",
+      text: note.text || "Work note added",
+      person: note.createdBy || "Not recorded",
+      date: note.createdAt || "",
+    }));
+    const completions = (selectedService.serviceHistory || []).map((entry: any) => ({
+      id: `completion-${entry.id}`,
+      type: "Completed",
+      text: entry.notes || "Work completed",
+      person: entry.completedBy || entry.performedBy || entry.actionBy || selectedService.assignedTo || "Not recorded",
+      date: entry.completedAt || "",
+    }));
+    return [...notes, ...completions].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  }, [selectedService]);
 
   const workSummary = useMemo(() => {
     const openRecords = displayServices.filter(isActiveWorkRecord);
@@ -1655,8 +1677,26 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       return;
     }
     if (value === "delete") {
-      await deleteWorkOrderRecord(selectedService);
+      scheduleWorkOrderDelete(selectedService);
     }
+  }
+
+  function scheduleWorkOrderDelete(record: any) {
+    const id = String(record?.id || "");
+    if (!id) return;
+    if (pendingDeleteTimerRef.current) clearTimeout(pendingDeleteTimerRef.current);
+    setPendingDelete({ id, title: record.title || "Work order" });
+    pendingDeleteTimerRef.current = window.setTimeout(() => {
+      pendingDeleteTimerRef.current = null;
+      setPendingDelete(null);
+      void deleteWorkOrderRecord(record);
+    }, 10_000);
+  }
+
+  function undoWorkOrderDelete() {
+    if (pendingDeleteTimerRef.current) clearTimeout(pendingDeleteTimerRef.current);
+    pendingDeleteTimerRef.current = null;
+    setPendingDelete(null);
   }
 
   function tomorrowDate() {
@@ -1782,11 +1822,27 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     const text = newHistoryNote.trim();
     if (!text || !selectedService) return;
     const notesHistory = [
-      { id: uid("note"), text, createdAt: new Date().toISOString() },
+      { id: uid("note"), text, createdAt: new Date().toISOString(), createdBy: noteAuthor.trim() || "Team Member" },
       ...(selectedService.notesHistory || []),
     ];
     await updateWorkOrderRecord(selectedService, { notesHistory });
     setNewHistoryNote("");
+  }
+
+  async function editHistoryNote(note: any) {
+    if (!selectedService) return;
+    const text = window.prompt("Edit work note", String(note?.text || ""));
+    if (text === null || !text.trim()) return;
+    const notesHistory = (selectedService.notesHistory || []).map((item: any) =>
+      item.id === note.id ? { ...item, text: text.trim(), editedAt: new Date().toISOString() } : item,
+    );
+    await updateWorkOrderRecord(selectedService, { notesHistory });
+  }
+
+  async function deleteHistoryNote(note: any) {
+    if (!selectedService || !window.confirm("Delete this work note?")) return;
+    const notesHistory = (selectedService.notesHistory || []).filter((item: any) => item.id !== note.id);
+    await updateWorkOrderRecord(selectedService, { notesHistory });
   }
 
   async function reopenCompletionSnapshot(entry: any) {
@@ -1940,6 +1996,12 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   return (
     <>
+      {pendingDelete ? (
+        <div role="status" style={{ position: "fixed", left: "50%", bottom: isMobile ? 78 : 24, transform: "translateX(-50%)", zIndex: 1000, display: "flex", alignItems: "center", gap: 12, width: isMobile ? "calc(100% - 24px)" : "auto", maxWidth: 520, padding: "12px 14px", borderRadius: 12, background: colors.text, color: "#FFFFFF", boxShadow: "0 12px 32px rgba(15,42,67,.28)" }}>
+          <span style={{ flex: 1, fontSize: 14, fontWeight: 700 }}>{pendingDelete.title} will be deleted.</span>
+          <button type="button" onClick={undoWorkOrderDelete} style={{ ...goldButtonStyle, width: "auto", minHeight: 38, padding: "7px 13px" }}>Undo</button>
+        </div>
+      ) : null}
       {photoChooserOpen ? (
         <div
           role="dialog"
@@ -2501,6 +2563,16 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               <summary style={{ cursor: "pointer", color: colors.muted, fontSize: 11, fontWeight: 800 }}>Recently Viewed · {recentRecords.length}</summary>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 7 }}>{recentRecords.slice(0, 6).map((record: any) => <button key={`recent-bottom-${record.id}`} type="button" onClick={() => { setNewWorkOpen(false); setDetailOpen(true); setSelectedServiceId(record.id); }} style={{ ...miniButtonStyle, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>{record.title || "Untitled Work"}</button>)}</div>
             </details> : null}
+            {(recordQuality.duplicateIds.size || recordQuality.incomplete.length) ? (
+              <details style={{ border: `1px solid ${colors.line}`, borderRadius: 10, padding: 9, background: "#FFFFFF" }}>
+                <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 800 }}>Review Work Data ({recordQuality.duplicateIds.size + recordQuality.incomplete.length})</summary>
+                <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                  {displayServices.filter((record: any) => recordQuality.duplicateIds.has(String(record.id))).map((record: any) => <button key={`duplicate-${record.id}`} type="button" onClick={() => { setDetailOpen(true); setSelectedServiceId(record.id); }} style={{ ...secondaryButtonStyle, textAlign: "left", justifyContent: "flex-start" }}>Possible duplicate: {record.title || "Untitled work"}</button>)}
+                  {recordQuality.incomplete.map((record: any) => <button key={`incomplete-${record.id}`} type="button" onClick={() => { setDetailOpen(true); setSelectedServiceId(record.id); }} style={{ ...secondaryButtonStyle, textAlign: "left", justifyContent: "flex-start" }}>Missing details: {record.title || "Untitled work"}</button>)}
+                  <span style={mutedSmallStyle}>Review only. Atlas will not merge or delete anything automatically.</span>
+                </div>
+              </details>
+            ) : null}
           </div>
         }
         drawer={
@@ -2749,7 +2821,11 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   <strong style={{ fontSize: 13 }}>Work notes</strong>
                   <span style={mutedSmallStyle}>{(selectedService.notesHistory || []).length} saved</span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 7, marginTop: isMobile ? 8 : 5 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(140px,.35fr) minmax(0,1fr) auto", gap: 7, marginTop: isMobile ? 8 : 5 }}>
+                  <select value={noteAuthor} onChange={(event) => setNoteAuthor(event.currentTarget.value)} style={inputStyle} aria-label="Note added by">
+                    <option value="">Added by…</option>
+                    {assignmentChoices.map((name) => <option key={name} value={name}>{name}</option>)}
+                  </select>
                   <input
                     value={newHistoryNote}
                     onChange={(event) => setNewHistoryNote(event.currentTarget.value)}
@@ -2764,12 +2840,32 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     {(selectedService.notesHistory || []).slice(0, 8).map((note: any) => (
                       <div key={note.id} style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 7 }}>
                         <div style={{ fontSize: 12.5, color: colors.text }}>{note.text}</div>
-                        <div style={{ ...mutedSmallStyle, marginTop: 2 }}>{note.createdAt ? new Date(note.createdAt).toLocaleString() : ""}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 3 }}>
+                          <div style={mutedSmallStyle}>{note.createdBy ? `${note.createdBy} · ` : ""}{note.createdAt ? new Date(note.createdAt).toLocaleString() : ""}{note.editedAt ? " · edited" : ""}</div>
+                          <div style={{ display: "flex", gap: 5 }}>
+                            <button type="button" onClick={() => void editHistoryNote(note)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 28, padding: "3px 7px", fontSize: 11 }}>Edit</button>
+                            <button type="button" onClick={() => void deleteHistoryNote(note)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 28, padding: "3px 7px", fontSize: 11, color: colors.red }}>Delete</button>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
                 ) : null}
               </section>
+
+              {workActivity.length ? (
+                <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 10 }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 800, listStyle: "none" }}>Work Order History ({workActivity.length})</summary>
+                  <div style={{ display: "grid", gap: 0, marginTop: 8 }}>
+                    {workActivity.slice(0, 20).map((item) => (
+                      <div key={item.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 9, padding: "8px 0", borderTop: `1px solid ${colors.line}` }}>
+                        <span style={{ ...badgeStyle(item.type), alignSelf: "start" }}>{item.type}</span>
+                        <div><div style={{ fontSize: 13, color: colors.text }}>{item.text}</div><div style={{ ...mutedSmallStyle, marginTop: 2 }}>{item.person} · {item.date ? new Date(item.date).toLocaleString() : "Date not recorded"}</div></div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
 
               {(selectedService.serviceHistory || []).length ? <details
                 key={`history-${selectedService.id}`}
