@@ -351,33 +351,6 @@ export type AtlasOperationsTemplate = {
 
 export const atlasOperationsTemplates: AtlasOperationsTemplate[] = [
   {
-    id: "graduation-party",
-    title: "Graduation Party Preparation",
-    detail: "Build a focused appearance, readiness, and final-walkthrough plan around the event date.",
-    category: "General",
-    createsProject: true,
-    items: [
-      { title: "Confirm party timing, guest areas, and owner priorities", daysBefore: 7, minutes: 30, priority: "High", category: "Planning" },
-      { title: "Landscape appearance walkthrough and punch list", daysBefore: 7, minutes: 45, priority: "High", category: "Landscaping", assignedTo: "Pat" },
-      { title: "Weed and remove dead leaves from patio and guest-area beds", daysBefore: 5, minutes: 120, priority: "High", category: "Landscaping", assignedTo: "Pat" },
-      { title: "Refresh mulch in visible beds and party areas", daysBefore: 4, minutes: 120, priority: "Medium", category: "Landscaping", assignedTo: "Pat" },
-      { title: "Mow, edge, and blow lawns and hardscape", daysBefore: 2, minutes: 180, priority: "High", category: "Landscaping", assignedTo: "Pat" },
-      { title: "Clean exterior windows in party and guest areas", daysBefore: 3, minutes: 180, priority: "High", category: "Cleanup / Prep", assignedTo: "Nick" },
-      { title: "Clean skylights and remove visible debris", daysBefore: 2, minutes: 90, priority: "Medium", category: "Cleanup / Prep", assignedTo: "Nick" },
-      { title: "Remove exterior webs around entrances, patios, and gathering areas", daysBefore: 2, minutes: 60, priority: "Medium", category: "Cleanup / Prep", addisonReady: true, assignedTo: "Addison" },
-      { title: "Clean outdoor heaters and confirm operation", daysBefore: 2, minutes: 60, priority: "High", category: "Cleanup / Prep", assignedTo: "Nick" },
-      { title: "Clean outdoor furniture, cushions, and furniture covers", daysBefore: 2, minutes: 120, priority: "High", category: "Cleanup / Prep", addisonReady: true, assignedTo: "Addison" },
-      { title: "Clean sliding-door tracks and verify smooth operation", daysBefore: 1, minutes: 60, priority: "High", category: "Cleanup / Prep", assignedTo: "Nick" },
-      { title: "Deep-clean BBQ inside and outside and confirm fuel", daysBefore: 1, minutes: 90, priority: "High", category: "Cleanup / Prep", assignedTo: "Nick" },
-      { title: "Clean walkways, staircases, patios, and obvious exterior messes", daysBefore: 1, minutes: 120, priority: "High", category: "Cleanup / Prep", addisonReady: true, assignedTo: "Addison" },
-      { title: "Pool, spa, dock, lighting, and restroom readiness check", daysBefore: 1, minutes: 90, priority: "High", category: "Inspection", assignedTo: "Nick" },
-      { title: "Help vendors unload and set up party equipment", daysBefore: 0, minutes: 120, priority: "High", category: "Vendor / Event", addisonReady: true, assignedTo: "Addison" },
-      { title: "Remove any obvious mess before guests arrive", daysBefore: 0, minutes: 45, priority: "High", category: "Cleanup / Prep", addisonReady: true, assignedTo: "Addison" },
-      { title: "Final party walkthrough", daysBefore: 0, minutes: 45, priority: "High", category: "Inspection" },
-      { title: "Post-party cleanup, furniture-cover reset, and vendor pickup check", daysBefore: -1, minutes: 180, priority: "Medium", category: "Cleanup / Prep", addisonReady: true, assignedTo: "Addison" },
-    ],
-  },
-  {
     id: "owner-arrival",
     title: "Owner Arrival Readiness",
     detail: "Prepare the property without flooding the dashboard with permanent recurring records.",

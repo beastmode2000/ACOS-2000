@@ -42,6 +42,8 @@ import AtlasOperationsPolish from "./components/AtlasOperationsPolish";
 import AtlasOwnerReportHeaderPolish from "./components/AtlasOwnerReportHeaderPolish";
 import AtlasServiceLinkPolish from "./components/AtlasServiceLinkPolish";
 import AtlasWorkHistorySearch from "./components/AtlasWorkHistorySearch";
+import AtlasSidebarScrollbarPolish from "./components/AtlasSidebarScrollbarPolish";
+import AtlasGraduationPartyCleanup from "./components/AtlasGraduationPartyCleanup";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -81,6 +83,8 @@ export default function RootLayout({
       </head>
 
       <body>
+        <AtlasGraduationPartyCleanup />
+        <AtlasSidebarScrollbarPolish />
         <AtlasVendorContactsPersistence />
         <AtlasLocationsPolish />
         <AtlasLocationsAssetStyle />
