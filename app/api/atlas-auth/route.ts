@@ -17,20 +17,6 @@ function getUsers(): AtlasUser[] {
       password: process.env.ATLAS_MASTER_PASSWORD || "",
       role: "master",
     },
-    {
-      id: "atlas-admin-steve",
-      name: "Steve",
-      email: "stevem@arcticmgnt.com",
-      password: process.env.ATLAS_STEVE_PASSWORD || "",
-      role: "admin",
-    },
-    {
-      id: "atlas-admin-kenji",
-      name: "Kenji",
-      email: "kenjij@arcticmgnt.com",
-      password: process.env.ATLAS_KENJI_PASSWORD || "",
-      role: "admin",
-    },
   ];
 }
 
