@@ -690,14 +690,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     title: string;
     workType: WorkItemType;
     workCategory: string;
-    priority: "Low" | "Medium" | "High";
+    assignedTo: string;
     date: string;
     recurrenceDays: number[];
   }>({
     title: "",
     workType: "Work Order",
     workCategory: "🔧 Maintenance",
-    priority: "Medium",
+    assignedTo: "",
     date: "",
     recurrenceDays: [],
   });
@@ -904,7 +904,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       title: template.title,
       workType: template.workType,
       workCategory: template.workCategory,
-      priority: template.priority,
+      assignedTo: template.defaultAssignee || "",
       date: template.workType === "Quick Task" ? todayKey() : "",
       recurrenceDays:
         template.workType === "Preventive Maintenance"
@@ -1442,7 +1442,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           : workType === "Project"
             ? "📋 Project"
             : "🔧 Maintenance",
-      priority: "Medium",
+      assignedTo: "",
       date:
         workType === "Quick Task"
           ? new Date().toISOString().slice(0, 10)
@@ -1464,7 +1464,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       title,
       workType: newWorkDraft.workType,
       workCategory: newWorkDraft.workCategory,
-      priority: newWorkDraft.priority,
+      priority: "Medium",
       date:
         newWorkDraft.workType === "Preventive Maintenance"
           ? alignDateToSelectedDay(newWorkDraft.date, newWorkDraft.recurrenceDays)
@@ -1481,7 +1481,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       preferredDay: pendingTemplate?.preferredDay || "Any",
       completionWindowDays: pendingTemplate?.completionWindowDays ?? 2,
       routineFlexibility: pendingTemplate?.flexibility || "Flexible",
-      assignedTo: pendingTemplate?.defaultAssignee || "",
+      assignedTo: newWorkDraft.assignedTo || pendingTemplate?.defaultAssignee || "",
       backupAssignee: pendingTemplate?.backupAssignee || "",
       seasonalMonths: pendingTemplate?.seasonalMonths || [],
       canReassign: true,
@@ -2174,22 +2174,18 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                       ))}
                   </select>
                   <select
-                    value={newWorkDraft.priority}
+                    value={newWorkDraft.assignedTo}
                     onChange={(event) => {
-                      const priority = event.currentTarget.value as
-                        | "Low"
-                        | "Medium"
-                        | "High";
-                      setNewWorkDraft((current) => ({
-                        ...current,
-                        priority,
-                      }));
+                      const assignedTo = event.currentTarget.value;
+                      setNewWorkDraft((current) => ({ ...current, assignedTo }));
                     }}
                     style={controlStyle}
+                    aria-label="Assign work to"
                   >
-                    <option value="Low">Low Priority</option>
-                    <option value="Medium">Medium Priority</option>
-                    <option value="High">High Priority</option>
+                    <option value="">Assign To…</option>
+                    {assignmentChoices.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
                   </select>
                   <input
                     type="date" onClick={(event) => event.currentTarget.showPicker?.()} onFocus={(event) => event.currentTarget.showPicker?.()} onKeyDown={(event) => event.preventDefault()} onPaste={(event) => event.preventDefault()}
