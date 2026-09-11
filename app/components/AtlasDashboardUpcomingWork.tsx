@@ -383,11 +383,23 @@ export default function AtlasDashboardUpcomingWork() {
     if (!employeeOptions.includes(mode)) setMode(employeeOptions[0]);
   }, [employeeOptions, mode]);
 
+  const allWorkRows = useMemo(() => {
+    const sharedRows: WorkRow[] = workLists.flatMap((list: any) =>
+      (Array.isArray(list?.tasks) ? list.tasks : []).map((task: any) => ({
+        ...task,
+        __teamListId: String(list?.id || ""),
+        __teamTaskId: String(task?.id || ""),
+        propertyId: propertyId,
+      })),
+    );
+    return [...workRows, ...sharedRows];
+  }, [workRows, workLists, propertyId]);
+
   const customRows = useMemo(() => {
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-    return workRows
+    return allWorkRows
       .filter((record) => record && !isComplete(record.status))
       .filter((record) => {
         const due = workDueDate(record);
@@ -407,7 +419,7 @@ export default function AtlasDashboardUpcomingWork() {
         );
       })
       .slice(0, 20);
-  }, [mode, workRows]);
+  }, [mode, allWorkRows]);
 
   async function addWorkForSelectedPerson() {
     if (!mode || mode === UPCOMING_MODE) return;
