@@ -116,6 +116,79 @@ function savedReportNote(property: string, dateLabel: string, person: string, ti
   }
 }
 
+function itemDateLabel(item: HTMLElement) {
+  const meta = String(item.querySelector<HTMLElement>(".item-main span")?.textContent || "").trim();
+  const parts = meta.split("·").map((part) => part.trim()).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : "";
+}
+
+function dayHeading(dateLabel: string) {
+  const key = dateKeyFromLabel(dateLabel);
+  if (!key) return dateLabel || "Completed";
+  const date = new Date(`${key}T12:00:00`);
+  return date.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function orderCompletedWorkByDay(completedSection: HTMLElement) {
+  if (completedSection.dataset.atlasOrderedByDay === "true") return;
+
+  const heading = completedSection.querySelector<HTMLElement>("h2");
+  if (!heading) return;
+
+  const entries = Array.from(completedSection.querySelectorAll<HTMLElement>(".item")).map((item, index) => {
+    const department = String(item.closest(".dept-group")?.querySelector("h3")?.textContent || "").trim();
+    const dateLabel = itemDateLabel(item);
+    const dateKey = dateKeyFromLabel(dateLabel);
+    return { item, department, dateLabel, dateKey, index };
+  });
+
+  if (!entries.length) return;
+
+  entries.sort((a, b) => {
+    const aKey = a.dateKey || "9999-12-31";
+    const bKey = b.dateKey || "9999-12-31";
+    return aKey.localeCompare(bKey) || a.index - b.index;
+  });
+
+  for (const group of Array.from(completedSection.querySelectorAll<HTMLElement>(".dept-group"))) {
+    group.remove();
+  }
+  for (const item of Array.from(completedSection.querySelectorAll<HTMLElement>(":scope > .item"))) {
+    item.remove();
+  }
+
+  let currentDate = "";
+  let currentGroup: HTMLElement | null = null;
+
+  for (const entry of entries) {
+    const groupKey = entry.dateKey || entry.dateLabel || "unknown";
+    if (groupKey !== currentDate) {
+      currentDate = groupKey;
+      currentGroup = completedSection.ownerDocument.createElement("div");
+      currentGroup.className = "dept-group atlas-day-group";
+      const day = completedSection.ownerDocument.createElement("h3");
+      day.textContent = dayHeading(entry.dateLabel);
+      currentGroup.appendChild(day);
+      completedSection.appendChild(currentGroup);
+    }
+
+    if (entry.department) {
+      const meta = entry.item.querySelector<HTMLElement>(".item-main span");
+      if (meta && !normalized(meta.textContent).includes(normalized(entry.department))) {
+        meta.textContent = [entry.department, meta.textContent].filter(Boolean).join(" · ");
+      }
+    }
+
+    currentGroup?.appendChild(entry.item);
+  }
+
+  completedSection.dataset.atlasOrderedByDay = "true";
+}
+
 function flattenRoutineWork(doc: Document) {
   const routineSection = sectionByHeading(doc, "Routine Work");
   if (!routineSection || routineSection.dataset.atlasFlattened === "true") return;
@@ -212,6 +285,8 @@ function flattenRoutineWork(doc: Document) {
       .replace(/\s{2,}/g, " ")
       .trim();
   }
+
+  orderCompletedWorkByDay(completedSection);
 }
 
 export default function AtlasOwnerReportHeaderPolish() {
@@ -270,6 +345,8 @@ export default function AtlasOwnerReportHeaderPolish() {
           attempts += 1;
           try {
             flattenRoutineWork(popup.document);
+            const completedSection = sectionByHeading(popup.document, "Completed Work");
+            if (completedSection) orderCompletedWorkByDay(completedSection);
           } catch {
             // Report cleanup must never block printing.
           }
