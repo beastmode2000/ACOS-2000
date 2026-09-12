@@ -79,6 +79,141 @@ function restoreNotes(root: HTMLElement) {
   }
 }
 
+function sectionByHeading(doc: Document, label: string) {
+  const heading = Array.from(doc.querySelectorAll<HTMLElement>("h1,h2,h3")).find(
+    (node) => normalized(node.textContent) === normalized(label),
+  );
+  return (heading?.closest("section") as HTMLElement | null) || null;
+}
+
+function dateKeyFromLabel(label: string) {
+  const year = new Date().getFullYear();
+  const parsed = new Date(`${label}, ${year} 12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const offset = parsed.getTimezoneOffset() * 60_000;
+  return new Date(parsed.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function reportPropertyKey(doc: Document) {
+  const property = Array.from(doc.querySelectorAll<HTMLElement>(".property,h1,h2,h3,div,span")).find(
+    (node) => /Property\s+(2000|6855|3661|Hangar)/i.test(String(node.textContent || "")),
+  );
+  const match = String(property?.textContent || "").match(/Property\s+(2000|6855|3661|Hangar)/i);
+  return String(match?.[1] || "2000").toLowerCase();
+}
+
+function savedReportNote(property: string, dateLabel: string, person: string, title: string) {
+  const date = dateKeyFromLabel(dateLabel);
+  if (!date || !title) return "";
+  const key = `atlas.owner-report.note.v1|${property}|${date}|${person.trim().toLowerCase()}|${title
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")}`;
+  try {
+    return window.localStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function flattenRoutineWork(doc: Document) {
+  const routineSection = sectionByHeading(doc, "Routine Work");
+  if (!routineSection || routineSection.dataset.atlasFlattened === "true") return;
+
+  const routineTable = routineSection.querySelector<HTMLTableElement>("table");
+  if (!routineTable) {
+    routineSection.remove();
+    return;
+  }
+
+  let completedSection = sectionByHeading(doc, "Completed Work");
+  if (!completedSection) {
+    completedSection = doc.createElement("section");
+    completedSection.className = "section";
+    const heading = doc.createElement("h2");
+    heading.textContent = "Completed Work";
+    completedSection.appendChild(heading);
+    routineSection.parentElement?.insertBefore(completedSection, routineSection.nextSibling);
+  }
+
+  const completedHeading = completedSection.querySelector<HTMLElement>("h2");
+  if (!completedHeading) return;
+
+  const dateLabels = Array.from(routineTable.querySelectorAll<HTMLTableCellElement>("thead th"))
+    .slice(1)
+    .map((cell) => String(cell.querySelector("span")?.textContent || "").trim());
+
+  const property = reportPropertyKey(doc);
+  const existing = new Set(
+    Array.from(completedSection.querySelectorAll<HTMLElement>(".item")).map((item) => {
+      const title = normalized(item.querySelector("strong")?.textContent);
+      const meta = normalized(item.querySelector(".item-main span")?.textContent);
+      return `${title}|${meta}`;
+    }),
+  );
+
+  const insertionAnchor = completedHeading.nextSibling;
+
+  for (const row of Array.from(routineTable.querySelectorAll<HTMLTableRowElement>("tbody tr"))) {
+    const firstCell = row.querySelector<HTMLTableCellElement>("td");
+    if (!firstCell) continue;
+
+    const title = String(firstCell.querySelector("strong")?.textContent || "").trim();
+    const person = String(firstCell.querySelector("span")?.textContent || "").trim();
+    if (!title) continue;
+
+    const cells = Array.from(row.querySelectorAll<HTMLTableCellElement>("td")).slice(1);
+    cells.forEach((cell, index) => {
+      if (!String(cell.textContent || "").includes("✓")) return;
+
+      const dateLabel = dateLabels[index] || "";
+      const meta = [person, dateLabel].filter(Boolean).join(" · ");
+      const key = `${normalized(title)}|${normalized(meta)}`;
+      if (existing.has(key)) return;
+
+      const item = doc.createElement("div");
+      item.className = "item";
+
+      const main = doc.createElement("div");
+      main.className = "item-main";
+
+      const strong = doc.createElement("strong");
+      strong.textContent = title;
+      main.appendChild(strong);
+
+      if (meta) {
+        const span = doc.createElement("span");
+        span.textContent = meta;
+        main.appendChild(span);
+      }
+
+      item.appendChild(main);
+
+      const noteText = savedReportNote(property, dateLabel, person, title);
+      if (noteText) {
+        const note = doc.createElement("div");
+        note.className = "note";
+        note.textContent = noteText;
+        item.appendChild(note);
+      }
+
+      completedSection?.insertBefore(item, insertionAnchor);
+      existing.add(key);
+    });
+  }
+
+  routineSection.dataset.atlasFlattened = "true";
+  routineSection.remove();
+
+  const summary = doc.querySelector<HTMLElement>(".summary");
+  if (summary) {
+    summary.innerHTML = summary.innerHTML
+      .replace(/\s*\d+ recurring routine(?:s)? (?:was|were) rolled up by completion day\./i, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+}
+
 export default function AtlasOwnerReportHeaderPolish() {
   useEffect(() => {
     let frame = 0;
@@ -121,18 +256,45 @@ export default function AtlasOwnerReportHeaderPolish() {
       saveRowNote(row, root);
     };
 
+    const originalOpen = window.open;
+    const patchedOpen = ((url?: string | URL, target?: string, features?: string) => {
+      const popup = originalOpen(
+        typeof url === "string" ? url : url?.toString(),
+        target,
+        features,
+      );
+
+      if (popup) {
+        let attempts = 0;
+        const repairPopup = () => {
+          attempts += 1;
+          try {
+            flattenRoutineWork(popup.document);
+          } catch {
+            // Report cleanup must never block printing.
+          }
+          if (!popup.closed && attempts < 40) window.setTimeout(repairPopup, 25);
+        };
+        window.setTimeout(repairPopup, 0);
+      }
+
+      return popup;
+    }) as typeof window.open;
+
     schedule();
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true, attributes: true });
     window.addEventListener("resize", schedule);
     document.addEventListener("input", rememberNote, true);
     document.addEventListener("change", rememberNote, true);
+    window.open = patchedOpen;
 
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", schedule);
       document.removeEventListener("input", rememberNote, true);
       document.removeEventListener("change", rememberNote, true);
+      window.open = originalOpen;
       if (frame) window.cancelAnimationFrame(frame);
     };
   }, []);
