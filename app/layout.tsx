@@ -17,6 +17,7 @@ import AtlasAssetEditVisibilityFix from "./components/AtlasAssetEditVisibilityFi
 import AtlasAssetsViewportPolish from "./components/AtlasAssetsViewportPolish";
 import AtlasDepartmentAssetPhotoPolish from "./components/AtlasDepartmentAssetPhotoPolish";
 import AtlasWorkPolish from "./components/AtlasWorkPolish";
+import AtlasWorkListPolish from "./components/AtlasWorkListPolish";
 import AtlasWorkCategoryCanonicalizer from "./components/AtlasWorkCategoryCanonicalizer";
 import AtlasWorkEditorCleanup from "./components/AtlasWorkEditorCleanup";
 import AtlasWorkWeekWrap from "./components/AtlasWorkWeekWrap";
@@ -112,6 +113,7 @@ export default function RootLayout({
         <AtlasAssetsViewportPolish />
         <AtlasDepartmentAssetPhotoPolish />
         <AtlasWorkPolish />
+        <AtlasWorkListPolish />
         <AtlasWorkCategoryCanonicalizer />
         <AtlasWorkEditorCleanup />
         <AtlasWorkWeekWrap />
