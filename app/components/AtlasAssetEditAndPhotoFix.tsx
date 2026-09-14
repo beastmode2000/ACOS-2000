@@ -31,6 +31,25 @@ function resetDetailToTop() {
   }
 }
 
+function clickLiveNativeAssetEdit(proxy: HTMLButtonElement) {
+  const drawer = proxy.closest<HTMLElement>(".atlas-asset-drawer");
+  if (!drawer) return false;
+
+  const nativeEdit = Array.from(drawer.querySelectorAll<HTMLButtonElement>("button")).find(
+    (button) => {
+      if (button === proxy || button.classList.contains("atlas-asset-inline-action")) return false;
+      const aria = normalized(button.getAttribute("aria-label"));
+      const title = normalized(button.getAttribute("title"));
+      const text = normalized(button.textContent);
+      return aria === "edit asset" || title === "edit asset" || text === "edit asset";
+    },
+  );
+
+  if (!nativeEdit) return false;
+  nativeEdit.click();
+  return true;
+}
+
 export default function AtlasAssetEditAndPhotoFix() {
   useEffect(() => {
     let lastAssetTitle = "";
@@ -56,11 +75,23 @@ export default function AtlasAssetEditAndPhotoFix() {
       const target = event.target;
       if (!(target instanceof Element)) return;
 
+      const headerEdit = target.closest<HTMLButtonElement>(".atlas-asset-inline-edit");
+      if (headerEdit) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        clickLiveNativeAssetEdit(headerEdit);
+        window.requestAnimationFrame(() => {
+          resetDetailToTop();
+          window.requestAnimationFrame(resetDetailToTop);
+        });
+        return;
+      }
+
       const assetRow = target.closest<HTMLElement>(
         ".atlas-asset-list-card-polished, .atlas-gold-hover-card",
       );
-      const headerEdit = target.closest<HTMLElement>(".atlas-asset-inline-edit");
-      if (!assetRow && !headerEdit) return;
+      if (!assetRow) return;
 
       window.requestAnimationFrame(() => {
         resetDetailToTop();
