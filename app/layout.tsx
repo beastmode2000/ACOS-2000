@@ -17,11 +17,13 @@ import AtlasAssetAdditionalInfo from "./components/AtlasAssetAdditionalInfo";
 import AtlasAssetEditVisibilityFix from "./components/AtlasAssetEditVisibilityFix";
 import AtlasAssetsViewportPolish from "./components/AtlasAssetsViewportPolish";
 import AtlasDepartmentAssetPhotoPolish from "./components/AtlasDepartmentAssetPhotoPolish";
+import AtlasAssetListActionsPolish from "./components/AtlasAssetListActionsPolish";
 import AtlasWorkPolish from "./components/AtlasWorkPolish";
 import AtlasWorkListPolish from "./components/AtlasWorkListPolish";
 import AtlasWorkCategoryCanonicalizer from "./components/AtlasWorkCategoryCanonicalizer";
 import AtlasWorkEditorCleanup from "./components/AtlasWorkEditorCleanup";
 import AtlasWorkWeekWrap from "./components/AtlasWorkWeekWrap";
+import AtlasWorkWrapPlacement from "./components/AtlasWorkWrapPlacement";
 import AtlasDashboardNoteActionsPolish from "./components/AtlasDashboardNoteActionsPolish";
 import AtlasDashboardUpcomingWork from "./components/AtlasDashboardUpcomingWork";
 import AtlasDashboardDefaultUpcoming from "./components/AtlasDashboardDefaultUpcoming";
@@ -117,11 +119,13 @@ export default function RootLayout({
         <AtlasAssetEditVisibilityFix />
         <AtlasAssetsViewportPolish />
         <AtlasDepartmentAssetPhotoPolish />
+        <AtlasAssetListActionsPolish />
         <AtlasWorkPolish />
         <AtlasWorkListPolish />
         <AtlasWorkCategoryCanonicalizer />
         <AtlasWorkEditorCleanup />
         <AtlasWorkWeekWrap />
+        <AtlasWorkWrapPlacement />
         <AtlasDashboardNoteActionsPolish />
         <AtlasDashboardUpcomingWork />
         <AtlasDashboardDefaultUpcoming />
