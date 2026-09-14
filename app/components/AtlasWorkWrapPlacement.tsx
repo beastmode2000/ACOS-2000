@@ -48,7 +48,9 @@ export default function AtlasWorkWrapPlacement() {
         });
         header.appendChild(inline);
       }
-      inline.textContent = original.textContent || "Week Wrap-Up";
+
+      const label = original.textContent || "Week Wrap-Up";
+      if (inline.textContent !== label) inline.textContent = label;
     };
 
     const schedule = () => {
