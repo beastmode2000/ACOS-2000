@@ -44,15 +44,6 @@ function liveNativeButton(drawer: HTMLElement, label: "edit" | "delete") {
   }) || null;
 }
 
-function displayedAssetName(drawer: HTMLElement | null) {
-  if (!drawer) return "";
-  return (
-    drawer.querySelector<HTMLElement>(".atlas-asset-reference-title-line h2")?.textContent?.trim() ||
-    drawer.querySelector<HTMLElement>("h3")?.textContent?.trim() ||
-    ""
-  );
-}
-
 function assetCardName(card: HTMLElement | null) {
   return card?.querySelector<HTMLElement>("button strong, strong")?.textContent?.trim() || "";
 }
@@ -67,31 +58,47 @@ function cardForAssetName(name: string) {
   ).find((card) => normalized(assetCardName(card)) === wanted) || null;
 }
 
-function actionInCard(card: HTMLElement | null, label: "edit" | "delete") {
+function actionInCard(
+  card: HTMLElement | null,
+  label: "edit" | "delete",
+  assetName = "",
+) {
   if (!card) return null;
+  const wantedName = normalized(assetName);
   return Array.from(card.querySelectorAll<HTMLButtonElement>("button")).find((button) => {
-    if (button.classList.contains("atlas-asset-inline-action")) return false;
     const text = normalized(button.textContent);
     const aria = normalized(button.getAttribute("aria-label"));
     const title = normalized(button.getAttribute("title"));
-    if (label === "edit") return text === "edit" || title === "edit asset" || aria.startsWith("edit ");
-    return text === "delete" || text === "delete asset" || title === "delete asset" || aria.startsWith("delete ");
+    if (label === "edit") {
+      return (
+        text === "edit" ||
+        title === "edit asset" ||
+        aria === "edit asset" ||
+        (wantedName && aria === `edit ${wantedName}`)
+      );
+    }
+    return (
+      text === "delete" ||
+      text === "delete asset" ||
+      title === "delete asset" ||
+      aria === "delete asset" ||
+      (wantedName && aria === `delete ${wantedName}`)
+    );
   }) || null;
 }
 
-function namedAssetAction(name: string, label: "edit" | "delete") {
+function actionForAssetName(assetName: string, label: "edit" | "delete") {
   const root = assetsMain();
-  const wanted = normalized(name);
-  if (!root || !wanted) return null;
+  const wantedName = normalized(assetName);
+  if (!root || !wantedName) return null;
 
-  const exactAria = `${label} ${wanted}`;
-  const byAria = Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find((button) => {
-    if (button.classList.contains("atlas-asset-inline-action")) return false;
-    return normalized(button.getAttribute("aria-label")) === exactAria;
-  });
-  if (byAria) return byAria;
+  const exactAria = `${label} ${wantedName}`;
+  const exact = Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
+    (button) => normalized(button.getAttribute("aria-label")) === exactAria,
+  );
+  if (exact) return exact;
 
-  return actionInCard(cardForAssetName(name), label);
+  return actionInCard(cardForAssetName(assetName), label, assetName);
 }
 
 function selectedListAction(label: "edit" | "delete") {
@@ -99,7 +106,7 @@ function selectedListAction(label: "edit" | "delete") {
   const currentCard = root?.querySelector<HTMLElement>(
     ".atlas-asset-list-card-current, .atlas-gold-hover-card:has(input[type=checkbox]:checked)",
   ) || null;
-  return actionInCard(currentCard, label);
+  return actionInCard(currentCard, label, assetCardName(currentCard));
 }
 
 function realEditorOpen(drawer: HTMLElement) {
@@ -124,9 +131,14 @@ function ensureLiveInlineActions(drawer: HTMLElement) {
     return;
   }
 
-  const currentName = displayedAssetName(drawer);
-  const nativeEdit = namedAssetAction(currentName, "edit") || liveNativeButton(drawer, "edit") || selectedListAction("edit");
-  const nativeDelete = namedAssetAction(currentName, "delete") || liveNativeButton(drawer, "delete") || selectedListAction("delete");
+  const currentName =
+    drawer.querySelector<HTMLElement>(".atlas-asset-reference-title-line h2")?.textContent?.trim() ||
+    drawer.querySelector<HTMLElement>("h3")?.textContent?.trim() ||
+    "";
+  const nativeEdit =
+    liveNativeButton(drawer, "edit") || actionForAssetName(currentName, "edit") || selectedListAction("edit");
+  const nativeDelete =
+    liveNativeButton(drawer, "delete") || actionForAssetName(currentName, "delete") || selectedListAction("delete");
   if (!nativeEdit && !nativeDelete) {
     host?.remove();
     return;
@@ -177,14 +189,17 @@ export default function AtlasAssetEditAndPhotoFix() {
       const drawer = root?.querySelector<HTMLElement>(".atlas-asset-drawer") || null;
       if (!drawer) return;
 
-      const currentName = displayedAssetName(drawer);
-      if (currentName) activeAssetName = currentName;
+      const currentTitle =
+        drawer.querySelector<HTMLElement>(".atlas-asset-reference-title-line h2")?.textContent?.trim() ||
+        drawer.querySelector<HTMLElement>("h3")?.textContent?.trim() ||
+        "";
+      if (currentTitle) activeAssetName = currentTitle;
 
       ensureLiveInlineActions(drawer);
 
-      if (currentName && currentName !== lastAssetTitle) {
-        lastAssetTitle = currentName;
-        activeAssetName = currentName;
+      if (currentTitle && currentTitle !== lastAssetTitle) {
+        lastAssetTitle = currentTitle;
+        activeAssetName = currentTitle;
         resetDetailToTop();
         window.requestAnimationFrame(resetDetailToTop);
       }
@@ -199,12 +214,22 @@ export default function AtlasAssetEditAndPhotoFix() {
       const drawer = root?.querySelector<HTMLElement>(".atlas-asset-drawer") || null;
       if (!drawer) return false;
 
-      const currentName = displayedAssetName(drawer) || activeAssetName;
+      const currentName =
+        drawer.querySelector<HTMLElement>(".atlas-asset-reference-title-line h2")?.textContent?.trim() ||
+        drawer.querySelector<HTMLElement>("h3")?.textContent?.trim() ||
+        activeAssetName;
       if (currentName) activeAssetName = currentName;
 
-      const exactAction = namedAssetAction(currentName, action);
-      if (exactAction) {
-        exactAction.click();
+      const exactRowAction = actionForAssetName(currentName, action);
+      if (exactRowAction) {
+        exactRowAction.click();
+        return true;
+      }
+
+      const rememberedCard = cardForAssetName(activeAssetName);
+      const rowAction = actionInCard(rememberedCard, action, activeAssetName);
+      if (rowAction) {
+        rowAction.click();
         return true;
       }
 
@@ -255,7 +280,6 @@ export default function AtlasAssetEditAndPhotoFix() {
       if (clickedName) activeAssetName = clickedName;
 
       window.requestAnimationFrame(() => {
-        syncAssets();
         resetDetailToTop();
         window.requestAnimationFrame(resetDetailToTop);
       });
