@@ -31,262 +31,50 @@ function resetDetailToTop() {
   }
 }
 
-function liveNativeButton(drawer: HTMLElement, label: "edit" | "delete") {
-  return Array.from(drawer.querySelectorAll<HTMLButtonElement>("button")).find((button) => {
-    if (button.classList.contains("atlas-asset-inline-action")) return false;
-    const aria = normalized(button.getAttribute("aria-label"));
-    const title = normalized(button.getAttribute("title"));
-    const text = normalized(button.textContent);
-    if (label === "edit") {
-      return aria === "edit asset" || title === "edit asset" || text === "edit asset";
-    }
-    return aria === "delete asset" || title === "delete asset" || text === "delete asset";
-  }) || null;
-}
-
-function assetCardName(card: HTMLElement | null) {
-  return card?.querySelector<HTMLElement>("button strong, strong")?.textContent?.trim() || "";
-}
-
-function cardForAssetName(name: string) {
-  const wanted = normalized(name);
-  if (!wanted) return null;
+function syncNativeAssetActions() {
   const root = assetsMain();
-  if (!root) return null;
-  return Array.from(
-    root.querySelectorAll<HTMLElement>(".atlas-asset-list-card-polished, .atlas-gold-hover-card"),
-  ).find((card) => normalized(assetCardName(card)) === wanted) || null;
-}
+  const drawer = root?.querySelector<HTMLElement>(".atlas-asset-drawer") || null;
+  if (!drawer) return;
 
-function actionInCard(
-  card: HTMLElement | null,
-  label: "edit" | "delete",
-  assetName = "",
-) {
-  if (!card) return null;
-  const wantedName = normalized(assetName);
-  return Array.from(card.querySelectorAll<HTMLButtonElement>("button")).find((button) => {
-    const text = normalized(button.textContent);
-    const aria = normalized(button.getAttribute("aria-label"));
-    const title = normalized(button.getAttribute("title"));
-    if (label === "edit") {
-      return (
-        text === "edit" ||
-        title === "edit asset" ||
-        aria === "edit asset" ||
-        (wantedName && aria === `edit ${wantedName}`)
-      );
-    }
-    return (
-      text === "delete" ||
-      text === "delete asset" ||
-      title === "delete asset" ||
-      aria === "delete asset" ||
-      (wantedName && aria === `delete ${wantedName}`)
-    );
-  }) || null;
-}
+  // Remove every DOM-created proxy action. The real React controls in the
+  // native asset title row are the only Edit/Delete controls we expose.
+  drawer.querySelectorAll<HTMLElement>(".atlas-asset-inline-actions").forEach((node) => node.remove());
 
-function actionForAssetName(assetName: string, label: "edit" | "delete") {
-  const root = assetsMain();
-  const wantedName = normalized(assetName);
-  if (!root || !wantedName) return null;
+  const nativeRow = drawer.querySelector<HTMLElement>(".atlas-asset-reference-native-title-row");
+  if (!nativeRow) return;
 
-  const exactAria = `${label} ${wantedName}`;
-  const exact = Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
-    (button) => normalized(button.getAttribute("aria-label")) === exactAria,
+  const buttonTexts = Array.from(nativeRow.querySelectorAll<HTMLButtonElement>("button")).map(
+    (button) => normalized(button.textContent),
   );
-  if (exact) return exact;
-
-  return actionInCard(cardForAssetName(assetName), label, assetName);
-}
-
-function selectedListAction(label: "edit" | "delete") {
-  const root = assetsMain();
-  const currentCard = root?.querySelector<HTMLElement>(
-    ".atlas-asset-list-card-current, .atlas-gold-hover-card:has(input[type=checkbox]:checked)",
-  ) || null;
-  return actionInCard(currentCard, label, assetCardName(currentCard));
-}
-
-function realEditorOpen(drawer: HTMLElement) {
-  const nativeEdit = liveNativeButton(drawer, "edit");
-  const texts = Array.from(drawer.querySelectorAll<HTMLButtonElement>("button")).map((button) =>
-    normalized(button.textContent),
-  );
-  return !nativeEdit && texts.includes("cancel") && texts.includes("save changes");
-}
-
-function ensureLiveInlineActions(drawer: HTMLElement) {
-  const editing = realEditorOpen(drawer);
+  const editing = buttonTexts.includes("save changes") && buttonTexts.includes("cancel");
   drawer.classList.toggle("atlas-asset-reference-editing", editing);
-
-  const hero = drawer.querySelector<HTMLElement>(".atlas-asset-reference-hero");
-  const heading = hero?.querySelector<HTMLElement>(".atlas-asset-reference-heading");
-  if (!heading) return;
-
-  let host = heading.querySelector<HTMLElement>(":scope > .atlas-asset-inline-actions");
-  if (editing) {
-    host?.remove();
-    return;
-  }
-
-  const currentName =
-    drawer.querySelector<HTMLElement>(".atlas-asset-reference-title-line h2")?.textContent?.trim() ||
-    drawer.querySelector<HTMLElement>("h3")?.textContent?.trim() ||
-    "";
-  const nativeEdit =
-    liveNativeButton(drawer, "edit") || actionForAssetName(currentName, "edit") || selectedListAction("edit");
-  const nativeDelete =
-    liveNativeButton(drawer, "delete") || actionForAssetName(currentName, "delete") || selectedListAction("delete");
-  if (!nativeEdit && !nativeDelete) {
-    host?.remove();
-    return;
-  }
-
-  if (!host) {
-    host = document.createElement("div");
-    host.className = "atlas-asset-inline-actions";
-    heading.appendChild(host);
-  }
-
-  let edit = host.querySelector<HTMLButtonElement>(".atlas-asset-inline-edit");
-  if (nativeEdit) {
-    if (!edit) {
-      edit = document.createElement("button");
-      edit.type = "button";
-      edit.className = "atlas-asset-inline-action atlas-asset-inline-edit";
-      edit.textContent = "Edit";
-      host.prepend(edit);
-    }
-  } else {
-    edit?.remove();
-  }
-
-  let remove = host.querySelector<HTMLButtonElement>(".atlas-asset-inline-delete");
-  if (nativeDelete) {
-    if (!remove) {
-      remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "atlas-asset-inline-action atlas-asset-inline-delete";
-      remove.textContent = "Delete";
-      host.appendChild(remove);
-    }
-  } else {
-    remove?.remove();
-  }
+  nativeRow.classList.toggle("atlas-asset-native-actions-live", !editing);
 }
 
 export default function AtlasAssetEditAndPhotoFix() {
   useEffect(() => {
     let lastAssetTitle = "";
-    let activeAssetName = "";
     let frame = 0;
 
-    const syncAssets = () => {
+    const sync = () => {
       frame = 0;
-      const root = assetsMain();
-      const drawer = root?.querySelector<HTMLElement>(".atlas-asset-drawer") || null;
-      if (!drawer) return;
+      syncNativeAssetActions();
 
-      const currentTitle =
-        drawer.querySelector<HTMLElement>(".atlas-asset-reference-title-line h2")?.textContent?.trim() ||
-        drawer.querySelector<HTMLElement>("h3")?.textContent?.trim() ||
-        "";
-      if (currentTitle) activeAssetName = currentTitle;
-
-      ensureLiveInlineActions(drawer);
-
-      if (currentTitle && currentTitle !== lastAssetTitle) {
-        lastAssetTitle = currentTitle;
-        activeAssetName = currentTitle;
+      const drawer = assetsMain()?.querySelector<HTMLElement>(".atlas-asset-drawer") || null;
+      const title = drawer?.querySelector<HTMLElement>("h3")?.textContent?.trim() || "";
+      if (title && title !== lastAssetTitle) {
+        lastAssetTitle = title;
         resetDetailToTop();
         window.requestAnimationFrame(resetDetailToTop);
       }
     };
 
-    const scheduleSync = () => {
-      if (!frame) frame = window.requestAnimationFrame(syncAssets);
+    const schedule = () => {
+      if (!frame) frame = window.requestAnimationFrame(sync);
     };
 
-    const clickCurrentAssetAction = (action: "edit" | "delete") => {
-      const root = assetsMain();
-      const drawer = root?.querySelector<HTMLElement>(".atlas-asset-drawer") || null;
-      if (!drawer) return false;
-
-      const currentName =
-        drawer.querySelector<HTMLElement>(".atlas-asset-reference-title-line h2")?.textContent?.trim() ||
-        drawer.querySelector<HTMLElement>("h3")?.textContent?.trim() ||
-        activeAssetName;
-      if (currentName) activeAssetName = currentName;
-
-      const exactRowAction = actionForAssetName(currentName, action);
-      if (exactRowAction) {
-        exactRowAction.click();
-        return true;
-      }
-
-      const rememberedCard = cardForAssetName(activeAssetName);
-      const rowAction = actionInCard(rememberedCard, action, activeAssetName);
-      if (rowAction) {
-        rowAction.click();
-        return true;
-      }
-
-      const native = liveNativeButton(drawer, action) || selectedListAction(action);
-      if (!native) return false;
-      native.click();
-      return true;
-    };
-
-    const retryAction = (action: "edit" | "delete", attempt = 0) => {
-      if (clickCurrentAssetAction(action)) return;
-      if (attempt >= 12) return;
-      window.setTimeout(() => retryAction(action, attempt + 1), 40);
-    };
-
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-
-      const headerEdit = target.closest<HTMLButtonElement>(".atlas-asset-inline-edit");
-      if (headerEdit) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        retryAction("edit");
-        window.requestAnimationFrame(() => {
-          syncAssets();
-          resetDetailToTop();
-        });
-        return;
-      }
-
-      const headerDelete = target.closest<HTMLButtonElement>(".atlas-asset-inline-delete");
-      if (headerDelete) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        retryAction("delete");
-        return;
-      }
-
-      const assetRow = target.closest<HTMLElement>(
-        ".atlas-asset-list-card-polished, .atlas-gold-hover-card",
-      );
-      if (!assetRow) return;
-
-      const clickedName = assetCardName(assetRow);
-      if (clickedName) activeAssetName = clickedName;
-
-      window.requestAnimationFrame(() => {
-        resetDetailToTop();
-        window.requestAnimationFrame(resetDetailToTop);
-      });
-    };
-
-    document.addEventListener("click", handleClick, true);
-    const observer = new MutationObserver(scheduleSync);
+    schedule();
+    const observer = new MutationObserver(schedule);
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -294,17 +82,52 @@ export default function AtlasAssetEditAndPhotoFix() {
       attributes: true,
       attributeFilter: ["class", "aria-label"],
     });
-    scheduleSync();
+    document.addEventListener("click", schedule, true);
 
     return () => {
-      document.removeEventListener("click", handleClick, true);
       observer.disconnect();
+      document.removeEventListener("click", schedule, true);
       if (frame) window.cancelAnimationFrame(frame);
     };
   }, []);
 
   return (
     <style jsx global>{`
+      /* Read-only asset view: expose Atlas's real React Edit/Delete row.
+         No proxy button or DOM click forwarding is used. */
+      .atlas-assets-viewport-root
+        .atlas-asset-reference-drawer:not(.atlas-asset-reference-editing)
+        .atlas-asset-reference-native-title-row.atlas-asset-native-actions-live {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 7px !important;
+        margin: 0 0 8px !important;
+        min-height: 34px !important;
+      }
+
+      .atlas-assets-viewport-root
+        .atlas-asset-reference-drawer:not(.atlas-asset-reference-editing)
+        .atlas-asset-reference-native-title-row.atlas-asset-native-actions-live
+        > div:first-child {
+        display: none !important;
+      }
+
+      .atlas-assets-viewport-root
+        .atlas-asset-reference-drawer:not(.atlas-asset-reference-editing)
+        .atlas-asset-reference-native-title-row.atlas-asset-native-actions-live
+        button {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        min-height: 32px !important;
+        border-radius: 8px !important;
+        padding: 5px 11px !important;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        cursor: pointer !important;
+      }
+
       @media (min-width: 901px) {
         .atlas-assets-viewport-root .atlas-assets-viewport-grid {
           height: 100% !important;
