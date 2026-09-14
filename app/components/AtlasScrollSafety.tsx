@@ -17,11 +17,25 @@ export default function AtlasScrollSafety() {
           min-height: 0 !important;
           overflow-x: hidden !important;
           overflow-y: auto !important;
-          overscroll-behavior: contain !important;
           scrollbar-gutter: stable !important;
           scroll-padding-bottom: 96px !important;
           padding-bottom: 72px !important;
           box-sizing: border-box !important;
+        }
+
+        /* Assets: the right pane is the single scroll container in both view and edit mode. */
+        .atlas-assets-viewport-root .atlas-assets-viewport-detail {
+          height: 100% !important;
+          max-height: 100% !important;
+          overflow-y: auto !important;
+          overscroll-behavior-y: auto !important;
+          touch-action: pan-y !important;
+          scroll-padding-bottom: 140px !important;
+          padding-bottom: 96px !important;
+        }
+
+        .atlas-assets-viewport-root .atlas-assets-viewport-detail > * {
+          min-height: 0 !important;
         }
 
         .atlas-assets-viewport-root .atlas-asset-reference-drawer,
@@ -34,7 +48,12 @@ export default function AtlasScrollSafety() {
         }
 
         .atlas-assets-viewport-root .atlas-asset-reference-editing {
-          padding-bottom: 96px !important;
+          width: 100% !important;
+          min-height: max-content !important;
+          height: auto !important;
+          max-height: none !important;
+          overflow: visible !important;
+          padding-bottom: 140px !important;
         }
       }
 
