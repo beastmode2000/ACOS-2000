@@ -25,6 +25,7 @@ import AtlasWorkEditorCleanup from "./components/AtlasWorkEditorCleanup";
 import AtlasWorkWeekWrap from "./components/AtlasWorkWeekWrap";
 import AtlasWorkWrapPlacement from "./components/AtlasWorkWrapPlacement";
 import AtlasDashboardNoteActionsPolish from "./components/AtlasDashboardNoteActionsPolish";
+import AtlasDashboardWorkNoteEnterFix from "./components/AtlasDashboardWorkNoteEnterFix";
 import AtlasDashboardUpcomingWork from "./components/AtlasDashboardUpcomingWork";
 import AtlasDashboardDefaultUpcoming from "./components/AtlasDashboardDefaultUpcoming";
 import AtlasHydrawiseWeatherLink from "./components/AtlasHydrawiseWeatherLink";
@@ -128,6 +129,7 @@ export default function RootLayout({
         <AtlasWorkWeekWrap />
         <AtlasWorkWrapPlacement />
         <AtlasDashboardNoteActionsPolish />
+        <AtlasDashboardWorkNoteEnterFix />
         <AtlasDashboardUpcomingWork />
         <AtlasDashboardDefaultUpcoming />
         <AtlasHydrawiseWeatherLink />
