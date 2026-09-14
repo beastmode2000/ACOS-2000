@@ -44,14 +44,23 @@ function liveNativeButton(drawer: HTMLElement, label: "edit" | "delete") {
   }) || null;
 }
 
-function selectedListAction(label: "edit" | "delete") {
-  const root = assetsMain();
-  const currentCard = root?.querySelector<HTMLElement>(
-    ".atlas-asset-list-card-current, .atlas-gold-hover-card:has(input[type=checkbox]:checked)",
-  );
-  if (!currentCard) return null;
+function assetCardName(card: HTMLElement | null) {
+  return card?.querySelector<HTMLElement>("button strong, strong")?.textContent?.trim() || "";
+}
 
-  return Array.from(currentCard.querySelectorAll<HTMLButtonElement>("button")).find((button) => {
+function cardForAssetName(name: string) {
+  const wanted = normalized(name);
+  if (!wanted) return null;
+  const root = assetsMain();
+  if (!root) return null;
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(".atlas-asset-list-card-polished, .atlas-gold-hover-card"),
+  ).find((card) => normalized(assetCardName(card)) === wanted) || null;
+}
+
+function actionInCard(card: HTMLElement | null, label: "edit" | "delete") {
+  if (!card) return null;
+  return Array.from(card.querySelectorAll<HTMLButtonElement>("button")).find((button) => {
     const text = normalized(button.textContent);
     const aria = normalized(button.getAttribute("aria-label"));
     if (label === "edit") return text === "edit" || aria === "edit asset";
@@ -59,14 +68,20 @@ function selectedListAction(label: "edit" | "delete") {
   }) || null;
 }
 
+function selectedListAction(label: "edit" | "delete") {
+  const root = assetsMain();
+  const currentCard = root?.querySelector<HTMLElement>(
+    ".atlas-asset-list-card-current, .atlas-gold-hover-card:has(input[type=checkbox]:checked)",
+  ) || null;
+  return actionInCard(currentCard, label);
+}
+
 function realEditorOpen(drawer: HTMLElement) {
   const nativeEdit = liveNativeButton(drawer, "edit");
   const texts = Array.from(drawer.querySelectorAll<HTMLButtonElement>("button")).map((button) =>
     normalized(button.textContent),
   );
-  const hasCancel = texts.includes("cancel");
-  const hasSave = texts.includes("save changes");
-  return !nativeEdit && hasCancel && hasSave;
+  return !nativeEdit && texts.includes("cancel") && texts.includes("save changes");
 }
 
 function ensureLiveInlineActions(drawer: HTMLElement) {
@@ -123,19 +138,10 @@ function ensureLiveInlineActions(drawer: HTMLElement) {
   }
 }
 
-function clickLiveNativeAssetAction(proxy: HTMLButtonElement, action: "edit" | "delete") {
-  const drawer = proxy.closest<HTMLElement>(".atlas-asset-drawer");
-  if (!drawer) return false;
-
-  const nativeButton = liveNativeButton(drawer, action) || selectedListAction(action);
-  if (!nativeButton) return false;
-  nativeButton.click();
-  return true;
-}
-
 export default function AtlasAssetEditAndPhotoFix() {
   useEffect(() => {
     let lastAssetTitle = "";
+    let activeAssetName = "";
     let frame = 0;
 
     const syncAssets = () => {
@@ -149,6 +155,7 @@ export default function AtlasAssetEditAndPhotoFix() {
       const title = drawer.querySelector<HTMLElement>("h3")?.textContent?.trim() || "";
       if (title && title !== lastAssetTitle) {
         lastAssetTitle = title;
+        if (!activeAssetName) activeAssetName = title;
         resetDetailToTop();
         window.requestAnimationFrame(resetDetailToTop);
       }
@@ -156,6 +163,30 @@ export default function AtlasAssetEditAndPhotoFix() {
 
     const scheduleSync = () => {
       if (!frame) frame = window.requestAnimationFrame(syncAssets);
+    };
+
+    const clickCurrentAssetAction = (action: "edit" | "delete") => {
+      const root = assetsMain();
+      const drawer = root?.querySelector<HTMLElement>(".atlas-asset-drawer") || null;
+      if (!drawer) return false;
+
+      const rememberedCard = cardForAssetName(activeAssetName);
+      const rowAction = actionInCard(rememberedCard, action);
+      if (rowAction) {
+        rowAction.click();
+        return true;
+      }
+
+      const native = liveNativeButton(drawer, action) || selectedListAction(action);
+      if (!native) return false;
+      native.click();
+      return true;
+    };
+
+    const retryAction = (action: "edit" | "delete", attempt = 0) => {
+      if (clickCurrentAssetAction(action)) return;
+      if (attempt >= 12) return;
+      window.setTimeout(() => retryAction(action, attempt + 1), 40);
     };
 
     const handleClick = (event: MouseEvent) => {
@@ -167,7 +198,7 @@ export default function AtlasAssetEditAndPhotoFix() {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
-        clickLiveNativeAssetAction(headerEdit, "edit");
+        retryAction("edit");
         window.requestAnimationFrame(() => {
           syncAssets();
           resetDetailToTop();
@@ -180,7 +211,7 @@ export default function AtlasAssetEditAndPhotoFix() {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
-        clickLiveNativeAssetAction(headerDelete, "delete");
+        retryAction("delete");
         return;
       }
 
@@ -188,6 +219,9 @@ export default function AtlasAssetEditAndPhotoFix() {
         ".atlas-asset-list-card-polished, .atlas-gold-hover-card",
       );
       if (!assetRow) return;
+
+      const clickedName = assetCardName(assetRow);
+      if (clickedName) activeAssetName = clickedName;
 
       window.requestAnimationFrame(() => {
         resetDetailToTop();
@@ -246,8 +280,6 @@ export default function AtlasAssetEditAndPhotoFix() {
         }
       }
 
-      /* License plate and custom asset fields are real saved asset data. Keep
-         their host visible in the normal read-only information view. */
       .atlas-assets-viewport-root
         .atlas-asset-reference-drawer:not(.atlas-asset-reference-editing)
         > [data-atlas-asset-additional-info-host] {
@@ -271,19 +303,21 @@ export default function AtlasAssetEditAndPhotoFix() {
         opacity: 1 !important;
       }
 
+      .atlas-asset-reference-root .atlas-asset-reference-title-line,
+      .atlas-asset-reference-root .atlas-asset-reference-title-line h2 {
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+
       .atlas-asset-reference-root .atlas-asset-reference-title-line {
         display: flex !important;
         align-items: center !important;
         gap: 8px !important;
         flex-wrap: wrap !important;
-        visibility: visible !important;
-        opacity: 1 !important;
       }
 
       .atlas-asset-reference-root .atlas-asset-reference-title-line h2 {
         display: block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
         margin: 0 !important;
         color: #071b2f !important;
         font-size: 21px !important;
