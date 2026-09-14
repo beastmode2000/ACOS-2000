@@ -6,6 +6,8 @@ export const runtime = "nodejs";
 
 type Row = Record<string, unknown>;
 
+const VALID_PROPERTIES = new Set(["2000", "6855", "3661", "hangar"]);
+
 function getSql() {
   const connectionString =
     process.env.DATABASE_URL ||
@@ -15,9 +17,10 @@ function getSql() {
   return neon(connectionString);
 }
 
-function cleanPropertyId(value: unknown) {
-  const id = String(value || "2000").trim().toLowerCase();
-  return ["2000", "6855", "3661", "hangar"].includes(id) ? id : "2000";
+function propertyIdFrom(value: unknown) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return "2000";
+  return VALID_PROPERTIES.has(raw) ? raw : "";
 }
 
 function cleanDate(value: unknown) {
@@ -71,14 +74,22 @@ async function ensureTable(sql: ReturnType<typeof neon>) {
 
 export async function GET(request: NextRequest) {
   try {
-    const sql = getSql();
-    await ensureTable(sql);
-    const propertyId = cleanPropertyId(request.nextUrl.searchParams.get("propertyId"));
+    const propertyId = propertyIdFrom(request.nextUrl.searchParams.get("propertyId"));
+    if (!propertyId) {
+      return NextResponse.json({ ok: false, error: "Invalid property ID." }, { status: 400 });
+    }
+
     const periodStart = cleanDate(request.nextUrl.searchParams.get("periodStart"));
     const periodEnd = cleanDate(request.nextUrl.searchParams.get("periodEnd"));
     if (!periodStart || !periodEnd) {
       return NextResponse.json({ ok: true, propertyId, highlights: [], ownerAttention: [], workPhotos: [] });
     }
+    if (periodEnd < periodStart) {
+      return NextResponse.json({ ok: false, error: "Invalid report date range." }, { status: 400 });
+    }
+
+    const sql = getSql();
+    await ensureTable(sql);
     const rows = await sql`
       SELECT highlights, owner_attention, work_photos, updated_at
       FROM atlas_owner_report_extras
@@ -103,15 +114,20 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const sql = getSql();
-    await ensureTable(sql);
     const body = (await request.json().catch(() => ({}))) as Row;
-    const propertyId = cleanPropertyId(body.propertyId);
+    const propertyId = propertyIdFrom(body.propertyId);
+    if (!propertyId) {
+      return NextResponse.json({ ok: false, error: "Invalid property ID." }, { status: 400 });
+    }
+
     const periodStart = cleanDate(body.periodStart);
     const periodEnd = cleanDate(body.periodEnd);
     if (!periodStart || !periodEnd || periodEnd < periodStart) {
       return NextResponse.json({ ok: false, error: "Valid report dates are required." }, { status: 400 });
     }
+
+    const sql = getSql();
+    await ensureTable(sql);
     const highlights = cleanTextList(body.highlights);
     const ownerAttention = cleanTextList(body.ownerAttention);
     const workPhotos = cleanPhotos(body.workPhotos);
