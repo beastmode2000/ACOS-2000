@@ -22,6 +22,13 @@ function visible(element: HTMLElement | null) {
   );
 }
 
+function visibleScreenTitle() {
+  const heading = Array.from(
+    document.querySelectorAll<HTMLElement>("main h1, main h2"),
+  ).find(visible);
+  return normalized(heading?.textContent);
+}
+
 function mobileBottomNav() {
   const candidates = Array.from(document.querySelectorAll<HTMLElement>("nav"))
     .filter(visible)
@@ -29,20 +36,16 @@ function mobileBottomNav() {
       const labels = Array.from(nav.querySelectorAll<HTMLElement>("button, a"))
         .map((control) => normalized(control.textContent))
         .filter(Boolean);
-      const hasDashboard = labels.includes("dashboard") || labels.includes("today");
-      const required = ["work", "assets", "calendar"];
       const score =
-        (hasDashboard ? 100 : 0) +
-        required.filter((label) => labels.includes(label)).length * 100 +
+        (labels.includes("dashboard") || labels.includes("today") ? 100 : 0) +
+        ["work", "assets", "calendar"].filter((label) => labels.includes(label)).length * 100 +
         (labels.includes("more") || labels.includes("locations") ? 100 : 0);
       return { nav, score };
     })
     .filter((candidate) => candidate.score >= 500)
     .sort((left, right) => {
-      const leftStyle = window.getComputedStyle(left.nav);
-      const rightStyle = window.getComputedStyle(right.nav);
-      const leftFixed = leftStyle.position === "fixed" ? 1 : 0;
-      const rightFixed = rightStyle.position === "fixed" ? 1 : 0;
+      const leftFixed = window.getComputedStyle(left.nav).position === "fixed" ? 1 : 0;
+      const rightFixed = window.getComputedStyle(right.nav).position === "fixed" ? 1 : 0;
       return rightFixed - leftFixed;
     });
 
@@ -63,20 +66,18 @@ function nativeNavigationTarget(label: string) {
   );
 }
 
-function visibleScreenTitle() {
-  const heading = Array.from(
-    document.querySelectorAll<HTMLElement>("main h1, main h2"),
-  ).find(visible);
-  return normalized(heading?.textContent);
-}
-
 function markBottomNavigation() {
   const nav = mobileBottomNav();
   if (!nav) return;
-
   nav.classList.add("atlas-mobile-unified-nav");
 
-  const buttons = Array.from(nav.querySelectorAll<HTMLButtonElement>("button"));
+  const navClasses = [
+    "atlas-mobile-nav-dashboard",
+    "atlas-mobile-nav-work",
+    "atlas-mobile-nav-assets",
+    "atlas-mobile-nav-locations",
+    "atlas-mobile-nav-calendar",
+  ];
   const aliases: Record<string, string> = {
     today: "dashboard",
     dashboard: "dashboard",
@@ -87,26 +88,32 @@ function markBottomNavigation() {
     more: "locations",
   };
 
+  const buttons = Array.from(nav.querySelectorAll<HTMLButtonElement>("button"));
   for (const button of buttons) {
-    const original = normalized(button.dataset.atlasMobileOriginalLabel || button.textContent);
+    const original = normalized(
+      button.dataset.atlasMobileOriginalLabel || button.textContent,
+    );
     if (!button.dataset.atlasMobileOriginalLabel) {
       button.dataset.atlasMobileOriginalLabel = original;
     }
 
     const key = aliases[original];
     if (!key) continue;
+    const expectedClass = `atlas-mobile-nav-${key}`;
 
-    button.classList.remove(
-      "atlas-mobile-nav-dashboard",
-      "atlas-mobile-nav-work",
-      "atlas-mobile-nav-assets",
-      "atlas-mobile-nav-locations",
-      "atlas-mobile-nav-calendar",
-    );
-    button.classList.add(`atlas-mobile-nav-${key}`);
+    for (const className of navClasses) {
+      if (className !== expectedClass && button.classList.contains(className)) {
+        button.classList.remove(className);
+      }
+    }
+    if (!button.classList.contains(expectedClass)) {
+      button.classList.add(expectedClass);
+    }
 
     if (original === "more") {
-      if (clean(button.textContent) !== "Locations") button.textContent = "Locations";
+      if (clean(button.textContent) !== "Locations") {
+        button.textContent = "Locations";
+      }
       if (button.dataset.atlasMobileLocationBound !== "true") {
         button.dataset.atlasMobileLocationBound = "true";
         button.addEventListener(
@@ -142,7 +149,9 @@ function markBottomNavigation() {
 
   for (const key of ["dashboard", "work", "assets", "locations", "calendar"]) {
     const button = nav.querySelector<HTMLButtonElement>(`.atlas-mobile-nav-${key}`);
-    if (button) button.dataset.active = activeKey === key ? "true" : "false";
+    if (!button) continue;
+    const nextActive = activeKey === key ? "true" : "false";
+    if (button.dataset.active !== nextActive) button.dataset.active = nextActive;
   }
 }
 
@@ -157,8 +166,9 @@ function commonParent(elements: HTMLElement[], stop: HTMLElement) {
 }
 
 function calendarMain() {
-  const heading = Array.from(document.querySelectorAll<HTMLElement>("main h1, main h2"))
-    .find((node) => visible(node) && normalized(node.textContent) === "calendar");
+  const heading = Array.from(
+    document.querySelectorAll<HTMLElement>("main h1, main h2"),
+  ).find((node) => visible(node) && normalized(node.textContent) === "calendar");
   return (heading?.closest("main") as HTMLElement | null) || null;
 }
 
@@ -185,7 +195,8 @@ function markCalendar() {
   const month = byText("Month");
   const add = byText("+ Add");
   const upcoming = byText("Upcoming");
-  const filters = controls.find((control) => normalized(control.textContent).startsWith("filters")) || null;
+  const filters =
+    controls.find((control) => normalized(control.textContent).startsWith("filters")) || null;
   const toolElements = [month, add, upcoming, filters].filter(Boolean) as HTMLElement[];
   const tools = commonParent(toolElements, root);
   if (!tools) return;
@@ -196,35 +207,31 @@ function markCalendar() {
   add?.closest("details")?.classList.add("atlas-mobile-calendar-add");
   filters?.closest("details")?.classList.add("atlas-mobile-calendar-filters");
 
-  const search = tools.querySelector<HTMLInputElement>('input[type="search"]');
-  search?.classList.add("atlas-mobile-calendar-search");
+  tools
+    .querySelector<HTMLInputElement>('input[type="search"]')
+    ?.classList.add("atlas-mobile-calendar-search");
 
-  const selects = Array.from(tools.querySelectorAll<HTMLSelectElement>("select"));
-  const quick = selects.find((select) =>
-    Array.from(select.options).some((option) => normalized(option.value) === "events") &&
-    Array.from(select.options).some((option) => normalized(option.value) === "work"),
+  const quick = Array.from(tools.querySelectorAll<HTMLSelectElement>("select")).find(
+    (select) =>
+      Array.from(select.options).some((option) => normalized(option.value) === "events") &&
+      Array.from(select.options).some((option) => normalized(option.value) === "work"),
   );
   quick?.classList.add("atlas-mobile-calendar-quick-filter");
-}
-
-function workDetailPanel() {
-  return Array.from(
-    document.querySelectorAll<HTMLElement>("[data-atlas-work-detail-panel]"),
-  ).find(visible) || null;
 }
 
 function scrollContainer(start: HTMLElement | null) {
   let node = start;
   while (node && node !== document.body) {
-    const style = window.getComputedStyle(node);
-    if (/(auto|scroll)/.test(style.overflowY)) return node;
+    if (/(auto|scroll)/.test(window.getComputedStyle(node).overflowY)) return node;
     node = node.parentElement;
   }
   return null;
 }
 
 function markWorkDetail() {
-  const panel = workDetailPanel();
+  const panel = Array.from(
+    document.querySelectorAll<HTMLElement>("[data-atlas-work-detail-panel]"),
+  ).find(visible);
   if (!panel) return;
 
   panel.classList.add("atlas-mobile-work-detail-panel");
@@ -238,32 +245,34 @@ function markWorkDetail() {
     firstChild.classList.add("atlas-mobile-work-duplicate-nav");
   }
 
-  const title = clean(
-    dialog.getAttribute("aria-label") || panel.querySelector("h2")?.textContent,
+  const key = clean(
+    dialog.getAttribute("aria-label") || panel.querySelector("h2")?.textContent || "work-detail",
   );
-  const key = title || "work-detail";
   if (dialog.dataset.atlasMobileWorkScrollKey === key) return;
   dialog.dataset.atlasMobileWorkScrollKey = key;
 
   const scroller = scrollContainer(panel.parentElement);
   window.requestAnimationFrame(() => {
-    if (scroller) {
-      scroller.scrollTop = 0;
-      scroller.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    }
+    if (!scroller) return;
+    scroller.scrollTop = 0;
+    scroller.scrollTo({ top: 0, left: 0, behavior: "auto" });
   });
 }
 
 function markOwnerReport() {
-  const heading = Array.from(document.querySelectorAll<HTMLElement>("main h1, main h2"))
-    .find((node) => visible(node) && /^owners? report$/i.test(clean(node.textContent)));
+  const heading = Array.from(
+    document.querySelectorAll<HTMLElement>("main h1, main h2"),
+  ).find((node) => visible(node) && /^owners? report$/i.test(clean(node.textContent)));
   const root = heading?.closest<HTMLElement>("main");
   if (!root) return;
-  root.classList.add("atlas-mobile-owner-report-root");
 
-  const reportHeading = Array.from(root.querySelectorAll<HTMLElement>("h2"))
-    .find((node) => normalized(node.textContent) === "owners report");
-  reportHeading?.closest<HTMLElement>("section")?.classList.add("atlas-mobile-owner-report-shared");
+  root.classList.add("atlas-mobile-owner-report-root");
+  const sharedHeading = Array.from(root.querySelectorAll<HTMLElement>("h2")).find(
+    (node) => normalized(node.textContent) === "owners report",
+  );
+  sharedHeading
+    ?.closest<HTMLElement>("section")
+    ?.classList.add("atlas-mobile-owner-report-shared");
 }
 
 function applyMobilePresentation() {
@@ -279,7 +288,6 @@ function applyMobilePresentation() {
 export default function AtlasMobileSyncPolish() {
   useEffect(() => {
     let frame = 0;
-
     const schedule = () => {
       if (frame) return;
       frame = window.requestAnimationFrame(() => {
@@ -295,12 +303,7 @@ export default function AtlasMobileSyncPolish() {
 
     schedule();
     const observer = new MutationObserver(schedule);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["class", "style", "data-active"],
-    });
+    observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", schedule);
     window.addEventListener("popstate", schedule);
     window.addEventListener("atlas:data-changed", schedule as EventListener);
@@ -352,7 +355,6 @@ export default function AtlasMobileSyncPolish() {
         .atlas-mobile-unified-nav {
           grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
         }
-
         .atlas-mobile-unified-nav .atlas-mobile-nav-dashboard { order: 1 !important; }
         .atlas-mobile-unified-nav .atlas-mobile-nav-work { order: 2 !important; }
         .atlas-mobile-unified-nav .atlas-mobile-nav-assets { order: 3 !important; }
@@ -436,15 +438,10 @@ export default function AtlasMobileSyncPolish() {
           margin-top: 0 !important;
           padding-top: 0 !important;
         }
-
-        .atlas-mobile-work-duplicate-nav {
-          display: none !important;
-        }
-
+        .atlas-mobile-work-duplicate-nav { display: none !important; }
         .atlas-mobile-work-detail-dialog .atlas-record-detail-content--mobile {
           padding: 8px !important;
         }
-
         .atlas-mobile-work-detail-panel > section:first-of-type {
           margin-top: 0 !important;
         }
