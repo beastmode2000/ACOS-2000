@@ -13,10 +13,14 @@ type TeamMember = {
 
 type WorkRow = Record<string, unknown>;
 
-const UPCOMING_MODE = "__nick_upcoming__";
-
 function normalized(value: unknown) {
   return String(value || "").trim().toLowerCase();
+}
+
+function localDateKey(offsetDays = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function currentPropertyId() {
@@ -103,6 +107,18 @@ function workDueDate(record: WorkRow) {
       record.item_date ||
       record.scheduledDate ||
       record.scheduled_date,
+  );
+}
+
+function workCompletedDate(record: WorkRow) {
+  return dateKey(
+    record.lastCompletedDate ||
+      record.last_completed_date ||
+      record.completedAt ||
+      record.completed_at ||
+      record.updatedAt ||
+      record.updated_at ||
+      workDueDate(record),
   );
 }
 
@@ -208,6 +224,9 @@ export default function AtlasDashboardUpcomingWork() {
   const [workRows, setWorkRows] = useState<WorkRow[]>([]);
   const [workLists, setWorkLists] = useState<any[]>([]);
   const [mode, setMode] = useState("");
+  const [newWorkTitle, setNewWorkTitle] = useState("");
+  const [newWorkDate, setNewWorkDate] = useState(() => localDateKey(1));
+  const [savingWork, setSavingWork] = useState(false);
 
   useEffect(() => {
     let frame = 0;
@@ -379,9 +398,13 @@ export default function AtlasDashboardUpcomingWork() {
 
   useEffect(() => {
     if (!employeeOptions.length) return;
-    if (mode === UPCOMING_MODE) return;
     if (!employeeOptions.includes(mode)) setMode(employeeOptions[0]);
   }, [employeeOptions, mode]);
+
+  useEffect(() => {
+    setNewWorkTitle("");
+    setNewWorkDate(localDateKey(1));
+  }, [mode]);
 
   const allWorkRows = useMemo(() => {
     const sharedRows: WorkRow[] = workLists.flatMap((list: any) =>
@@ -395,45 +418,93 @@ export default function AtlasDashboardUpcomingWork() {
     return [...workRows, ...sharedRows];
   }, [workRows, workLists, propertyId]);
 
-  const customRows = useMemo(() => {
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-
-    return allWorkRows
-      .filter((record) => record && !isComplete(record.status))
-      .filter((record) => {
-        const due = workDueDate(record);
-        const assigned = workAssignee(record);
-        if (mode === UPCOMING_MODE) {
-          return memberMatches("Nick", assigned) && Boolean(due && due > today);
-        }
-        return memberMatches(mode, assigned) && (!due || due <= today);
-      })
-      .sort((a, b) => {
-        const aDate = workDueDate(a) || "0000-00-00";
-        const bDate = workDueDate(b) || "0000-00-00";
-        return (
-          aDate.localeCompare(bDate) ||
-          priorityWeight(priorityOf(a)) - priorityWeight(priorityOf(b)) ||
-          workTitle(a).localeCompare(workTitle(b))
-        );
-      })
-      .slice(0, 20);
+  const personRows = useMemo(() => {
+    if (!mode) return [];
+    return allWorkRows.filter((record) =>
+      record && memberMatches(mode, workAssignee(record)),
+    );
   }, [mode, allWorkRows]);
 
-  async function addWorkForSelectedPerson() {
-    if (!mode || mode === UPCOMING_MODE) return;
-    const title = window.prompt(`Add work for ${displayName(mode)}`);
-    if (!title?.trim()) return;
+  const today = localDateKey();
 
+  const todayRows = useMemo(
+    () =>
+      personRows
+        .filter((record) => !isComplete(record.status))
+        .filter((record) => {
+          const due = workDueDate(record);
+          return Boolean(due && due <= today);
+        })
+        .sort((a, b) => {
+          const aDate = workDueDate(a);
+          const bDate = workDueDate(b);
+          return (
+            aDate.localeCompare(bDate) ||
+            priorityWeight(priorityOf(a)) - priorityWeight(priorityOf(b)) ||
+            workTitle(a).localeCompare(workTitle(b))
+          );
+        }),
+    [personRows, today],
+  );
+
+  const upcomingRows = useMemo(
+    () =>
+      personRows
+        .filter((record) => !isComplete(record.status))
+        .filter((record) => {
+          const due = workDueDate(record);
+          return Boolean(due && due > today);
+        })
+        .sort((a, b) =>
+          workDueDate(a).localeCompare(workDueDate(b)) ||
+          priorityWeight(priorityOf(a)) - priorityWeight(priorityOf(b)) ||
+          workTitle(a).localeCompare(workTitle(b)),
+        ),
+    [personRows, today],
+  );
+
+  const needsDateRows = useMemo(
+    () =>
+      personRows
+        .filter((record) => !isComplete(record.status))
+        .filter((record) => !workDueDate(record))
+        .sort((a, b) =>
+          priorityWeight(priorityOf(a)) - priorityWeight(priorityOf(b)) ||
+          workTitle(a).localeCompare(workTitle(b)),
+        ),
+    [personRows],
+  );
+
+  const completedRows = useMemo(
+    () =>
+      personRows
+        .filter((record) => isComplete(record.status))
+        .sort((a, b) =>
+          workCompletedDate(b).localeCompare(workCompletedDate(a)) ||
+          workTitle(a).localeCompare(workTitle(b)),
+        )
+        .slice(0, 20),
+    [personRows],
+  );
+
+  const activeCount = todayRows.length + upcomingRows.length + needsDateRows.length;
+
+  async function addWorkForSelectedPerson() {
+    const title = newWorkTitle.trim();
+    if (!mode || !title || savingWork) return;
+
+    setSavingWork(true);
     const directId = `direct-assignments-${propertyId}`;
     const task = {
       id: `team-task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      title: title.trim(),
+      title,
       assignee: mode,
       location: "",
       notes: "",
       status: "Open",
+      priority: "Medium",
+      dueDate: newWorkDate || "",
+      date: newWorkDate || "",
       requirePhoto: false,
       createdAt: new Date().toISOString(),
     };
@@ -469,93 +540,87 @@ export default function AtlasDashboardUpcomingWork() {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload?.ok === false) throw new Error(payload?.error || "Could not add work.");
       setWorkLists(nextLists);
+      setNewWorkTitle("");
       window.dispatchEvent(new CustomEvent("atlas:data-changed"));
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "Could not add work.");
+    } finally {
+      setSavingWork(false);
     }
   }
 
   if (!host) return null;
 
-  const selector = (
-    <div className="atlas-secondary-work-switcher" aria-label="Choose secondary work list">
-      <select
-        aria-label="Choose employee work list"
-        value={mode === UPCOMING_MODE ? "" : mode}
-        onChange={(event) => setMode(event.target.value)}
-      >
-        {employeeOptions.map((name) => (
-          <option key={name} value={name}>
-            {displayName(name)}
-          </option>
-        ))}
-      </select>
+  const workRow = (record: WorkRow, keyPrefix: string) => {
+    const due = workDueDate(record);
+    const overdue = Boolean(due && due < today && !isComplete(record.status));
+    return (
       <button
         type="button"
-        disabled={!mode || mode === UPCOMING_MODE}
-        onClick={() => void addWorkForSelectedPerson()}
+        className="atlas-secondary-custom-row"
+        key={`${keyPrefix}-${String(record.id || `${workTitle(record)}-${due}`)}`}
+        onClick={openWorkPage}
       >
-        Add Work
+        <strong>{workTitle(record)}</strong>
+        <small>
+          {due ? formatDue(due) : "Needs date"} · {priorityOf(record)}
+          {overdue ? " · Overdue" : ""}
+        </small>
       </button>
-      <button
-        type="button"
-        data-active={mode === UPCOMING_MODE}
-        onClick={() => setMode(UPCOMING_MODE)}
-      >
-        Upcoming
-      </button>
-    </div>
-  );
+    );
+  };
 
   return createPortal(
     <>
       <style>{`
         .atlas-secondary-work-switcher {
-          display: flex;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto auto;
           gap: 5px;
-          overflow-x: auto;
           padding: 0 0 8px;
-          margin: 0 0 8px;
-          scrollbar-width: none;
+          margin: 0 0 6px;
         }
-        .atlas-secondary-work-switcher::-webkit-scrollbar { display: none; }
-        .atlas-secondary-work-switcher select {
-          flex: 1 1 auto;
+        .atlas-secondary-work-switcher select,
+        .atlas-secondary-work-switcher button,
+        .atlas-secondary-add-form input {
+          border: 1px solid #D8E0E8;
+          background: #FFFFFF;
+          color: #17324D;
+          border-radius: 8px;
+          min-height: 30px;
+          padding: 4px 8px;
+          font: inherit;
+          font-size: 11px;
+          font-weight: 800;
           min-width: 0;
-          border: 1px solid #D8E0E8;
-          background: #FFFFFF;
-          color: #17324D;
-          border-radius: 8px;
-          min-height: 28px;
-          padding: 3px 8px;
-          font: inherit;
-          font-size: 11px;
-          font-weight: 800;
-          cursor: pointer;
         }
-        .atlas-secondary-work-switcher button {
-          flex: 0 0 auto;
-          border: 1px solid #D8E0E8;
-          background: #FFFFFF;
-          color: #17324D;
-          border-radius: 8px;
-          min-height: 28px;
-          padding: 3px 8px;
-          font: inherit;
-          font-size: 11px;
-          font-weight: 800;
-          cursor: pointer;
-          white-space: nowrap;
-        }
+        .atlas-secondary-work-switcher select { width: 100%; cursor: pointer; }
+        .atlas-secondary-work-switcher button,
+        .atlas-secondary-add-form button { cursor: pointer; white-space: nowrap; }
         .atlas-secondary-work-switcher button[data-active="true"] {
           border-color: #D5B65C;
           background: #D5B65C;
           color: #102A43;
         }
-        .atlas-secondary-custom-list {
+        .atlas-secondary-add-form {
           display: grid;
-          gap: 7px;
+          grid-template-columns: minmax(0, 1fr) 128px auto;
+          gap: 5px;
+          margin-bottom: 10px;
         }
+        .atlas-secondary-add-form button {
+          border: 1px solid #D5B65C;
+          background: #D5B65C;
+          color: #102A43;
+          border-radius: 8px;
+          min-height: 30px;
+          padding: 4px 9px;
+          font: inherit;
+          font-size: 11px;
+          font-weight: 850;
+        }
+        .atlas-secondary-add-form button:disabled { opacity: .55; cursor: default; }
+        .atlas-secondary-custom-list { display: grid; gap: 7px; }
         .atlas-secondary-custom-head {
           display: flex;
           justify-content: space-between;
@@ -563,10 +628,7 @@ export default function AtlasDashboardUpcomingWork() {
           align-items: center;
           margin-bottom: 2px;
         }
-        .atlas-secondary-custom-head strong {
-          color: #17324D;
-          font-size: 18px;
-        }
+        .atlas-secondary-custom-head strong { color: #17324D; font-size: 18px; }
         .atlas-secondary-custom-count {
           border: 1px solid #D8E0E8;
           border-radius: 999px;
@@ -576,10 +638,31 @@ export default function AtlasDashboardUpcomingWork() {
           color: #53677A;
           background: #FFFFFF;
         }
+        .atlas-secondary-section {
+          border-top: 1px solid #E4EAF0;
+          padding-top: 8px;
+          margin-top: 2px;
+        }
+        .atlas-secondary-section:first-of-type { border-top: 0; padding-top: 0; }
+        .atlas-secondary-section-title {
+          display: flex;
+          justify-content: space-between;
+          gap: 8px;
+          align-items: center;
+          color: #17324D;
+          font-size: 12px;
+          font-weight: 900;
+          margin-bottom: 6px;
+        }
+        .atlas-secondary-section-title span:last-child {
+          color: #617487;
+          font-size: 11px;
+          font-weight: 800;
+        }
         .atlas-secondary-custom-rows {
           display: grid;
           gap: 6px;
-          max-height: 470px;
+          max-height: 330px;
           overflow-y: auto;
           padding-right: 2px;
         }
@@ -617,11 +700,20 @@ export default function AtlasDashboardUpcomingWork() {
         .atlas-secondary-custom-empty {
           border: 1px dashed #D8E0E8;
           border-radius: 9px;
-          padding: 12px;
+          padding: 9px 10px;
           color: #617487;
           font-size: 12px;
           background: #FFFFFF;
         }
+        .atlas-secondary-completed summary {
+          cursor: pointer;
+          color: #17324D;
+          font-size: 12px;
+          font-weight: 900;
+          list-style-position: inside;
+        }
+        .atlas-secondary-completed .atlas-secondary-custom-rows { margin-top: 6px; max-height: 220px; }
+        .atlas-secondary-completed .atlas-secondary-custom-row { opacity: .72; }
         .atlas-secondary-open-all {
           border: 0;
           background: transparent;
@@ -631,47 +723,127 @@ export default function AtlasDashboardUpcomingWork() {
           font-weight: 800;
           cursor: pointer;
           padding: 3px 0;
+          text-align: left;
         }
         @media (max-width: 720px) {
-          .atlas-secondary-custom-rows { max-height: 340px; }
+          .atlas-secondary-work-switcher { grid-template-columns: minmax(0, 1fr) auto auto; }
+          .atlas-secondary-add-form { grid-template-columns: minmax(0,1fr) auto; }
+          .atlas-secondary-add-form input[type="date"] { grid-column: 1 / -1; }
+          .atlas-secondary-custom-rows { max-height: 280px; }
         }
       `}</style>
-      {selector}
+
+      <div className="atlas-secondary-work-switcher" aria-label="Choose employee work list">
+        <select
+          aria-label="Choose employee work list"
+          value={mode}
+          onChange={(event) => setMode(event.target.value)}
+        >
+          {employeeOptions.map((name) => (
+            <option key={name} value={name}>
+              {displayName(name)}
+            </option>
+          ))}
+        </select>
+        <button type="button" data-active={newWorkDate === localDateKey()} onClick={() => setNewWorkDate(localDateKey())}>
+          Today
+        </button>
+        <button type="button" data-active={newWorkDate === localDateKey(1)} onClick={() => setNewWorkDate(localDateKey(1))}>
+          Tomorrow
+        </button>
+      </div>
+
       {mode ? (
         <div className="atlas-secondary-custom-list">
           <div className="atlas-secondary-custom-head">
-            <strong>{mode === UPCOMING_MODE ? "Upcoming" : displayName(mode)}</strong>
-            <span className="atlas-secondary-custom-count">{customRows.length}</span>
+            <div>
+              <strong>{displayName(mode)}</strong>
+              <div style={{ color: "#617487", fontSize: 11, marginTop: 1 }}>
+                {activeCount} active · {upcomingRows.length} upcoming
+              </div>
+            </div>
+            <span className="atlas-secondary-custom-count">{activeCount}</span>
           </div>
+
+          <div className="atlas-secondary-add-form">
+            <input
+              value={newWorkTitle}
+              onChange={(event) => setNewWorkTitle(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void addWorkForSelectedPerson();
+                }
+              }}
+              placeholder={`Add work for ${displayName(mode)}…`}
+            />
+            <input
+              type="date"
+              aria-label="Work date"
+              value={newWorkDate}
+              onChange={(event) => setNewWorkDate(event.currentTarget.value)}
+            />
+            <button
+              type="button"
+              disabled={!newWorkTitle.trim() || savingWork}
+              onClick={() => void addWorkForSelectedPerson()}
+            >
+              {savingWork ? "Adding…" : "Add Work"}
+            </button>
+          </div>
+
           <button type="button" className="atlas-secondary-open-all" onClick={openWorkPage}>
             Open All Work
           </button>
-          <div className="atlas-secondary-custom-rows">
-            {customRows.length ? (
-              customRows.map((record) => {
-                const due = workDueDate(record);
-                return (
-                  <button
-                    type="button"
-                    className="atlas-secondary-custom-row"
-                    key={String(record.id || `${workTitle(record)}-${due}`)}
-                    onClick={openWorkPage}
-                  >
-                    <strong>{workTitle(record)}</strong>
-                    <small>
-                      {formatDue(due)} · {priorityOf(record)}
-                    </small>
-                  </button>
-                );
-              })
-            ) : (
-              <div className="atlas-secondary-custom-empty">
-                {mode === UPCOMING_MODE
-                  ? "No future scheduled work for Nick."
-                  : `No current work for ${displayName(mode)}.`}
+
+          <section className="atlas-secondary-section">
+            <div className="atlas-secondary-section-title">
+              <span>Today</span>
+              <span>{todayRows.length}</span>
+            </div>
+            <div className="atlas-secondary-custom-rows">
+              {todayRows.length ? (
+                todayRows.map((record) => workRow(record, "today"))
+              ) : (
+                <div className="atlas-secondary-custom-empty">Nothing scheduled today.</div>
+              )}
+            </div>
+          </section>
+
+          {completedRows.length ? (
+            <details className="atlas-secondary-completed atlas-secondary-section">
+              <summary>Completed · {completedRows.length}</summary>
+              <div className="atlas-secondary-custom-rows">
+                {completedRows.map((record) => workRow(record, "completed"))}
               </div>
-            )}
-          </div>
+            </details>
+          ) : null}
+
+          <section className="atlas-secondary-section">
+            <div className="atlas-secondary-section-title">
+              <span>Upcoming</span>
+              <span>{upcomingRows.length}</span>
+            </div>
+            <div className="atlas-secondary-custom-rows">
+              {upcomingRows.length ? (
+                upcomingRows.map((record) => workRow(record, "upcoming"))
+              ) : (
+                <div className="atlas-secondary-custom-empty">No future work scheduled.</div>
+              )}
+            </div>
+          </section>
+
+          {needsDateRows.length ? (
+            <section className="atlas-secondary-section">
+              <div className="atlas-secondary-section-title">
+                <span>Needs Date</span>
+                <span>{needsDateRows.length}</span>
+              </div>
+              <div className="atlas-secondary-custom-rows">
+                {needsDateRows.map((record) => workRow(record, "undated"))}
+              </div>
+            </section>
+          ) : null}
         </div>
       ) : null}
     </>,
