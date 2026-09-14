@@ -44,6 +44,21 @@ function liveNativeButton(drawer: HTMLElement, label: "edit" | "delete") {
   }) || null;
 }
 
+function selectedListAction(label: "edit" | "delete") {
+  const root = assetsMain();
+  const currentCard = root?.querySelector<HTMLElement>(
+    ".atlas-asset-list-card-current, .atlas-gold-hover-card:has(input[type=checkbox]:checked)",
+  );
+  if (!currentCard) return null;
+
+  return Array.from(currentCard.querySelectorAll<HTMLButtonElement>("button")).find((button) => {
+    const text = normalized(button.textContent);
+    const aria = normalized(button.getAttribute("aria-label"));
+    if (label === "edit") return text === "edit" || aria === "edit asset";
+    return text === "delete" || text === "delete asset" || aria === "delete asset";
+  }) || null;
+}
+
 function realEditorOpen(drawer: HTMLElement) {
   const nativeEdit = liveNativeButton(drawer, "edit");
   const texts = Array.from(drawer.querySelectorAll<HTMLButtonElement>("button")).map((button) =>
@@ -68,8 +83,8 @@ function ensureLiveInlineActions(drawer: HTMLElement) {
     return;
   }
 
-  const nativeEdit = liveNativeButton(drawer, "edit");
-  const nativeDelete = liveNativeButton(drawer, "delete");
+  const nativeEdit = liveNativeButton(drawer, "edit") || selectedListAction("edit");
+  const nativeDelete = liveNativeButton(drawer, "delete") || selectedListAction("delete");
   if (!nativeEdit && !nativeDelete) {
     host?.remove();
     return;
@@ -111,7 +126,8 @@ function ensureLiveInlineActions(drawer: HTMLElement) {
 function clickLiveNativeAssetAction(proxy: HTMLButtonElement, action: "edit" | "delete") {
   const drawer = proxy.closest<HTMLElement>(".atlas-asset-drawer");
   if (!drawer) return false;
-  const nativeButton = liveNativeButton(drawer, action);
+
+  const nativeButton = liveNativeButton(drawer, action) || selectedListAction(action);
   if (!nativeButton) return false;
   nativeButton.click();
   return true;
@@ -228,6 +244,16 @@ export default function AtlasAssetEditAndPhotoFix() {
           max-height: none !important;
           overflow: visible !important;
         }
+      }
+
+      /* License plate and custom asset fields are real saved asset data. Keep
+         their host visible in the normal read-only information view. */
+      .atlas-assets-viewport-root
+        .atlas-asset-reference-drawer:not(.atlas-asset-reference-editing)
+        > [data-atlas-asset-additional-info-host] {
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
       }
 
       .atlas-asset-reference-root .atlas-asset-reference-hero {
