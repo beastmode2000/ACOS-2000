@@ -17,6 +17,7 @@ import AtlasAssetAdditionalInfo from "./components/AtlasAssetAdditionalInfo";
 import AtlasAssetEditVisibilityFix from "./components/AtlasAssetEditVisibilityFix";
 import AtlasAssetEditAndPhotoFix from "./components/AtlasAssetEditAndPhotoFix";
 import AtlasAssetEditActionFix from "./components/AtlasAssetEditActionFix";
+import AtlasAssetHeaderEditFix from "./components/AtlasAssetHeaderEditFix";
 import AtlasAssetsViewportPolish from "./components/AtlasAssetsViewportPolish";
 import AtlasDepartmentAssetPhotoPolish from "./components/AtlasDepartmentAssetPhotoPolish";
 import AtlasAssetListActionsPolish from "./components/AtlasAssetListActionsPolish";
@@ -123,6 +124,7 @@ export default function RootLayout({
         <AtlasAssetEditVisibilityFix />
         <AtlasAssetEditAndPhotoFix />
         <AtlasAssetEditActionFix />
+        <AtlasAssetHeaderEditFix />
         <AtlasAssetsViewportPolish />
         <AtlasDepartmentAssetPhotoPolish />
         <AtlasAssetListActionsPolish />
