@@ -15,15 +15,18 @@ type OwnerInputPhoto = {
   createdAt: string;
 };
 
+const VALID_PROPERTIES = new Set(["2000", "6855", "3661", "hangar"]);
+
 function getSql() {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.NEON_DATABASE_URL;
   if (!connectionString) throw new Error("Missing DATABASE_URL");
   return neon(connectionString);
 }
 
-function cleanPropertyId(value: unknown) {
-  const id = String(value || "2000").trim().toLowerCase();
-  return ["2000", "6855", "3661", "hangar"].includes(id) ? id : "2000";
+function propertyIdFrom(value: unknown) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return "2000";
+  return VALID_PROPERTIES.has(raw) ? raw : "";
 }
 
 function cleanText(value: unknown, max = 5000) {
@@ -82,6 +85,25 @@ async function ensureTable(sql: ReturnType<typeof neon>) {
   `;
 }
 
+async function canAccessProperty(sql: ReturnType<typeof neon>, request: NextRequest, propertyId: string) {
+  const email = cleanText(request.headers.get("x-atlas-user-email"), 320).toLowerCase();
+  const headerRole = cleanText(request.headers.get("x-atlas-user-role"), 80).toLowerCase();
+  if (!email || headerRole === "master") return true;
+
+  const rows = await sql`
+    SELECT role, active, property_ids
+    FROM atlas_team_access
+    WHERE lower(email) = ${email}
+    LIMIT 1
+  `;
+  const row = rows[0] as Row | undefined;
+  if (!row || row.active === false) return false;
+  const role = String(row.role || headerRole).toLowerCase();
+  if (role === "master") return true;
+  const propertyIds = Array.isArray(row.property_ids) ? row.property_ids.map(String) : ["2000"];
+  return propertyIds.includes(propertyId);
+}
+
 function mapRow(row: Row, includeToken = false) {
   return {
     id: String(row.id || ""),
@@ -119,7 +141,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: true, item: mapRow(rows[0] as Row, false) }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    const propertyId = cleanPropertyId(request.nextUrl.searchParams.get("propertyId"));
+    const propertyId = propertyIdFrom(request.nextUrl.searchParams.get("propertyId"));
+    if (!propertyId) return NextResponse.json({ ok: false, error: "Invalid property ID." }, { status: 400 });
+    if (!(await canAccessProperty(sql, request, propertyId))) {
+      return NextResponse.json({ ok: false, error: "You do not have access to this property." }, { status: 403 });
+    }
+
     const rows = await sql`
       SELECT * FROM atlas_owner_input
       WHERE property_id = ${propertyId}
@@ -164,7 +191,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, item: mapRow(rows[0] as Row, false) });
     }
 
-    const propertyId = cleanPropertyId(body.propertyId);
+    const propertyId = propertyIdFrom(body.propertyId);
+    if (!propertyId) return NextResponse.json({ ok: false, error: "Invalid property ID." }, { status: 400 });
+    if (!(await canAccessProperty(sql, request, propertyId))) {
+      return NextResponse.json({ ok: false, error: "You do not have access to this property." }, { status: 403 });
+    }
+
     const question = cleanText(body.question, 3000);
     if (!question) return NextResponse.json({ ok: false, error: "Owner question is required." }, { status: 400 });
 
@@ -200,9 +232,17 @@ export async function PATCH(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as Row;
     const id = cleanText(body.id, 240);
     if (!id) return NextResponse.json({ ok: false, error: "Owner input id is required." }, { status: 400 });
+
+    const existing = await sql`SELECT property_id FROM atlas_owner_input WHERE id = ${id} LIMIT 1`;
+    if (!existing.length) return NextResponse.json({ ok: false, error: "Owner input request not found." }, { status: 404 });
+    const propertyId = propertyIdFrom((existing[0] as Row).property_id);
+    if (!propertyId || !(await canAccessProperty(sql, request, propertyId))) {
+      return NextResponse.json({ ok: false, error: "You do not have access to this property." }, { status: 403 });
+    }
+
     const status = cleanText(body.status, 100) === "Closed" ? "Closed" : "Awaiting Owner";
-    await sql`UPDATE atlas_owner_input SET status = ${status}, updated_at = NOW() WHERE id = ${id}`;
-    return NextResponse.json({ ok: true, id, status });
+    await sql`UPDATE atlas_owner_input SET status = ${status}, updated_at = NOW() WHERE id = ${id} AND property_id = ${propertyId}`;
+    return NextResponse.json({ ok: true, id, propertyId, status });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Owner input could not be updated." }, { status: 500 });
   }
@@ -214,8 +254,16 @@ export async function DELETE(request: NextRequest) {
     await ensureTable(sql);
     const id = cleanText(request.nextUrl.searchParams.get("id"), 240);
     if (!id) return NextResponse.json({ ok: false, error: "Owner input id is required." }, { status: 400 });
-    await sql`DELETE FROM atlas_owner_input WHERE id = ${id}`;
-    return NextResponse.json({ ok: true, id });
+
+    const existing = await sql`SELECT property_id FROM atlas_owner_input WHERE id = ${id} LIMIT 1`;
+    if (!existing.length) return NextResponse.json({ ok: false, error: "Owner input request not found." }, { status: 404 });
+    const propertyId = propertyIdFrom((existing[0] as Row).property_id);
+    if (!propertyId || !(await canAccessProperty(sql, request, propertyId))) {
+      return NextResponse.json({ ok: false, error: "You do not have access to this property." }, { status: 403 });
+    }
+
+    await sql`DELETE FROM atlas_owner_input WHERE id = ${id} AND property_id = ${propertyId}`;
+    return NextResponse.json({ ok: true, id, propertyId });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Owner input could not be deleted." }, { status: 500 });
   }
