@@ -62,23 +62,40 @@ export default function AtlasAssetAdditionalInfo() {
 
   useEffect(() => {
     let cancelled = false;
-    const loadAssets = async () => {
+    let retryTimer: number | null = null;
+
+    const loadAssets = async (attempt = 0) => {
       try {
         const response = await fetch(
           `/api/atlas?propertyId=${encodeURIComponent(propertyId)}&t=${Date.now()}`,
           { cache: "no-store", credentials: "include" },
         );
         const data = (await response.json().catch(() => ({}))) as AtlasPayload;
-        if (!cancelled && response.ok && data?.ok !== false) setPayload(data);
+        if (cancelled) return;
+        if (response.ok && data?.ok !== false) {
+          setPayload(data);
+          const wanted = normalized(selectedName);
+          const missingSelectedAsset = Boolean(
+            wanted && !(data.assetRecords || []).some((asset) => normalized(asset.name) === wanted),
+          );
+          if (missingSelectedAsset && attempt < 8) {
+            retryTimer = window.setTimeout(() => void loadAssets(attempt + 1), 180);
+          }
+        }
       } catch {
         if (!cancelled) setPayload(null);
       }
     };
+
+    const refresh = () => void loadAssets();
     void loadAssets();
+    window.addEventListener("atlas:data-changed", refresh as EventListener);
     return () => {
       cancelled = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+      window.removeEventListener("atlas:data-changed", refresh as EventListener);
     };
-  }, [propertyId]);
+  }, [propertyId, selectedName]);
 
   useEffect(() => {
     let frame = 0;
