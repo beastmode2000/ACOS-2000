@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
     const summary = String(body.summary || "").slice(0, 10000);
     const items = cleanItems(body.items);
 
-    await sql`
+    const rows = await sql`
       INSERT INTO atlas_owner_reports (
         id, property_id, period_start, period_end, title, status, summary, items, created_at, updated_at
       ) VALUES (
@@ -210,7 +210,6 @@ export async function POST(request: NextRequest) {
         ${JSON.stringify(items)}::jsonb, NOW(), NOW()
       )
       ON CONFLICT (id) DO UPDATE SET
-        property_id = EXCLUDED.property_id,
         period_start = EXCLUDED.period_start,
         period_end = EXCLUDED.period_end,
         title = EXCLUDED.title,
@@ -218,7 +217,16 @@ export async function POST(request: NextRequest) {
         summary = EXCLUDED.summary,
         items = EXCLUDED.items,
         updated_at = NOW()
+      WHERE atlas_owner_reports.property_id = EXCLUDED.property_id
+      RETURNING id
     `;
+
+    if (!(rows as unknown as Row[]).length) {
+      return NextResponse.json(
+        { ok: false, error: "A report with this ID belongs to a different property." },
+        { status: 409 },
+      );
+    }
 
     return NextResponse.json({ ok: true, id, propertyId, itemCount: items.length });
   } catch (error) {
