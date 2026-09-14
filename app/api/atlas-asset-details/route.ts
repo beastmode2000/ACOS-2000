@@ -12,6 +12,12 @@ type CustomDetail = {
   value: string;
 };
 
+type InfoField = {
+  key: string;
+  label: string;
+  visible: boolean;
+};
+
 const VALID_PROPERTIES = new Set(["2000", "6855", "3661", "hangar"]);
 
 function getSql() {
@@ -48,6 +54,21 @@ function cleanDetails(value: unknown): CustomDetail[] {
     .filter((detail) => detail.label || detail.value);
 }
 
+function cleanInfoFields(value: unknown): InfoField[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, 20)
+    .map((entry) => {
+      const row = entry && typeof entry === "object" ? (entry as Row) : {};
+      return {
+        key: cleanText(row.key, 100).toLowerCase(),
+        label: cleanText(row.label, 200),
+        visible: row.visible !== false,
+      };
+    })
+    .filter((field) => field.key);
+}
+
 async function ensureTable(sql: ReturnType<typeof neon>) {
   await sql`
     CREATE TABLE IF NOT EXISTS atlas_asset_details (
@@ -55,11 +76,13 @@ async function ensureTable(sql: ReturnType<typeof neon>) {
       asset_id text NOT NULL,
       license_plate text NOT NULL DEFAULT '',
       custom_details jsonb NOT NULL DEFAULT '[]'::jsonb,
+      info_fields jsonb NOT NULL DEFAULT '[]'::jsonb,
       created_at timestamptz NOT NULL DEFAULT NOW(),
       updated_at timestamptz NOT NULL DEFAULT NOW(),
       PRIMARY KEY (property_id, asset_id)
     )
   `;
+  await sql`ALTER TABLE atlas_asset_details ADD COLUMN IF NOT EXISTS info_fields jsonb NOT NULL DEFAULT '[]'::jsonb`;
 }
 
 function mapRow(row: Row | undefined, propertyId: string, assetId: string) {
@@ -68,6 +91,7 @@ function mapRow(row: Row | undefined, propertyId: string, assetId: string) {
     assetId,
     licensePlate: String(row?.license_plate || ""),
     customDetails: Array.isArray(row?.custom_details) ? row?.custom_details : [],
+    infoFields: Array.isArray(row?.info_fields) ? row?.info_fields : [],
     updatedAt: row?.updated_at ? new Date(String(row.updated_at)).toISOString() : "",
   };
 }
@@ -86,7 +110,7 @@ export async function GET(request: NextRequest) {
     const sql = getSql();
     await ensureTable(sql);
     const rows = await sql`
-      SELECT property_id, asset_id, license_plate, custom_details, updated_at
+      SELECT property_id, asset_id, license_plate, custom_details, info_fields, updated_at
       FROM atlas_asset_details
       WHERE property_id = ${propertyId} AND asset_id = ${assetId}
       LIMIT 1
@@ -118,20 +142,22 @@ export async function POST(request: NextRequest) {
 
     const licensePlate = cleanText(body.licensePlate, 100);
     const customDetails = cleanDetails(body.customDetails);
+    const infoFields = cleanInfoFields(body.infoFields);
     const sql = getSql();
     await ensureTable(sql);
 
     const rows = await sql`
       INSERT INTO atlas_asset_details (
-        property_id, asset_id, license_plate, custom_details, created_at, updated_at
+        property_id, asset_id, license_plate, custom_details, info_fields, created_at, updated_at
       ) VALUES (
-        ${propertyId}, ${assetId}, ${licensePlate}, ${JSON.stringify(customDetails)}::jsonb, NOW(), NOW()
+        ${propertyId}, ${assetId}, ${licensePlate}, ${JSON.stringify(customDetails)}::jsonb, ${JSON.stringify(infoFields)}::jsonb, NOW(), NOW()
       )
       ON CONFLICT (property_id, asset_id) DO UPDATE SET
         license_plate = EXCLUDED.license_plate,
         custom_details = EXCLUDED.custom_details,
+        info_fields = EXCLUDED.info_fields,
         updated_at = NOW()
-      RETURNING property_id, asset_id, license_plate, custom_details, updated_at
+      RETURNING property_id, asset_id, license_plate, custom_details, info_fields, updated_at
     `;
 
     return NextResponse.json({
