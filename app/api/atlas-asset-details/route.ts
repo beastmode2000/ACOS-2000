@@ -12,6 +12,8 @@ type CustomDetail = {
   value: string;
 };
 
+const VALID_PROPERTIES = new Set(["2000", "6855", "3661", "hangar"]);
+
 function getSql() {
   const connectionString =
     process.env.DATABASE_URL ||
@@ -21,9 +23,10 @@ function getSql() {
   return neon(connectionString);
 }
 
-function cleanPropertyId(value: unknown) {
-  const id = String(value || "2000").trim().toLowerCase();
-  return ["2000", "6855", "3661", "hangar"].includes(id) ? id : "2000";
+function propertyIdFrom(value: unknown) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return "2000";
+  return VALID_PROPERTIES.has(raw) ? raw : "";
 }
 
 function cleanText(value: unknown, max = 1000) {
@@ -71,14 +74,17 @@ function mapRow(row: Row | undefined, propertyId: string, assetId: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    const sql = getSql();
-    await ensureTable(sql);
-    const propertyId = cleanPropertyId(request.nextUrl.searchParams.get("propertyId"));
+    const propertyId = propertyIdFrom(request.nextUrl.searchParams.get("propertyId"));
+    if (!propertyId) {
+      return NextResponse.json({ ok: false, error: "Invalid property ID." }, { status: 400 });
+    }
     const assetId = cleanText(request.nextUrl.searchParams.get("assetId"), 240);
     if (!assetId) {
       return NextResponse.json({ ok: false, error: "Asset id is required." }, { status: 400 });
     }
 
+    const sql = getSql();
+    await ensureTable(sql);
     const rows = await sql`
       SELECT property_id, asset_id, license_plate, custom_details, updated_at
       FROM atlas_asset_details
@@ -100,10 +106,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const sql = getSql();
-    await ensureTable(sql);
     const body = (await request.json().catch(() => ({}))) as Row;
-    const propertyId = cleanPropertyId(body.propertyId);
+    const propertyId = propertyIdFrom(body.propertyId);
+    if (!propertyId) {
+      return NextResponse.json({ ok: false, error: "Invalid property ID." }, { status: 400 });
+    }
     const assetId = cleanText(body.assetId, 240);
     if (!assetId) {
       return NextResponse.json({ ok: false, error: "Asset id is required." }, { status: 400 });
@@ -111,6 +118,8 @@ export async function POST(request: NextRequest) {
 
     const licensePlate = cleanText(body.licensePlate, 100);
     const customDetails = cleanDetails(body.customDetails);
+    const sql = getSql();
+    await ensureTable(sql);
 
     const rows = await sql`
       INSERT INTO atlas_asset_details (
