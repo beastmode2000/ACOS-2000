@@ -20,6 +20,23 @@ type CustomDetail = {
   value: string;
 };
 
+type InfoField = {
+  key: string;
+  label: string;
+  visible: boolean;
+};
+
+const DEFAULT_INFO_FIELDS: InfoField[] = [
+  { key: "make", label: "Make", visible: true },
+  { key: "model", label: "Model", visible: true },
+  { key: "year", label: "Year", visible: true },
+  { key: "serial", label: "Serial / VIN / HIN", visible: true },
+  { key: "serial2", label: "Serial Number 2", visible: true },
+  { key: "manufacturer", label: "Manufacturer", visible: true },
+  { key: "category", label: "Category", visible: true },
+  { key: "location", label: "Location", visible: true },
+];
+
 function normalized(value: unknown) {
   return String(value || "").trim().toLowerCase();
 }
@@ -46,14 +63,32 @@ function uid() {
   return `asset-detail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function infoKeyFromLabel(label: string) {
+  const value = normalized(label);
+  if (value === "make") return "make";
+  if (value === "model") return "model";
+  if (value === "year") return "year";
+  if (value === "manufacturer") return "manufacturer";
+  if (value === "category") return "category";
+  if (value === "location") return "location";
+  if (value.includes("serial number 2") || value.includes("second serial")) return "serial2";
+  if (value.includes("serial") || value.includes("vin") || value.includes("hin")) return "serial";
+  return "";
+}
+
+function mergedInfoFields(saved: InfoField[]) {
+  const byKey = new Map(saved.map((field) => [field.key, field]));
+  return DEFAULT_INFO_FIELDS.map((field) => ({ ...field, ...(byKey.get(field.key) || {}) }));
+}
+
 export default function AtlasAssetAdditionalInfo() {
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const [specTarget, setSpecTarget] = useState<HTMLElement | null>(null);
   const [selectedName, setSelectedName] = useState("");
   const [propertyId, setPropertyId] = useState("2000");
   const [payload, setPayload] = useState<AtlasPayload | null>(null);
-  const [licensePlate, setLicensePlate] = useState("");
   const [customDetails, setCustomDetails] = useState<CustomDetail[]>([]);
+  const [infoFields, setInfoFields] = useState<InfoField[]>(DEFAULT_INFO_FIELDS);
   const [loadedKey, setLoadedKey] = useState("");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -181,8 +216,15 @@ export default function AtlasAssetAdditionalInfo() {
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data?.ok) throw new Error(data?.error || "Asset details could not load.");
         if (cancelled) return;
-        setLicensePlate(String(data.details?.licensePlate || ""));
-        setCustomDetails(Array.isArray(data.details?.customDetails) ? data.details.customDetails : []);
+        const details = Array.isArray(data.details?.customDetails) ? data.details.customDetails : [];
+        const legacyPlate = String(data.details?.licensePlate || "").trim();
+        const hasPlateField = details.some((detail: CustomDetail) => normalized(detail.label) === "license plate");
+        setCustomDetails(
+          legacyPlate && !hasPlateField
+            ? [{ id: "legacy-license-plate", label: "License Plate", value: legacyPlate }, ...details]
+            : details,
+        );
+        setInfoFields(mergedInfoFields(Array.isArray(data.details?.infoFields) ? data.details.infoFields : []));
         setLoadedKey(key);
       })
       .catch((error) => {
@@ -192,6 +234,25 @@ export default function AtlasAssetAdditionalInfo() {
       cancelled = true;
     };
   }, [propertyId, selectedAsset?.id, loadedKey]);
+
+  useEffect(() => {
+    const specs = specTarget?.closest(".atlas-asset-reference-specs");
+    if (!specs) return;
+    const config = new Map(infoFields.map((field) => [field.key, field]));
+    for (const item of Array.from(specs.querySelectorAll<HTMLElement>(".atlas-asset-reference-spec"))) {
+      const labelNode = item.querySelector<HTMLElement>("span");
+      if (!labelNode) continue;
+      let key = item.dataset.atlasInfoFieldKey || "";
+      if (!key) {
+        key = infoKeyFromLabel(labelNode.textContent || "");
+        if (key) item.dataset.atlasInfoFieldKey = key;
+      }
+      if (!key) continue;
+      const field = config.get(key);
+      item.style.display = field?.visible === false ? "none" : "";
+      if (field?.label) labelNode.textContent = field.label;
+    }
+  }, [specTarget, infoFields, selectedAsset?.id]);
 
   function addField() {
     setCustomDetails((current) => [...current, { id: uid(), label: "", value: "" }]);
@@ -209,27 +270,37 @@ export default function AtlasAssetAdditionalInfo() {
     setEditing(true);
   }
 
+  function updateInfoField(key: string, patch: Partial<InfoField>) {
+    setInfoFields((current) =>
+      current.map((field) => (field.key === key ? { ...field, ...patch } : field)),
+    );
+    setEditing(true);
+  }
+
   async function save() {
     if (!selectedAsset?.id || saving) return;
     setSaving(true);
     setStatus("");
     try {
+      const cleanedDetails = customDetails.filter((detail) => detail.label.trim() || detail.value.trim());
       const response = await fetch("/api/atlas-asset-details", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           propertyId,
           assetId: selectedAsset.id,
-          licensePlate,
-          customDetails,
+          licensePlate: "",
+          customDetails: cleanedDetails,
+          infoFields,
         }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data?.ok) throw new Error(data?.error || "Asset details could not save.");
-      setLicensePlate(String(data.details?.licensePlate || ""));
       setCustomDetails(Array.isArray(data.details?.customDetails) ? data.details.customDetails : []);
+      setInfoFields(mergedInfoFields(Array.isArray(data.details?.infoFields) ? data.details.infoFields : []));
       setEditing(false);
       setStatus("Saved.");
+      window.dispatchEvent(new CustomEvent("atlas:data-changed", { detail: { table: "asset-details", id: selectedAsset.id } }));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Asset details could not save.");
     } finally {
@@ -261,7 +332,9 @@ export default function AtlasAssetAdditionalInfo() {
     cursor: "pointer",
   };
 
-  const summary = specTarget
+  const visibleDetails = customDetails.filter((detail) => detail.label.trim() || detail.value.trim());
+
+  const summary = specTarget && visibleDetails.length
     ? createPortal(
         <div
           style={{
@@ -271,18 +344,12 @@ export default function AtlasAssetAdditionalInfo() {
             padding: "0 12px 12px",
           }}
         >
-          <div style={{ border: "1px solid #E0E7EE", borderRadius: 8, padding: "8px 9px", background: "#FFFFFF" }}>
-            <div style={{ fontSize: 10, fontWeight: 800, color: "#6B7C8C", textTransform: "uppercase", letterSpacing: ".04em" }}>License Plate</div>
-            <div style={{ marginTop: 2, fontSize: 12, fontWeight: 800, color: "#1B2A36" }}>{licensePlate || "—"}</div>
-          </div>
-          {customDetails
-            .filter((detail) => detail.label || detail.value)
-            .map((detail) => (
-              <div key={`summary-${detail.id}`} style={{ border: "1px solid #E0E7EE", borderRadius: 8, padding: "8px 9px", background: "#FFFFFF" }}>
-                <div style={{ fontSize: 10, fontWeight: 800, color: "#6B7C8C", textTransform: "uppercase", letterSpacing: ".04em" }}>{detail.label || "Additional Info"}</div>
-                <div style={{ marginTop: 2, fontSize: 12, fontWeight: 800, color: "#1B2A36" }}>{detail.value || "—"}</div>
-              </div>
-            ))}
+          {visibleDetails.map((detail) => (
+            <div key={`summary-${detail.id}`} style={{ border: "1px solid #E0E7EE", borderRadius: 8, padding: "8px 9px", background: "#FFFFFF" }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: "#6B7C8C", textTransform: "uppercase", letterSpacing: ".04em" }}>{detail.label || "Additional Info"}</div>
+              <div style={{ marginTop: 2, fontSize: 12, fontWeight: 800, color: "#1B2A36" }}>{detail.value || "—"}</div>
+            </div>
+          ))}
         </div>,
         specTarget,
       )
@@ -311,29 +378,40 @@ export default function AtlasAssetAdditionalInfo() {
             }}
           >
             <div>
-              <div style={{ fontSize: 12, fontWeight: 800, color: "#0A2841" }}>Additional Fields</div>
-              <div style={{ fontSize: 10, color: "#6B7C8C", marginTop: 2 }}>License plate and any custom asset details.</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#0A2841" }}>Info Card Fields</div>
+              <div style={{ fontSize: 10, color: "#6B7C8C", marginTop: 2 }}>Choose what this asset shows. Add, rename, hide, or remove fields yourself.</div>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <button type="button" style={buttonStyle} onClick={addField}>Add Field</button>
-              <button type="button" style={buttonStyle} onClick={() => setEditing((value) => !value)}>{editing ? "Done" : "Edit"}</button>
+              <button type="button" style={buttonStyle} onClick={() => setEditing((value) => !value)}>{editing ? "Done" : "Customize"}</button>
             </div>
           </div>
 
           {editing ? (
-            <div style={{ padding: 12, display: "grid", gap: 9 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "130px minmax(0,1fr)", gap: 10, alignItems: "center" }}>
-                <strong style={{ fontSize: 11, color: "#6B7C8C" }}>License Plate</strong>
-                <input value={licensePlate} onChange={(e) => setLicensePlate(e.target.value)} placeholder="Enter plate" style={inputStyle} />
+            <div style={{ padding: 12, display: "grid", gap: 12 }}>
+              <div style={{ display: "grid", gap: 7 }}>
+                <strong style={{ fontSize: 11, color: "#0A2841" }}>Standard fields</strong>
+                {infoFields.map((field) => (
+                  <div key={field.key} style={{ display: "grid", gridTemplateColumns: "72px minmax(0,1fr)", gap: 10, alignItems: "center" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#526574" }}>
+                      <input type="checkbox" checked={field.visible} onChange={(e) => updateInfoField(field.key, { visible: e.target.checked })} /> Show
+                    </label>
+                    <input value={field.label} onChange={(e) => updateInfoField(field.key, { label: e.target.value })} style={inputStyle} aria-label={`Label for ${field.key}`} />
+                  </div>
+                ))}
               </div>
 
-              {customDetails.map((detail) => (
-                <div key={detail.id} style={{ display: "grid", gridTemplateColumns: "130px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
-                  <input value={detail.label} onChange={(e) => updateField(detail.id, { label: e.target.value })} placeholder="Field name" style={inputStyle} />
-                  <input value={detail.value} onChange={(e) => updateField(detail.id, { value: e.target.value })} placeholder="Value" style={inputStyle} />
-                  <button type="button" onClick={() => removeField(detail.id)} style={{ ...buttonStyle, color: "#B42318" }}>Remove</button>
-                </div>
-              ))}
+              <div style={{ borderTop: "1px solid #E6ECF1", paddingTop: 10, display: "grid", gap: 8 }}>
+                <strong style={{ fontSize: 11, color: "#0A2841" }}>Custom fields</strong>
+                {customDetails.length === 0 ? <div style={{ fontSize: 10, color: "#6B7C8C" }}>No custom fields on this asset.</div> : null}
+                {customDetails.map((detail) => (
+                  <div key={detail.id} style={{ display: "grid", gridTemplateColumns: "130px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+                    <input value={detail.label} onChange={(e) => updateField(detail.id, { label: e.target.value })} placeholder="Field name" style={inputStyle} />
+                    <input value={detail.value} onChange={(e) => updateField(detail.id, { value: e.target.value })} placeholder="Value" style={inputStyle} />
+                    <button type="button" onClick={() => removeField(detail.id)} style={{ ...buttonStyle, color: "#B42318" }}>Remove</button>
+                  </div>
+                ))}
+              </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
                 <button
@@ -352,7 +430,7 @@ export default function AtlasAssetAdditionalInfo() {
                     opacity: saving ? 0.6 : 1,
                   }}
                 >
-                  {saving ? "Saving…" : "Save Asset Info"}
+                  {saving ? "Saving…" : "Save Info Card"}
                 </button>
                 {status ? <span style={{ fontSize: 10, color: status === "Saved." ? "#087443" : "#B42318" }}>{status}</span> : null}
               </div>
