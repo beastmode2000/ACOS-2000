@@ -12,6 +12,7 @@ import AtlasPropertyVisibility from "./components/AtlasPropertyVisibility";
 import AtlasWorkspacePolish from "./components/AtlasWorkspacePolish";
 import AtlasKnowledgePolish from "./components/AtlasKnowledgePolish";
 import AtlasAssetReferencePolish from "./components/AtlasAssetReferencePolish";
+import AtlasAssetPhotoContainPolish from "./components/AtlasAssetPhotoContainPolish";
 import AtlasAssetAdditionalInfo from "./components/AtlasAssetAdditionalInfo";
 import AtlasAssetEditVisibilityFix from "./components/AtlasAssetEditVisibilityFix";
 import AtlasAssetsViewportPolish from "./components/AtlasAssetsViewportPolish";
@@ -110,6 +111,7 @@ export default function RootLayout({
         <AtlasWorkspacePolish />
         <AtlasKnowledgePolish />
         <AtlasAssetReferencePolish />
+        <AtlasAssetPhotoContainPolish />
         <AtlasAssetAdditionalInfo />
         <AtlasAssetEditVisibilityFix />
         <AtlasAssetsViewportPolish />
