@@ -6,6 +6,8 @@ export const runtime = "nodejs";
 
 type Row = Record<string, unknown>;
 
+const VALID_PROPERTIES = new Set(["2000", "6855", "3661", "hangar"]);
+
 function getSql() {
   const connectionString =
     process.env.DATABASE_URL ||
@@ -15,9 +17,10 @@ function getSql() {
   return neon(connectionString);
 }
 
-function cleanPropertyId(value: unknown) {
-  const id = String(value || "2000").trim().toLowerCase();
-  return ["2000", "6855", "3661", "hangar"].includes(id) ? id : "2000";
+function propertyIdFrom(value: unknown) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return "2000";
+  return VALID_PROPERTIES.has(raw) ? raw : "";
 }
 
 function cleanDate(value: unknown) {
@@ -106,9 +109,13 @@ function mapReport(row: Row) {
 
 export async function GET(request: NextRequest) {
   try {
+    const propertyId = propertyIdFrom(request.nextUrl.searchParams.get("propertyId"));
+    if (!propertyId) {
+      return NextResponse.json({ ok: false, error: "Invalid property ID." }, { status: 400 });
+    }
+
     const sql = getSql();
     await ensureTable(sql);
-    const propertyId = cleanPropertyId(request.nextUrl.searchParams.get("propertyId"));
     const rows = await sql`
       SELECT id, property_id, period_start, period_end, title, status, summary, items, created_at, updated_at
       FROM atlas_owner_reports
@@ -145,10 +152,14 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const body = (await request.json().catch(() => ({}))) as Row;
+    const propertyId = propertyIdFrom(body.propertyId);
+    if (!propertyId) {
+      return NextResponse.json({ ok: false, error: "Invalid property ID." }, { status: 400 });
+    }
+
     const sql = getSql();
     await ensureTable(sql);
-    const body = (await request.json().catch(() => ({}))) as Row;
-    const propertyId = cleanPropertyId(body.propertyId);
 
     if (String(body.action || "") === "exclude-item") {
       const sourceKey = String(body.sourceKey || "").trim().slice(0, 1000);
@@ -223,14 +234,17 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const sql = getSql();
-    await ensureTable(sql);
     const id = String(request.nextUrl.searchParams.get("id") || "").trim();
-    const propertyId = cleanPropertyId(request.nextUrl.searchParams.get("propertyId"));
+    const propertyId = propertyIdFrom(request.nextUrl.searchParams.get("propertyId"));
+    if (!propertyId) {
+      return NextResponse.json({ ok: false, error: "Invalid property ID." }, { status: 400 });
+    }
     if (!id) {
       return NextResponse.json({ ok: false, error: "Report id is required." }, { status: 400 });
     }
 
+    const sql = getSql();
+    await ensureTable(sql);
     const rows = await sql`
       DELETE FROM atlas_owner_reports
       WHERE id = ${id} AND property_id = ${propertyId}
