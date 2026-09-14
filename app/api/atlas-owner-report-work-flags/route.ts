@@ -6,15 +6,18 @@ export const runtime = "nodejs";
 
 type Row = Record<string, unknown>;
 
+const VALID_PROPERTIES = new Set(["2000", "6855", "3661", "hangar"]);
+
 function getSql() {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.NEON_DATABASE_URL;
   if (!connectionString) throw new Error("Missing DATABASE_URL");
   return neon(connectionString);
 }
 
-function cleanPropertyId(value: unknown) {
-  const id = String(value || "2000").trim().toLowerCase();
-  return ["2000", "6855", "3661", "hangar"].includes(id) ? id : "2000";
+function propertyIdFrom(value: unknown) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return "2000";
+  return VALID_PROPERTIES.has(raw) ? raw : "";
 }
 
 function cleanImage(value: unknown) {
@@ -65,9 +68,13 @@ function mapRow(row: Row) {
 
 export async function GET(request: NextRequest) {
   try {
+    const propertyId = propertyIdFrom(request.nextUrl.searchParams.get("propertyId"));
+    if (!propertyId) {
+      return NextResponse.json({ ok: false, error: "Invalid property ID." }, { status: 400 });
+    }
+
     const sql = getSql();
     await ensureTable(sql);
-    const propertyId = cleanPropertyId(request.nextUrl.searchParams.get("propertyId"));
     const rows = await sql`
       SELECT property_id, work_key, title, work_date, person, highlight, owner_attention,
              before_photo, after_photo, general_photo,
@@ -85,12 +92,17 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const sql = getSql();
-    await ensureTable(sql);
     const body = (await request.json().catch(() => ({}))) as Row;
-    const propertyId = cleanPropertyId(body.propertyId);
+    const propertyId = propertyIdFrom(body.propertyId);
+    if (!propertyId) {
+      return NextResponse.json({ ok: false, error: "Invalid property ID." }, { status: 400 });
+    }
+
     const workKey = String(body.workKey || "").trim().slice(0, 1000);
     if (!workKey) return NextResponse.json({ ok: false, error: "Work key is required." }, { status: 400 });
+
+    const sql = getSql();
+    await ensureTable(sql);
     const title = String(body.title || "").slice(0, 500);
     const date = /^\d{4}-\d{2}-\d{2}$/.test(String(body.date || "")) ? String(body.date) : null;
     const person = String(body.person || "").slice(0, 160);
