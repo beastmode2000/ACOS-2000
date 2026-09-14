@@ -30,6 +30,7 @@ import AtlasDashboardUpcomingWork from "./components/AtlasDashboardUpcomingWork"
 import AtlasDashboardDefaultUpcoming from "./components/AtlasDashboardDefaultUpcoming";
 import AtlasHydrawiseWeatherLink from "./components/AtlasHydrawiseWeatherLink";
 import AtlasPhotoPastePolish from "./components/AtlasPhotoPastePolish";
+import AtlasPhotoLightbox from "./components/AtlasPhotoLightbox";
 import AtlasDayOffControl from "./components/AtlasDayOffControl";
 import AtlasSharedTeamList from "./components/AtlasSharedTeamList";
 import AtlasVendorScrollbarPolish from "./components/AtlasVendorScrollbarPolish";
@@ -133,6 +134,7 @@ export default function RootLayout({
         <AtlasDashboardDefaultUpcoming />
         <AtlasHydrawiseWeatherLink />
         <AtlasPhotoPastePolish />
+        <AtlasPhotoLightbox />
         <AtlasDayOffControl />
         <AtlasSharedTeamList />
         <AtlasVendorScrollbarPolish />
