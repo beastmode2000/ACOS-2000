@@ -54,6 +54,7 @@ import AtlasAskAtlasFreeLabels from "./components/AtlasAskAtlasFreeLabels";
 import AtlasGeneratedWorkCommentsCleanup from "./components/AtlasGeneratedWorkCommentsCleanup";
 import AtlasDropdownDismissBehavior from "./components/AtlasDropdownDismissBehavior";
 import AtlasScrollSafety from "./components/AtlasScrollSafety";
+import AtlasTopBarPropertyPolish from "./components/AtlasTopBarPropertyPolish";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -145,6 +146,7 @@ export default function RootLayout({
         <AtlasVendorLogoManualIsolation />
         <AtlasServiceLinkPolish />
         <AtlasWorkHistorySearch />
+        <AtlasTopBarPropertyPolish />
         <AtlasScrollSafety />
         {children}
       </body>
