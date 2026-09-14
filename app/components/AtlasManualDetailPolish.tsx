@@ -2,60 +2,116 @@
 
 import { useEffect } from "react";
 
-function normalized(value: unknown) {
-  return String(value || "").trim().toLowerCase();
+function text(value: unknown) {
+  return String(value || "").trim();
 }
 
-function findManualDetailSection() {
-  const headings = Array.from(document.querySelectorAll<HTMLHeadingElement>("h2"));
-  for (const heading of headings) {
-    const section = heading.closest<HTMLElement>("section");
-    if (!section) continue;
-    const buttons = Array.from(section.querySelectorAll<HTMLButtonElement>("button"));
-    const labels = buttons.map((button) => normalized(button.textContent));
-    if (labels.includes("back") && labels.includes("edit") && labels.includes("save")) {
-      return section;
-    }
-  }
-  return null;
+function normalized(value: unknown) {
+  return text(value).toLowerCase();
+}
+
+function visible(element: HTMLElement | null) {
+  if (!element) return false;
+  const style = window.getComputedStyle(element);
+  const rect = element.getBoundingClientRect();
+  return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+}
+
+function manualsMain() {
+  const heading = Array.from(document.querySelectorAll<HTMLElement>("main h1, main h2")).find(
+    (node) => normalized(node.textContent) === "manuals" && visible(node),
+  );
+  return (heading?.closest("main") as HTMLElement | null) || null;
+}
+
+function findManualDetail(root: HTMLElement) {
+  const candidates = Array.from(root.querySelectorAll<HTMLElement>("section, article, div"))
+    .filter((element) => {
+      if (!visible(element)) return false;
+      const heading = element.querySelector<HTMLElement>(":scope > h2, :scope > h3, h2");
+      if (!heading || normalized(heading.textContent) === "manuals") return false;
+      const buttons = Array.from(element.querySelectorAll<HTMLButtonElement>("button"));
+      return buttons.some((button) => normalized(button.textContent) === "edit");
+    })
+    .sort((a, b) => b.getBoundingClientRect().left - a.getBoundingClientRect().left);
+  return candidates[0] || null;
+}
+
+function manualTitle(detail: HTMLElement) {
+  return detail.querySelector<HTMLElement>("h2, h3");
+}
+
+function selectedManualRow(root: HTMLElement, title: string) {
+  const wanted = normalized(title);
+  if (!wanted) return null;
+
+  const rows = Array.from(
+    root.querySelectorAll<HTMLElement>("button, article, [role='button'], [role='listitem']"),
+  ).filter((element) => {
+    if (!visible(element) || detailAncestor(element)) return false;
+    const strongs = Array.from(element.querySelectorAll<HTMLElement>("strong"));
+    return strongs.some((strong) => normalized(strong.textContent) === wanted);
+  });
+
+  return rows
+    .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left)[0] || null;
+}
+
+function detailAncestor(element: HTMLElement) {
+  return Boolean(element.closest(".atlas-manual-detail-panel"));
+}
+
+function likelyLinkedAsset(row: HTMLElement | null, title: string) {
+  if (!row) return "";
+  const values = Array.from(row.querySelectorAll<HTMLElement>("strong, span, p, div"))
+    .filter((element) => !element.children.length)
+    .map((element) => text(element.textContent))
+    .filter(Boolean)
+    .filter((value) => normalized(value) !== normalized(title))
+    .filter((value) => !/manuals?$/i.test(value))
+    .filter((value) => !/^manufacturer\b/i.test(value))
+    .filter((value) => !/^pdf$/i.test(value))
+    .filter((value) => !/^\d+\s+files?$/i.test(value))
+    .filter((value) => !/^(open|details|edit|delete)$/i.test(value));
+
+  return values.find((value) => /\s[-–—]\s/.test(value)) || values.find((value) => value.length > 2) || "";
 }
 
 function polishManualDetail() {
-  const section = findManualDetailSection();
-  if (!section) return;
+  const root = manualsMain();
+  if (!root) return;
 
-  section.classList.add("atlas-manual-detail-summary");
+  const detail = findManualDetail(root);
+  if (!detail) return;
+  detail.classList.add("atlas-manual-detail-panel");
 
-  const title = section.querySelector<HTMLHeadingElement>("h2");
-  title?.classList.add("atlas-manual-detail-title");
+  const title = manualTitle(detail);
+  if (!title) return;
+  title.classList.add("atlas-manual-detail-title");
 
-  const eyebrow = Array.from(section.querySelectorAll<HTMLElement>("div")).find(
-    (element) => normalized(element.textContent) === "document" && !element.querySelector("*")
-  );
-  if (eyebrow) {
-    eyebrow.textContent = "Manual";
-    eyebrow.classList.add("atlas-manual-detail-eyebrow");
+  const titleText = text(title.textContent);
+  const row = selectedManualRow(root, titleText);
+  const linkedAsset = likelyLinkedAsset(row, titleText);
+
+  let line = detail.querySelector<HTMLElement>(".atlas-manual-detail-linked-asset-line");
+  if (linkedAsset) {
+    if (!line) {
+      line = document.createElement("div");
+      line.className = "atlas-manual-detail-linked-asset-line";
+      title.insertAdjacentElement("afterend", line);
+    }
+    line.textContent = `Linked Asset: ${linkedAsset}`;
+  } else {
+    line?.remove();
   }
 
-  const relationshipButtons = Array.from(section.querySelectorAll<HTMLButtonElement>("button")).filter((button) => {
-    const label = button.querySelector<HTMLElement>("span");
-    const value = normalized(label?.textContent);
-    return value === "linked to" || value === "files" || value === "work orders" || value === "property" || value === "linked asset";
-  });
-
-  relationshipButtons.forEach((button) => {
-    const label = button.querySelector<HTMLElement>("span");
-    const labelText = normalized(label?.textContent);
-    if (labelText === "linked to" || labelText === "linked asset") {
-      button.classList.add("atlas-manual-linked-asset");
-      if (label) label.textContent = "Linked Asset";
-    } else {
-      button.classList.add("atlas-manual-summary-extra");
+  for (const element of Array.from(detail.querySelectorAll<HTMLElement>("div, span, p"))) {
+    if (element.children.length) continue;
+    const value = normalized(element.textContent);
+    if (value === "manufacturer not recorded" || value === "manufacturer") {
+      element.classList.add("atlas-manual-detail-secondary-meta");
     }
-  });
-
-  const relationshipGrid = relationshipButtons[0]?.parentElement;
-  relationshipGrid?.classList.add("atlas-manual-relationship-row");
+  }
 }
 
 export default function AtlasManualDetailPolish() {
@@ -71,28 +127,20 @@ export default function AtlasManualDetailPolish() {
 
     schedule();
     const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
+    window.addEventListener("resize", schedule);
 
     return () => {
       observer.disconnect();
+      window.removeEventListener("resize", schedule);
       if (frame) window.cancelAnimationFrame(frame);
     };
   }, []);
 
   return (
     <style jsx global>{`
-      .atlas-manual-detail-summary {
-        padding: 12px 14px !important;
-        border-radius: 12px !important;
-        box-shadow: none !important;
-      }
-
-      .atlas-manual-detail-eyebrow {
-        margin-bottom: 2px !important;
-        font-size: 10px !important;
-        font-weight: 700 !important;
-        letter-spacing: 0.08em !important;
-        text-transform: uppercase !important;
+      .atlas-manual-detail-panel {
+        min-width: 0 !important;
       }
 
       .atlas-manual-detail-title {
@@ -103,46 +151,20 @@ export default function AtlasManualDetailPolish() {
         color: #0a2841 !important;
       }
 
-      .atlas-manual-relationship-row {
-        display: block !important;
-        margin-top: 7px !important;
-      }
-
-      .atlas-manual-summary-extra {
-        display: none !important;
-      }
-
-      .atlas-manual-linked-asset {
-        display: block !important;
-        width: auto !important;
-        min-height: 0 !important;
-        padding: 0 !important;
-        border: 0 !important;
-        border-radius: 0 !important;
-        background: transparent !important;
-        box-shadow: none !important;
-      }
-
-      .atlas-manual-linked-asset span {
-        display: inline !important;
-        margin-right: 5px !important;
-        color: #6b7c8c !important;
-        font-size: 11px !important;
+      .atlas-manual-detail-linked-asset-line {
+        margin-top: 4px !important;
+        color: #536678 !important;
+        font-size: 12px !important;
+        line-height: 1.35 !important;
         font-weight: 600 !important;
       }
 
-      .atlas-manual-linked-asset strong {
-        display: inline !important;
-        color: #0a2841 !important;
-        font-size: 12px !important;
-        font-weight: 650 !important;
+      .atlas-manual-detail-secondary-meta {
+        color: #718096 !important;
+        font-size: 11px !important;
       }
 
       @media (max-width: 900px) {
-        .atlas-manual-detail-summary {
-          padding: 10px 11px !important;
-        }
-
         .atlas-manual-detail-title {
           font-size: 17px !important;
         }
