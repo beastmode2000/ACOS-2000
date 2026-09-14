@@ -57,6 +57,7 @@ import AtlasGeneratedWorkCommentsCleanup from "./components/AtlasGeneratedWorkCo
 import AtlasDropdownDismissBehavior from "./components/AtlasDropdownDismissBehavior";
 import AtlasScrollSafety from "./components/AtlasScrollSafety";
 import AtlasTopBarPropertyPolish from "./components/AtlasTopBarPropertyPolish";
+import AtlasMobileSyncPolish from "./components/AtlasMobileSyncPolish";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -152,6 +153,7 @@ export default function RootLayout({
         <AtlasWorkHistorySearch />
         <AtlasTopBarPropertyPolish />
         <AtlasScrollSafety />
+        <AtlasMobileSyncPolish />
         {children}
       </body>
     </html>
