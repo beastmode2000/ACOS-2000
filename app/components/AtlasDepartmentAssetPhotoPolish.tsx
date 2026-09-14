@@ -4,11 +4,13 @@ import { useEffect, useRef } from "react";
 
 type AssetPhoto = {
   id?: string;
+  assetId?: string;
   name?: string;
   type?: string;
   contentType?: string;
   dataUrl?: string;
   url?: string;
+  createdAt?: string;
 };
 
 type AssetRow = {
@@ -47,17 +49,53 @@ function photoSource(photo: AssetPhoto | undefined) {
   const url = String(photo.url || "");
   const type = String(photo.type || photo.contentType || "").toLowerCase();
   if (dataUrl.startsWith("data:image/")) return dataUrl;
-  if (url && (type.startsWith("image/") || /\.(png|jpe?g|gif|webp|heic|heif)(\?|$)/i.test(url))) {
+  if (
+    url &&
+    (type.startsWith("image/") || /\.(png|jpe?g|gif|webp|heic|heif)(\?|$)/i.test(url))
+  ) {
     return url;
   }
   return "";
 }
 
-function mainPhotoSource(asset: AssetRow) {
-  const photos = Array.isArray(asset.photos) ? asset.photos : [];
-  const mainId = String(asset.coverPhotoId || "");
-  const selected = mainId ? photos.find((photo) => String(photo.id || "") === mainId) : undefined;
-  return photoSource(selected) || photos.map(photoSource).find(Boolean) || "";
+function isLabelOrIdentificationPhoto(photo: AssetPhoto) {
+  const name = normalized(photo.name);
+  return /(^|\b)(label|serial|vin|hin|plate|tag|barcode|qr|model number|id plate|data plate)(\b|$)/i.test(
+    name,
+  );
+}
+
+function canonicalPhotoSource(asset: AssetRow, topLevelPhotos: AssetPhoto[]) {
+  const embedded = Array.isArray(asset.photos) ? asset.photos : [];
+  const external = topLevelPhotos.filter(
+    (photo) => String(photo.assetId || "") === String(asset.id || ""),
+  );
+
+  const seen = new Set<string>();
+  const photos = [...embedded, ...external].filter((photo) => {
+    const source = photoSource(photo);
+    if (!source) return false;
+    const key = `${String(photo.id || "")}|${source}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const coverId = String(asset.coverPhotoId || "");
+  const explicitCover = coverId
+    ? photos.find((photo) => String(photo.id || "") === coverId)
+    : undefined;
+  if (explicitCover) return photoSource(explicitCover);
+
+  const namedCover = photos.find((photo) =>
+    /(^|\b)(cover|main|primary|hero)(\b|$)/i.test(String(photo.name || "")),
+  );
+  if (namedCover) return photoSource(namedCover);
+
+  const normalPhoto = photos.find((photo) => !isLabelOrIdentificationPhoto(photo));
+  if (normalPhoto) return photoSource(normalPhoto);
+
+  return photoSource(photos[0]);
 }
 
 function isAssetsWorkspace(main: HTMLElement) {
@@ -90,6 +128,40 @@ function nearestAssetCard(image: HTMLImageElement, assetName: string) {
   return null;
 }
 
+function setImageSource(image: HTMLImageElement, source: string, className: string) {
+  if (!source) return;
+  if (image.getAttribute("src") !== source) image.setAttribute("src", source);
+  image.removeAttribute("srcset");
+  image.classList.add(className);
+}
+
+function applyAssetsWorkspace(main: HTMLElement, sources: Map<string, string>) {
+  const drawer = main.querySelector<HTMLElement>(".atlas-asset-drawer");
+  if (drawer) {
+    const selectedName = normalized(drawer.querySelector<HTMLElement>("h3")?.textContent);
+    const source = sources.get(selectedName) || "";
+    if (source) {
+      const hero =
+        drawer.querySelector<HTMLImageElement>(".atlas-asset-reference-photo") ||
+        drawer.querySelector<HTMLImageElement>(".atlas-asset-reference-hero img");
+      if (hero) setImageSource(hero, source, "atlas-authoritative-asset-hero-photo");
+    }
+  }
+
+  for (const card of Array.from(
+    main.querySelectorAll<HTMLElement>(
+      ".atlas-asset-list-card-polished, button.atlas-gold-hover-card",
+    ),
+  )) {
+    const assetName = normalized(card.querySelector<HTMLElement>("strong")?.textContent);
+    const source = sources.get(assetName) || "";
+    const image = card.querySelector<HTMLImageElement>("img");
+    if (!source || !image) continue;
+    setImageSource(image, source, "atlas-authoritative-asset-list-photo");
+    card.dataset.atlasAssetMainPhoto = "true";
+  }
+}
+
 export default function AtlasDepartmentAssetPhotoPolish() {
   const assetPhotosRef = useRef<Map<string, string>>(new Map());
   const propertyRef = useRef("");
@@ -98,12 +170,19 @@ export default function AtlasDepartmentAssetPhotoPolish() {
     let cancelled = false;
     let frame = 0;
 
+    const schedule = () => {
+      if (!frame) frame = window.requestAnimationFrame(apply);
+    };
+
     const loadAssets = async (propertyId: string) => {
       try {
-        const response = await fetch(`/api/atlas?propertyId=${encodeURIComponent(propertyId)}&departmentPhoto=${Date.now()}`, {
-          cache: "no-store",
-          credentials: "include",
-        });
+        const response = await fetch(
+          `/api/atlas?propertyId=${encodeURIComponent(propertyId)}&assetPhotoConsistency=${Date.now()}`,
+          {
+            cache: "no-store",
+            credentials: "include",
+          },
+        );
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || cancelled) return;
 
@@ -112,17 +191,22 @@ export default function AtlasDepartmentAssetPhotoPolish() {
           : Array.isArray(payload?.assets)
             ? payload.assets
             : []) as AssetRow[];
+        const topLevelPhotos = (Array.isArray(payload?.photos)
+          ? payload.photos
+          : Array.isArray(payload?.assetPhotos)
+            ? payload.assetPhotos
+            : []) as AssetPhoto[];
 
         const next = new Map<string, string>();
         for (const asset of assets) {
           const name = normalized(asset.name || asset.title);
-          const source = mainPhotoSource(asset);
+          const source = canonicalPhotoSource(asset, topLevelPhotos);
           if (name && source) next.set(name, source);
         }
         assetPhotosRef.current = next;
         schedule();
       } catch {
-        // Department photos are presentation-only. Leave the department usable if this fails.
+        // Photo consistency is presentation-only. Keep Atlas usable if the refresh fails.
       }
     };
 
@@ -138,15 +222,17 @@ export default function AtlasDepartmentAssetPhotoPolish() {
       if (!assetPhotosRef.current.size) return;
 
       for (const main of Array.from(document.querySelectorAll<HTMLElement>("main"))) {
+        if (isAssetsWorkspace(main)) {
+          applyAssetsWorkspace(main, assetPhotosRef.current);
+          continue;
+        }
         if (!looksLikeDepartmentMain(main)) continue;
 
         for (const image of Array.from(main.querySelectorAll<HTMLImageElement>("img"))) {
           for (const [assetName, source] of assetPhotosRef.current) {
             const card = nearestAssetCard(image, assetName);
             if (!card) continue;
-            if (image.src !== source) image.src = source;
-            image.removeAttribute("srcset");
-            image.classList.add("atlas-department-authoritative-asset-photo");
+            setImageSource(image, source, "atlas-department-authoritative-asset-photo");
             card.dataset.atlasAssetMainPhoto = "true";
             break;
           }
@@ -154,29 +240,36 @@ export default function AtlasDepartmentAssetPhotoPolish() {
       }
     };
 
-    const schedule = () => {
-      if (!frame) frame = window.requestAnimationFrame(apply);
+    const refresh = () => {
+      const propertyId = activePropertyIdFromDom();
+      propertyRef.current = propertyId;
+      void loadAssets(propertyId);
     };
 
     schedule();
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true, attributes: true });
     window.addEventListener("resize", schedule);
-    window.addEventListener("atlas:data-changed", schedule as EventListener);
+    window.addEventListener("atlas:data-changed", refresh as EventListener);
 
     return () => {
       cancelled = true;
       observer.disconnect();
       window.removeEventListener("resize", schedule);
-      window.removeEventListener("atlas:data-changed", schedule as EventListener);
+      window.removeEventListener("atlas:data-changed", refresh as EventListener);
       if (frame) window.cancelAnimationFrame(frame);
     };
   }, []);
 
   return (
     <style jsx global>{`
-      .atlas-department-authoritative-asset-photo {
+      .atlas-department-authoritative-asset-photo,
+      .atlas-authoritative-asset-list-photo {
         object-fit: cover !important;
+      }
+
+      .atlas-authoritative-asset-hero-photo {
+        object-fit: contain !important;
       }
     `}</style>
   );
