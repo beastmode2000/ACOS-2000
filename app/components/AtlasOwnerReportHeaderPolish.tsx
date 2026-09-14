@@ -289,9 +289,116 @@ function flattenRoutineWork(doc: Document) {
   orderCompletedWorkByDay(completedSection);
 }
 
+function hideDuplicateReportBranding(root: HTMLElement) {
+  const reportHeadings = Array.from(root.querySelectorAll<HTMLElement>("h1,h2,h3")).filter((node) =>
+    /^owners? report$/i.test(String(node.textContent || "").trim()),
+  );
+
+  reportHeadings.forEach((heading, index) => {
+    if (index === 0) return;
+    const parent = heading.parentElement;
+    if (parent && !parent.querySelector("button,input,select,textarea,a")) {
+      parent.classList.add("atlas-owner-report-duplicate-branding-hidden");
+    } else {
+      heading.classList.add("atlas-owner-report-duplicate-branding-hidden");
+    }
+  });
+
+  for (const node of Array.from(root.querySelectorAll<HTMLElement>("div,span"))) {
+    if (normalized(node.textContent) !== "weekly reporting") continue;
+    const block = node.parentElement;
+    if (block && !block.querySelector("button,input,select,textarea,a")) {
+      block.classList.add("atlas-owner-report-duplicate-branding-hidden");
+    } else {
+      node.classList.add("atlas-owner-report-duplicate-branding-hidden");
+    }
+  }
+}
+
+function ownerInputPrintSection(doc: Document, items: any[]) {
+  const awaiting = items.filter((item) => String(item?.status || "") === "Awaiting Owner");
+  if (!awaiting.length || doc.querySelector("[data-atlas-owner-input-print]")) return;
+
+  const section = doc.createElement("section");
+  section.className = "section";
+  section.dataset.atlasOwnerInputPrint = "true";
+
+  const heading = doc.createElement("h2");
+  heading.textContent = "Owner Input Needed";
+  section.appendChild(heading);
+
+  awaiting.forEach((request) => {
+    const item = doc.createElement("div");
+    item.className = "item";
+
+    const main = doc.createElement("div");
+    main.className = "item-main";
+    const title = doc.createElement("strong");
+    title.textContent = String(request?.question || "Owner decision needed");
+    main.appendChild(title);
+
+    const metaParts = [String(request?.projectTitle || "").trim()];
+    if (request?.dueDate) metaParts.push(`By ${String(request.dueDate).slice(0, 10)}`);
+    if (metaParts.filter(Boolean).length) {
+      const meta = doc.createElement("span");
+      meta.textContent = metaParts.filter(Boolean).join(" · ");
+      main.appendChild(meta);
+    }
+    item.appendChild(main);
+
+    if (request?.context) {
+      const note = doc.createElement("div");
+      note.className = "note";
+      note.textContent = String(request.context);
+      item.appendChild(note);
+    }
+
+    const photos = Array.isArray(request?.photos) ? request.photos.filter((photo: any) => String(photo?.dataUrl || "").startsWith("data:image/")) : [];
+    if (photos.length) {
+      const grid = doc.createElement("div");
+      grid.style.display = "grid";
+      grid.style.gridTemplateColumns = photos.length > 1 ? "repeat(2,minmax(0,1fr))" : "minmax(0,1fr)";
+      grid.style.gap = "6px";
+      grid.style.marginTop = "6px";
+      photos.slice(0, 3).forEach((photo: any) => {
+        const image = doc.createElement("img");
+        image.src = String(photo.dataUrl);
+        image.alt = String(photo.caption || photo.name || "Owner request photo");
+        image.style.width = "100%";
+        image.style.maxHeight = "180px";
+        image.style.objectFit = "contain";
+        image.style.border = "1px solid #d7e0e8";
+        image.style.borderRadius = "6px";
+        grid.appendChild(image);
+      });
+      item.appendChild(grid);
+    }
+
+    section.appendChild(item);
+  });
+
+  const summary = doc.querySelector<HTMLElement>(".summary");
+  if (summary?.parentElement) summary.parentElement.insertBefore(section, summary);
+  else doc.body.insertBefore(section, doc.body.firstChild);
+}
+
 export default function AtlasOwnerReportHeaderPolish() {
   useEffect(() => {
     let frame = 0;
+    const ownerInputCache = new Map<string, any[]>();
+    const loadingProperties = new Set<string>();
+
+    const loadOwnerInput = (property: string) => {
+      if (!property || ownerInputCache.has(property) || loadingProperties.has(property)) return;
+      loadingProperties.add(property);
+      void fetch(`/api/atlas-owner-input?propertyId=${encodeURIComponent(property)}`, { cache: "no-store" })
+        .then((response) => response.json())
+        .then((payload) => {
+          if (payload?.ok && Array.isArray(payload.items)) ownerInputCache.set(property, payload.items);
+        })
+        .catch(() => undefined)
+        .finally(() => loadingProperties.delete(property));
+    };
 
     const apply = () => {
       frame = 0;
@@ -314,7 +421,9 @@ export default function AtlasOwnerReportHeaderPolish() {
         next?.classList.add("atlas-owner-report-compact-first-content");
       }
 
+      hideDuplicateReportBranding(root);
       restoreNotes(root);
+      loadOwnerInput(propertyKey(root));
     };
 
     const schedule = () => {
@@ -333,6 +442,10 @@ export default function AtlasOwnerReportHeaderPolish() {
 
     const originalOpen = window.open;
     const patchedOpen = ((url?: string | URL, target?: string, features?: string) => {
+      const root = ownerReportMain();
+      const property = root ? propertyKey(root) : "2000";
+      loadOwnerInput(property);
+
       const popup = originalOpen(
         typeof url === "string" ? url : url?.toString(),
         target,
@@ -347,6 +460,7 @@ export default function AtlasOwnerReportHeaderPolish() {
             flattenRoutineWork(popup.document);
             const completedSection = sectionByHeading(popup.document, "Completed Work");
             if (completedSection) orderCompletedWorkByDay(completedSection);
+            ownerInputPrintSection(popup.document, ownerInputCache.get(property) || []);
           } catch {
             // Report cleanup must never block printing.
           }
@@ -400,6 +514,10 @@ export default function AtlasOwnerReportHeaderPolish() {
       .atlas-owner-report-compact-first-content {
         margin-top: 0 !important;
         padding-top: 8px !important;
+      }
+
+      .atlas-owner-report-duplicate-branding-hidden {
+        display: none !important;
       }
 
       @media (max-width: 900px) {
