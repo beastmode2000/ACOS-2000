@@ -22,6 +22,7 @@ type DayOffRow = {
 type WorkOrderRow = {
   id: string;
   assigned_to?: string | null;
+  recurring?: boolean | null;
 };
 
 function getSql() {
@@ -270,14 +271,14 @@ export async function POST(request: Request) {
 
     const affected = (scope === "team"
       ? await sql`
-          SELECT id, assigned_to
+          SELECT id, assigned_to, recurring
           FROM atlas_work_orders
           WHERE property_id = ${propertyId}
             AND COALESCE(status, '') NOT IN ('Completed', 'Cancelled')
             AND COALESCE(due_date_value, date) = ${date}::date
         `
       : await sql`
-          SELECT id, assigned_to
+          SELECT id, assigned_to, recurring
           FROM atlas_work_orders
           WHERE property_id = ${propertyId}
             AND COALESCE(status, '') NOT IN ('Completed', 'Cancelled')
@@ -286,6 +287,7 @@ export async function POST(request: Request) {
         `) as unknown as WorkOrderRow[];
 
     let moved = 0;
+    let recurringCarried = 0;
 
     for (const row of affected) {
       const assignedTo = cleanText(row.assigned_to, 120) || person || "Nick";
@@ -295,6 +297,14 @@ export async function POST(request: Request) {
         date,
         assignedTo,
       );
+
+      if (row.recurring) {
+        // A holiday is only an exception for this occurrence. Keep the recurring
+        // work order anchored to its normal date so completing it on the next
+        // working day cannot permanently shift future recurrences.
+        recurringCarried += 1;
+        continue;
+      }
 
       await sql`
         UPDATE atlas_work_orders
@@ -315,7 +325,10 @@ export async function POST(request: Request) {
       ok: true,
       dayOff: { id, propertyId, date, kind, scope, person, title },
       movedWork: moved,
-      movedRecurringWork: moved,
+      recurringCarried,
+      // Preserve the existing UI message/count contract. Recurring work is
+      // carried into the next working day without rewriting its recurrence anchor.
+      movedRecurringWork: recurringCarried,
     });
   } catch (error) {
     console.error("Atlas day off save failed:", error);
