@@ -43,6 +43,7 @@ import AtlasNavigationSafety from "./components/AtlasNavigationSafety";
 import AtlasOperationsPolish from "./components/AtlasOperationsPolish";
 import AtlasOwnerReportHeaderPolish from "./components/AtlasOwnerReportHeaderPolish";
 import AtlasManualDetailPolish from "./components/AtlasManualDetailPolish";
+import AtlasVendorLogoManualIsolation from "./components/AtlasVendorLogoManualIsolation";
 import AtlasServiceLinkPolish from "./components/AtlasServiceLinkPolish";
 import AtlasWorkHistorySearch from "./components/AtlasWorkHistorySearch";
 import AtlasSidebarScrollbarPolish from "./components/AtlasSidebarScrollbarPolish";
@@ -139,6 +140,7 @@ export default function RootLayout({
         <AtlasOperationsPolish />
         <AtlasOwnerReportHeaderPolish />
         <AtlasManualDetailPolish />
+        <AtlasVendorLogoManualIsolation />
         <AtlasServiceLinkPolish />
         <AtlasWorkHistorySearch />
         <AtlasScrollSafety />
