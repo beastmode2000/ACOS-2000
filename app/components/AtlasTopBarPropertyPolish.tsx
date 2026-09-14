@@ -14,9 +14,10 @@ function findNativePropertySelect() {
   return document.querySelector<HTMLSelectElement>('select[aria-label="Active property"]');
 }
 
-function findPropertyHeading() {
+function findSidebarHeading(label: string) {
+  const wanted = normalized(label);
   return Array.from(document.querySelectorAll<HTMLElement>("aside *, nav *, [role='navigation'] *"))
-    .find((element) => normalized(element.textContent) === "property" && element.children.length === 0) || null;
+    .find((element) => normalized(element.textContent) === wanted && element.children.length === 0) || null;
 }
 
 function simplifyAtlasTitle() {
@@ -49,12 +50,12 @@ function syncProxyOptions(nativeSelect: HTMLSelectElement, proxy: HTMLSelectElem
 
 function mountPropertyProxy() {
   const nativeSelect = findNativePropertySelect();
-  const heading = findPropertyHeading();
-  if (!nativeSelect || !heading) return;
+  const moreToolsHeading = findSidebarHeading("More Tools");
+  if (!nativeSelect || !moreToolsHeading) return;
 
   nativeSelect.classList.add("atlas-topbar-native-property-hidden");
 
-  const sidebar = heading.closest<HTMLElement>("aside, nav, [role='navigation']") || heading.parentElement;
+  const sidebar = moreToolsHeading.closest<HTMLElement>("aside, nav, [role='navigation']") || moreToolsHeading.parentElement;
   if (!sidebar) return;
 
   let host = sidebar.querySelector<HTMLElement>("[data-atlas-sidebar-property-switcher]");
@@ -62,10 +63,6 @@ function mountPropertyProxy() {
     host = document.createElement("div");
     host.dataset.atlasSidebarPropertySwitcher = "true";
     host.className = "atlas-sidebar-property-switcher";
-
-    const label = document.createElement("div");
-    label.className = "atlas-sidebar-property-label";
-    label.textContent = "Property";
 
     const proxy = document.createElement("select");
     proxy.className = "atlas-sidebar-property-select";
@@ -77,8 +74,10 @@ function mountPropertyProxy() {
       current.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
-    host.append(label, proxy);
-    heading.insertAdjacentElement("afterend", host);
+    host.appendChild(proxy);
+    moreToolsHeading.insertAdjacentElement("afterend", host);
+  } else if (host.previousElementSibling !== moreToolsHeading) {
+    moreToolsHeading.insertAdjacentElement("afterend", host);
   }
 
   const proxy = host.querySelector<HTMLSelectElement>("select");
@@ -116,26 +115,27 @@ export default function AtlasTopBarPropertyPolish() {
       }
 
       .atlas-sidebar-property-switcher {
-        margin: 2px 10px 8px !important;
-        display: grid !important;
-        gap: 4px !important;
+        margin: 3px 10px 7px !important;
+        display: block !important;
+        opacity: 0.72 !important;
       }
 
-      .atlas-sidebar-property-label {
-        display: none !important;
+      .atlas-sidebar-property-switcher:hover,
+      .atlas-sidebar-property-switcher:focus-within {
+        opacity: 1 !important;
       }
 
       .atlas-sidebar-property-select {
         width: 100% !important;
-        min-height: 32px !important;
-        padding: 5px 26px 5px 9px !important;
-        border: 1px solid rgba(255, 255, 255, 0.22) !important;
-        border-radius: 7px !important;
-        background: rgba(255, 255, 255, 0.08) !important;
-        color: #ffffff !important;
+        min-height: 28px !important;
+        padding: 4px 24px 4px 8px !important;
+        border: 1px solid rgba(255, 255, 255, 0.14) !important;
+        border-radius: 6px !important;
+        background: rgba(255, 255, 255, 0.045) !important;
+        color: rgba(255, 255, 255, 0.8) !important;
         font: inherit !important;
-        font-size: 11px !important;
-        font-weight: 700 !important;
+        font-size: 10px !important;
+        font-weight: 600 !important;
         outline: none !important;
         cursor: pointer !important;
       }
