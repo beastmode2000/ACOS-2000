@@ -13,40 +13,24 @@ function assetsMain() {
   return (heading?.closest("main") as HTMLElement | null) || null;
 }
 
-function assetDetailPanel() {
-  return assetsMain()?.querySelector<HTMLElement>(".atlas-assets-viewport-detail") || null;
-}
-
 function resetDetailToTop() {
-  const detail = assetDetailPanel();
+  const detail = assetsMain()?.querySelector<HTMLElement>(".atlas-assets-viewport-detail") || null;
   if (!detail) return;
   detail.scrollTop = 0;
   detail.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  for (const child of Array.from(
-    detail.querySelectorAll<HTMLElement>(
-      ".atlas-record-detail-content, .atlas-asset-reference-drawer, .atlas-polish-assets-detail-pane",
-    ),
-  )) {
-    child.scrollTop = 0;
-  }
 }
 
 function syncNativeAssetActions() {
-  const root = assetsMain();
-  const drawer = root?.querySelector<HTMLElement>(".atlas-asset-drawer") || null;
+  const drawer = assetsMain()?.querySelector<HTMLElement>(".atlas-asset-drawer") || null;
   if (!drawer) return;
-
-  // Remove every DOM-created proxy action. The real React controls in the
-  // native asset title row are the only Edit/Delete controls we expose.
-  drawer.querySelectorAll<HTMLElement>(".atlas-asset-inline-actions").forEach((node) => node.remove());
 
   const nativeRow = drawer.querySelector<HTMLElement>(".atlas-asset-reference-native-title-row");
   if (!nativeRow) return;
 
-  const buttonTexts = Array.from(nativeRow.querySelectorAll<HTMLButtonElement>("button")).map(
+  const texts = Array.from(nativeRow.querySelectorAll<HTMLButtonElement>("button")).map(
     (button) => normalized(button.textContent),
   );
-  const editing = buttonTexts.includes("save changes") && buttonTexts.includes("cancel");
+  const editing = texts.includes("save changes") && texts.includes("cancel");
   drawer.classList.toggle("atlas-asset-reference-editing", editing);
   nativeRow.classList.toggle("atlas-asset-native-actions-live", !editing);
 }
@@ -59,7 +43,6 @@ export default function AtlasAssetEditAndPhotoFix() {
     const sync = () => {
       frame = 0;
       syncNativeAssetActions();
-
       const drawer = assetsMain()?.querySelector<HTMLElement>(".atlas-asset-drawer") || null;
       const title = drawer?.querySelector<HTMLElement>("h3")?.textContent?.trim() || "";
       if (title && title !== lastAssetTitle) {
@@ -93,8 +76,12 @@ export default function AtlasAssetEditAndPhotoFix() {
 
   return (
     <style jsx global>{`
-      /* Read-only asset view: expose Atlas's real React Edit/Delete row.
-         No proxy button or DOM click forwarding is used. */
+      /* Never show the DOM-created proxy Edit/Delete controls. */
+      .atlas-assets-viewport-root .atlas-asset-inline-actions {
+        display: none !important;
+      }
+
+      /* Read-only asset view uses the native React action row directly. */
       .atlas-assets-viewport-root
         .atlas-asset-reference-drawer:not(.atlas-asset-reference-editing)
         .atlas-asset-reference-native-title-row.atlas-asset-native-actions-live {
@@ -144,7 +131,6 @@ export default function AtlasAssetEditAndPhotoFix() {
           overflow-y: auto !important;
           overscroll-behavior: contain !important;
           scrollbar-gutter: stable !important;
-          scroll-padding-top: 0 !important;
           scroll-padding-bottom: 96px !important;
           box-sizing: border-box !important;
         }
@@ -173,35 +159,12 @@ export default function AtlasAssetEditAndPhotoFix() {
         min-height: 144px !important;
       }
 
-      .atlas-asset-reference-root .atlas-asset-reference-heading {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: flex-start !important;
-        min-width: 0 !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-      }
-
-      .atlas-asset-reference-root .atlas-asset-reference-title-line,
-      .atlas-asset-reference-root .atlas-asset-reference-title-line h2 {
-        visibility: visible !important;
-        opacity: 1 !important;
-      }
-
-      .atlas-asset-reference-root .atlas-asset-reference-title-line {
-        display: flex !important;
-        align-items: center !important;
-        gap: 8px !important;
-        flex-wrap: wrap !important;
-      }
-
       .atlas-asset-reference-root .atlas-asset-reference-title-line h2 {
         display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
         margin: 0 !important;
         color: #071b2f !important;
-        font-size: 21px !important;
-        line-height: 1.16 !important;
-        font-weight: 700 !important;
       }
 
       .atlas-asset-reference-root .atlas-asset-reference-photo {
