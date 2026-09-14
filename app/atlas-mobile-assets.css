@@ -1,7 +1,0 @@
-@media (max-width: 900px) {
-  .atlas-assets-viewport-root
-    .atlas-gold-hover-card
-    button[aria-label*="favorites"] {
-    display: none !important;
-  }
-}
