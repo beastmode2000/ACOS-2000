@@ -83,6 +83,16 @@ export default function AtlasAssetEditAndPhotoFix() {
   return (
     <style jsx global>{`
       @media (min-width: 901px) {
+        /* The old viewport polish moved the entire assets grid upward by 60px,
+           which clipped the asset name and top of the photo. Keep the grid
+           inside the visible shell instead. */
+        .atlas-assets-viewport-root .atlas-assets-viewport-grid {
+          height: 100% !important;
+          max-height: 100% !important;
+          margin: 0 !important;
+          transform: none !important;
+        }
+
         .atlas-assets-viewport-root .atlas-assets-viewport-detail {
           min-height: 0 !important;
           height: 100% !important;
