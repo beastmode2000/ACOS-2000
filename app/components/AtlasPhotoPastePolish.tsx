@@ -32,15 +32,7 @@ function alreadyHasPaste(input: HTMLInputElement) {
   return controls.some((control) => {
     if (control === uploadControl(input)) return false;
     const text = normalized(control.textContent);
-    return (
-      text === "paste" ||
-      text === "paste photo" ||
-      text === "paste image" ||
-      text === "paste logo" ||
-      text === "paste card" ||
-      text === "paste business card" ||
-      text.startsWith("paste image ")
-    );
+    return text === "paste" || text === "paste photo" || text === "paste image" || text.startsWith("paste image ");
   });
 }
 
