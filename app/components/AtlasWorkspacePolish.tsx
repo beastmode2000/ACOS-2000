@@ -210,6 +210,36 @@ function polishDocuments(root: HTMLElement) {
   }
 }
 
+function polishMobileDetailBackButtons() {
+  if (window.innerWidth > 900) return;
+
+  for (const dialog of Array.from(
+    document.querySelectorAll<HTMLElement>('[role="dialog"]'),
+  )) {
+    const detailPanel = dialog.querySelector<HTMLElement>(
+      "[data-atlas-detail-panel], [data-atlas-work-detail-panel]",
+    );
+    if (!detailPanel) continue;
+
+    const closeButton = dialog.querySelector<HTMLButtonElement>(
+      'button[aria-label="Close details"], button[aria-label="Back to list"]',
+    );
+    if (!closeButton) continue;
+
+    const header = closeButton.parentElement;
+    if (!header) continue;
+
+    header.classList.add("atlas-mobile-detail-header");
+    closeButton.classList.add("atlas-mobile-detail-back");
+    if (closeButton.textContent?.trim() !== "← Back") {
+      closeButton.textContent = "← Back";
+    }
+    if (closeButton.getAttribute("aria-label") !== "Back to list") {
+      closeButton.setAttribute("aria-label", "Back to list");
+    }
+  }
+}
+
 export default function AtlasWorkspacePolish() {
   useEffect(() => {
     let frame = 0;
@@ -218,6 +248,7 @@ export default function AtlasWorkspacePolish() {
       frame = 0;
       hideLegacyLoadStatus();
       hideProceduresNavigation();
+      polishMobileDetailBackButtons();
 
       const notes = pageMain("notes");
       if (notes) polishNotes(notes);
@@ -356,6 +387,44 @@ export default function AtlasWorkspacePolish() {
       @media (max-width: 900px) {
         .atlas-polish-note-editor {
           min-height: 140px !important;
+        }
+
+        .atlas-mobile-detail-header {
+          position: sticky !important;
+          top: 0 !important;
+          z-index: 30 !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: flex-start !important;
+          gap: 10px !important;
+          min-height: 56px !important;
+          padding: max(8px, env(safe-area-inset-top)) 12px 8px !important;
+          background: #ffffff !important;
+          border-bottom: 1px solid #dce4ec !important;
+          box-sizing: border-box !important;
+        }
+
+        .atlas-mobile-detail-header > strong {
+          order: 2 !important;
+          min-width: 0 !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          white-space: nowrap !important;
+        }
+
+        .atlas-mobile-detail-back {
+          order: 1 !important;
+          width: auto !important;
+          min-width: 0 !important;
+          height: 38px !important;
+          min-height: 38px !important;
+          padding: 0 12px !important;
+          border-radius: 10px !important;
+          font-size: 15px !important;
+          font-weight: 800 !important;
+          line-height: 1 !important;
+          white-space: nowrap !important;
+          flex: 0 0 auto !important;
         }
       }
     `}</style>
