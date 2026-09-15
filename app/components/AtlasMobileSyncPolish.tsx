@@ -29,6 +29,24 @@ function visibleScreenTitle() {
   return normalized(heading?.textContent);
 }
 
+const mobileRouteAliases: Record<string, string> = {
+  today: "dashboard",
+  dashboard: "dashboard",
+  work: "work",
+  assets: "assets",
+  locations: "locations",
+  calendar: "calendar",
+  more: "locations",
+};
+
+const nativeRouteLabels: Record<string, string> = {
+  dashboard: "Dashboard",
+  work: "Work",
+  assets: "Assets",
+  locations: "Locations",
+  calendar: "Calendar",
+};
+
 function mobileBottomNav() {
   const candidates = Array.from(document.querySelectorAll<HTMLElement>("nav"))
     .filter(visible)
@@ -36,17 +54,18 @@ function mobileBottomNav() {
       const labels = Array.from(nav.querySelectorAll<HTMLElement>("button, a"))
         .map((control) => normalized(control.textContent))
         .filter(Boolean);
-      const score =
+      const primaryScore =
         (labels.includes("dashboard") || labels.includes("today") ? 100 : 0) +
-        ["work", "assets", "calendar"].filter((label) => labels.includes(label)).length * 100 +
-        (labels.includes("more") || labels.includes("locations") ? 100 : 0);
-      return { nav, score };
+        ["work", "assets", "calendar"].filter((label) => labels.includes(label)).length * 100;
+      const extraScore = labels.includes("more") || labels.includes("locations") ? 25 : 0;
+      return { nav, score: primaryScore + extraScore, primaryScore };
     })
-    .filter((candidate) => candidate.score >= 500)
+    .filter((candidate) => candidate.primaryScore >= 400)
     .sort((left, right) => {
       const leftFixed = window.getComputedStyle(left.nav).position === "fixed" ? 1 : 0;
       const rightFixed = window.getComputedStyle(right.nav).position === "fixed" ? 1 : 0;
-      return rightFixed - leftFixed;
+      if (rightFixed !== leftFixed) return rightFixed - leftFixed;
+      return right.score - left.score;
     });
 
   return candidates[0]?.nav || null;
@@ -54,16 +73,24 @@ function mobileBottomNav() {
 
 function nativeNavigationTarget(label: string) {
   const wanted = normalized(label);
-  return (
-    Array.from(
-      document.querySelectorAll<HTMLElement>(
-        "aside button, aside a, nav button, nav a, [role='navigation'] button, [role='navigation'] a",
-      ),
+  const selectors = [
+    "aside button, aside a",
+    "[role='navigation'] button, [role='navigation'] a",
+    "nav button, nav a",
+  ];
+
+  for (const selector of selectors) {
+    const target = Array.from(
+      document.querySelectorAll<HTMLElement>(selector),
     ).find((control) => {
       if (control.closest(".atlas-mobile-unified-nav")) return false;
+      if (control.closest('[role="dialog"]')) return false;
       return normalized(control.textContent) === wanted;
-    }) || null
-  );
+    });
+    if (target) return target;
+  }
+
+  return null;
 }
 
 function markBottomNavigation() {
@@ -78,17 +105,10 @@ function markBottomNavigation() {
     "atlas-mobile-nav-locations",
     "atlas-mobile-nav-calendar",
   ];
-  const aliases: Record<string, string> = {
-    today: "dashboard",
-    dashboard: "dashboard",
-    work: "work",
-    assets: "assets",
-    locations: "locations",
-    calendar: "calendar",
-    more: "locations",
-  };
 
   const buttons = Array.from(nav.querySelectorAll<HTMLButtonElement>("button"));
+  let recognizedCount = 0;
+
   for (const button of buttons) {
     const original = normalized(
       button.dataset.atlasMobileOriginalLabel || button.textContent,
@@ -97,8 +117,10 @@ function markBottomNavigation() {
       button.dataset.atlasMobileOriginalLabel = original;
     }
 
-    const key = aliases[original];
+    const key = mobileRouteAliases[original];
     if (!key) continue;
+    recognizedCount += 1;
+    button.dataset.atlasMobileRoute = key;
     const expectedClass = `atlas-mobile-nav-${key}`;
 
     for (const className of navClasses) {
@@ -110,27 +132,13 @@ function markBottomNavigation() {
       button.classList.add(expectedClass);
     }
 
-    if (original === "more") {
-      if (clean(button.textContent) !== "Locations") {
-        button.textContent = "Locations";
-      }
-      if (button.dataset.atlasMobileLocationBound !== "true") {
-        button.dataset.atlasMobileLocationBound = "true";
-        button.addEventListener(
-          "click",
-          (event) => {
-            if (window.innerWidth > 900) return;
-            const target = nativeNavigationTarget("Locations");
-            if (!target) return;
-            event.preventDefault();
-            event.stopPropagation();
-            event.stopImmediatePropagation();
-            target.click();
-          },
-          true,
-        );
-      }
+    if (original === "more" && clean(button.textContent) !== "Locations") {
+      button.textContent = "Locations";
     }
+  }
+
+  if (recognizedCount >= 4) {
+    nav.dataset.atlasMobileNavCount = String(recognizedCount);
   }
 
   const screen = visibleScreenTitle();
@@ -153,6 +161,30 @@ function markBottomNavigation() {
     const nextActive = activeKey === key ? "true" : "false";
     if (button.dataset.active !== nextActive) button.dataset.active = nextActive;
   }
+}
+
+function routeMobileBottomNavigation(event: MouseEvent) {
+  if (window.innerWidth > 900) return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+
+  const button = target.closest<HTMLButtonElement>(".atlas-mobile-unified-nav button");
+  if (!button) return;
+
+  const original = normalized(
+    button.dataset.atlasMobileOriginalLabel || button.textContent,
+  );
+  const route = button.dataset.atlasMobileRoute || mobileRouteAliases[original];
+  const label = nativeRouteLabels[route];
+  if (!label) return;
+
+  const nativeTarget = nativeNavigationTarget(label);
+  if (!nativeTarget || nativeTarget === button) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation();
+  nativeTarget.click();
 }
 
 function commonParent(elements: HTMLElement[], stop: HTMLElement) {
@@ -307,6 +339,7 @@ export default function AtlasMobileSyncPolish() {
     window.addEventListener("resize", schedule);
     window.addEventListener("popstate", schedule);
     window.addEventListener("atlas:data-changed", schedule as EventListener);
+    document.addEventListener("click", routeMobileBottomNavigation, true);
     document.addEventListener("click", schedule, true);
 
     return () => {
@@ -314,6 +347,7 @@ export default function AtlasMobileSyncPolish() {
       window.removeEventListener("resize", schedule);
       window.removeEventListener("popstate", schedule);
       window.removeEventListener("atlas:data-changed", schedule as EventListener);
+      document.removeEventListener("click", routeMobileBottomNavigation, true);
       document.removeEventListener("click", schedule, true);
       if (frame) window.cancelAnimationFrame(frame);
     };
@@ -352,7 +386,10 @@ export default function AtlasMobileSyncPolish() {
           display: none !important;
         }
 
-        .atlas-mobile-unified-nav {
+        .atlas-mobile-unified-nav[data-atlas-mobile-nav-count="4"] {
+          grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        }
+        .atlas-mobile-unified-nav[data-atlas-mobile-nav-count="5"] {
           grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
         }
         .atlas-mobile-unified-nav .atlas-mobile-nav-dashboard { order: 1 !important; }
