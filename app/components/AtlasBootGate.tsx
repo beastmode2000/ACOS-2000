@@ -139,7 +139,9 @@ installFetchMonitor();
 
 function subscribe(listener: () => void) {
   bootListeners.add(listener);
-  return () => bootListeners.delete(listener);
+  return () => {
+    bootListeners.delete(listener);
+  };
 }
 
 function getSnapshot() {
@@ -166,7 +168,12 @@ export default function AtlasBootGate({ children }: { children: ReactNode }) {
   const [bootComplete, setBootComplete] = useState(false);
   const [slowLoad, setSlowLoad] = useState(false);
 
-  useEffect(() => subscribe(() => setSnapshot(getSnapshot())), []);
+  useEffect(() => {
+    // A child effect can start a request before passive effects subscribe. Sync
+    // once immediately so a very fast response can never leave the gate stale.
+    setSnapshot(getSnapshot());
+    return subscribe(() => setSnapshot(getSnapshot()));
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSlowLoad(true), 5500);
@@ -194,9 +201,9 @@ export default function AtlasBootGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (bootComplete) return;
 
-    // Never leave a user trapped behind the cover if the network is unavailable.
+    // Never leave a user trapped behind the cover if a request is interrupted.
     // Atlas can then show its own saved/offline state and retry controls.
-    const safetyTimer = window.setTimeout(() => setBootComplete(true), 16000);
+    const safetyTimer = window.setTimeout(() => setBootComplete(true), 20000);
     return () => window.clearTimeout(safetyTimer);
   }, [bootComplete]);
 
@@ -228,7 +235,9 @@ export default function AtlasBootGate({ children }: { children: ReactNode }) {
             <div className="atlas-boot-copy">
               <div className="atlas-boot-brand">ATLAS</div>
               <h1>Getting Atlas ready</h1>
-              <p className="atlas-boot-phase">{phase}<span className="atlas-boot-ellipsis" aria-hidden="true">...</span></p>
+              <p className="atlas-boot-phase">
+                {phase}<span className="atlas-boot-ellipsis" aria-hidden="true">...</span>
+              </p>
               <p className="atlas-boot-help">
                 {slowLoad
                   ? "Still working — larger property records can take a moment to prepare."
