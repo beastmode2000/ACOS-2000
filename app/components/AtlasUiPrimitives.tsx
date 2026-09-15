@@ -92,7 +92,7 @@ export function AtlasMiniMark({ size = 30 }: { size?: number }) {
       }}
     >
       <img
-        src="/atlas-logo.png?v=atlas-real-logo"
+        src="/atlas-logo.png?v=atlas-sidebar-logo-20260915"
         alt="Atlas"
         style={{
           position: "absolute",
