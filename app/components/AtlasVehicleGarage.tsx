@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 type Row = Record<string, any>;
 
@@ -16,27 +16,21 @@ type Props = {
   isMobile: boolean;
 };
 
+const VEHICLE_CLEANING_NOTE =
+  "Weekly vehicle cleaning. Use Not Needed This Time when the vehicle does not need cleaning. Completion history stays with this work order.";
+
 function isVehicleAsset(record: Row) {
   const category = String(record.category || "").trim().toLowerCase();
   const name = String(record.name || "").trim().toLowerCase();
-  return category === "vehicle" || name.startsWith("vehicle ");
+  return category === "vehicle" || name.startsWith("vehicle ") || name.startsWith("vehicle-");
 }
 
 function isCleaningTitle(value: unknown) {
-  return /^(clean|wash|detail)\b/.test(String(value || "").trim().toLowerCase());
-}
-
-function isLegacyRecurringVehicleCleaning(record: Row) {
-  return Boolean(record.recurring) && isCleaningTitle(record.title);
-}
-
-function activeWork(record: Row) {
-  const status = String(record.status || "").toLowerCase();
-  return status !== "cancelled" && status !== "canceled" && status !== "completed";
+  return /^(clean|wash|detail|vehicle cleaning)\b/.test(String(value || "").trim().toLowerCase());
 }
 
 function vehicleDisplayName(record: Row) {
-  const name = String(record.name || "Vehicle").replace(/^Vehicle\s+/i, "").trim();
+  const name = String(record.name || "Vehicle").replace(/^Vehicle[\s-]*/i, "").trim();
   return name || String(record.name || "Vehicle");
 }
 
@@ -58,6 +52,19 @@ function todayKey() {
   return dateKey(new Date());
 }
 
+function addDays(value: string, amount: number) {
+  const key = dateKey(value);
+  if (!key) return "";
+  const parsed = new Date(`${key}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  parsed.setDate(parsed.getDate() + amount);
+  return [
+    parsed.getFullYear(),
+    String(parsed.getMonth() + 1).padStart(2, "0"),
+    String(parsed.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 function cleaningDates(record: Row) {
   const dates = new Set<string>();
   const add = (value: unknown) => {
@@ -76,7 +83,6 @@ function cleaningDates(record: Row) {
     record.serviceHistory.forEach((entry: Row) => {
       add(entry?.completedAt);
       add(entry?.date);
-      add(entry?.dueDate);
     });
   }
 
@@ -106,13 +112,23 @@ function ageLabel(lastCleaned: string) {
 
 function cleaningStatus(lastCleaned: string) {
   const age = daysSince(lastCleaned);
-  if (age === null) return "Ready for cleaning";
-  if (age >= 7) return "Ready for cleaning";
+  if (age === null || age >= 7) return "Ready for cleaning";
   return "Cleaned recently";
 }
 
 function propertyIdFor(vehicle: Row, related: Row[]) {
   return String(vehicle.propertyId || related.find((record) => record.propertyId)?.propertyId || "").trim();
+}
+
+function pickCleaningRecord(records: Row[]) {
+  return (
+    records.find(
+      (record) => Boolean(record.recurring) && String(record.workType || "") === "Preventive Maintenance",
+    ) ||
+    records.find((record) => String(record.workType || "") === "Preventive Maintenance") ||
+    records.find((record) => !["cancelled", "canceled"].includes(String(record.status || "").toLowerCase())) ||
+    records[0]
+  );
 }
 
 async function saveWorkOrder(propertyId: string, record: Row) {
@@ -143,8 +159,6 @@ export default function AtlasVehicleGarage({
 }: Props) {
   const [savingId, setSavingId] = useState("");
   const [message, setMessage] = useState("");
-  const [retiring, setRetiring] = useState(false);
-  const retirementAttempted = useRef(false);
 
   const vehicles = useMemo(
     () =>
@@ -154,58 +168,6 @@ export default function AtlasVehicleGarage({
         .sort((a, b) => vehicleDisplayName(a).localeCompare(vehicleDisplayName(b))),
     [assetRecords],
   );
-
-  const vehicleIds = useMemo(() => new Set(vehicles.map((vehicle) => String(vehicle.id))), [vehicles]);
-
-  const legacyActiveCleaning = useMemo(
-    () =>
-      serviceRecords.filter(
-        (record) =>
-          vehicleIds.has(String(record.assetId || "")) &&
-          isLegacyRecurringVehicleCleaning(record) &&
-          activeWork(record),
-      ),
-    [serviceRecords, vehicleIds],
-  );
-
-  useEffect(() => {
-    if (retirementAttempted.current || !legacyActiveCleaning.length) return;
-    retirementAttempted.current = true;
-    let cancelled = false;
-
-    const retire = async () => {
-      setRetiring(true);
-      try {
-        for (const record of legacyActiveCleaning) {
-          const vehicle = vehicles.find((item) => String(item.id) === String(record.assetId));
-          const propertyId = String(record.propertyId || vehicle?.propertyId || "").trim();
-          if (!propertyId) continue;
-          await saveWorkOrder(propertyId, {
-            ...record,
-            recurring: false,
-            recurrenceDays: [],
-            status: "Cancelled",
-          });
-        }
-        if (!cancelled) {
-          setMessage(
-            `${legacyActiveCleaning.length} old recurring vehicle cleaning ${legacyActiveCleaning.length === 1 ? "series was" : "series were"} retired. Existing cleaning history was preserved.`,
-          );
-          window.setTimeout(() => window.location.reload(), 650);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setMessage(error instanceof Error ? error.message : "Atlas could not retire the old vehicle cleaning schedule.");
-          setRetiring(false);
-        }
-      }
-    };
-
-    void retire();
-    return () => {
-      cancelled = true;
-    };
-  }, [legacyActiveCleaning, vehicles]);
 
   async function recordCleaning(vehicle: Row) {
     const relatedCleaning = serviceRecords.filter(
@@ -225,71 +187,72 @@ export default function AtlasVehicleGarage({
 
     const completedDate = todayKey();
     const completedAt = new Date().toISOString();
-    const manualTracker = relatedCleaning.find(
-      (record) => record.manualVehicleCleaning === true || String(record.workType || "") === "Manual Vehicle Cleaning",
-    );
+    const nextDue = addDays(completedDate, 7);
+    const tracker = pickCleaningRecord(relatedCleaning);
+    const priorDue = dateKey(tracker?.date || tracker?.dueDateValue || completedDate) || completedDate;
+    const locationId = String(vehicle.locationId || tracker?.locationId || "");
 
     const historyEntry = {
       id: `vehicle-clean-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       completedAt,
       date: completedDate,
-      statusBefore: "Manual",
+      dueDate: priorDue,
+      statusBefore: String(tracker?.status || "Scheduled"),
       notes: note.trim(),
       assetId: vehicle.id,
-      locationId: vehicle.locationId || "",
-      photos: [],
-      documents: [],
+      locationId,
+      vendorId: String(tracker?.vendorId || ""),
+      procedureId: String(tracker?.procedureId || ""),
+      checklist: Array.isArray(tracker?.checklist) ? tracker.checklist : [],
+      notesHistory: Array.isArray(tracker?.notesHistory) ? tracker.notesHistory : [],
+      photos: Array.isArray(tracker?.photos) ? tracker.photos : [],
+      documents: Array.isArray(tracker?.documents) ? tracker.documents : [],
     };
 
-    const record: Row = manualTracker
-      ? {
-          ...manualTracker,
-          propertyId,
-          assetId: vehicle.id,
-          locationId: vehicle.locationId || manualTracker.locationId || "",
-          title: `Vehicle Cleaning — ${vehicleDisplayName(vehicle)}`,
-          status: "Completed",
-          recurring: false,
-          manualVehicleCleaning: true,
-          workType: "Manual Vehicle Cleaning",
-          workCategory: "Cleaning",
-          responsibilityArea: "Garage / Vehicles",
-          date: completedDate,
-          lastCompletedDate: completedDate,
-          notes: note.trim(),
-          completionHistory: Array.from(
-            new Set([...(Array.isArray(manualTracker.completionHistory) ? manualTracker.completionHistory : []), completedDate]),
-          ),
-          serviceHistory: [
-            historyEntry,
-            ...(Array.isArray(manualTracker.serviceHistory) ? manualTracker.serviceHistory : []),
-          ],
-        }
-      : {
-          id: `vehicle-cleaning-${String(vehicle.id)}-${Date.now()}`,
-          propertyId,
-          assetId: vehicle.id,
-          locationId: vehicle.locationId || "",
-          title: `Vehicle Cleaning — ${vehicleDisplayName(vehicle)}`,
-          status: "Completed",
-          priority: "Low",
-          recurring: false,
-          manualVehicleCleaning: true,
-          workType: "Manual Vehicle Cleaning",
-          workCategory: "Cleaning",
-          responsibilityArea: "Garage / Vehicles",
-          date: completedDate,
-          lastCompletedDate: completedDate,
-          notes: note.trim(),
-          completionHistory: [completedDate],
-          serviceHistory: [historyEntry],
-        };
+    const existingCompletionDates = Array.isArray(tracker?.completionHistory)
+      ? tracker.completionHistory.map(dateKey).filter(Boolean)
+      : [];
+
+    const record: Row = {
+      ...(tracker || {}),
+      id: tracker?.id || `vehicle-cleaning-${String(vehicle.id)}`,
+      propertyId,
+      assetId: vehicle.id,
+      locationId,
+      title: `Clean ${vehicleDisplayName(vehicle)}`,
+      status: "Scheduled",
+      priority: tracker?.priority || "Medium",
+      recurring: true,
+      isRecurring: true,
+      recurrenceFrequency: "Weekly",
+      recurrenceInterval: 1,
+      recurrenceUnit: "Weeks",
+      recurrenceDays: [],
+      recurrenceNextDue: nextDue,
+      dueDateValue: nextDue,
+      workType: "Preventive Maintenance",
+      workCategory: "🚗 Vehicles",
+      responsibilityArea: "Garage / Vehicles",
+      department: "Garage",
+      subcategory: "Vehicle Cleaning",
+      assignedTo: tracker?.assignedTo || "Nick",
+      date: nextDue,
+      lastCompletedDate: completedDate,
+      notes: String(tracker?.notes || VEHICLE_CLEANING_NOTE),
+      completionHistory: Array.from(new Set([...existingCompletionDates, completedDate])),
+      serviceHistory: [
+        historyEntry,
+        ...(Array.isArray(tracker?.serviceHistory) ? tracker.serviceHistory : []),
+      ],
+    };
 
     setSavingId(String(vehicle.id));
     setMessage("");
     try {
       await saveWorkOrder(propertyId, record);
-      setMessage(`${vehicleDisplayName(vehicle)} cleaning recorded for ${formatDate(completedDate)}.`);
+      setMessage(
+        `${vehicleDisplayName(vehicle)} cleaning recorded for ${formatDate(completedDate)}. Next weekly check: ${formatDate(nextDue)}.`,
+      );
       window.dispatchEvent(new CustomEvent("atlas:data-changed"));
       window.setTimeout(() => window.location.reload(), 550);
     } catch (error) {
@@ -303,12 +266,11 @@ export default function AtlasVehicleGarage({
       <div style={{ ...cardStyle, padding: 12 }}>
         <strong style={{ color: colors.navy }}>Vehicle Cleaning</strong>
         <div style={{ ...mutedSmallStyle, marginTop: 3 }}>
-          Cleaning is manual. The goal is about once a week when each vehicle is available; Atlas tracks the last cleaning without creating due dates or overdue work.
+          One weekly work order stays active for each vehicle. Clean Now records the completion in history and moves the next due date one week.
         </div>
         <div style={{ ...mutedSmallStyle, marginTop: 3 }}>
-          Typical check: exterior · wheels/tires · windows · vacuum · interior wipe-down. Use only what makes sense for that clean.
+          If a vehicle does not need cleaning, use Not Needed This Time on the work order. Typical check: exterior · wheels/tires · windows · vacuum · interior wipe-down.
         </div>
-        {retiring ? <div style={{ marginTop: 7, fontSize: 12, fontWeight: 700, color: colors.navy }}>Retiring old recurring vehicle-cleaning schedules…</div> : null}
         {message ? <div style={{ marginTop: 7, fontSize: 12, fontWeight: 700, color: colors.navy }}>{message}</div> : null}
       </div>
 
@@ -370,7 +332,7 @@ export default function AtlasVehicleGarage({
 
                 <button
                   type="button"
-                  disabled={savingId === String(vehicle.id) || retiring}
+                  disabled={savingId === String(vehicle.id)}
                   onClick={() => void recordCleaning(vehicle)}
                   style={{
                     justifySelf: "start",
@@ -382,8 +344,8 @@ export default function AtlasVehicleGarage({
                     color: colors.navy,
                     fontSize: 12,
                     fontWeight: 800,
-                    cursor: savingId === String(vehicle.id) || retiring ? "wait" : "pointer",
-                    opacity: savingId === String(vehicle.id) || retiring ? 0.6 : 1,
+                    cursor: savingId === String(vehicle.id) ? "wait" : "pointer",
+                    opacity: savingId === String(vehicle.id) ? 0.6 : 1,
                   }}
                 >
                   {savingId === String(vehicle.id) ? "Saving…" : "Clean Now"}
