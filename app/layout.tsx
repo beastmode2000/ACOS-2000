@@ -26,6 +26,7 @@ import AtlasWorkCategoryCanonicalizer from "./components/AtlasWorkCategoryCanoni
 import AtlasWorkEditorCleanup from "./components/AtlasWorkEditorCleanup";
 import AtlasWorkWeekWrap from "./components/AtlasWorkWeekWrap";
 import AtlasWorkWrapPlacement from "./components/AtlasWorkWrapPlacement";
+import AtlasWorkSpellAssist from "./components/AtlasWorkSpellAssist";
 import AtlasDashboardNoteActionsPolish from "./components/AtlasDashboardNoteActionsPolish";
 import AtlasDashboardWorkNoteEnterFix from "./components/AtlasDashboardWorkNoteEnterFix";
 import AtlasDashboardDefaultUpcoming from "./components/AtlasDashboardDefaultUpcoming";
@@ -132,6 +133,7 @@ export default function RootLayout({
         <AtlasWorkEditorCleanup />
         <AtlasWorkWeekWrap />
         <AtlasWorkWrapPlacement />
+        <AtlasWorkSpellAssist />
         <AtlasDashboardNoteActionsPolish />
         <AtlasDashboardWorkNoteEnterFix />
         <AtlasDashboardDefaultUpcoming />
