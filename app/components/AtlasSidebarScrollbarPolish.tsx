@@ -54,58 +54,19 @@ function isLeftSidebarArea(element: HTMLElement) {
   );
 }
 
-function isScrollable(element: HTMLElement) {
-  const style = window.getComputedStyle(element);
-
-  return (
-    /auto|scroll/.test(style.overflowY) ||
-    element.scrollHeight > element.clientHeight + 4
-  );
-}
-
-function sizeDesktopSidebar(root: HTMLElement) {
-  if (window.innerWidth < 900) {
-    root.style.removeProperty("min-height");
-    root.style.removeProperty("height");
-    root.style.removeProperty("max-height");
-    return;
+function markSidebarScroller() {
+  for (const element of Array.from(
+    document.querySelectorAll<HTMLElement>(".atlas-sidebar-shell"),
+  )) {
+    element.classList.remove("atlas-sidebar-shell");
   }
 
-  const rect = root.getBoundingClientRect();
-  const visibleHeight = Math.max(320, Math.round(window.innerHeight - Math.max(0, rect.top)));
-  const height = `${visibleHeight}px`;
-
-  root.style.setProperty("min-height", height, "important");
-  root.style.setProperty("height", height, "important");
-  root.style.setProperty("max-height", height, "important");
-}
-
-function markSidebarScrollers() {
-  const previouslyMarked = Array.from(
-    document.querySelectorAll<HTMLElement>(
-      ".atlas-sidebar-shell, .atlas-sidebar-scrollbar-hidden",
-    ),
-  );
-
-  for (const element of previouslyMarked) {
-    element.classList.remove(
-      "atlas-sidebar-shell",
-      "atlas-sidebar-scrollbar-hidden",
-    );
-    element.style.removeProperty("min-height");
-    element.style.removeProperty("height");
-    element.style.removeProperty("max-height");
-  }
-
-  // The mobile shell has its own navigation and scrolling behavior. Never
-  // classify or resize mobile containers as the desktop sidebar.
   if (window.innerWidth < 900) return;
 
-  const elements = Array.from(
+  const candidates = Array.from(
     document.querySelectorAll<HTMLElement>("aside, nav, div, section"),
-  );
+  ).filter(isLeftSidebarArea);
 
-  const candidates = elements.filter(isLeftSidebarArea);
   if (!candidates.length) return;
 
   const outermost = candidates.filter(
@@ -122,25 +83,16 @@ function markSidebarScrollers() {
     return bRect.width * bRect.height - aRect.width * aRect.height;
   });
 
-  const root = pool[0];
-  if (!root) return;
-
-  root.classList.add("atlas-sidebar-shell");
-  sizeDesktopSidebar(root);
-
-  if (isScrollable(root)) {
-    root.classList.add("atlas-sidebar-scrollbar-hidden");
-  }
+  pool[0]?.classList.add("atlas-sidebar-shell");
 }
 
 export default function AtlasSidebarScrollbarPolish() {
   useEffect(() => {
     let frame = 0;
-    let interval = 0;
 
     const apply = () => {
       frame = 0;
-      markSidebarScrollers();
+      markSidebarScroller();
     };
 
     const schedule = () => {
@@ -153,31 +105,17 @@ export default function AtlasSidebarScrollbarPolish() {
     observer.observe(document.body, {
       childList: true,
       subtree: true,
-      attributes: true,
-      attributeFilter: ["class", "style", "hidden"],
     });
 
-    const onNavigation = () => {
-      schedule();
-      window.setTimeout(schedule, 0);
-      window.setTimeout(schedule, 80);
-      window.setTimeout(schedule, 250);
-    };
-
-    document.addEventListener("click", onNavigation, true);
     window.addEventListener("resize", schedule);
-    window.addEventListener("popstate", onNavigation);
-    window.addEventListener("atlas:data-changed", onNavigation as EventListener);
-
-    interval = window.setInterval(schedule, 1000);
+    window.addEventListener("popstate", schedule);
+    window.addEventListener("atlas:data-changed", schedule as EventListener);
 
     return () => {
       observer.disconnect();
-      document.removeEventListener("click", onNavigation, true);
       window.removeEventListener("resize", schedule);
-      window.removeEventListener("popstate", onNavigation);
-      window.removeEventListener("atlas:data-changed", onNavigation as EventListener);
-      window.clearInterval(interval);
+      window.removeEventListener("popstate", schedule);
+      window.removeEventListener("atlas:data-changed", schedule as EventListener);
       if (frame) window.cancelAnimationFrame(frame);
     };
   }, []);
@@ -185,37 +123,28 @@ export default function AtlasSidebarScrollbarPolish() {
   return (
     <style jsx global>{`
       @media (min-width: 900px) {
-        .atlas-sidebar-shell,
-        .atlas-sidebar-shell *,
-        .atlas-sidebar-scrollbar-hidden {
-          scrollbar-width: none !important;
-          -ms-overflow-style: none !important;
+        .atlas-sidebar-shell {
+          height: 100dvh !important;
+          min-height: 0 !important;
+          max-height: 100dvh !important;
+          overflow-x: hidden !important;
+          overflow-y: auto !important;
+          overscroll-behavior-y: contain !important;
+          scrollbar-gutter: stable !important;
+          box-sizing: border-box !important;
+          padding-bottom: 28px !important;
         }
 
-      .atlas-sidebar-shell {
-        overflow-y: auto !important;
-        overflow-x: hidden !important;
-        overscroll-behavior: contain;
-      }
+        .atlas-sidebar-shell > *,
+        .atlas-sidebar-shell nav,
+        .atlas-sidebar-shell section,
+        .atlas-sidebar-shell div {
+          max-height: none !important;
+        }
 
-      .atlas-sidebar-shell > *,
-      .atlas-sidebar-shell nav,
-      .atlas-sidebar-shell section,
-      .atlas-sidebar-shell div {
-        max-height: none !important;
-      }
-
-      .atlas-sidebar-shell nav,
-      .atlas-sidebar-shell section {
-        overflow-y: visible !important;
-      }
-
-        .atlas-sidebar-shell::-webkit-scrollbar,
-        .atlas-sidebar-shell *::-webkit-scrollbar,
-        .atlas-sidebar-scrollbar-hidden::-webkit-scrollbar {
-          width: 0 !important;
-          height: 0 !important;
-          display: none !important;
+        .atlas-sidebar-shell nav,
+        .atlas-sidebar-shell section {
+          overflow-y: visible !important;
         }
       }
     `}</style>
