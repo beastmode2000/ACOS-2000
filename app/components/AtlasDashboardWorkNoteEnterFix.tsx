@@ -2,48 +2,100 @@
 
 import { useEffect } from "react";
 
+type ReactBackedElement = HTMLElement & Record<string, unknown>;
+
+function normalized(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function dashboardWorkSectionFor(control: Element) {
+  const polished = control.closest<HTMLElement>(".atlas-dashboard-polish-work");
+  if (polished) return polished;
+
+  let section = control.closest<HTMLElement>("section");
+  while (section) {
+    const heading = Array.from(section.querySelectorAll<HTMLElement>("h1,h2,h3,strong")).find(
+      (node) => normalized(node.textContent) === "work lists",
+    );
+    if (heading) return section;
+    section = section.parentElement?.closest<HTMLElement>("section") || null;
+  }
+  return null;
+}
+
+function dashboardWorkNoteButton(target: EventTarget | null) {
+  if (!(target instanceof Element)) return null;
+  const button = target.closest<HTMLButtonElement>("button");
+  if (!button || button.disabled) return null;
+  const label = String(button.textContent || "").trim();
+  if (label !== "Add Note" && label !== "Save Note") return null;
+  return dashboardWorkSectionFor(button) ? button : null;
+}
+
+function dashboardWorkNoteInput(target: EventTarget | null) {
+  if (!(target instanceof HTMLInputElement)) return null;
+  const isNote =
+    target.placeholder === "Add work note" ||
+    /^Note for /i.test(String(target.getAttribute("aria-label") || ""));
+  if (!isNote) return null;
+  return dashboardWorkSectionFor(target) ? target : null;
+}
+
+function reactHandler(element: ReactBackedElement, name: "onClick" | "onKeyDown") {
+  const propsKey = Object.keys(element).find((key) => key.startsWith("__reactProps$"));
+  if (!propsKey) return null;
+  const props = element[propsKey] as Record<string, unknown> | undefined;
+  const handler = props?.[name];
+  return typeof handler === "function" ? (handler as (event: unknown) => unknown) : null;
+}
+
 export default function AtlasDashboardWorkNoteEnterFix() {
   useEffect(() => {
-    const isDashboardWorkNoteInput = (target: EventTarget | null) => {
-      if (!(target instanceof HTMLInputElement)) return false;
-      return (
-        target.placeholder === "Add work note" ||
-        /^Note for /i.test(String(target.getAttribute("aria-label") || ""))
-      );
+    // Run at window capture, before document-level Atlas polish/navigation
+    // listeners. Dashboard work-note controls are local actions and must never
+    // be interpreted as navigation.
+    const isolateDashboardWorkNoteClick = (event: MouseEvent) => {
+      const button = dashboardWorkNoteButton(event.target);
+      if (!button) return;
+
+      const handler = reactHandler(button as ReactBackedElement, "onClick");
+      if (!handler) {
+        // If React internals ever change, still stop the bad navigation rather
+        // than sending the user to a 404.
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        event.stopPropagation();
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      event.stopPropagation();
+
+      handler({
+        currentTarget: button,
+        target: button,
+        nativeEvent: event,
+        preventDefault: () => undefined,
+        stopPropagation: () => undefined,
+      });
     };
 
-    const isDashboardWorkNoteControl = (target: EventTarget | null) => {
-      if (!(target instanceof Element)) return false;
-      if (isDashboardWorkNoteInput(target)) return true;
-      const button = target.closest("button");
-      const label = String(button?.textContent || "").trim();
-      return label === "Add Note" || label === "Save Note";
-    };
-
-    const preventDashboardWorkNoteSubmit = (event: KeyboardEvent) => {
+    const preventDashboardWorkNoteEnterNavigation = (event: KeyboardEvent) => {
       if (event.key !== "Enter") return;
-      if (!isDashboardWorkNoteInput(event.target)) return;
+      if (!dashboardWorkNoteInput(event.target)) return;
 
-      // Let the dashboard React handler save the note, but block any inherited
-      // form/link default that can navigate away to a 404.
+      // The input's React onKeyDown still performs the save. Cancel only the
+      // browser/form default so Enter cannot navigate away.
       event.preventDefault();
     };
 
-    const preventDashboardWorkNoteNavigation = (event: MouseEvent) => {
-      if (!isDashboardWorkNoteControl(event.target)) return;
-
-      // Add Note / Save Note live inside a clickable work row. Keep the control's
-      // own React handler, but cancel any browser default inherited from a parent
-      // link/form so the dashboard stays in place instead of navigating to 404.
-      event.preventDefault();
-    };
-
-    document.addEventListener("keydown", preventDashboardWorkNoteSubmit, true);
-    document.addEventListener("click", preventDashboardWorkNoteNavigation, true);
+    window.addEventListener("click", isolateDashboardWorkNoteClick, true);
+    window.addEventListener("keydown", preventDashboardWorkNoteEnterNavigation, true);
 
     return () => {
-      document.removeEventListener("keydown", preventDashboardWorkNoteSubmit, true);
-      document.removeEventListener("click", preventDashboardWorkNoteNavigation, true);
+      window.removeEventListener("click", isolateDashboardWorkNoteClick, true);
+      window.removeEventListener("keydown", preventDashboardWorkNoteEnterNavigation, true);
     };
   }, []);
 
