@@ -141,16 +141,11 @@ export default function AtlasSidebarScrollbarPolish() {
           padding-bottom: 28px !important;
         }
 
-        .atlas-sidebar-shell > *,
-        .atlas-sidebar-shell nav,
-        .atlas-sidebar-shell section,
-        .atlas-sidebar-shell div {
+        .atlas-sidebar-shell * {
           max-height: none !important;
-        }
-
-        .atlas-sidebar-shell nav,
-        .atlas-sidebar-shell section {
           overflow-y: visible !important;
+          overscroll-behavior-y: auto !important;
+          scrollbar-gutter: auto !important;
         }
       }
     `}</style>
