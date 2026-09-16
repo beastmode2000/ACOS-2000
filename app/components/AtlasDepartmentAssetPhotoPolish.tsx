@@ -105,8 +105,12 @@ function isAssetsWorkspace(main: HTMLElement) {
 
 function looksLikeDepartmentMain(main: HTMLElement) {
   if (isAssetsWorkspace(main)) return false;
-  const text = normalized(main.textContent);
-  return [
+
+  // Only operate when the page itself is a department workspace. Checking all
+  // text inside <main> caused the Dashboard (which lists department names) to
+  // be mistaken for Pool & Spa / Garage / Landscaping and allowed asset-photo
+  // repair code to overwrite unrelated images such as the Atlas brand mark.
+  const departmentLabels = new Set([
     "dock & marine",
     "dock and marine",
     "garage / vehicles",
@@ -116,7 +120,10 @@ function looksLikeDepartmentMain(main: HTMLElement) {
     "landscape",
     "landscaping",
     "house & maintenance",
-  ].some((phrase) => text.includes(phrase));
+  ]);
+
+  return Array.from(main.querySelectorAll<HTMLElement>("h1, h2"))
+    .some((heading) => departmentLabels.has(normalized(heading.textContent)));
 }
 
 function nearestAssetCard(image: HTMLImageElement, assetName: string) {
