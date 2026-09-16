@@ -59,6 +59,7 @@ function markSidebarScroller() {
     document.querySelectorAll<HTMLElement>(".atlas-sidebar-shell"),
   )) {
     element.classList.remove("atlas-sidebar-shell");
+    element.style.removeProperty("--atlas-sidebar-top");
   }
 
   if (window.innerWidth < 900) return;
@@ -83,7 +84,12 @@ function markSidebarScroller() {
     return bRect.width * bRect.height - aRect.width * aRect.height;
   });
 
-  pool[0]?.classList.add("atlas-sidebar-shell");
+  const root = pool[0];
+  if (!root) return;
+
+  const top = Math.max(0, Math.round(root.getBoundingClientRect().top));
+  root.style.setProperty("--atlas-sidebar-top", `${top}px`);
+  root.classList.add("atlas-sidebar-shell");
 }
 
 export default function AtlasSidebarScrollbarPolish() {
@@ -124,9 +130,9 @@ export default function AtlasSidebarScrollbarPolish() {
     <style jsx global>{`
       @media (min-width: 900px) {
         .atlas-sidebar-shell {
-          height: 100dvh !important;
+          height: calc(100dvh - var(--atlas-sidebar-top, 0px)) !important;
           min-height: 0 !important;
-          max-height: 100dvh !important;
+          max-height: calc(100dvh - var(--atlas-sidebar-top, 0px)) !important;
           overflow-x: hidden !important;
           overflow-y: auto !important;
           overscroll-behavior-y: contain !important;
