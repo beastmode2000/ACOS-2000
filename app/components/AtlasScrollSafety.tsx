@@ -105,18 +105,37 @@ export default function AtlasScrollSafety() {
       }
 
       @media (min-width: 901px) {
+        /* One scroll owner per visible pane. In split/three-pane workspaces each
+           pane must be able to travel from its own top to its own bottom without
+           changing the scroll position of its neighbor. */
+        .atlas-work-polish-root .atlas-work-split-grid,
+        .atlas-assets-viewport-root .atlas-assets-viewport-grid {
+          min-height: 0 !important;
+          overflow: hidden !important;
+        }
+
+        .atlas-work-polish-root .atlas-work-split-grid > *,
+        .atlas-assets-viewport-root .atlas-assets-viewport-grid > * {
+          min-height: 0 !important;
+        }
+
         .atlas-assets-viewport-root .atlas-assets-viewport-detail {
           height: 100% !important;
           max-height: 100% !important;
         }
 
-        .atlas-locations-viewport-root .atlas-locations-assets-detail,
-        .atlas-work-polish-root .atlas-work-detail-pane {
+        .atlas-work-polish-root .atlas-work-list-pane,
+        .atlas-work-polish-root .atlas-work-detail-pane,
+        .atlas-locations-viewport-root .atlas-locations-assets-list,
+        .atlas-locations-viewport-root .atlas-locations-assets-detail {
           min-height: 0 !important;
+          height: 100% !important;
+          max-height: 100% !important;
           overflow-x: hidden !important;
           overflow-y: auto !important;
-          overscroll-behavior: contain !important;
+          overscroll-behavior-y: contain !important;
           scrollbar-gutter: stable !important;
+          scroll-padding-top: 10px !important;
           scroll-padding-bottom: 96px !important;
           padding-bottom: 72px !important;
           box-sizing: border-box !important;
