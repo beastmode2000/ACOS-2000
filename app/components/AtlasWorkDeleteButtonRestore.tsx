@@ -66,11 +66,6 @@ function restoreDeleteButton() {
   const editDelete = makeDeleteButton(actions, "data-atlas-work-edit-delete-button");
   editDelete.style.minHeight = "42px";
   editDelete.style.padding = "9px 14px";
-  editDelete.addEventListener("click", () => {
-    const confirmed = window.confirm("Delete this work item? This removes it from Work and Calendar.");
-    if (!confirmed) return;
-    dispatchDelete(actions);
-  }, { once: true });
   editHeader.insertBefore(editDelete, saveButton);
 }
 
