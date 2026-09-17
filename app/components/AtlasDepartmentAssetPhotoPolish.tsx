@@ -10,7 +10,6 @@ type AssetPhoto = {
   contentType?: string;
   dataUrl?: string;
   url?: string;
-  createdAt?: string;
 };
 
 type AssetRow = {
@@ -103,38 +102,6 @@ function isAssetsWorkspace(main: HTMLElement) {
   return normalized(heading?.textContent) === "assets";
 }
 
-function looksLikeDepartmentMain(main: HTMLElement) {
-  if (isAssetsWorkspace(main)) return false;
-
-  // Only operate when the page itself is a department workspace. Checking all
-  // text inside <main> caused the Dashboard (which lists department names) to
-  // be mistaken for Pool & Spa / Garage / Landscaping and allowed asset-photo
-  // repair code to overwrite unrelated images such as the Atlas brand mark.
-  const departmentLabels = new Set([
-    "dock & marine",
-    "dock and marine",
-    "garage / vehicles",
-    "garage",
-    "vehicles",
-    "pool & spa",
-    "landscape",
-    "landscaping",
-    "house & maintenance",
-  ]);
-
-  return Array.from(main.querySelectorAll<HTMLElement>("h1, h2"))
-    .some((heading) => departmentLabels.has(normalized(heading.textContent)));
-}
-
-function nearestAssetCard(image: HTMLImageElement, assetName: string) {
-  let node: HTMLElement | null = image.parentElement;
-  for (let depth = 0; node && depth < 7; depth += 1, node = node.parentElement) {
-    const text = normalized(node.textContent);
-    if (text.includes(assetName) && text.length < 900) return node;
-  }
-  return null;
-}
-
 function setImageSource(image: HTMLImageElement, source: string, className: string) {
   if (!source) return;
   if (image.getAttribute("src") !== source) image.setAttribute("src", source);
@@ -185,10 +152,7 @@ export default function AtlasDepartmentAssetPhotoPolish() {
       try {
         const response = await fetch(
           `/api/atlas?propertyId=${encodeURIComponent(propertyId)}&assetPhotoConsistency=${Date.now()}`,
-          {
-            cache: "no-store",
-            credentials: "include",
-          },
+          { cache: "no-store", credentials: "include" },
         );
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || cancelled) return;
@@ -213,7 +177,7 @@ export default function AtlasDepartmentAssetPhotoPolish() {
         assetPhotosRef.current = next;
         schedule();
       } catch {
-        // Photo consistency is presentation-only. Keep Atlas usable if the refresh fails.
+        // Presentation-only photo consistency must never block Atlas.
       }
     };
 
@@ -225,25 +189,12 @@ export default function AtlasDepartmentAssetPhotoPolish() {
         assetPhotosRef.current = new Map();
         void loadAssets(propertyId);
       }
-
       if (!assetPhotosRef.current.size) return;
 
+      // Deliberately limited to the Assets workspace. Department pages and the
+      // Atlas brand mark must keep their own images and are never rewritten here.
       for (const main of Array.from(document.querySelectorAll<HTMLElement>("main"))) {
-        if (isAssetsWorkspace(main)) {
-          applyAssetsWorkspace(main, assetPhotosRef.current);
-          continue;
-        }
-        if (!looksLikeDepartmentMain(main)) continue;
-
-        for (const image of Array.from(main.querySelectorAll<HTMLImageElement>("img"))) {
-          for (const [assetName, source] of assetPhotosRef.current) {
-            const card = nearestAssetCard(image, assetName);
-            if (!card) continue;
-            setImageSource(image, source, "atlas-department-authoritative-asset-photo");
-            card.dataset.atlasAssetMainPhoto = "true";
-            break;
-          }
-        }
+        if (isAssetsWorkspace(main)) applyAssetsWorkspace(main, assetPhotosRef.current);
       }
     };
 
@@ -270,11 +221,9 @@ export default function AtlasDepartmentAssetPhotoPolish() {
 
   return (
     <style jsx global>{`
-      .atlas-department-authoritative-asset-photo,
       .atlas-authoritative-asset-list-photo {
         object-fit: cover !important;
       }
-
       .atlas-authoritative-asset-hero-photo {
         object-fit: contain !important;
       }
