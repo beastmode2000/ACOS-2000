@@ -32,6 +32,7 @@ import AtlasWorkSpellAssist from "./components/AtlasWorkSpellAssist";
 import AtlasDashboardNoteActionsPolish from "./components/AtlasDashboardNoteActionsPolish";
 import AtlasDashboardWorkNoteEnterFix from "./components/AtlasDashboardWorkNoteEnterFix";
 import AtlasDashboardDefaultUpcoming from "./components/AtlasDashboardDefaultUpcoming";
+import AtlasDashboardUpcomingWork from "./components/AtlasDashboardUpcomingWork";
 import AtlasHydrawiseWeatherLink from "./components/AtlasHydrawiseWeatherLink";
 import AtlasPhotoPastePolish from "./components/AtlasPhotoPastePolish";
 import AtlasPhotoLightbox from "./components/AtlasPhotoLightbox";
@@ -141,6 +142,7 @@ export default function RootLayout({
         <AtlasDashboardNoteActionsPolish />
         <AtlasDashboardWorkNoteEnterFix />
         <AtlasDashboardDefaultUpcoming />
+        <AtlasDashboardUpcomingWork />
         <AtlasHydrawiseWeatherLink />
         <AtlasPhotoPastePolish />
         <AtlasPhotoLightbox />
