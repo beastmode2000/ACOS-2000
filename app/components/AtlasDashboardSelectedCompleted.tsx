@@ -49,7 +49,11 @@ function completedToday(record: WorkRow, today: string) {
     : Array.isArray(record.service_history)
       ? record.service_history
       : [];
-  return service.some((entry: any) => dateKey(entry?.completedAt || entry?.completed_at) === today);
+  if (service.some((entry: any) => dateKey(entry?.completedAt || entry?.completed_at) === today)) return true;
+  if (["completed", "closed", "done"].includes(normalized(record.status))) {
+    return dateKey(record.date || record.dueDate || record.due_date || record.updatedAt || record.updated_at) === today;
+  }
+  return false;
 }
 
 function propertyId() {
@@ -117,10 +121,21 @@ export default function AtlasDashboardSelectedCompleted() {
     let cancelled = false;
     const load = async () => {
       try {
-        const response = await fetch(`/api/atlas?propertyId=${encodeURIComponent(activePropertyId)}&t=${Date.now()}`, { cache: "no-store", credentials: "include" });
-        const payload = await response.json().catch(() => ({}));
+        const [atlasResponse, teamResponse] = await Promise.all([
+          fetch(`/api/atlas?propertyId=${encodeURIComponent(activePropertyId)}&t=${Date.now()}`, { cache: "no-store", credentials: "include" }),
+          fetch("/api/atlas-team", { cache: "no-store", credentials: "include" }),
+        ]);
+        const atlas = await atlasResponse.json().catch(() => ({}));
+        const team = await teamResponse.json().catch(() => ({}));
         if (cancelled) return;
-        setRows(Array.isArray(payload?.serviceRecords) ? payload.serviceRecords : Array.isArray(payload?.workOrders) ? payload.workOrders : []);
+        const atlasRows = Array.isArray(atlas?.serviceRecords) ? atlas.serviceRecords : Array.isArray(atlas?.workOrders) ? atlas.workOrders : [];
+        const teamRows: WorkRow[] = (Array.isArray(team?.workLists) ? team.workLists : []).flatMap((list: any) =>
+          (Array.isArray(list?.tasks) ? list.tasks : []).map((task: any) => ({
+            ...task,
+            assignedTo: task?.assignedTo || task?.assignee || list?.defaultAssignee || "",
+          })),
+        );
+        setRows([...atlasRows, ...teamRows]);
       } catch {
         if (!cancelled) setRows([]);
       }
@@ -136,9 +151,16 @@ export default function AtlasDashboardSelectedCompleted() {
 
   const completed = useMemo(() => {
     const today = localToday();
+    const seen = new Set<string>();
     return rows
       .filter((record) => completedToday(record, today))
       .filter((record) => matchesPerson(selectedPerson, assignee(record)))
+      .filter((record) => {
+        const key = String(record.id || `${title(record)}|${assignee(record)}|${today}`);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
       .sort((a, b) => title(a).localeCompare(title(b)));
   }, [rows, selectedPerson]);
 
@@ -151,7 +173,7 @@ export default function AtlasDashboardSelectedCompleted() {
         {completed.length ? completed.map((record) => (
           <button
             type="button"
-            key={String(record.id || title(record))}
+            key={String(record.id || `${title(record)}-${assignee(record)}`)}
             className="atlas-correct-work-row"
             onClick={openWork}
           >
