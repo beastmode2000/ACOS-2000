@@ -20,6 +20,7 @@ import AtlasDepartmentAssetPhotoPolish from "./components/AtlasDepartmentAssetPh
 import AtlasAssetListActionsPolish from "./components/AtlasAssetListActionsPolish";
 import AtlasWorkPolish from "./components/AtlasWorkPolish";
 import AtlasWorkNotesTogether from "./components/AtlasWorkNotesTogether";
+import AtlasWorkDeleteButtonRestore from "./components/AtlasWorkDeleteButtonRestore";
 import AtlasWorkMaintainXPolish from "./components/AtlasWorkMaintainXPolish";
 import AtlasWorkNoteSafety from "./components/AtlasWorkNoteSafety";
 import AtlasWorkListPolish from "./components/AtlasWorkListPolish";
@@ -128,6 +129,7 @@ export default function RootLayout({
         <AtlasAssetListActionsPolish />
         <AtlasWorkPolish />
         <AtlasWorkNotesTogether />
+        <AtlasWorkDeleteButtonRestore />
         <AtlasWorkMaintainXPolish />
         <AtlasWorkNoteSafety />
         <AtlasWorkListPolish />
