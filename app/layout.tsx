@@ -33,6 +33,7 @@ import AtlasDashboardNoteActionsPolish from "./components/AtlasDashboardNoteActi
 import AtlasDashboardWorkNoteEnterFix from "./components/AtlasDashboardWorkNoteEnterFix";
 import AtlasDashboardDefaultUpcoming from "./components/AtlasDashboardDefaultUpcoming";
 import AtlasDashboardWorkListsCorrect from "./components/AtlasDashboardWorkListsCorrect";
+import AtlasDashboardSelectedCompleted from "./components/AtlasDashboardSelectedCompleted";
 import AtlasHydrawiseWeatherLink from "./components/AtlasHydrawiseWeatherLink";
 import AtlasPhotoPastePolish from "./components/AtlasPhotoPastePolish";
 import AtlasPhotoLightbox from "./components/AtlasPhotoLightbox";
@@ -49,6 +50,7 @@ import AtlasTeamWorkActions from "./components/AtlasTeamWorkActions";
 import AtlasTeamInviteActions from "./components/AtlasTeamInviteActions";
 import AtlasTeamHeaderCleanup from "./components/AtlasTeamHeaderCleanup";
 import AtlasHouseMaintenancePolish from "./components/AtlasHouseMaintenancePolish";
+import AtlasDepartmentHubPolish from "./components/AtlasDepartmentHubPolish";
 import AtlasNavigationSafety from "./components/AtlasNavigationSafety";
 import AtlasOperationsPolish from "./components/AtlasOperationsPolish";
 import AtlasOwnerReportHeaderPolish from "./components/AtlasOwnerReportHeaderPolish";
@@ -143,6 +145,7 @@ export default function RootLayout({
         <AtlasDashboardWorkNoteEnterFix />
         <AtlasDashboardDefaultUpcoming />
         <AtlasDashboardWorkListsCorrect />
+        <AtlasDashboardSelectedCompleted />
         <AtlasHydrawiseWeatherLink />
         <AtlasPhotoPastePolish />
         <AtlasPhotoLightbox />
@@ -158,6 +161,7 @@ export default function RootLayout({
         <AtlasTeamInviteActions />
         <AtlasTeamHeaderCleanup />
         <AtlasHouseMaintenancePolish />
+        <AtlasDepartmentHubPolish />
         <AtlasNavigationSafety />
         <AtlasOperationsPolish />
         <AtlasOwnerReportHeaderPolish />
