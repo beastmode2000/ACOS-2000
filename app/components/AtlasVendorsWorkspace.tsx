@@ -618,6 +618,13 @@ export default function AtlasVendorsWorkspace(props: any) {
         title="Vendors"
         isMobile={isMobile}
         drawerResetKey={selectedVendorId || "vendor-new"}
+        mobileDrawerOpen={isMobile && Boolean(selectedVendorId)}
+        onMobileDrawerClose={() => {
+          setSelectedVendorId("");
+          setVendorEditing(false);
+          setContactDraft(null);
+        }}
+        mobileDrawerTitle={selectedVendor.name || "Vendor"}
         outerStyle={{ gap: isMobile ? 8 : 6 }}
         gridStyleOverride={
           isMobile
@@ -1500,16 +1507,38 @@ export default function AtlasVendorsWorkspace(props: any) {
                 top: 0,
                 zIndex: 3,
                 minHeight: 56,
-                padding: "0 16px",
-                display: "flex",
+                padding: isMobile ? "max(8px, env(safe-area-inset-top)) 12px 8px" : "0 16px",
+                display: isMobile ? "grid" : "flex",
+                gridTemplateColumns: isMobile ? "auto minmax(0,1fr) auto" : undefined,
                 alignItems: "center",
                 justifyContent: "space-between",
-                gap: 12,
+                gap: 10,
                 borderBottom: `1px solid ${colors.line}`,
                 background: "#FFFFFF",
               }}
             >
-              <strong style={{ color: colors.navy, fontSize: 17 }}>
+              {isMobile ? (
+                <button
+                  type="button"
+                  onClick={() => setContactDraft(null)}
+                  aria-label="Back to vendor"
+                  style={{
+                    minWidth: 72,
+                    height: 40,
+                    padding: "0 11px",
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 9,
+                    background: "#FFFFFF",
+                    color: colors.navy,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  ← Back
+                </button>
+              ) : null}
+              <strong style={{ color: colors.navy, fontSize: 17, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {contactMode === "new" ? "New Contact" : "Edit Contact"}
               </strong>
               <button
@@ -1518,6 +1547,7 @@ export default function AtlasVendorsWorkspace(props: any) {
                 aria-label="Close contact editor"
                 style={{
                   width: 34,
+                  minWidth: 34,
                   height: 34,
                   border: 0,
                   borderRadius: 8,
