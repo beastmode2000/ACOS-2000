@@ -163,6 +163,25 @@ function markBottomNavigation() {
   }
 }
 
+function closeTopLevelRecordDetail() {
+  const backButton = Array.from(
+    document.querySelectorAll<HTMLButtonElement>(
+      '[role="dialog"] button[aria-label="Back to list"], [role="dialog"] button[aria-label="Back to work"], [role="dialog"] button[aria-label="Back to assets"], [role="dialog"] button[aria-label="Back to locations"]',
+    ),
+  ).find((button) => visible(button));
+
+  backButton?.click();
+}
+
+function scheduleTopLevelListView(route: string) {
+  if (!["work", "assets", "locations"].includes(route)) return;
+
+  const close = () => closeTopLevelRecordDetail();
+  window.requestAnimationFrame(close);
+  window.setTimeout(close, 80);
+  window.setTimeout(close, 220);
+}
+
 function routeMobileBottomNavigation(event: MouseEvent) {
   if (window.innerWidth > 900) return;
   const target = event.target;
@@ -184,7 +203,13 @@ function routeMobileBottomNavigation(event: MouseEvent) {
   event.preventDefault();
   event.stopPropagation();
   event.stopImmediatePropagation();
+
+  if (["work", "assets", "locations"].includes(route)) {
+    closeTopLevelRecordDetail();
+  }
+
   nativeTarget.click();
+  scheduleTopLevelListView(route);
 }
 
 function commonParent(elements: HTMLElement[], stop: HTMLElement) {
