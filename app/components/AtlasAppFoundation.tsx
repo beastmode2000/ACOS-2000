@@ -5254,17 +5254,43 @@ export function ListDrawerLayout(props: {
                 position: "sticky",
                 top: 0,
                 zIndex: 5,
-                display: "flex",
+                display: "grid",
+                gridTemplateColumns: "auto minmax(0,1fr) auto",
                 alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
+                gap: 10,
                 minHeight: "calc(58px + env(safe-area-inset-top))",
                 padding: "max(10px, env(safe-area-inset-top)) 12px 10px",
                 borderBottom: `1px solid ${colors.line}`,
                 background: colors.card,
               }}
             >
-              <strong style={{ color: colors.navy, minWidth: 0 }}>
+              <button
+                type="button"
+                onClick={props.onMobileDrawerClose}
+                style={{
+                  ...secondaryButtonStyle,
+                  width: "auto",
+                  minWidth: 72,
+                  height: 42,
+                  padding: "0 12px",
+                  borderRadius: 10,
+                  fontSize: 13,
+                  fontWeight: 800,
+                  whiteSpace: "nowrap",
+                }}
+                aria-label="Back to list"
+              >
+                ← Back
+              </button>
+              <strong
+                style={{
+                  color: colors.navy,
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {props.mobileDrawerTitle || props.title || "Details"}
               </strong>
               <button
