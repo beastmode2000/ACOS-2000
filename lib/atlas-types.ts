@@ -29,7 +29,7 @@ export type WorkOrderPriority = "Low" | "Medium" | "High";
 
 export type WorkOrderRecurrenceUnit = "Days" | "Weeks" | "Months" | "Years";
 
-export type WorkSeason = "Year-Round" | "Spring" | "Summer" | "Fall" | "Winter";
+export type WorkSeason = "Year-Round" | "May-October" | "Spring" | "Summer" | "Fall" | "Winter";
 
 export type Priority = "High" | "Normal" | "Seasonal";
 
