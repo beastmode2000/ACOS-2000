@@ -210,72 +210,9 @@ function polishDocuments(root: HTMLElement) {
   }
 }
 
-function ensureMobileInfoDialogBackButtons() {
-  if (window.innerWidth > 900) return;
-
-  for (const dialog of Array.from(
-    document.querySelectorAll<HTMLElement>('[role="dialog"]'),
-  )) {
-    const label = normalized(dialog.getAttribute("aria-label"));
-    if (!/(details?|editor|record|information|contact|calendar|procedure|notifications|employment|employee view)/i.test(label)) {
-      continue;
-    }
-
-    const existingBack = Array.from(dialog.querySelectorAll<HTMLButtonElement>("button")).find(
-      (button) =>
-        /^back\b/i.test(normalized(button.getAttribute("aria-label"))) ||
-        /^←\s*back\b/i.test(String(button.textContent || "").trim()),
-    );
-    if (existingBack) continue;
-
-    const closeButton = Array.from(dialog.querySelectorAll<HTMLButtonElement>("button")).find(
-      (button) => /^close\b/i.test(normalized(button.getAttribute("aria-label"))),
-    );
-    if (!closeButton) continue;
-
-    const header = closeButton.parentElement;
-    if (!header || header.dataset.atlasMobileBackFallback === "true") continue;
-
-    const backButton = document.createElement("button");
-    backButton.type = "button";
-    backButton.className = "atlas-mobile-info-fallback-back";
-    backButton.setAttribute("aria-label", "Back");
-    backButton.textContent = "← Back";
-    backButton.onclick = () => closeButton.click();
-
-    header.dataset.atlasMobileBackFallback = "true";
-    header.insertBefore(backButton, header.firstChild);
-  }
-}
-
 function polishMobileDetailBackButtons() {
-  if (window.innerWidth > 900) return;
-
-  for (const dialog of Array.from(
-    document.querySelectorAll<HTMLElement>('[role="dialog"]'),
-  )) {
-    const detailPanel = dialog.querySelector<HTMLElement>(
-      "[data-atlas-detail-panel], [data-atlas-work-detail-panel]",
-    );
-    if (!detailPanel) continue;
-
-    const closeButton = dialog.querySelector<HTMLButtonElement>(
-      'button[aria-label="Close details"], button[aria-label="Back to list"]',
-    );
-    if (!closeButton) continue;
-
-    const header = closeButton.parentElement;
-    if (!header) continue;
-
-    header.classList.add("atlas-mobile-detail-header");
-    closeButton.classList.add("atlas-mobile-detail-back");
-    if (closeButton.textContent?.trim() !== "← Back") {
-      closeButton.textContent = "← Back";
-    }
-    if (closeButton.getAttribute("aria-label") !== "Back to list") {
-      closeButton.setAttribute("aria-label", "Back to list");
-    }
-  }
+  // Mobile info screens now render their Back controls natively.
+  // Do not rewrite React-owned dialog headers from a MutationObserver.
 }
 
 export default function AtlasWorkspacePolish() {
@@ -287,7 +224,6 @@ export default function AtlasWorkspacePolish() {
       hideLegacyLoadStatus();
       hideProceduresNavigation();
       polishMobileDetailBackButtons();
-      ensureMobileInfoDialogBackButtons();
 
       const notes = pageMain("notes");
       if (notes) polishNotes(notes);
@@ -428,60 +364,9 @@ export default function AtlasWorkspacePolish() {
           min-height: 140px !important;
         }
 
-        .atlas-mobile-detail-header {
-          position: sticky !important;
-          top: 0 !important;
-          z-index: 30 !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: flex-start !important;
-          gap: 10px !important;
-          min-height: 56px !important;
-          padding: max(8px, env(safe-area-inset-top)) 12px 8px !important;
-          background: #ffffff !important;
-          border-bottom: 1px solid #dce4ec !important;
-          box-sizing: border-box !important;
-        }
 
-        .atlas-mobile-detail-header > strong {
-          order: 2 !important;
-          min-width: 0 !important;
-          overflow: hidden !important;
-          text-overflow: ellipsis !important;
-          white-space: nowrap !important;
-        }
 
-        .atlas-mobile-info-fallback-back {
-          flex: 0 0 auto !important;
-          min-width: 72px !important;
-          min-height: 40px !important;
-          padding: 0 11px !important;
-          border: 1px solid #dce4ec !important;
-          border-radius: 9px !important;
-          background: #ffffff !important;
-          color: #0b2c43 !important;
-          font: inherit !important;
-          font-size: 12px !important;
-          font-weight: 800 !important;
-          line-height: 1 !important;
-          white-space: nowrap !important;
-          cursor: pointer !important;
-        }
 
-        .atlas-mobile-detail-back {
-          order: 1 !important;
-          width: auto !important;
-          min-width: 0 !important;
-          height: 38px !important;
-          min-height: 38px !important;
-          padding: 0 12px !important;
-          border-radius: 10px !important;
-          font-size: 15px !important;
-          font-weight: 800 !important;
-          line-height: 1 !important;
-          white-space: nowrap !important;
-          flex: 0 0 auto !important;
-        }
       }
     `}</style>
   );
