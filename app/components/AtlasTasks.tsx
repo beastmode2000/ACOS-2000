@@ -275,7 +275,7 @@ export default function AtlasTasks({ ctx }: { ctx: any }) {
                       <SelectField label="Category" value={selectedTask.category} onChange={(value) => updateWorkPlanTask(selectedTask.id, { category: value })} options={["General","Cleanup / Prep","Landscaping","Maintenance","Administration","Planning","Inspection","Garage","Pool & Spa","Vehicle Care","Boat / Dock"]} />
                       <SelectField label="Preferred day" value={selectedTask.preferredDay || "Auto"} onChange={(value) => updateWorkPlanTask(selectedTask.id, { preferredDay: value as any })} options={["Auto", ...workPlanDays]} />
                       <Field label="Preferred time" type="time" value={selectedTask.fixedTime || ""} onChange={(value) => updateWorkPlanTask(selectedTask.id, { fixedTime: value })} />
-                      <SelectField label="Season" value={selectedMeta.season || "Year-Round"} onChange={(value) => updateTaskDetails(selectedTask.id, { season: value as any })} options={["Year-Round","Spring","Summer","Fall","Winter"]} />
+                      <SelectField label="Season" value={selectedMeta.season || "Year-Round"} onChange={(value) => updateTaskDetails(selectedTask.id, { season: value as any })} options={["Year-Round","May-October","Spring","Summer","Fall","Winter"]} />
                       <SelectField label="Weather" value={selectedMeta.weatherDependency || "None"} onChange={(value) => updateTaskDetails(selectedTask.id, { weatherDependency: value as any })} options={["None","Dry","No rain","Warm","Cool","Low wind"]} />
                     </div>
                     <details style={{ ...noticeStyle, padding: 10 }} open>
