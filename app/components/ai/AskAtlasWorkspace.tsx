@@ -26,9 +26,9 @@ export default function AskAtlasWorkspace({
       const url = `${window.location.origin}/ask-atlas-share?token=${encodeURIComponent(payload.token)}`;
       try {
         await navigator.clipboard.writeText(url);
-        setShareMessage("Owner Ask Atlas link copied.");
+        setShareMessage("Shared Ask Atlas link copied.");
       } catch {
-        window.prompt("Copy Owner Ask Atlas link:", url);
+        window.prompt("Copy shared Ask Atlas link:", url);
       }
     } catch (error) {
       setShareMessage(error instanceof Error ? error.message : "Share link could not be created.");
@@ -74,7 +74,7 @@ export default function AskAtlasWorkspace({
               cursor: "pointer",
             }}
           >
-            Copy Owner Ask Atlas Link
+            Copy Ask Atlas Share Link
           </button>
         </div>
         <div style={{ display: "grid", gap: 14 }}>{main}</div>
