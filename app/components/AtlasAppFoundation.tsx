@@ -5219,7 +5219,7 @@ export function ListDrawerLayout(props: {
             position: "fixed",
             inset: 0,
             zIndex: 12040,
-            background: colors.card,
+            background: "#F4F7FA",
             display: "grid",
             alignItems: "stretch",
             justifyItems: "stretch",
@@ -5240,7 +5240,7 @@ export function ListDrawerLayout(props: {
               minWidth: 0,
               overflowY: "auto",
               overflowX: "hidden",
-              background: colors.card,
+              background: "#F4F7FA",
               WebkitOverflowScrolling: "touch",
               overscrollBehavior: "contain",
               borderRadius: 0,
@@ -5261,7 +5261,8 @@ export function ListDrawerLayout(props: {
                 minHeight: "calc(58px + env(safe-area-inset-top))",
                 padding: "max(10px, env(safe-area-inset-top)) 12px 10px",
                 borderBottom: `1px solid ${colors.line}`,
-                background: colors.card,
+                background: "rgba(255,255,255,.98)",
+                boxShadow: "0 4px 14px rgba(15,42,67,.06)",
               }}
             >
               <button
@@ -5274,6 +5275,9 @@ export function ListDrawerLayout(props: {
                   height: 42,
                   padding: "0 12px",
                   borderRadius: 10,
+                  borderColor: "#CCD7E2",
+                  background: "#FFFFFF",
+                  color: colors.navy,
                   fontSize: 13,
                   fontWeight: 800,
                   whiteSpace: "nowrap",
@@ -5313,7 +5317,7 @@ export function ListDrawerLayout(props: {
             </div>
             <div
               className="atlas-record-detail-content atlas-record-detail-content--mobile"
-              style={{ minWidth: 0, padding: "10px 10px max(96px, env(safe-area-inset-bottom))", overflow: "visible" }}
+              style={{ minWidth: 0, padding: "10px 10px max(96px, env(safe-area-inset-bottom))", overflow: "visible", background: "#F4F7FA" }}
             >
               {props.drawer}
             </div>
