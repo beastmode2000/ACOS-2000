@@ -1164,15 +1164,34 @@ export default function AtlasProceduresWorkspace(props: any) {
           >
             <div
               style={{
-                display: "flex",
+                display: "grid",
+                gridTemplateColumns: "auto minmax(0,1fr) auto",
                 alignItems: "center",
-                justifyContent: "space-between",
                 gap: 8,
-                padding: "10px 10px 10px 14px",
+                padding: "max(10px, env(safe-area-inset-top)) 10px 10px",
                 borderBottom: `1px solid ${colors.line}`,
                 background: "#FFFFFF",
               }}
             >
+              <button
+                type="button"
+                onClick={closeProcedureViewer}
+                style={{
+                  minWidth: 72,
+                  height: 42,
+                  padding: "0 11px",
+                  borderRadius: 9,
+                  border: `1px solid ${colors.line}`,
+                  background: "#FFFFFF",
+                  color: colors.navy,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+                aria-label="Back to procedures"
+              >
+                ← Back
+              </button>
               <strong
                 style={{
                   minWidth: 0,
