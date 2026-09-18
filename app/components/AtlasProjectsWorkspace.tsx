@@ -730,7 +730,7 @@ export default function AtlasProjectsWorkspace(props: any) {
         {showNewProject ? (
           <section style={{ ...card, padding: isMobile ? 11 : 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{isMobile ? <button type="button" style={tinyButton} onClick={() => setShowNewProject(false)}>← Projects</button> : null}<strong style={{ color: colors.navy, fontSize: 17 }}>New Project</strong></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{isMobile ? <button type="button" aria-label="Back to projects" style={tinyButton} onClick={() => setShowNewProject(false)}>← Back</button> : null}<strong style={{ color: colors.navy, fontSize: 17 }}>New Project</strong></div>
               <div style={{ display: "flex", gap: 7 }}><button type="button" style={tinyButton} onClick={() => setShowNewProject(false)}>Cancel</button><button type="button" style={goldButtonStyle} onClick={createProject}>Save Project</button></div>
             </div>
             <ProjectFields value={newDraft} onChange={setNewDraft} />
@@ -738,7 +738,7 @@ export default function AtlasProjectsWorkspace(props: any) {
         ) : selectedProject ? (
           <div style={{ display: "grid", gap: 12 }}>
             <section style={{ ...card, padding: isMobile ? 11 : 14 }}>
-              {isMobile ? <button type="button" style={{ ...tinyButton, marginBottom: 10 }} onClick={() => { setSelectedProjectId(""); setEditing(false); }}>← Projects</button> : null}
+              {isMobile ? <button type="button" aria-label="Back to projects" style={{ ...tinyButton, marginBottom: 10, position: "sticky", top: 0, zIndex: 8, background: "#FFFFFF" }} onClick={() => { setSelectedProjectId(""); setEditing(false); }}>← Back</button> : null}
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap", position: editing ? "sticky" : "static", top: 0, zIndex: 5, padding: editing ? "8px 0" : 0, background: "#FFFFFF", borderBottom: editing ? `1px solid ${colors.line}` : 0 }}>
                 <div>
                   <h2 style={{ margin: 0, color: colors.navy, fontSize: isMobile ? 19 : 22 }}>{selectedProject.title || selectedProject.name || "Project"}</h2>
