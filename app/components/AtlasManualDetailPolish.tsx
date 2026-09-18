@@ -100,7 +100,8 @@ function polishManualDetail() {
       line.className = "atlas-manual-detail-linked-asset-line";
       title.insertAdjacentElement("afterend", line);
     }
-    line.textContent = `Linked Asset: ${linkedAsset}`;
+    const nextText = `Linked Asset: ${linkedAsset}`;
+    if (line.textContent !== nextText) line.textContent = nextText;
   } else {
     line?.remove();
   }
@@ -127,7 +128,7 @@ export default function AtlasManualDetailPolish() {
 
     schedule();
     const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
+    observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", schedule);
 
     return () => {
