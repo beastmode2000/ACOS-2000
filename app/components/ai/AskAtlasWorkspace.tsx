@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 type Props = {
   isMobile: boolean;
@@ -13,6 +13,28 @@ export default function AskAtlasWorkspace({
   main,
   sidebar,
 }: Props) {
+  const [shareMessage, setShareMessage] = useState("");
+
+  async function copyShareLink() {
+    setShareMessage("");
+    try {
+      const response = await fetch("/api/ask-atlas-share?propertyId=2000", { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok !== true || !payload?.token) {
+        throw new Error(payload?.error || "Share link could not be created.");
+      }
+      const url = `${window.location.origin}/ask-atlas-share?token=${encodeURIComponent(payload.token)}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareMessage("Owner Ask Atlas link copied.");
+      } catch {
+        window.prompt("Copy Owner Ask Atlas link:", url);
+      }
+    } catch (error) {
+      setShareMessage(error instanceof Error ? error.message : "Share link could not be created.");
+    }
+  }
+
   return (
     <div
       style={{
@@ -24,7 +46,39 @@ export default function AskAtlasWorkspace({
         alignItems: "start",
       }}
     >
-      <div style={{ display: "grid", gap: 14 }}>{main}</div>
+      <div style={{ display: "grid", gap: 10 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 8,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          {shareMessage ? (
+            <span style={{ fontSize: 11, color: "#607184" }}>{shareMessage}</span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void copyShareLink()}
+            style={{
+              minHeight: 36,
+              border: "1px solid #D9E2EA",
+              borderRadius: 9,
+              background: "#FFFFFF",
+              color: "#0A2841",
+              padding: "7px 10px",
+              fontSize: 11,
+              fontWeight: 850,
+              cursor: "pointer",
+            }}
+          >
+            Copy Owner Ask Atlas Link
+          </button>
+        </div>
+        <div style={{ display: "grid", gap: 14 }}>{main}</div>
+      </div>
       <aside style={{ display: "grid", gap: 14 }}>{sidebar}</aside>
     </div>
   );
