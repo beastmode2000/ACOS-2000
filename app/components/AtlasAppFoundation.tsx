@@ -5015,8 +5015,13 @@ export function ListDrawerLayout(props: {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") props.onMobileDrawerClose?.();
     };
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
   }, [props.isMobile, props.mobileDrawerOpen, props.onMobileDrawerClose]);
 
   useLayoutEffect(() => {
@@ -5035,7 +5040,7 @@ export function ListDrawerLayout(props: {
       window.cancelAnimationFrame(frame);
       window.clearTimeout(timeout);
     };
-  }, [props.drawerResetKey]);
+  }, [props.drawerResetKey, props.mobileDrawerOpen, props.mobileDrawerTitle]);
 
   // Calendar-specific shell styling is owned by the calendar workspace, not this shared drawer layout.
   const isCalendarLayout = false;
@@ -5214,11 +5219,11 @@ export function ListDrawerLayout(props: {
             position: "fixed",
             inset: 0,
             zIndex: 12040,
-            background: "rgba(7,27,47,0.68)",
+            background: colors.card,
             display: "grid",
             alignItems: "stretch",
             justifyItems: "stretch",
-            padding: "max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom))",
+            padding: 0,
           }}
           onClick={(event) => {
             if (event.currentTarget === event.target) {
@@ -5230,16 +5235,18 @@ export function ListDrawerLayout(props: {
             ref={drawerScrollRef}
             style={{
               width: "100%",
-              height: "calc(100dvh - max(16px, env(safe-area-inset-top)) - max(8px, env(safe-area-inset-bottom)))",
+              height: "100dvh",
+              maxHeight: "100dvh",
               minWidth: 0,
               overflowY: "auto",
               overflowX: "hidden",
               background: colors.card,
               WebkitOverflowScrolling: "touch",
               overscrollBehavior: "contain",
-              borderRadius: 18,
+              borderRadius: 0,
               boxSizing: "border-box",
               paddingBottom: "max(24px, env(safe-area-inset-bottom))",
+              scrollPaddingTop: "calc(58px + env(safe-area-inset-top))",
             }}
           >
             <div
@@ -5251,8 +5258,8 @@ export function ListDrawerLayout(props: {
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: 12,
-                minHeight: 58,
-                padding: "10px 14px",
+                minHeight: "calc(58px + env(safe-area-inset-top))",
+                padding: "max(10px, env(safe-area-inset-top)) 12px 10px",
                 borderBottom: `1px solid ${colors.line}`,
                 background: colors.card,
               }}
@@ -5280,7 +5287,7 @@ export function ListDrawerLayout(props: {
             </div>
             <div
               className="atlas-record-detail-content atlas-record-detail-content--mobile"
-              style={{ minWidth: 0, padding: 12, overflowX: "visible" }}
+              style={{ minWidth: 0, padding: "10px 10px max(96px, env(safe-area-inset-bottom))", overflow: "visible" }}
             >
               {props.drawer}
             </div>
