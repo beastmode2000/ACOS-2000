@@ -70,24 +70,6 @@ function restoreDeleteButton() {
 }
 
 export default function AtlasWorkDeleteButtonRestore() {
-  useEffect(() => {
-    let frame = 0;
-    const schedule = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(restoreDeleteButton);
-    };
-
-    schedule();
-    const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener("atlas:data-changed", schedule as EventListener);
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      observer.disconnect();
-      window.removeEventListener("atlas:data-changed", schedule as EventListener);
-    };
-  }, []);
-
+  // Work actions are now intentionally consolidated in the Actions menu.
   return null;
 }
