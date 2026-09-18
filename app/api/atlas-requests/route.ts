@@ -400,7 +400,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const requesterName = cleanText(body.requesterName, 200);
+    const requesterNameInput = cleanText(body.requesterName, 200);
     const requesterContact = cleanText(body.requesterContact, 300);
     const title = cleanText(body.title, 300);
     const description = cleanText(body.description, 8000);
@@ -412,6 +412,8 @@ export async function POST(request: NextRequest) {
     const photos = safePhotos(body.photos);
     const propertyId = cleanText(body.propertyId, 100);
     const portalType = portal.type;
+    const requesterName =
+      portalType === "owner" ? requesterNameInput || "Owner" : requesterNameInput;
     const category =
       portalType === "marine" ? "Dock & Marine" : requestedCategory;
     const assignedTo = portalType === "marine" ? "Sean" : "";
@@ -421,11 +423,14 @@ export async function POST(request: NextRequest) {
     const source =
       portalType === "marine" ? "Sean Marine QR" : "Owner Request QR";
 
-    if (!requesterName || !description) {
+    if (!description || (portalType === "marine" && !requesterName)) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Please enter your name and describe the request.",
+          error:
+            portalType === "marine"
+              ? "Please enter your name and describe the request."
+              : "Please describe what needs attention.",
         },
         { status: 400 },
       );
