@@ -774,7 +774,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       if (selectedService?.id) setSelectedServiceId("");
     }
     setWorkEditorOpen(false);
-  }, [selectedService?.id, selectedService?.title]);
+  }, [selectedService?.id]);
 
   useEffect(() => {
     if (isMobile || !detailOpen || !selectedService?.id || typeof document === "undefined") return;
