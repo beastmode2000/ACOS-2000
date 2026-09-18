@@ -698,6 +698,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [newChecklistText, setNewChecklistText] = useState("");
   const [newHistoryNote, setNewHistoryNote] = useState("");
   const historyNoteInputRef = useRef<HTMLInputElement | null>(null);
+  const workOverviewRef = useRef<HTMLElement | null>(null);
+  const workNotesRef = useRef<HTMLElement | null>(null);
+  const workHistoryRef = useRef<HTMLDivElement | null>(null);
   const [noteAuthor, setNoteAuthor] = useState("");
   const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
   const pendingDeleteTimerRef = useRef<number | null>(null);
@@ -1514,6 +1517,16 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     });
   }
 
+  function scrollWorkDetailTo(target: "overview" | "notes" | "history") {
+    const node =
+      target === "overview"
+        ? workOverviewRef.current
+        : target === "notes"
+          ? workNotesRef.current
+          : workHistoryRef.current;
+    node?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   async function handleDetailAction(value: string) {
     if (!value || !selectedService) return;
     if (value === "reopen") {
@@ -2098,7 +2111,52 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         }
         drawer={
           detailOpen && selectedService.id ? (
-            <div data-atlas-work-detail-panel style={{ ...stackStyle, gap: isMobile ? 12 : 8 }}>
+            <div data-atlas-work-detail-panel style={{ ...stackStyle, gap: isMobile ? 10 : 8 }}>
+              {isMobile && !workEditorOpen ? (
+                <nav
+                  aria-label="Work detail sections"
+                  style={{
+                    position: "sticky",
+                    top: 0,
+                    zIndex: 6,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3,minmax(0,1fr))",
+                    gap: 6,
+                    padding: "6px",
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 12,
+                    background: "rgba(255,255,255,.97)",
+                    boxShadow: "0 6px 18px rgba(15,42,67,.07)",
+                  }}
+                >
+                  {[
+                    ["overview", "Overview"],
+                    ["notes", "Notes"],
+                    ["history", "History"],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => scrollWorkDetailTo(key as "overview" | "notes" | "history")}
+                      style={{
+                        ...secondaryButtonStyle,
+                        width: "100%",
+                        minWidth: 0,
+                        minHeight: 38,
+                        padding: "7px 8px",
+                        borderRadius: 9,
+                        fontSize: 12,
+                        fontWeight: 800,
+                        color: colors.navy,
+                        background: key === "overview" ? "#FFF8E8" : "#FFFFFF",
+                        borderColor: key === "overview" ? colors.gold : colors.line,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+              ) : null}
               {!isMobile ? (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "relative", top: 0, zIndex: 5, padding: "0 0 5px", background: "#FFFFFF", borderBottom: `1px solid ${colors.line}` }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2106,7 +2164,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                   </span>
                 </div>
               ) : null}
-              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 10, borderRadius: 14 }}>
+              <section ref={workOverviewRef} style={{ ...detailSectionStyle, padding: isMobile ? 10 : 10, borderRadius: 14, scrollMarginTop: isMobile ? 58 : undefined }}>
                 {!workEditorOpen ? (
                   <div style={{ display: "grid", gap: isMobile ? 14 : 8 }}>
                     <div style={{ display: "grid", gap: isMobile ? 12 : 7, padding: isMobile ? 14 : 11, borderRadius: 14, border: `1px solid ${colors.line}`, background: "linear-gradient(145deg, #FFFFFF 0%, #F8FAFC 100%)", boxShadow: "0 12px 30px rgba(15,42,67,.07)" }}>
@@ -2120,9 +2178,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                           <h2 style={{ margin: isMobile ? "10px 0 0" : "6px 0 0", color: colors.text, fontSize: isMobile ? 23 : 27, lineHeight: 1.12, letterSpacing: "-.02em", maxWidth: "100%" }}>{selectedService.title || "Untitled Work"}</h2>
                           <div style={{ display: "grid", gap: 4, marginTop: isMobile ? 12 : 8, padding: isMobile ? 11 : 9, borderRadius: 10, border: `1px solid ${colors.line}`, background: "#FFFFFF" }}><span style={fieldLabelStyle}>Description / What to Do</span><div style={{ color: selectedService.notes ? colors.text : colors.muted, fontSize: 14, lineHeight: 1.45 }}>{selectedService.notes || "No description added."}</div></div>
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: !isClosedWorkStatus(selectedService.status) ? "auto minmax(128px,auto) auto" : "minmax(128px,auto) auto", gap: 7, alignItems: "center", justifyContent: "start", width: "100%" }}>
-                          {!isClosedWorkStatus(selectedService.status) ? <button type="button" onClick={() => void handleDetailAction("complete")} style={{ ...goldButtonStyle, width: "auto", minHeight: 38, padding: "8px 14px" }}>Done</button> : null}
-                          <select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: "auto", minWidth: 128, minHeight: 38, color: colors.text, fontSize: 12, fontWeight: 700, background: "#FFFFFF" }} aria-label="Work order actions">
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? (!isClosedWorkStatus(selectedService.status) ? "repeat(3,minmax(0,1fr))" : "repeat(2,minmax(0,1fr))") : (!isClosedWorkStatus(selectedService.status) ? "auto minmax(128px,auto) auto" : "minmax(128px,auto) auto"), gap: 7, alignItems: "center", justifyContent: isMobile ? "stretch" : "start", width: "100%" }}>
+                          {!isClosedWorkStatus(selectedService.status) ? <button type="button" onClick={() => void handleDetailAction("complete")} style={{ ...goldButtonStyle, width: isMobile ? "100%" : "auto", minWidth: 0, minHeight: 40, padding: "8px 10px" }}>Done</button> : null}
+                          <select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: isMobile ? "100%" : "auto", minWidth: 0, minHeight: 40, color: colors.text, fontSize: 12, fontWeight: 700, background: "#FFFFFF", padding: "8px 9px" }} aria-label="Work order actions">
                             <option value="">Actions</option>
                             {isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : (
                               <>
@@ -2140,7 +2198,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                             <option value="duplicate">Duplicate Work</option>
                             <option value="delete">Delete</option>
                           </select>
-                          <button type="button" onClick={focusHistoryNote} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 38, padding: "8px 12px" }}>Add Note</button>
+                          <button type="button" onClick={focusHistoryNote} style={{ ...secondaryButtonStyle, width: isMobile ? "100%" : "auto", minWidth: 0, minHeight: 40, padding: "8px 9px" }}>Add Note</button>
                         </div>
                       </div>
                       {(isMobile || selectedService.date || selectedService.locationId || selectedService.assetId || selectedService.assignedTo) ? (
@@ -2204,12 +2262,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
               {workEditorOpen || (selectedService.photos || []).length ? <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 9 }}><summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Photos ({(selectedService.photos || []).length})</summary><input ref={photoInputRef} type="file" accept="image/*" multiple onChange={(event) => void addPhotos(event.currentTarget.files)} style={{ display: "none" }} /><div style={{ display: "flex", justifyContent: "flex-end", gap: 7, flexWrap: "wrap", marginTop: 8 }}><label style={{ ...secondaryButtonStyle, width: "auto", cursor: "pointer" }}>Take Photo<input type="file" accept="image/*" capture="environment" onChange={async (event) => { const input = event.currentTarget; const files = input.files; await addPhotos(files); input.value = ""; }} style={{ display: "none" }} /></label><button type="button" onClick={() => photoInputRef.current?.click()} style={{ ...secondaryButtonStyle, width: "auto" }}>Choose from Library</button></div>{photoMessage ? <p style={mutedSmallStyle}>{photoMessage}</p> : null}{(selectedService.photos || []).length ? (() => { const photos = selectedService.photos || []; const safeIndex = Math.min(selectedPhotoIndex, Math.max(0, photos.length - 1)); const photo = photos[safeIndex] as PhotoLike; const source = photoSource(photo); return <div style={{ display: "grid", gap: 8, marginTop: 8 }}><div style={{ position: "relative", minHeight: isMobile ? 220 : 320, border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#F8FAFC", display: "flex", alignItems: "center", justifyContent: "center" }}>{source ? <img src={source} alt={photo.name || "Work photo"} style={{ width: "100%", height: "100%", maxHeight: 460, objectFit: "contain" }} /> : <span style={mutedSmallStyle}>Photo unavailable</span>}{photos.length > 1 ? <><button type="button" onClick={() => setSelectedPhotoIndex((safeIndex - 1 + photos.length) % photos.length)} aria-label="Previous photo" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, borderRadius: 999, border: `1px solid ${colors.line}`, background: "rgba(255,255,255,.94)", fontSize: 24, cursor: "pointer" }}>‹</button><button type="button" onClick={() => setSelectedPhotoIndex((safeIndex + 1) % photos.length)} aria-label="Next photo" style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, borderRadius: 999, border: `1px solid ${colors.line}`, background: "rgba(255,255,255,.94)", fontSize: 24, cursor: "pointer" }}>›</button><span style={{ position: "absolute", left: "50%", bottom: 9, transform: "translateX(-50%)", background: "rgba(7,23,47,.78)", color: "white", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 800 }}>{safeIndex + 1} / {photos.length}</span></> : null}</div><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><a href={source || undefined} target="_blank" rel="noreferrer" style={{ color: colors.text, fontSize: 13, fontWeight: 700, textDecoration: "none" }}>{photo.name || "Work photo"}</a><button type="button" onClick={() => { removePhoto(photo.id); setSelectedPhotoIndex(0); }} style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer", fontSize: 12 }}>Remove</button></div></div>; })() : null}</details> : null}
 
-              <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 9 }}>
+              <section ref={workNotesRef} style={{ ...detailSectionStyle, padding: isMobile ? 12 : 9, scrollMarginTop: isMobile ? 58 : undefined }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><strong style={{ fontSize: 13 }}>Work notes</strong><span style={mutedSmallStyle}>{(selectedService.notesHistory || []).length} saved</span></div>
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(140px,.35fr) minmax(0,1fr) auto", gap: 7, marginTop: isMobile ? 8 : 5 }}><select value={noteAuthor} onChange={(event) => setNoteAuthor(event.currentTarget.value)} style={inputStyle} aria-label="Note added by"><option value="">Added by…</option>{assignmentChoices.map((name) => <option key={name} value={name}>{name}</option>)}</select><input ref={historyNoteInputRef} value={newHistoryNote} onChange={(event) => setNewHistoryNote(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void addHistoryNote(); }} placeholder="Add a work note…" style={inputStyle} /><button type="button" onClick={() => void addHistoryNote()} style={{ ...secondaryButtonStyle, width: "auto" }}>Add Note</button></div>
                 {(selectedService.notesHistory || []).length ? <div style={{ display: "grid", gap: 6, marginTop: 9 }}>{(selectedService.notesHistory || []).slice(0, 8).map((note: any) => <div key={note.id} style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 7 }}><div style={{ fontSize: 12.5, color: colors.text }}>{note.text}</div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 3 }}><div style={mutedSmallStyle}>{note.createdBy ? `${note.createdBy} · ` : ""}{note.createdAt ? new Date(note.createdAt).toLocaleString() : ""}{note.editedAt ? " · edited" : ""}</div><div style={{ display: "flex", gap: 5 }}><button type="button" onClick={() => void editHistoryNote(note)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 28, padding: "3px 7px", fontSize: 11 }}>Edit</button><button type="button" onClick={() => void deleteHistoryNote(note)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 28, padding: "3px 7px", fontSize: 11, color: colors.red }}>Delete</button></div></div></div>)}</div> : null}
               </section>
 
+              <div ref={workHistoryRef} style={{ scrollMarginTop: isMobile ? 58 : undefined }} />
               {workActivity.length ? <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 10 }}><summary style={{ cursor: "pointer", fontWeight: 800, listStyle: "none" }}>Work Order History ({workActivity.length})</summary><div style={{ display: "grid", gap: 0, marginTop: 8 }}>{workActivity.slice(0, 20).map((item) => <div key={item.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 9, padding: "8px 0", borderTop: `1px solid ${colors.line}` }}><span style={{ ...badgeStyle(item.type), alignSelf: "start" }}>{item.type}</span><div><div style={{ fontSize: 13, color: colors.text }}>{item.text}</div><div style={{ ...mutedSmallStyle, marginTop: 2 }}>{item.person} · {item.date ? new Date(item.date).toLocaleString() : "Date not recorded"}</div></div></div>)}</div></details> : null}
 
               {(selectedService.serviceHistory || []).length ? <details key={`history-${selectedService.id}`} open={completedHistoryOpen} onToggle={(event) => setCompletedHistoryOpen(event.currentTarget.open)} style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}><summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>History ({(selectedService.serviceHistory || []).length})</summary>{(selectedService.serviceHistory || []).length ? <div style={{ display: "grid", gap: 0, marginTop: 8 }}>{(selectedService.serviceHistory || []).map((entry: any) => { const completedBy = entry.completedBy || entry.performedBy || entry.actionBy || selectedService.assignedTo || "Not recorded"; const entryAsset = assetRecords.find((asset: any) => asset.id === entry.assetId)?.name || ""; const entryLocation = locationRecords.find((location: any) => location.id === entry.locationId)?.name || ""; const entryVendor = vendorRecords.find((vendor: any) => vendor.id === entry.vendorId)?.name || ""; return <details key={entry.id} style={{ padding: "9px 0", borderBottom: `1px solid ${colors.line}` }}><summary style={{ cursor: "pointer", color: colors.text, listStyle: "none", display: "grid", gap: 3 }}><strong style={{ display: "block", fontSize: 13 }}>Completed {new Date(entry.completedAt).toLocaleDateString()}</strong><span style={mutedSmallStyle}>By {completedBy} · {(entry.checklist || []).filter((item: any) => item.completed).length}/{(entry.checklist || []).length} steps · {(entry.photos || []).length} photos · Click for details</span></summary><div style={{ display: "grid", gap: 8, marginTop: 10, padding: isMobile ? 11 : 10, borderRadius: 10, background: "#F8FAFC", border: `1px solid ${colors.line}` }}><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 7 }}><div><span style={fieldLabelStyle}>Completed by</span><div style={{ marginTop: 3, fontWeight: 700 }}>{completedBy}</div></div><div><span style={fieldLabelStyle}>Completion date</span><div style={{ marginTop: 3, fontWeight: 700 }}>{new Date(entry.completedAt).toLocaleString()}</div></div>{entry.statusBefore ? <div><span style={fieldLabelStyle}>Previous status</span><div style={{ marginTop: 3 }}>{entry.statusBefore}</div></div> : null}{entryAsset ? <div><span style={fieldLabelStyle}>Asset</span><div style={{ marginTop: 3 }}>{entryAsset}</div></div> : null}{entryLocation ? <div><span style={fieldLabelStyle}>Location</span><div style={{ marginTop: 3 }}>{entryLocation}</div></div> : null}{entryVendor ? <div><span style={fieldLabelStyle}>Vendor</span><div style={{ marginTop: 3 }}>{entryVendor}</div></div> : null}</div><div><span style={fieldLabelStyle}>Completion note</span><div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{entry.notes || "No completion note was entered."}</div></div>{(entry.checklist || []).length ? <div><span style={fieldLabelStyle}>Checklist</span><div style={{ display: "grid", gap: 4, marginTop: 5 }}>{entry.checklist.map((item: any) => <div key={item.id || item.text} style={{ fontSize: 12.5 }}>{item.completed ? "✓" : "○"} {item.text}</div>)}</div></div> : null}<div style={{ fontSize: 12.5, color: colors.muted }}>{(entry.photos || []).length} photo{(entry.photos || []).length === 1 ? "" : "s"} · {(entry.documents || []).length} document{(entry.documents || []).length === 1 ? "" : "s"}</div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => void reopenCompletionSnapshot(entry)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "5px 8px", fontSize: 11.5 }}>Reopen This Completion</button></div></div></details>; })}</div> : null}</details> : null}
