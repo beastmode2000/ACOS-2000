@@ -151,7 +151,7 @@ export default function AtlasOwnerInputPanel(props: any) {
       if (responseUrl) {
         try {
           await navigator.clipboard.writeText(responseUrl);
-          setMessage("Owner request created. Response link copied.");
+          setMessage("Owner request created. Public response link copied — no login required.");
         } catch {
           setMessage("Owner request created.");
         }
@@ -185,7 +185,7 @@ export default function AtlasOwnerInputPanel(props: any) {
     const url = `${window.location.origin}/owner-input?token=${encodeURIComponent(item.shareToken)}`;
     try {
       await navigator.clipboard.writeText(url);
-      setMessage("Owner response link copied.");
+      setMessage("Public owner response link copied — no login required.");
     } catch {
       window.prompt("Copy owner response link:", url);
     }
@@ -322,7 +322,7 @@ export default function AtlasOwnerInputPanel(props: any) {
             {item.context ? <div style={{ fontSize: 11, lineHeight: 1.45, whiteSpace: "pre-wrap", color: colors.text }}>{item.context}</div> : null}
             {photoGrid(item.photos)}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
-              <button type="button" style={smallButton} onClick={() => copyLink(item)}>Copy Response Link</button>
+              <button type="button" style={smallButton} onClick={() => copyLink(item)}>Copy Public Response Link</button>
               <button type="button" style={smallButton} onClick={() => closeItem(item.id)}>Close</button>
               <button type="button" style={{ ...smallButton, color: colors.red }} onClick={() => deleteItem(item.id)}>Delete</button>
             </div>
