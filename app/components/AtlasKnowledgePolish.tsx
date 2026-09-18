@@ -153,48 +153,10 @@ function hideHelperCopy(root: HTMLElement) {
   }
 }
 
-function ensureMobileKnowledgeBack(
-  root: HTMLElement,
-  list: HTMLElement | null,
-  detail: HTMLElement | null,
-  label: string,
-) {
-  if (window.innerWidth > 900 || !list || !detail || list === detail) return;
-
-  detail.classList.add("atlas-knowledge-mobile-detail-pane");
-
-  let back = detail.querySelector<HTMLButtonElement>(".atlas-knowledge-mobile-back");
-  if (!back) {
-    back = document.createElement("button");
-    back.type = "button";
-    back.className = "atlas-knowledge-mobile-back";
-    back.setAttribute("aria-label", `Back to ${label}`);
-    back.textContent = "← Back";
-    back.onclick = () => {
-      detail.classList.add("atlas-knowledge-mobile-detail-hidden");
-      list.scrollIntoView({ block: "start", behavior: "auto" });
-    };
-    detail.insertBefore(back, detail.firstChild);
-  }
-
-  if (!list.dataset.atlasKnowledgeMobileBackBound) {
-    list.dataset.atlasKnowledgeMobileBackBound = "true";
-    list.addEventListener("click", (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (!target.closest("button, article, [role='button'], [role='listitem']")) return;
-      window.setTimeout(() => {
-        detail.classList.remove("atlas-knowledge-mobile-detail-hidden");
-      }, 0);
-    });
-  }
-}
-
 function polishManuals(root: HTMLElement) {
   root.classList.add("atlas-manuals-upgraded-root");
   const { list, detail } = identifyPanes(root, "atlas-manuals-upgraded");
   if (list) ensureSearchBar(root, list, "manuals");
-  ensureMobileKnowledgeBack(root, list, detail, "manuals");
 
   markActions(root, "manuals");
   hideHelperCopy(root);
@@ -223,7 +185,6 @@ function polishNotes(root: HTMLElement) {
   root.classList.add("atlas-notes-upgraded-root");
   const { list, detail } = identifyPanes(root, "atlas-notes-upgraded");
   if (list) ensureSearchBar(root, list, "notes");
-  ensureMobileKnowledgeBack(root, list, detail, "notes");
 
   markActions(root, "notes");
   hideHelperCopy(root);
@@ -289,7 +250,7 @@ export default function AtlasKnowledgePolish() {
 
     schedule();
     const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+    observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", schedule);
     window.addEventListener("keydown", onKeyDown);
 
@@ -425,29 +386,6 @@ export default function AtlasKnowledgePolish() {
       }
 
       @media (max-width: 900px) {
-        .atlas-knowledge-mobile-back {
-          position: sticky !important;
-          top: 0 !important;
-          z-index: 20 !important;
-          width: auto !important;
-          min-width: 72px !important;
-          min-height: 40px !important;
-          margin: 0 0 8px !important;
-          padding: 0 11px !important;
-          border: 1px solid var(--atlas-knowledge-border) !important;
-          border-radius: 9px !important;
-          background: #fff !important;
-          color: var(--atlas-knowledge-navy) !important;
-          font: inherit !important;
-          font-size: 12px !important;
-          font-weight: 800 !important;
-          cursor: pointer !important;
-        }
-
-        .atlas-knowledge-mobile-detail-hidden {
-          display: none !important;
-        }
-
         .atlas-manual-pdf-preview {
           min-height: 56dvh !important;
         }
