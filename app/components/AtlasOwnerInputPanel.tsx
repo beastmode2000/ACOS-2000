@@ -82,7 +82,7 @@ export default function AtlasOwnerInputPanel(props: any) {
   const [saving, setSaving] = useState(false);
   const [addingPhotos, setAddingPhotos] = useState(false);
   const [message, setMessage] = useState("");
-  const [draft, setDraft] = useState({ projectId: "", question: "", context: "", dueDate: today(), photos: [] as any[] });
+  const [draft, setDraft] = useState({ projectId: "", question: "", context: "", dueDate: "", photos: [] as any[] });
 
   const propertyProjects = useMemo(
     () => (Array.isArray(projects) ? projects : []).filter((project: any) => String(project?.propertyId || "2000") === String(propertyId) && project?.archived !== true),
@@ -149,7 +149,7 @@ export default function AtlasOwnerInputPanel(props: any) {
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Owner input could not be saved.");
       setItems((current) => [data.item, ...current]);
-      setDraft({ projectId: "", question: "", context: "", dueDate: today(), photos: [] });
+      setDraft({ projectId: "", question: "", context: "", dueDate: "", photos: [] });
       setShowAdd(false);
       setMessage("Owner input request created.");
     } catch (error) {
@@ -249,31 +249,53 @@ export default function AtlasOwnerInputPanel(props: any) {
 
       {showAdd ? (
         <div style={{ padding: 12, background: colors.panel, borderBottom: `1px solid ${colors.line}`, display: "grid", gap: 9 }}>
-          <select value={draft.projectId} onChange={(e) => setDraft((current) => ({ ...current, projectId: e.target.value }))} style={inputStyle}>
-            <option value="">General / not tied to a project</option>
-            {propertyProjects.map((project: any) => <option key={project.id} value={project.id}>{project.title || project.name || "Project"}</option>)}
-          </select>
-          <input value={draft.question} onChange={(e) => setDraft((current) => ({ ...current, question: e.target.value }))} placeholder="What decision or input do you need?" style={inputStyle} />
-          <textarea value={draft.context} onChange={(e) => setDraft((current) => ({ ...current, context: e.target.value }))} placeholder="Context, recommendation, cost, color, scope, or anything they need to decide." rows={3} style={{ ...inputStyle, resize: "vertical" }} />
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+            <input
+              value={draft.question}
+              onChange={(e) => setDraft((current) => ({ ...current, question: e.target.value }))}
+              onKeyDown={(e) => { if (e.key === "Enter" && draft.question.trim() && !saving) void addItem(); }}
+              placeholder="What do you need the owner to decide or answer?"
+              autoFocus
+              style={inputStyle}
+            />
+            <button
+              type="button"
+              onClick={addItem}
+              disabled={saving || addingPhotos || !draft.question.trim()}
+              style={{ justifySelf: isMobile ? "stretch" : "start", border: 0, background: colors.gold, color: colors.navy, borderRadius: 8, padding: "9px 13px", fontWeight: 800, cursor: "pointer", opacity: saving || addingPhotos || !draft.question.trim() ? 0.55 : 1, whiteSpace: "nowrap" }}
+            >
+              {saving ? "Creating…" : "Create Request"}
+            </button>
+          </div>
 
-          <div style={{ border: `1px dashed ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: 9, display: "grid", gap: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: colors.navy }}>Photos</div>
-                <div style={{ fontSize: 10, color: colors.muted }}>Add up to 3 photos so the owner can see exactly what they are deciding.</div>
-              </div>
-              <label style={{ ...smallButton, display: "inline-flex", alignItems: "center", opacity: draft.photos.length >= 3 || addingPhotos ? 0.55 : 1 }}>
-                {addingPhotos ? "Adding…" : "Add Photos"}
-                <input type="file" accept="image/*" multiple disabled={draft.photos.length >= 3 || addingPhotos} onChange={(e) => { void addPhotoFiles(e.target.files); e.currentTarget.value = ""; }} style={{ display: "none" }} />
+          <details style={{ border: `1px solid ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: "9px 10px" }}>
+            <summary style={{ cursor: "pointer", color: colors.navy, fontSize: 12, fontWeight: 800 }}>Add optional details</summary>
+            <div style={{ display: "grid", gap: 9, marginTop: 10 }}>
+              <select value={draft.projectId} onChange={(e) => setDraft((current) => ({ ...current, projectId: e.target.value }))} style={inputStyle}>
+                <option value="">General / not tied to a project</option>
+                {propertyProjects.map((project: any) => <option key={project.id} value={project.id}>{project.title || project.name || "Project"}</option>)}
+              </select>
+              <textarea value={draft.context} onChange={(e) => setDraft((current) => ({ ...current, context: e.target.value }))} placeholder="Context, recommendation, cost, color, scope, or anything else they need." rows={3} style={{ ...inputStyle, resize: "vertical" }} />
+              <label style={{ display: "grid", gap: 5, fontSize: 11, fontWeight: 800, color: colors.muted }}>
+                Response needed by (optional)
+                <input type="date" value={draft.dueDate} onChange={(e) => setDraft((current) => ({ ...current, dueDate: e.target.value }))} style={inputStyle} />
               </label>
-            </div>
-            {photoGrid(draft.photos, true)}
-          </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "160px auto", gap: 8, alignItems: "center" }}>
-            <input type="date" value={draft.dueDate} onChange={(e) => setDraft((current) => ({ ...current, dueDate: e.target.value }))} style={inputStyle} />
-            <button type="button" onClick={addItem} disabled={saving || addingPhotos || !draft.question.trim()} style={{ justifySelf: isMobile ? "stretch" : "start", border: 0, background: colors.gold, color: colors.navy, borderRadius: 8, padding: "9px 13px", fontWeight: 800, cursor: "pointer", opacity: saving || addingPhotos || !draft.question.trim() ? 0.55 : 1 }}>{saving ? "Saving…" : "Create Owner Request"}</button>
-          </div>
+              <div style={{ border: `1px dashed ${colors.line}`, borderRadius: 9, background: "#FFFFFF", padding: 9, display: "grid", gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: colors.navy }}>Photos</div>
+                    <div style={{ fontSize: 10, color: colors.muted }}>Optional. Add up to 3 photos.</div>
+                  </div>
+                  <label style={{ ...smallButton, display: "inline-flex", alignItems: "center", opacity: draft.photos.length >= 3 || addingPhotos ? 0.55 : 1 }}>
+                    {addingPhotos ? "Adding…" : "Add Photos"}
+                    <input type="file" accept="image/*" multiple disabled={draft.photos.length >= 3 || addingPhotos} onChange={(e) => { void addPhotoFiles(e.target.files); e.currentTarget.value = ""; }} style={{ display: "none" }} />
+                  </label>
+                </div>
+                {photoGrid(draft.photos, true)}
+              </div>
+            </div>
+          </details>
         </div>
       ) : null}
 
