@@ -761,15 +761,20 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }, [openResetKey]);
 
   useEffect(() => {
-    if (selectedService?.id) {
+    const hasUsableSelection =
+      Boolean(selectedService?.id) &&
+      Boolean(String(selectedService?.title || "").trim());
+
+    if (hasUsableSelection) {
       setNewWorkOpen(false);
       setDetailOpen(true);
       setCompletedHistoryOpen(isClosedWorkStatus(selectedService.status));
     } else {
       setDetailOpen(false);
+      if (selectedService?.id) setSelectedServiceId("");
     }
     setWorkEditorOpen(false);
-  }, [selectedService?.id]);
+  }, [selectedService?.id, selectedService?.title]);
 
   useEffect(() => {
     if (isMobile || !detailOpen || !selectedService?.id || typeof document === "undefined") return;
