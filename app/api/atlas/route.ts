@@ -535,6 +535,11 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
 
   await sql`
     ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS recurrence_days jsonb NOT NULL DEFAULT '[]'::jsonb
+  `;
+
+  await sql`
+    ALTER TABLE atlas_work_orders
     ADD COLUMN IF NOT EXISTS recurrence_end_date date
   `;
 
@@ -755,6 +760,9 @@ function mapWorkOrder(row: JsonRecord) {
       Number(row.recurrence_interval || 1),
     ),
     recurrenceUnit: String(row.recurrence_unit || "Weeks"),
+    recurrenceDays: asArray(row.recurrence_days)
+      .map((value) => Math.floor(Number(value)))
+      .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
     recurrenceEndDate: databaseDateKey(row.recurrence_end_date),
     season: String(row.season || "Year-Round"),
     lastCompletedDate: databaseDateKey(row.last_completed_date),
@@ -1130,6 +1138,7 @@ export async function GET(request: NextRequest) {
         recurring,
         recurrence_interval,
         recurrence_unit,
+        recurrence_days,
         recurrence_end_date,
         season,
         last_completed_date,
@@ -1908,6 +1917,7 @@ if (table === "assets") {
             1,
           )},
           recurrence_unit = ${asStatus(record.recurrenceUnit, "Weeks")},
+          recurrence_days = ${jsonArray(record.recurrenceDays)}::jsonb,
           recurrence_end_date = ${savedRecurrenceEndDate}::date,
           season = ${asStatus(record.season, "Year-Round")},
           last_completed_date = ${savedLastCompletedDate}::date,
@@ -1953,6 +1963,7 @@ if (table === "assets") {
             recurring,
             recurrence_interval,
             recurrence_unit,
+            recurrence_days,
             recurrence_end_date,
             season,
             last_completed_date,
@@ -1991,6 +2002,7 @@ if (table === "assets") {
             ${asBoolean(record.recurring)},
             ${asPositiveInteger(record.recurrenceInterval, 1)},
             ${asStatus(record.recurrenceUnit, "Weeks")},
+            ${jsonArray(record.recurrenceDays)}::jsonb,
             ${savedRecurrenceEndDate}::date,
             ${asStatus(record.season, "Year-Round")},
             ${savedLastCompletedDate}::date,
