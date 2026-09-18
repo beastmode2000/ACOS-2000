@@ -24,6 +24,7 @@ type WorkRow = {
   recurring?: boolean | null;
   recurrence_interval?: number | null;
   recurrence_unit?: string | null;
+  recurrence_days?: unknown[] | null;
   updated_at?: string | null;
 };
 
@@ -89,6 +90,18 @@ function nextMonday(date: string) {
 }
 
 function recurrenceDate(row: WorkRow, fromDate: string) {
+  const selectedDays = safeJsonArray(row.recurrence_days)
+    .map((value) => Math.floor(Number(value)))
+    .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6);
+
+  if (selectedDays.length) {
+    let candidate = addDays(fromDate, 1);
+    for (let offset = 1; offset <= 14; offset += 1) {
+      if (selectedDays.includes(weekday(candidate))) return candidate;
+      candidate = addDays(candidate, 1);
+    }
+  }
+
   const interval = Math.max(1, Math.floor(Number(row.recurrence_interval || 1)));
   const unit = cleanText(row.recurrence_unit, 40).toLowerCase();
   if (unit.startsWith("day")) return addDays(fromDate, interval);
@@ -116,6 +129,7 @@ async function ensureColumns(sql: ReturnType<typeof neon>) {
   await sql`ALTER TABLE atlas_work_orders ADD COLUMN IF NOT EXISTS photos jsonb NOT NULL DEFAULT '[]'::jsonb`;
   await sql`ALTER TABLE atlas_work_orders ADD COLUMN IF NOT EXISTS recurrence_interval integer NOT NULL DEFAULT 1`;
   await sql`ALTER TABLE atlas_work_orders ADD COLUMN IF NOT EXISTS recurrence_unit text NOT NULL DEFAULT 'Weeks'`;
+  await sql`ALTER TABLE atlas_work_orders ADD COLUMN IF NOT EXISTS recurrence_days jsonb NOT NULL DEFAULT '[]'::jsonb`;
   await sql`
     CREATE TABLE IF NOT EXISTS atlas_day_offs (
       id text PRIMARY KEY,
@@ -219,6 +233,7 @@ async function loadWorkRow(
       recurring,
       recurrence_interval,
       recurrence_unit,
+      recurrence_days,
       updated_at
     FROM atlas_work_orders
     WHERE property_id = ${propertyId}
