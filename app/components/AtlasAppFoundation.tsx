@@ -883,6 +883,7 @@ export function isWorkOrderRecurrenceUnit(
 export function isWorkSeason(value: unknown): value is WorkSeason {
   return (
     value === "Year-Round" ||
+    value === "May-October" ||
     value === "Spring" ||
     value === "Summer" ||
     value === "Fall" ||
@@ -901,6 +902,9 @@ export function seasonForDate(dateValue = todayISO()): WorkSeason {
 }
 
 export function workSeasonDescription(season: WorkSeason) {
+  if (season === "May-October") {
+    return "Outdoor mowing and grounds work active from May through October.";
+  }
   if (season === "Spring") {
     return "Landscaping, cleanup, irrigation, reopening and de-winterizing watercraft and outdoor systems.";
   }
