@@ -5015,11 +5015,12 @@ export function ListDrawerLayout(props: {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") props.onMobileDrawerClose?.();
     };
-    const previousBodyOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+
+    // The mobile drawer owns the full viewport and its own scroll container.
+    // Do not lock document.body on iOS; body overflow locking can leave a PWA
+    // with touch scrolling and taps unresponsive after React updates the drawer.
     window.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.body.style.overflow = previousBodyOverflow;
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [props.isMobile, props.mobileDrawerOpen, props.onMobileDrawerClose]);
@@ -5224,6 +5225,8 @@ export function ListDrawerLayout(props: {
             alignItems: "stretch",
             justifyItems: "stretch",
             padding: 0,
+            pointerEvents: "auto",
+            touchAction: "manipulation",
           }}
           onClick={(event) => {
             if (event.currentTarget === event.target) {
@@ -5242,7 +5245,9 @@ export function ListDrawerLayout(props: {
               overflowX: "hidden",
               background: "#F4F7FA",
               WebkitOverflowScrolling: "touch",
-              overscrollBehavior: "contain",
+              overscrollBehaviorY: "auto",
+              touchAction: "pan-y",
+              pointerEvents: "auto",
               borderRadius: 0,
               boxSizing: "border-box",
               paddingBottom: "max(24px, env(safe-area-inset-bottom))",
