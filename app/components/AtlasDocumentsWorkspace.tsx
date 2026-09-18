@@ -387,9 +387,10 @@ export default function AtlasDocumentsWorkspace(props: any) {
               <button
                 type="button"
                 onClick={() => setSelectedDocumentId("")}
+                aria-label="Back to documents"
                 style={{ ...compactButton, minHeight: 40 }}
               >
-                Back
+                ← Back
               </button>
               <button
                 type="button"
