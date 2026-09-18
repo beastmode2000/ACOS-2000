@@ -279,13 +279,32 @@ export default function AtlasDashboardWorkspace(props: any) {
     workPlanTasks
   } = props;
   const [dashboardRoutinePerson, setDashboardRoutinePerson] = useState<"Nick" | "Addison">("Nick");
-  const dashboardWorkPeople = ["Nick", "Addison", "Patrick Tanner", "Sean Powell"] as const;
+  const dashboardAssigneeName = (value: unknown) => {
+    const name = String(value || "").trim();
+    const normalized = name.toLowerCase();
+    if (/^nick(?:\s+thornton)?(?:[^a-z]|$)/.test(normalized)) return "Nick";
+    if (/^addison(?:[^a-z]|$)/.test(normalized)) return "Addison";
+    if (/^pat(?:rick)?(?:[^a-z]|$)/.test(normalized)) return "Patrick Tanner";
+    if (/^sean(?:[^a-z]|$)/.test(normalized)) return "Sean Powell";
+    return name;
+  };
+  const dashboardWorkPeople = Array.from(
+    new Set([
+      "Nick",
+      ...(Array.isArray(teamDirectory) ? teamDirectory : [])
+        .filter((member: any) => member && member.active !== false)
+        .filter((member: any) => String(member.role || "").toLowerCase() !== "vendor")
+        .filter((member: any) => {
+          const propertyIds = Array.isArray(member.propertyIds) ? member.propertyIds.map(String) : [];
+          return !propertyIds.length || propertyIds.includes(activePropertyId);
+        })
+        .map((member: any) => dashboardAssigneeName(member.name))
+        .filter(Boolean),
+    ]),
+  );
   const initialDashboardAssignee = (() => {
-    const name = String(currentAtlasUser?.name || "Nick").trim().toLowerCase();
-    if (name.startsWith("addison")) return "Addison";
-    if (name.startsWith("pat")) return "Patrick Tanner";
-    if (name.startsWith("sean")) return "Sean Powell";
-    return "Nick";
+    const name = dashboardAssigneeName(currentAtlasUser?.name || "Nick");
+    return name || "Nick";
   })();
   const [dashboardWorkTitle, setDashboardWorkTitle] = useState("");
   const [dashboardWorkNote, setDashboardWorkNote] = useState("");
@@ -294,22 +313,15 @@ export default function AtlasDashboardWorkspace(props: any) {
   const [dashboardWorkAssignee, setDashboardWorkAssignee] = useState(initialDashboardAssignee);
   const [dashboardWorkDate, setDashboardWorkDate] = useState(() => todayISO());
   const [dashboardWorkListFilter, setDashboardWorkListFilter] = useState<"Today" | "All" | "Upcoming" | "Overdue">("Today");
-  const [dashboardWorkPersonFilter, setDashboardWorkPersonFilter] = useState<"Everyone" | "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell">("Everyone");
-  const [dashboardRightList, setDashboardRightList] = useState<"Upcoming" | "Addison" | "Patrick Tanner" | "Sean Powell">("Upcoming");
+  const [dashboardWorkPersonFilter, setDashboardWorkPersonFilter] = useState<string>("Everyone");
+  const [dashboardRightList, setDashboardRightList] = useState<string>("Upcoming");
   const [dashboardQuickDrafts, setDashboardQuickDrafts] = useState<Record<string, string>>({ Nick: "", Addison: "", "Sean Powell": "", "Patrick Tanner": "" });
   const dashboardQuickInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const dashboardAssigneeName = (value: unknown) => {
-    const name = String(value || "").trim();
-    const normalized = name.toLowerCase();
-    if (/^pat(?:rick)?(?:[^a-z]|$)/.test(normalized)) return "Patrick Tanner";
-    if (/^sean(?:[^a-z]|$)/.test(normalized)) return "Sean Powell";
-    return name;
-  };
   const dashboardWasUnscheduledAfterMiss = (record: ServiceRecord) =>
     !record.date && ((record as AtlasServiceRecord).notesHistory || []).some((entry) =>
       String(entry.text || "").startsWith("DIDN'T GET TO IT:")
     );
-  const dashboardWorkForPerson = (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") => serviceRecords
+  const dashboardWorkForPerson = (person: string) => serviceRecords
     .filter((record) => record.status !== "Completed")
     .filter((record) => dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) === person)
     .filter((record) => {
@@ -322,13 +334,13 @@ export default function AtlasDashboardWorkspace(props: any) {
     })
     .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || (a.priority === "High" ? 0 : a.priority === "Medium" ? 1 : 2) - (b.priority === "High" ? 0 : b.priority === "Medium" ? 1 : 2) || a.title.localeCompare(b.title));
 
-  const dashboardCompletedForPersonToday = (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") => serviceRecords.filter((record) => {
+  const dashboardCompletedForPersonToday = (person: string) => serviceRecords.filter((record) => {
     if (dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) !== person) return false;
     const today = todayISO();
     return record.lastCompletedDate === today || (record.completionHistory || []).includes(today) || (record.serviceHistory || []).some((entry) => String(entry.completedAt || "").slice(0, 10) === today);
   });
 
-  const dashboardTodayWorkForPerson = (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") => serviceRecords
+  const dashboardTodayWorkForPerson = (person: string) => serviceRecords
     .filter((record) => record.status !== "Completed")
     .filter((record) => dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) === person)
     .filter((record) => {
@@ -338,7 +350,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     })
     .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || (a.priority === "High" ? 0 : a.priority === "Medium" ? 1 : 2) - (b.priority === "High" ? 0 : b.priority === "Medium" ? 1 : 2) || a.title.localeCompare(b.title));
 
-  const createDashboardWorkForPerson = async (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") => {
+  const createDashboardWorkForPerson = async (person: string) => {
     const title = String(dashboardQuickDrafts[person] || "").trim();
     if (!title) return;
 
@@ -375,17 +387,17 @@ export default function AtlasDashboardWorkspace(props: any) {
 
   const dashboardCalendarOwner = (event: AtlasCalendarItem) => {
     const owner = dashboardAssigneeName((event as AtlasCalendarItem).calendarOwner || "");
-    if (owner === "Addison" || owner === "Patrick Tanner" || owner === "Sean Powell" || owner === "Nick") return owner;
+    if (dashboardWorkPeople.includes(owner)) return owner;
     return "Nick";
   };
 
-  const dashboardCalendarForPersonToday = (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") =>
+  const dashboardCalendarForPersonToday = (person: string) =>
     todayEvents
       .filter((event) => event.source !== "work-order" && event.source !== "us-holiday" && event.source !== "jewish-holiday")
       .filter((event) => dashboardCalendarOwner(event as AtlasCalendarItem) === person)
       .sort((a, b) => String(a.time || "99:99").localeCompare(String(b.time || "99:99")) || a.title.localeCompare(b.title));
 
-  const dashboardUpcomingForPerson = (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") => {
+  const dashboardUpcomingForPerson = (person: string) => {
     const horizon = addDays(todayISO(), 7);
     const work = serviceRecords
       .filter((record) => record.status !== "Completed")
@@ -2392,7 +2404,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(new SpeechSynthesisUtterance(morningBriefText));
   };
-  const dashboardPersonLabel = (person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell") =>
+  const dashboardPersonLabel = (person: string) =>
     person === "Patrick Tanner" ? "Pat" : person === "Sean Powell" ? "Sean" : person;
 
   const renderDashboardWorkCard = (record: ServiceRecord) => {
@@ -2464,19 +2476,19 @@ export default function AtlasDashboardWorkspace(props: any) {
   const dashboardRightSelector = (
     <select
       value={dashboardRightList}
-      onChange={(event) => setDashboardRightList(event.currentTarget.value as "Upcoming" | "Addison" | "Patrick Tanner" | "Sean Powell")}
+      onChange={(event) => setDashboardRightList(event.currentTarget.value)}
       aria-label="Right dashboard work list"
       style={{ ...selectStyle, width: "auto", minWidth: 128, minHeight: 34, padding: "5px 30px 5px 9px", fontSize: 12, fontWeight: 800 }}
     >
       <option value="Upcoming">Upcoming</option>
-      <option value="Addison">Addison</option>
-      <option value="Sean Powell">Sean</option>
-      <option value="Patrick Tanner">Pat</option>
+      {dashboardWorkPeople.filter((person) => person !== "Nick").map((person) => (
+        <option key={person} value={person}>{dashboardPersonLabel(person)}</option>
+      ))}
     </select>
   );
 
   const renderDashboardPersonLane = (
-    person: "Nick" | "Addison" | "Patrick Tanner" | "Sean Powell",
+    person: string,
     rightLane = false,
   ) => {
     const records = rightLane ? dashboardTodayWorkForPerson(person) : dashboardWorkForPerson(person);
