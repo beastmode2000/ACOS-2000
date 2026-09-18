@@ -161,8 +161,12 @@ export default function OwnerRequestPage() {
   }
 
   async function submitRequest() {
-    if (!requesterName.trim() || !description.trim()) {
-      setMessage("Please enter your name and describe the request.");
+    if (!description.trim() || (isMarine && !requesterName.trim())) {
+      setMessage(
+        isMarine
+          ? "Please enter your name and describe the request."
+          : "Please describe what needs attention.",
+      );
       return;
     }
 
@@ -176,7 +180,7 @@ export default function OwnerRequestPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            requesterName,
+            requesterName: isMarine ? requesterName : requesterName.trim() || "Owner",
             requesterContact,
             title,
             description,
@@ -217,7 +221,7 @@ export default function OwnerRequestPage() {
 
   const pageDescription = isMarine
     ? "Let us know about anything that needs attention with a boat, Sea-Doo, dock, lift, or other marine equipment."
-    : "Submit an issue or request for review. This page does not provide access to the rest of Atlas.";
+    : "Tell us what needs attention. Add a photo if it helps. That is all that is required.";
 
   const successMessage = isMarine
     ? "Your Marine Work Request was submitted successfully."
@@ -247,12 +251,16 @@ export default function OwnerRequestPage() {
         .message { margin: 12px 0; padding: 12px; border-radius: 13px; background: #fff8e6; color: #071b2f; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere; }
         .submit { width: 100%; min-height: 54px; border: 0; border-radius: 14px; background: #c99a3d; color: #071b2f; font-size: 17px; font-weight: 900; }
         .submit:disabled { opacity: .6; }
+        .optional-details { border: 1px solid #dde7f0; border-radius: 13px; padding: 10px 12px; background: #f8fafc; }
+        .optional-details summary { cursor: pointer; color: #334155; font-size: 13px; font-weight: 900; }
+        .optional-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin-top: 10px; }
         .success { padding: 22px; border-radius: 18px; background: #eaf7f1; color: #087443; font-weight: 900; line-height: 1.5; }
         @media (max-width: 620px) {
           .request-page { padding: 9px; }
           .request-hero, .request-card { padding: 16px; border-radius: 17px; }
           .request-grid { grid-template-columns: 1fr; }
           .wide { grid-column: auto; }
+          .optional-grid { grid-template-columns: 1fr; }
           .photo-grid { grid-template-columns: 1fr; }
         }
       `}</style>
@@ -270,84 +278,104 @@ export default function OwnerRequestPage() {
           ) : (
             <>
               <div className="message" role="status">{message}</div>
-              <div className="request-grid">
-                <label>
-                  Your name
-                  <input value={requesterName} onChange={(event) => setRequesterName(event.target.value)} disabled={!portalReady} />
-                </label>
-                <label>
-                  Phone or email (optional)
-                  <input value={requesterContact} onChange={(event) => setRequesterContact(event.target.value)} disabled={!portalReady} />
-                </label>
-                <label className="wide">
-                  Short title (optional)
-                  <input
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
-                    placeholder={
-                      isMarine
-                        ? "Example: Cobalt lift is making noise"
-                        : "Example: Guest room thermostat"
-                    }
-                    disabled={!portalReady}
-                  />
-                </label>
-                <label>
-                  {isMarine ? "Dock / marina area" : "Location"}
-                  <input
-                    value={locationName}
-                    onChange={(event) => setLocationName(event.target.value)}
-                    placeholder={isMarine ? "Example: Main dock" : "Example: Kitchen"}
-                    disabled={!portalReady}
-                  />
-                </label>
-                <label>
-                  {isMarine
-                    ? "Boat, lift, dock, or equipment (optional)"
-                    : "Asset or equipment (optional)"}
-                  <input
-                    value={assetName}
-                    onChange={(event) => setAssetName(event.target.value)}
-                    placeholder={
-                      isMarine
-                        ? "Example: Cobalt R7 or Sea-Doo lift"
-                        : "Example: Left refrigerator"
-                    }
-                    disabled={!portalReady}
-                  />
-                </label>
-                <label>
-                  Priority
-                  <select value={priority} onChange={(event) => setPriority(event.target.value as RequestPriority)} disabled={!portalReady}>
-                    <option>Low</option>
-                    <option>Medium</option>
-                    <option>High</option>
-                  </select>
-                </label>
-                <label>
-                  Preferred timing (optional)
-                  <input value={preferredTiming} onChange={(event) => setPreferredTiming(event.target.value)} placeholder="Example: Before Friday" disabled={!portalReady} />
-                </label>
-                <label className="wide">
-                  {isMarine
-                    ? "Describe the marine work needed"
-                    : "What needs attention?"}
-                  <textarea
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    placeholder={
-                      isMarine
-                        ? "Describe what is not working correctly or what needs to be checked."
-                        : undefined
-                    }
-                    disabled={!portalReady}
-                  />
-                </label>
-                <label className="wide">
-                  Add photos (up to 3)
-                  <input type="file" accept="image/*" capture="environment" multiple onChange={(event) => void addPhotos(event.currentTarget.files)} disabled={!portalReady || photos.length >= 3} />
-                </label>
-              </div>
+              {isMarine ? (
+                <div className="request-grid">
+                  <label>
+                    Your name
+                    <input value={requesterName} onChange={(event) => setRequesterName(event.target.value)} disabled={!portalReady} />
+                  </label>
+                  <label>
+                    Phone or email (optional)
+                    <input value={requesterContact} onChange={(event) => setRequesterContact(event.target.value)} disabled={!portalReady} />
+                  </label>
+                  <label className="wide">
+                    Short title (optional)
+                    <input
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                      placeholder="Example: Cobalt lift is making noise"
+                      disabled={!portalReady}
+                    />
+                  </label>
+                  <label>
+                    Dock / marina area
+                    <input
+                      value={locationName}
+                      onChange={(event) => setLocationName(event.target.value)}
+                      placeholder="Example: Main dock"
+                      disabled={!portalReady}
+                    />
+                  </label>
+                  <label>
+                    Boat, lift, dock, or equipment (optional)
+                    <input
+                      value={assetName}
+                      onChange={(event) => setAssetName(event.target.value)}
+                      placeholder="Example: Cobalt R7 or Sea-Doo lift"
+                      disabled={!portalReady}
+                    />
+                  </label>
+                  <label>
+                    Priority
+                    <select value={priority} onChange={(event) => setPriority(event.target.value as RequestPriority)} disabled={!portalReady}>
+                      <option>Low</option>
+                      <option>Medium</option>
+                      <option>High</option>
+                    </select>
+                  </label>
+                  <label>
+                    Preferred timing (optional)
+                    <input value={preferredTiming} onChange={(event) => setPreferredTiming(event.target.value)} placeholder="Example: Before Friday" disabled={!portalReady} />
+                  </label>
+                  <label className="wide">
+                    Describe the marine work needed
+                    <textarea
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      placeholder="Describe what is not working correctly or what needs to be checked."
+                      disabled={!portalReady}
+                    />
+                  </label>
+                  <label className="wide">
+                    Add photos (up to 3)
+                    <input type="file" accept="image/*" capture="environment" multiple onChange={(event) => void addPhotos(event.currentTarget.files)} disabled={!portalReady || photos.length >= 3} />
+                  </label>
+                </div>
+              ) : (
+                <div className="request-grid">
+                  <label className="wide">
+                    What needs attention?
+                    <textarea
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      placeholder="Tell us what you need."
+                      autoFocus
+                      disabled={!portalReady}
+                    />
+                  </label>
+                  <label className="wide">
+                    Add photos (optional, up to 3)
+                    <input type="file" accept="image/*" capture="environment" multiple onChange={(event) => void addPhotos(event.currentTarget.files)} disabled={!portalReady || photos.length >= 3} />
+                  </label>
+                  <details className="wide optional-details">
+                    <summary>Add optional details</summary>
+                    <div className="optional-grid">
+                      <label>
+                        Your name (optional)
+                        <input value={requesterName} onChange={(event) => setRequesterName(event.target.value)} disabled={!portalReady} />
+                      </label>
+                      <label>
+                        Location (optional)
+                        <input value={locationName} onChange={(event) => setLocationName(event.target.value)} placeholder="Example: Kitchen" disabled={!portalReady} />
+                      </label>
+                      <label>
+                        Preferred timing (optional)
+                        <input value={preferredTiming} onChange={(event) => setPreferredTiming(event.target.value)} placeholder="Example: Before Friday" disabled={!portalReady} />
+                      </label>
+                    </div>
+                  </details>
+                </div>
+              )}
 
               {photos.length ? (
                 <div className="photo-grid">
@@ -360,7 +388,7 @@ export default function OwnerRequestPage() {
                 </div>
               ) : null}
 
-              <button className="submit" type="button" onClick={submitRequest} disabled={!portalReady || submitting}>
+              <button className="submit" type="button" onClick={submitRequest} disabled={!portalReady || submitting || !description.trim() || (isMarine && !requesterName.trim())}>
                 {submitting
                   ? "Submitting..."
                   : isMarine
