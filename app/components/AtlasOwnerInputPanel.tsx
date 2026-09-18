@@ -145,7 +145,19 @@ export default function AtlasOwnerInputPanel(props: any) {
       setItems((current) => [data.item, ...current]);
       setDraft({ projectId: "", question: "", context: "", dueDate: "", photos: [] });
       setShowAdd(false);
-      setMessage("Owner input request created.");
+      const responseUrl = data.item?.shareToken
+        ? `${window.location.origin}/owner-input?token=${encodeURIComponent(data.item.shareToken)}`
+        : "";
+      if (responseUrl) {
+        try {
+          await navigator.clipboard.writeText(responseUrl);
+          setMessage("Owner request created. Response link copied.");
+        } catch {
+          setMessage("Owner request created.");
+        }
+      } else {
+        setMessage("Owner request created.");
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Owner input could not be saved.");
     } finally {
