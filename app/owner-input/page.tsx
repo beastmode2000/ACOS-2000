@@ -34,15 +34,15 @@ export default function OwnerInputPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  async function submit() {
-    if (!token || (!choice && !response.trim())) return;
+  async function submit(nextChoice = choice) {
+    if (!token || (!nextChoice && !response.trim())) return;
     setSaving(true);
     setError("");
     try {
       const res = await fetch(`/api/atlas-owner-input?token=${encodeURIComponent(token)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ responseName: name.trim(), responseChoice: choice, response: response.trim() }),
+        body: JSON.stringify({ responseName: name.trim(), responseChoice: nextChoice, response: response.trim() }),
       });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Response could not be saved.");
@@ -92,7 +92,7 @@ export default function OwnerInputPage() {
       <section style={card}>
         <div style={{ color: "#C99A3D", fontSize: 12, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase" }}>Atlas</div>
         <h1 style={{ margin: "6px 0 4px", color: "#0A2841", fontSize: 26 }}>Owner Input Requested</h1>
-        <p style={{ margin: "0 0 18px", color: "#6B7C8C", fontSize: 14 }}>A quick response here is saved directly back to Atlas.</p>
+        <p style={{ margin: "0 0 18px", color: "#6B7C8C", fontSize: 14 }}>Tap one answer. A comment is optional.</p>
 
         {loading ? <p>Loading request…</p> : null}
         {error ? <div style={{ border: "1px solid #F1B7B0", background: "#FFF4F2", color: "#B42318", borderRadius: 9, padding: 10, marginBottom: 12 }}>{error}</div> : null}
@@ -121,20 +121,34 @@ export default function OwnerInputPage() {
               <div style={{ border: "1px solid #B9DDCA", background: "#F1FBF5", color: "#087443", borderRadius: 9, padding: 12, fontWeight: 700 }}>Thank you. Your response has been saved in Atlas.</div>
             ) : (
               <>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 5 }}>Your name</label>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jeremy or Jessica" style={{ width: "100%", boxSizing: "border-box", border: "1px solid #C9D4DD", borderRadius: 8, padding: 10, marginBottom: 14, fontSize: 14 }} />
-
                 <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 7 }}>Quick response</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
                   {["Approve", "Decline", "Need More Info"].map((value) => (
-                    <button key={value} type="button" style={optionButton(value)} onClick={() => setChoice(choice === value ? "" : value)}>{value}</button>
+                    <button
+                      key={value}
+                      type="button"
+                      disabled={saving}
+                      style={{ ...optionButton(value), opacity: saving ? 0.55 : 1, minHeight: 48 }}
+                      onClick={() => {
+                        setChoice(value);
+                        void submit(value);
+                      }}
+                    >
+                      {saving && choice === value ? "Saving…" : value}
+                    </button>
                   ))}
                 </div>
 
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 5 }}>Comment</label>
-                <textarea value={response} onChange={(e) => setResponse(e.target.value)} placeholder="Add any details or instructions…" rows={5} style={{ width: "100%", boxSizing: "border-box", resize: "vertical", border: "1px solid #C9D4DD", borderRadius: 8, padding: 10, marginBottom: 14, fontSize: 14, lineHeight: 1.45 }} />
-
-                <button type="button" onClick={submit} disabled={saving || (!choice && !response.trim())} style={{ ...button, opacity: saving || (!choice && !response.trim()) ? 0.55 : 1, width: "100%" }}>{saving ? "Saving…" : "Send Response"}</button>
+                <details style={{ border: "1px solid #D9E2EA", borderRadius: 9, padding: "9px 10px", marginBottom: 14, background: "#F8FAFC" }}>
+                  <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0A2841" }}>Add a comment or name (optional)</summary>
+                  <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700 }}>Comment</label>
+                    <textarea value={response} onChange={(e) => setResponse(e.target.value)} placeholder="Add any details or instructions…" rows={4} style={{ width: "100%", boxSizing: "border-box", resize: "vertical", border: "1px solid #C9D4DD", borderRadius: 8, padding: 10, fontSize: 14, lineHeight: 1.45 }} />
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700 }}>Your name</label>
+                    <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Optional" style={{ width: "100%", boxSizing: "border-box", border: "1px solid #C9D4DD", borderRadius: 8, padding: 10, fontSize: 14 }} />
+                    <button type="button" onClick={() => void submit()} disabled={saving || (!choice && !response.trim())} style={{ ...button, opacity: saving || (!choice && !response.trim()) ? 0.55 : 1, width: "100%" }}>{saving ? "Saving…" : choice ? "Send With Comment" : "Send Comment"}</button>
+                  </div>
+                </details>
               </>
             )}
           </>
