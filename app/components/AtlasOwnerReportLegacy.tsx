@@ -16,6 +16,13 @@ type ReportItem = {
   notes: string;
 };
 
+type UpcomingReportItem = {
+  id: string;
+  date: string;
+  title: string;
+  notes: string;
+};
+
 type SavedReport = {
   id: string;
   propertyId: string;
@@ -24,6 +31,7 @@ type SavedReport = {
   title: string;
   status: "Draft" | "Final";
   items: ReportItem[];
+  upcomingItems?: UpcomingReportItem[];
   createdAt: string;
   updatedAt: string;
 };
@@ -400,10 +408,10 @@ function sortReportItems(items: ReportItem[]) {
 }
 
 function reportTitle(start: string, end: string) {
-  if (!start || !end) return "Owner Report";
+  if (!start || !end) return "Weekly Report";
   const format = (value: string) =>
     new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  return `Owner Report · ${format(start)}–${format(end)}`;
+  return `Weekly Report · ${format(start)}–${format(end)}`;
 }
 
 function escapeHtml(value: unknown) {
@@ -504,6 +512,9 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   const [showSavedReports, setShowSavedReports] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draftTouched, setDraftTouched] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<string[]>([]);
+  const [upcomingItems, setUpcomingItems] = useState<UpcomingReportItem[]>([]);
+  const [upcomingTouched, setUpcomingTouched] = useState(false);
 
   const sourceItems = useMemo(
     () =>
@@ -532,8 +543,8 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   const presentation = useMemo(() => buildReportPresentation(items), [items]);
   const weekdayColumns = useMemo(() => businessDays(periodStart, periodEnd), [periodStart, periodEnd]);
 
-  const upcomingWork = useMemo(() => {
-    if (!periodEnd) return [] as Row[];
+  const atlasUpcomingItems = useMemo(() => {
+    if (!periodEnd) return [] as UpcomingReportItem[];
     const start = new Date(`${periodEnd}T12:00:00`);
     start.setDate(start.getDate() + 1);
     const end = new Date(start);
@@ -555,8 +566,39 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         seen.add(key);
         return true;
       })
-      .slice(0, 8);
+      .slice(0, 8)
+      .map((row, index) => ({
+        id: `atlas-upcoming-${String(row.id || index)}-${dateOnly(row.date || row.dueDate || row.due_date)}`,
+        date: dateOnly(row.date || row.dueDate || row.due_date),
+        title: String(row.title || row.name || "Upcoming work"),
+        notes: String(row.notes || ""),
+      }));
   }, [workOrders, periodEnd]);
+
+  useEffect(() => {
+    if (!activeReportId && !upcomingTouched) {
+      setUpcomingItems(atlasUpcomingItems);
+    }
+  }, [atlasUpcomingItems, activeReportId, upcomingTouched]);
+
+  useEffect(() => {
+    void fetch("/api/atlas-team", { cache: "no-store", credentials: "include" })
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!payload?.ok || !Array.isArray(payload.members)) return;
+        const names = payload.members
+          .filter((member: any) => member && member.active !== false)
+          .filter((member: any) => String(member.role || "").toLowerCase() !== "vendor")
+          .filter((member: any) => {
+            const propertyIds = Array.isArray(member.propertyIds) ? member.propertyIds.map(String) : [];
+            return !propertyIds.length || propertyIds.some((id: string) => id.toLowerCase() === propertyId.toLowerCase());
+          })
+          .map((member: any) => String(member.name || "").trim())
+          .filter(Boolean);
+        setTeamMembers(Array.from(new Set(names)));
+      })
+      .catch(() => setTeamMembers([]));
+  }, [propertyId]);
 
   const reportSummary = useMemo(() => {
     const completedCount = presentation.completed.length + presentation.routineGroups.reduce((total, group) => total + group.dates.length, 0);
