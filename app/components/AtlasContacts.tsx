@@ -740,16 +740,27 @@ export default function AtlasContacts(props: any) {
         >
           <div
             style={{
-              display: "flex",
-              justifyContent: "space-between",
+              display: "grid",
+              gridTemplateColumns: "auto minmax(0,1fr) auto",
               gap: 10,
               alignItems: "center",
-              padding: "10px 12px",
+              padding: "max(10px, env(safe-area-inset-top)) 12px 10px",
               borderBottom: `1px solid ${colors.line}`,
               background: "#FFFFFF",
             }}
           >
-            <strong style={{ color: colors.navy }}>{selectedEntry?.name || "Contact"}</strong>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileDetailOpen(false);
+                if (editing) stopEditing();
+              }}
+              aria-label="Back to contacts"
+              style={{ ...secondaryButtonStyle, minWidth: 72, height: 40, padding: "0 11px", borderRadius: 9, fontSize: 12, fontWeight: 800 }}
+            >
+              ← Back
+            </button>
+            <strong style={{ color: colors.navy, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedEntry?.name || "Contact"}</strong>
             <button
               type="button"
               onClick={() => {
