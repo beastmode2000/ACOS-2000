@@ -41,6 +41,7 @@ export type WorkOrderRecurrenceUnit = "Days" | "Weeks" | "Months" | "Years";
 
 export type WorkSeason =
   | "Year-Round"
+  | "May-October"
   | "Spring"
   | "Summer"
   | "Fall"
