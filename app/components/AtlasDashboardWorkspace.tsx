@@ -2757,7 +2757,12 @@ export default function AtlasDashboardWorkspace(props: any) {
   const skipWorkOccurrence = async (record: ServiceRecord) => {
     if (!record.recurring) return;
     const unit = isWorkOrderRecurrenceUnit(record.recurrenceUnit) ? record.recurrenceUnit : "Weeks";
-    const nextDate = nextRecurrenceDate(record.date || today, record.recurrenceInterval || 1, unit);
+    const nextDate = nextRecurrenceDate(
+      record.date || today,
+      record.recurrenceInterval || 1,
+      unit,
+      Array.isArray((record as any).recurrenceDays) ? (record as any).recurrenceDays : [],
+    );
     await syncWorkOrderPatch(record, { date: nextDate, status: "Scheduled" });
   };
   const moveWorkOccurrence = async (record: ServiceRecord, days: number) => {
