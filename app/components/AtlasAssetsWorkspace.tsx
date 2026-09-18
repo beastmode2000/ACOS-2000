@@ -1864,24 +1864,50 @@ export default function AtlasAssetsWorkspace(props: any) {
               }}
             >
               {isMobile ? (
-                <select
-                  value={assetPanelTab}
-                  onChange={(event) =>
-                    setAssetPanelSection(event.target.value as typeof assetPanelSection)
-                  }
+                <div
+                  role="tablist"
+                  aria-label="Asset information sections"
                   style={{
-                    ...assetSortSelectStyle,
-                    width: "100%",
-                    minHeight: 42,
-                    fontSize: 13,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2,minmax(0,1fr))",
+                    gap: 6,
+                    padding: 6,
+                    border: `1px solid ${colors.line}`,
+                    borderRadius: 12,
+                    background: "#FFFFFF",
+                    boxShadow: "0 6px 18px rgba(15,42,67,.06)",
                   }}
-                  aria-label="Asset information section"
                 >
-                  <option value="overview">Asset Information</option>
-                  <option value="work">
-                    Work / History ({openAssetWorkOrders.length + assetHistory.length})
-                  </option>
-                </select>
+                  {[
+                    ["overview", "Asset Info"],
+                    ["work", `Work / History · ${openAssetWorkOrders.length + assetHistory.length}`],
+                  ].map(([key, label]) => {
+                    const active = assetPanelTab === key;
+                    return (
+                      <button
+                        key={String(key)}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => setAssetPanelSection(key as typeof assetPanelSection)}
+                        style={{
+                          minWidth: 0,
+                          minHeight: 40,
+                          border: `1px solid ${active ? colors.gold : colors.line}`,
+                          borderRadius: 9,
+                          background: active ? "#FFF8E8" : "#FFFFFF",
+                          color: active ? colors.navy : colors.muted,
+                          padding: "8px 9px",
+                          fontSize: 12,
+                          fontWeight: 850,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {String(label)}
+                      </button>
+                    );
+                  })}
+                </div>
               ) : (
                 <div
                   role="tablist"
