@@ -141,6 +141,9 @@ export default function AtlasParts({
         detail="Low and out-of-stock items appear first."
         isMobile={isMobile}
         drawerResetKey={selectedPartId || "part-new"}
+        mobileDrawerOpen={isMobile && Boolean(selectedPartId)}
+        onMobileDrawerClose={() => setSelectedPartId("")}
+        mobileDrawerTitle={selectedPart.name || "Part"}
         right={
           <button type="button" onClick={addPartRecord} style={goldButtonStyle}>
             Add Part
