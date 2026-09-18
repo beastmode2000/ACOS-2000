@@ -192,6 +192,16 @@ export default function AtlasScrollSafety() {
           min-height: 0 !important;
         }
 
+        .atlas-record-detail-content--mobile {
+          max-height: none !important;
+          height: auto !important;
+          overflow: visible !important;
+          overscroll-behavior: auto !important;
+          -webkit-overflow-scrolling: auto !important;
+          scroll-padding-bottom: 0 !important;
+          padding-bottom: max(96px, env(safe-area-inset-bottom)) !important;
+        }
+
         .atlas-location-drawer-polish,
         [data-atlas-work-detail-panel] {
           min-height: 0 !important;
