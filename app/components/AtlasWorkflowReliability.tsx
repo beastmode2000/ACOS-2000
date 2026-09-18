@@ -5,6 +5,7 @@ import { useEffect } from "react";
 type AtlasRecord = Record<string, any>;
 
 const SEASON_MONTHS: Record<string, number[]> = {
+  "May-October": [5, 6, 7, 8, 9, 10],
   Spring: [3, 4, 5],
   Summer: [6, 7, 8],
   Fall: [9, 10, 11],
@@ -273,7 +274,7 @@ async function renderRecurringControl(host: HTMLElement, panel: HTMLElement) {
 
     const seasonSelect = document.createElement("select");
     seasonSelect.style.cssText = "min-height:38px;border:1px solid #D0D5DD;border-radius:10px;background:#fff;color:#0B2C43;padding:6px 8px;font-weight:700";
-    for (const optionValue of ["Year-Round", "Spring", "Summer", "Fall", "Winter"]) {
+    for (const optionValue of ["Year-Round", "May-October", "Spring", "Summer", "Fall", "Winter"]) {
       const option = document.createElement("option");
       option.value = optionValue;
       option.textContent = optionValue;
