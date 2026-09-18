@@ -1201,22 +1201,36 @@ export default function AtlasCalendar(
               position: "sticky",
               top: isMobile ? -16 : -22,
               zIndex: 5,
-              display: "flex",
+              display: isMobile ? "grid" : "flex",
+              gridTemplateColumns: isMobile ? "auto minmax(0,1fr) auto" : undefined,
               justifyContent: "space-between",
               alignItems: "center",
-              gap: 12,
-              padding: "4px 0 14px",
+              gap: 10,
+              padding: isMobile ? "max(4px, env(safe-area-inset-top)) 0 12px" : "4px 0 14px",
               background: "#FFFFFF",
               borderBottom: `1px solid ${colors.line}`,
             }}
           >
-            <div>
+            {isMobile ? (
+              <button
+                type="button"
+                onClick={closeDetail}
+                style={{ ...secondaryButtonStyle, minWidth: 72, minHeight: 40, padding: "7px 11px", fontSize: 12, fontWeight: 800 }}
+                aria-label="Back to calendar"
+              >
+                ← Back
+              </button>
+            ) : null}
+            <div style={{ minWidth: 0 }}>
               <div style={eyebrowStyle}>Day Agenda</div>
 
               <h2
                 style={{
                   margin: "4px 0 0",
                   color: colors.navy,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: isMobile ? "nowrap" : undefined,
                 }}
               >
                 {formatDate(selectedCalendarDate)}
@@ -1226,9 +1240,10 @@ export default function AtlasCalendar(
             <button
               type="button"
               onClick={closeDetail}
-              style={secondaryButtonStyle}
+              style={isMobile ? { ...secondaryButtonStyle, width: 40, minWidth: 40, height: 40, padding: 0, borderRadius: 999, fontSize: 20 } : secondaryButtonStyle}
+              aria-label="Close calendar details"
             >
-              X Close
+              {isMobile ? "×" : "X Close"}
             </button>
           </div>
 
