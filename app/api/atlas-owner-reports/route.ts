@@ -62,6 +62,22 @@ function cleanItems(value: unknown) {
     .filter((item) => Boolean(item.date || item.title || item.notes));
 }
 
+function cleanUpcomingItems(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, 250)
+    .map((entry, index) => {
+      const row = entry && typeof entry === "object" ? (entry as Row) : {};
+      return {
+        id: String(row.id || `weekly-report-upcoming-${index}`).slice(0, 240),
+        date: cleanDate(row.date),
+        title: String(row.title || "").slice(0, 500),
+        notes: String(row.notes || "").slice(0, 5000),
+      };
+    })
+    .filter((item) => Boolean(item.date || item.title || item.notes));
+}
+
 async function ensureTable(sql: ReturnType<typeof neon>) {
   await sql`
     CREATE TABLE IF NOT EXISTS atlas_owner_reports (
@@ -73,11 +89,13 @@ async function ensureTable(sql: ReturnType<typeof neon>) {
       status text NOT NULL DEFAULT 'Draft',
       summary text NOT NULL DEFAULT '',
       items jsonb NOT NULL DEFAULT '[]'::jsonb,
+      upcoming_items jsonb NOT NULL DEFAULT '[]'::jsonb,
       created_at timestamptz NOT NULL DEFAULT NOW(),
       updated_at timestamptz NOT NULL DEFAULT NOW()
     )
   `;
   await sql`ALTER TABLE atlas_owner_reports ADD COLUMN IF NOT EXISTS summary text NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE atlas_owner_reports ADD COLUMN IF NOT EXISTS upcoming_items jsonb NOT NULL DEFAULT '[]'::jsonb`;
   await sql`
     CREATE INDEX IF NOT EXISTS atlas_owner_reports_property_period_idx
     ON atlas_owner_reports(property_id, period_end DESC, period_start DESC)
@@ -98,10 +116,11 @@ function mapReport(row: Row) {
     propertyId: String(row.property_id || "2000"),
     periodStart: cleanDate(row.period_start),
     periodEnd: cleanDate(row.period_end),
-    title: String(row.title || "Owner Report"),
+    title: String(row.title || "Weekly Report"),
     status: String(row.status || "Draft") === "Final" ? "Final" : "Draft",
     summary: String(row.summary || ""),
     items: Array.isArray(row.items) ? row.items : [],
+    upcomingItems: Array.isArray(row.upcoming_items) ? row.upcoming_items : [],
     createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : "",
     updatedAt: row.updated_at ? new Date(String(row.updated_at)).toISOString() : "",
   };
@@ -117,7 +136,7 @@ export async function GET(request: NextRequest) {
     const sql = getSql();
     await ensureTable(sql);
     const rows = await sql`
-      SELECT id, property_id, period_start, period_end, title, status, summary, items, created_at, updated_at
+      SELECT id, property_id, period_start, period_end, title, status, summary, items, upcoming_items, created_at, updated_at
       FROM atlas_owner_reports
       WHERE property_id = ${propertyId}
       ORDER BY period_end DESC, updated_at DESC
@@ -195,19 +214,20 @@ export async function POST(request: NextRequest) {
     const id = String(body.id || `owner-report-${propertyId}-${periodStart}-${periodEnd}`)
       .trim()
       .slice(0, 240);
-    const title = String(body.title || `Owner Report ${periodStart}–${periodEnd}`)
+    const title = String(body.title || `Weekly Report ${periodStart}–${periodEnd}`)
       .trim()
       .slice(0, 500);
     const status = String(body.status || "Draft") === "Final" ? "Final" : "Draft";
     const summary = String(body.summary || "").slice(0, 10000);
     const items = cleanItems(body.items);
+    const upcomingItems = cleanUpcomingItems(body.upcomingItems);
 
     const rows = await sql`
       INSERT INTO atlas_owner_reports (
-        id, property_id, period_start, period_end, title, status, summary, items, created_at, updated_at
+        id, property_id, period_start, period_end, title, status, summary, items, upcoming_items, created_at, updated_at
       ) VALUES (
         ${id}, ${propertyId}, ${periodStart}::date, ${periodEnd}::date, ${title}, ${status}, ${summary},
-        ${JSON.stringify(items)}::jsonb, NOW(), NOW()
+        ${JSON.stringify(items)}::jsonb, ${JSON.stringify(upcomingItems)}::jsonb, NOW(), NOW()
       )
       ON CONFLICT (id) DO UPDATE SET
         period_start = EXCLUDED.period_start,
@@ -216,6 +236,7 @@ export async function POST(request: NextRequest) {
         status = EXCLUDED.status,
         summary = EXCLUDED.summary,
         items = EXCLUDED.items,
+        upcoming_items = EXCLUDED.upcoming_items,
         updated_at = NOW()
       WHERE atlas_owner_reports.property_id = EXCLUDED.property_id
       RETURNING id
