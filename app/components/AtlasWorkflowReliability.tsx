@@ -534,7 +534,7 @@ async function persistDashboardVendorVisit(section: HTMLElement) {
   try {
     await Promise.all([saveCalendarRecord(propertyId, calendarRecord), saveWorkRecord(workRecord)]);
     window.dispatchEvent(new CustomEvent("atlas:data-changed", { detail: { table: "vendor_visit" } }));
-    showToast("Vendor visit added to Calendar, Dashboard, and Owner Report.");
+    showToast("Vendor visit added to Calendar, Dashboard, and Weekly Report.");
   } catch (error) {
     window.sessionStorage.removeItem(dedupeKey);
     showToast(error instanceof Error ? error.message : "Vendor visit did not fully save.", true);
