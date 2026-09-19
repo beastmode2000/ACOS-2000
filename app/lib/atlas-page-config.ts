@@ -57,7 +57,7 @@ export const screens: { id: AtlasScreen; label: string }[] = [
   { id: "weather", label: "Weather" },
   { id: "manuals", label: "Manuals" },
   { id: "assistant", label: "Ask Atlas" },
-  { id: "ownerReport", label: "Owner Report" },
+  { id: "ownerReport", label: "Weekly Report" },
   { id: "reports", label: "Reports & Access" },
 ];
 
