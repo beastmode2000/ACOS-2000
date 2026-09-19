@@ -179,7 +179,7 @@ function markVendors() {
 }
 
 function markOwnerReport() {
-  const root = pageMain("Owner Report") || mainContaining("Owner Report");
+  const root = pageMain("Weekly Report") || mainContaining("Weekly Report") || pageMain("Owner Report") || mainContaining("Owner Report");
   if (!root) return;
   root.classList.add("atlas-ops-owner-report-root");
 
