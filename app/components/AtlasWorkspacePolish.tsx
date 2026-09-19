@@ -244,6 +244,7 @@ export default function AtlasWorkspacePolish() {
         "contacts",
         "vendors",
         "team",
+        "weekly report",
         "owner report",
       ]) {
         const root = pageMain(title);
