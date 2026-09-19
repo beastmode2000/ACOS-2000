@@ -2936,7 +2936,12 @@ export default function AtlasDashboardWorkspace(props: any) {
     const notesHistory = [missedNote, ...(atlasRecord.notesHistory || [])];
     if (record.recurring) {
       const unit = isWorkOrderRecurrenceUnit(record.recurrenceUnit) ? record.recurrenceUnit : "Weeks";
-      const nextDate = nextRecurrenceDate(scheduledDate, record.recurrenceInterval || 1, unit);
+      const nextDate = nextRecurrenceDate(
+        scheduledDate,
+        record.recurrenceInterval || 1,
+        unit,
+        Array.isArray((record as any).recurrenceDays) ? (record as any).recurrenceDays : [],
+      );
       await syncWorkOrderPatch(record, { date: nextDate, status: "Scheduled", notesHistory });
       return;
     }
