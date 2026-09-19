@@ -745,7 +745,7 @@ export default function AtlasProjectsWorkspace(props: any) {
                   <div style={{ ...mutedSmallStyle, marginTop: 4 }}>{[selectedProject.status || "Planning", vendorRecords.find((vendor: any) => vendor.id === selectedProject.vendorId)?.name, locations.find((location: any) => location.id === selectedProject.locationId)?.name].filter(Boolean).join(" · ")}</div>
                 </div>
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                  <button type="button" style={tinyButton} onClick={() => setScreen("ownerReport")}>Owner Report</button>
+                  <button type="button" style={tinyButton} onClick={() => setScreen("ownerReport")}>Weekly Report</button>
                   {editing ? (
                     <>
                       <button type="button" style={tinyButton} onClick={() => { setDraft(projectDraft(selectedProject)); setEditing(false); }}>Cancel</button>
@@ -787,7 +787,7 @@ export default function AtlasProjectsWorkspace(props: any) {
                 <textarea style={{ ...input, minHeight: 60, resize: "vertical" }} placeholder="What happened?" value={updateDraft.notes} onChange={(e) => setUpdateDraft({ ...updateDraft, notes: e.target.value })} />
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                <label style={{ display: "flex", gap: 6, alignItems: "center", color: colors.muted, fontSize: 11 }}><input type="checkbox" checked={updateDraft.includeInOwnerReport} onChange={(e) => setUpdateDraft({ ...updateDraft, includeInOwnerReport: e.target.checked })} /> Include in Owner Report</label>
+                <label style={{ display: "flex", gap: 6, alignItems: "center", color: colors.muted, fontSize: 11 }}><input type="checkbox" checked={updateDraft.includeInOwnerReport} onChange={(e) => setUpdateDraft({ ...updateDraft, includeInOwnerReport: e.target.checked })} /> Include in Weekly Report</label>
                 <button type="button" style={goldButtonStyle} onClick={addUpdate}>Add Update</button>
               </div>
             </section>
@@ -803,11 +803,11 @@ export default function AtlasProjectsWorkspace(props: any) {
                         <div style={{ display: "grid", gap: 8 }}>
                           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "160px minmax(0,1fr)", gap: 8 }}><input type="date" style={input} value={updateEditDraft.date} onChange={(e) => setUpdateEditDraft({ ...updateEditDraft, date: e.target.value })} /><input style={input} value={updateEditDraft.title} placeholder="Update title" onChange={(e) => setUpdateEditDraft({ ...updateEditDraft, title: e.target.value })} /></div>
                           <textarea style={{ ...input, minHeight: 76, resize: "vertical" }} value={updateEditDraft.notes} onChange={(e) => setUpdateEditDraft({ ...updateEditDraft, notes: e.target.value })} />
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><label style={{ display: "flex", gap: 6, alignItems: "center", color: colors.muted, fontSize: 11 }}><input type="checkbox" checked={updateEditDraft.includeInOwnerReport} onChange={(e) => setUpdateEditDraft({ ...updateEditDraft, includeInOwnerReport: e.target.checked })} /> Include in Owner Report</label><div style={{ display: "flex", gap: 6 }}><button type="button" style={{ ...tinyButton, color: colors.red }} onClick={() => deleteUpdate(update.id)}>Delete</button><button type="button" style={tinyButton} onClick={() => setEditingUpdateId("")}>Cancel</button><button type="button" style={goldButtonStyle} onClick={() => saveUpdate(update.id)}>Save</button></div></div>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><label style={{ display: "flex", gap: 6, alignItems: "center", color: colors.muted, fontSize: 11 }}><input type="checkbox" checked={updateEditDraft.includeInOwnerReport} onChange={(e) => setUpdateEditDraft({ ...updateEditDraft, includeInOwnerReport: e.target.checked })} /> Include in Weekly Report</label><div style={{ display: "flex", gap: 6 }}><button type="button" style={{ ...tinyButton, color: colors.red }} onClick={() => deleteUpdate(update.id)}>Delete</button><button type="button" style={tinyButton} onClick={() => setEditingUpdateId("")}>Cancel</button><button type="button" style={goldButtonStyle} onClick={() => saveUpdate(update.id)}>Save</button></div></div>
                         </div>
                       ) : (
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                          <div><div style={{ color: colors.gold, fontSize: 10, fontWeight: 900 }}>{cleanDate(update.date)}</div><strong style={{ color: colors.navy, fontSize: 13 }}>{update.title || "Project update"}</strong>{update.notes ? <div style={{ color: colors.text, fontSize: 12, whiteSpace: "pre-wrap", marginTop: 4 }}>{update.notes}</div> : null}<div style={{ ...mutedSmallStyle, marginTop: 4, fontSize: 10 }}>{update.includeInOwnerReport !== false ? "Included in Owner Report" : "Not in Owner Report"}</div></div>
+                          <div><div style={{ color: colors.gold, fontSize: 10, fontWeight: 900 }}>{cleanDate(update.date)}</div><strong style={{ color: colors.navy, fontSize: 13 }}>{update.title || "Project update"}</strong>{update.notes ? <div style={{ color: colors.text, fontSize: 12, whiteSpace: "pre-wrap", marginTop: 4 }}>{update.notes}</div> : null}<div style={{ ...mutedSmallStyle, marginTop: 4, fontSize: 10 }}>{update.includeInOwnerReport !== false ? "Included in Weekly Report" : "Not in Weekly Report"}</div></div>
                           <button type="button" style={tinyButton} onClick={() => beginEditUpdate(update)}>Edit</button>
                         </div>
                       )}
