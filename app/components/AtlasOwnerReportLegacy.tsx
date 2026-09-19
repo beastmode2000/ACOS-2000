@@ -634,6 +634,8 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
           setActiveReportId(currentReport.id);
           setStatus(currentReport.status);
           setItems(sortReportItems(Array.isArray(currentReport.items) ? currentReport.items : []));
+          setUpcomingItems(Array.isArray(currentReport.upcomingItems) ? currentReport.upcomingItems : atlasUpcomingItems);
+          setUpcomingTouched(Array.isArray(currentReport.upcomingItems));
         }
       }
     }
@@ -645,7 +647,9 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     setItems([]);
     setExcludedSourceKeys([]);
     setDraftTouched(false);
-    void loadSavedReports(true).catch(() => setMessage("Saved owner reports could not be loaded."));
+    setUpcomingItems([]);
+    setUpcomingTouched(false);
+    void loadSavedReports(true).catch(() => setMessage("Saved weekly reports could not be loaded."));
   }, [propertyId]);
 
   useEffect(() => {
@@ -681,13 +685,41 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     setActiveReportId("");
     setStatus("Draft");
     setItems(filteredSourceItems);
+    setUpcomingItems(atlasUpcomingItems);
     setDraftTouched(false);
-    setMessage("Report refreshed from Atlas work activity.");
+    setUpcomingTouched(false);
+    setMessage("Weekly report refreshed from Atlas work activity.");
   }
 
   function updateItem(id: string, patch: Partial<ReportItem>) {
     setDraftTouched(true);
     setItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }
+
+  function updateUpcomingItem(id: string, patch: Partial<UpcomingReportItem>) {
+    setUpcomingTouched(true);
+    setUpcomingItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }
+
+  function addUpcomingItem() {
+    const start = periodEnd ? new Date(`${periodEnd}T12:00:00`) : new Date();
+    start.setDate(start.getDate() + 1);
+    const date = localDate(start);
+    setUpcomingTouched(true);
+    setUpcomingItems((current) => [
+      ...current,
+      {
+        id: `weekly-upcoming-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        date,
+        title: "",
+        notes: "",
+      },
+    ]);
+  }
+
+  function deleteUpcomingItem(id: string) {
+    setUpcomingTouched(true);
+    setUpcomingItems((current) => current.filter((item) => item.id !== id));
   }
 
   function addManualItem() {
@@ -748,11 +780,12 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
           title: reportTitle(periodStart, periodEnd),
           status: nextStatus,
           items: sortReportItems(nextItems),
+          upcomingItems,
         }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload.ok) {
-        throw new Error(String(payload.error || "Owner report could not be saved."));
+        throw new Error(String(payload.error || "Weekly report could not be saved."));
       }
 
       setActiveReportId(id);
@@ -760,11 +793,11 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
       setDraftTouched(false);
       setMessage(
         successMessage ||
-          (nextStatus === "Final" ? "Owner report finalized and saved." : "Owner report saved."),
+          (nextStatus === "Final" ? "Weekly report finalized and saved." : "Weekly report saved."),
       );
       await loadSavedReports();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Owner report could not be saved.");
+      setMessage(error instanceof Error ? error.message : "Weekly report could not be saved.");
     } finally {
       setSaving(false);
     }
@@ -814,13 +847,15 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     setPeriodEnd(report.periodEnd);
     setStatus(report.status);
     setItems(sortReportItems(Array.isArray(report.items) ? report.items : []));
+    setUpcomingItems(Array.isArray(report.upcomingItems) ? report.upcomingItems : atlasUpcomingItems);
     setDraftTouched(false);
+    setUpcomingTouched(Array.isArray(report.upcomingItems));
     setShowSavedReports(false);
     setMessage(`Opened ${report.title}.`);
   }
 
   async function deleteSavedReport(report: SavedReport) {
-    if (!window.confirm("Delete this saved owner report? Source Atlas records will not be deleted.")) return;
+    if (!window.confirm("Delete this saved weekly report? Source Atlas records will not be deleted.")) return;
     const response = await fetch(
       `/api/atlas-owner-reports?id=${encodeURIComponent(report.id)}&propertyId=${encodeURIComponent(propertyId)}`,
       { method: "DELETE" },
@@ -832,7 +867,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     }
     if (activeReportId === report.id) refreshFromAtlas();
     await loadSavedReports();
-    setMessage("Saved report deleted. Source records were not changed.");
+    setMessage("Saved weekly report deleted. Source records were not changed.");
   }
 
   function printReport() {
@@ -884,11 +919,12 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
           .join("")}</section>`
       : "";
 
-    const upcomingMarkup = upcomingWork.length
-      ? `<section class="section"><h2>Next Week</h2>${upcomingWork
+    const upcomingMarkup = upcomingItems.length
+      ? `<section class="section"><h2>Next Week</h2>${upcomingItems
+          .filter((row) => row.title.trim() || row.notes.trim())
           .map(
             (row) =>
-              `<div class="upcoming"><strong>${escapeHtml(row.title || row.name || "Upcoming work")}</strong><span>${escapeHtml(displayDate(dateOnly(row.date || row.dueDate || row.due_date)))}</span></div>`,
+              `<div class="upcoming"><div><strong>${escapeHtml(row.title || "Upcoming work")}</strong>${row.notes ? `<div class="note">${escapeHtml(row.notes)}</div>` : ""}</div><span>${escapeHtml(displayDate(row.date))}</span></div>`,
           )
           .join("")}</section>`
       : "";
@@ -910,7 +946,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
       .footer{margin-top:16px;padding-top:7px;border-top:1px solid #c99a3d;display:flex;justify-content:space-between;color:#7a8794;font-size:7.5px}
       @media print{.section{page-break-inside:auto}.item,.routine tr,.upcoming{page-break-inside:avoid}}
     </style></head><body>
-      <header class="header"><div class="brand"><img class="logo" src="${escapeHtml(logoUrl)}" alt="Atlas"><div><div class="brand-name">ATLAS</div><div class="brand-sub">2000 Estate Systems</div></div></div><div class="report-head"><h1>Owners Report</h1><div class="property">Property ${escapeHtml(propertyId)}</div><div class="dates">${escapeHtml(displayDate(periodStart))} – ${escapeHtml(displayDate(periodEnd))}</div></div></header>
+      <header class="header"><div class="brand"><img class="logo" src="${escapeHtml(logoUrl)}" alt="Atlas"><div><div class="brand-name">ATLAS</div><div class="brand-sub">2000 Estate Systems</div></div></div><div class="report-head"><h1>Weekly Report</h1><div class="property">Property ${escapeHtml(propertyId)}</div><div class="dates">${escapeHtml(displayDate(periodStart))} – ${escapeHtml(displayDate(periodEnd))}</div></div></header>
       <div class="summary"><strong>This Week</strong><br>${escapeHtml(reportSummary)}</div>
       ${routineMarkup}${completedMarkup}${exceptionMarkup}${upcomingMarkup}
       <div class="footer"><span>Atlas Estate Operations</span><span>${escapeHtml(reportTitle(periodStart, periodEnd))}</span></div>
@@ -956,6 +992,42 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
 
   return (
     <section style={cardStyle}>
+      <section
+        style={{
+          border: `1px solid ${colors.line}`,
+          borderRadius: 12,
+          background: "#fff",
+          padding: isMobile ? 10 : 12,
+          marginBottom: 12,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ color: colors.gold, fontSize: 9, fontWeight: 900, letterSpacing: ".11em", textTransform: "uppercase" }}>Next Week</div>
+            <strong style={{ display: "block", color: colors.navy, marginTop: 2 }}>Upcoming</strong>
+          </div>
+          <button type="button" onClick={addUpcomingItem} style={quietButtonStyle}>Add Upcoming</button>
+        </div>
+        <div style={{ display: "grid", gap: 7, marginTop: 9 }}>
+          {upcomingItems.length ? upcomingItems.map((item) => (
+            <div
+              key={item.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "125px minmax(180px,1fr) minmax(180px,1fr) auto",
+                gap: 7,
+                alignItems: "start",
+              }}
+            >
+              <input type="date" value={item.date} onChange={(event) => updateUpcomingItem(item.id, { date: event.currentTarget.value })} style={controlStyle} />
+              <input value={item.title} onChange={(event) => updateUpcomingItem(item.id, { title: event.currentTarget.value })} placeholder="Upcoming work" style={controlStyle} />
+              <input value={item.notes} onChange={(event) => updateUpcomingItem(item.id, { notes: event.currentTarget.value })} placeholder="Note (optional)" style={controlStyle} />
+              <button type="button" onClick={() => deleteUpcomingItem(item.id)} style={{ ...quietButtonStyle, padding: "9px 10px" }}>Delete</button>
+            </div>
+          )) : <div style={{ color: colors.muted, fontSize: 12 }}>No upcoming items. Add one or refresh from Atlas.</div>}
+        </div>
+      </section>
+
       <div
         style={{
           display: "flex",
@@ -980,7 +1052,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
             >
               Weekly reporting
             </div>
-            <h2 style={{ margin: "4px 0 2px", color: colors.navy, fontSize: 20 }}>Owners Report</h2>
+            <h2 style={{ margin: "4px 0 2px", color: colors.navy, fontSize: 20 }}>Weekly Report</h2>
             <div style={{ color: colors.muted, fontSize: 12 }}>
               Property {propertyId} · {activeReportId ? `${status} saved report` : "live draft"}
             </div>
@@ -1073,7 +1145,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
               </div>
             ))
           ) : (
-            <div style={{ color: colors.muted, fontSize: 12 }}>No saved owner reports yet.</div>
+            <div style={{ color: colors.muted, fontSize: 12 }}>No saved weekly reports yet.</div>
           )}
         </div>
       ) : null}
@@ -1143,7 +1215,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
           {presentation.routineGroups.length ? <span>{presentation.routineGroups.length} routines rolled up</span> : null}
           {presentation.completed.length ? <span>{presentation.completed.length} one-time items</span> : null}
           {presentation.exceptions.length ? <span>{presentation.exceptions.length} open/deferred updates</span> : null}
-          {upcomingWork.length ? <span>{upcomingWork.length} upcoming</span> : null}
+          {upcomingItems.length ? <span>{upcomingItems.length} upcoming</span> : null}
         </div>
       </div>
 
@@ -1199,12 +1271,16 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
                   onChange={(event) => updateItem(item.id, { date: event.currentTarget.value })}
                   style={controlStyle}
                 />
-                <input
+                <select
                   value={item.person}
                   onChange={(event) => updateItem(item.id, { person: event.currentTarget.value })}
-                  placeholder="Person"
+                  aria-label="Who did it"
                   style={controlStyle}
-                />
+                >
+                  <option value="">Who did it…</option>
+                  {item.person && !teamMembers.includes(item.person) ? <option value={item.person}>{item.person}</option> : null}
+                  {teamMembers.map((name) => <option key={name} value={name}>{name}</option>)}
+                </select>
                 <select
                   value={item.department}
                   onChange={(event) => updateItem(item.id, { department: event.currentTarget.value })}
