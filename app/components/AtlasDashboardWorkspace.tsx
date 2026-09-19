@@ -293,7 +293,7 @@ export default function AtlasDashboardWorkspace(props: any) {
       "Nick",
       ...(Array.isArray(teamDirectory) ? teamDirectory : [])
         .filter((member: any) => member && member.active !== false)
-        .filter((member: any) => String(member.role || "").toLowerCase() !== "vendor")
+        .filter((member: any) => ["employee", "manager"].includes(String(member.role || "").toLowerCase()))
         .filter((member: any) => {
           const propertyIds = Array.isArray(member.propertyIds) ? member.propertyIds.map(String) : [];
           return !propertyIds.length || propertyIds.includes(activePropertyId);
@@ -2498,13 +2498,13 @@ export default function AtlasDashboardWorkspace(props: any) {
     const showCalendarToday = rightLane || dashboardWorkListFilter === "Today";
 
     return (
-      <section key={`dashboard-work-${rightLane ? "right-" : ""}${person}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 10, background: "#FAFCFE", minWidth: 0 }}>
+      <div data-atlas-dashboard-work-lane={person} key={`dashboard-work-${rightLane ? "right-" : ""}${person}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 10, background: "#FAFCFE", minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
           <div>
             <strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>{dashboardPersonLabel(person)}</strong>
             <small style={mutedSmallStyle}>{records.length} active · {completedToday.length} done today</small>
           </div>
-          {rightLane ? dashboardRightSelector : <span style={badgeStyle(records.length ? "Scheduled" : completedToday.length ? "Completed" : "Monitor")}>{records.length}</span>}
+          <span style={badgeStyle(records.length ? "Scheduled" : completedToday.length ? "Completed" : "Monitor")}>{records.length}</span>
         </div>
 
         {!rightLane ? (
@@ -2548,25 +2548,24 @@ export default function AtlasDashboardWorkspace(props: any) {
             </div>
           </details>
         ) : null}
-      </section>
+      </div>
     );
   };
 
   const renderDashboardUpcomingLane = () => {
     const upcoming = dashboardUpcomingForPerson("Nick");
     return (
-      <section style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 10, background: "#FAFCFE", minWidth: 0 }}>
+      <div data-atlas-dashboard-work-lane="Upcoming" style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 10, background: "#FAFCFE", minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
           <div>
             <strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>Upcoming</strong>
             <small style={mutedSmallStyle}>Nick · next 7 days · {upcoming.length}</small>
           </div>
-          {dashboardRightSelector}
         </div>
         <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: isMobile ? 340 : 470, overflowY: "auto", paddingRight: 2 }}>
           {upcoming.length ? upcoming.map((item, index) => renderDashboardUpcomingItem(item, index, "nick-right-upcoming")) : <div style={noticeStyle}>No upcoming work.</div>}
         </div>
-      </section>
+      </div>
     );
   };
 
@@ -2600,7 +2599,10 @@ export default function AtlasDashboardWorkspace(props: any) {
       <section style={{ ...cardStyle, minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <div><div style={eyebrowStyle}>Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Work Lists</h2></div>
-          <button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Open All Work</button>
+          <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+            {dashboardRightSelector}
+            <button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Open All Work</button>
+          </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 11, marginTop: 10 }}>
           {renderDashboardPersonLane("Nick")}
