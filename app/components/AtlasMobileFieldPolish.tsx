@@ -21,7 +21,7 @@ const MORE_NAV: NavItem[] = [
   { label: "Team", aliases: ["team"] },
   { label: "Vendors", aliases: ["vendors"] },
   { label: "Contacts", aliases: ["contacts"] },
-  { label: "Owner Report", aliases: ["owner report"] },
+  { label: "Weekly Report", aliases: ["weekly report", "owner report", "owners report"] },
   { label: "Garage", aliases: ["garage / vehicles", "garage", "vehicles"] },
   { label: "Pool & Spa", aliases: ["pool & spa", "pool and spa"] },
   { label: "Dock", aliases: ["dock & waterfront", "dock & marine", "dock and marine"] },
