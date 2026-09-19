@@ -8,7 +8,7 @@ function normalized(value: unknown) {
 
 function ownerReportMain() {
   const heading = Array.from(document.querySelectorAll<HTMLElement>("main h1, main h2")).find(
-    (node) => normalized(node.textContent) === "owner report",
+    (node) => ["weekly report", "owner report"].includes(normalized(node.textContent)),
   );
   return (heading?.closest("main") as HTMLElement | null) || null;
 }
@@ -408,7 +408,7 @@ export default function AtlasOwnerReportHeaderPolish() {
       root.classList.add("atlas-owner-report-compact-root");
 
       const heading = Array.from(root.querySelectorAll<HTMLElement>("h1, h2")).find(
-        (node) => normalized(node.textContent) === "owner report",
+        (node) => ["weekly report", "owner report"].includes(normalized(node.textContent)),
       );
       if (!heading) return;
 
