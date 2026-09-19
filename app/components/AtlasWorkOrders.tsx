@@ -680,6 +680,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [detailOpen, setDetailOpen] = useState(false);
   const [workEditorOpen, setWorkEditorOpen] = useState(false);
   const [workOrderSaving, setWorkOrderSaving] = useState(false);
+  const [rescheduleRecord, setRescheduleRecord] = useState<any | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const rescheduleInputRef = useRef<HTMLInputElement | null>(null);
   const [newWorkDraft, setNewWorkDraft] = useState<{
     title: string;
     workType: WorkItemType;
@@ -1338,15 +1341,17 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     setPendingPatch({ recordId: record.id, patch });
   }
 
-  async function quickReschedule(record: any) {
-    const value = window.prompt("New due date (YYYY-MM-DD)", String(record.date || ""));
-    if (value === null) return false;
-    const nextDate = value.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
-      window.alert("Enter the date as YYYY-MM-DD.");
-      return false;
-    }
-    return Boolean(await updateWorkOrderRecord(record, { date: nextDate, status: "Scheduled" }));
+  function quickReschedule(record: any) {
+    setRescheduleRecord(record);
+    setRescheduleDate(String(record.date || new Date().toISOString().slice(0, 10)).slice(0, 10));
+    window.setTimeout(() => rescheduleInputRef.current?.showPicker?.(), 0);
+  }
+
+  async function saveQuickReschedule(nextDate: string) {
+    if (!rescheduleRecord || !nextDate) return;
+    setRescheduleDate(nextDate);
+    await updateWorkOrderRecord(rescheduleRecord, { date: nextDate, status: "Scheduled" });
+    setRescheduleRecord(null);
   }
 
   async function quickConvert(record: any) {
@@ -1547,7 +1552,15 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       return;
     }
     if (value === "reschedule") {
-      await quickReschedule(selectedService);
+      quickReschedule(selectedService);
+      return;
+    }
+    if (value === "today") {
+      await updateWorkOrderRecord(selectedService, { date: new Date().toISOString().slice(0, 10), status: "Scheduled" });
+      return;
+    }
+    if (value === "waiting") {
+      await updateWorkOrderRecord(selectedService, { status: "Waiting" });
       return;
     }
     if (value === "convert") {
@@ -1575,20 +1588,27 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     }
     if (value === "not-needed") {
       const occurrenceDate = selectedService.date || "";
-      const next = recurrencePreviewDates(selectedService, 1)[0];
-      if (next) {
+      const note = {
+        id: uid("note"),
+        text: `Not needed${occurrenceDate ? ` for ${formatDate(occurrenceDate)}` : ""}.`,
+        createdAt: new Date().toISOString(),
+      };
+
+      if (selectedService.recurring) {
+        const next = recurrencePreviewDates(selectedService, 1)[0];
+        if (next) {
+          await updateWorkOrderRecord(selectedService, {
+            date: next,
+            status: "Scheduled",
+            lastSkippedAt: new Date().toISOString(),
+            notesHistory: [note, ...(selectedService.notesHistory || [])],
+          });
+        }
+      } else {
         await updateWorkOrderRecord(selectedService, {
-          date: next,
-          status: "Scheduled",
+          status: "Cancelled",
           lastSkippedAt: new Date().toISOString(),
-          notesHistory: [
-            {
-              id: uid("note"),
-              text: `Not needed${occurrenceDate ? ` for ${formatDate(occurrenceDate)}` : ""}.`,
-              createdAt: new Date().toISOString(),
-            },
-            ...(selectedService.notesHistory || []),
-          ],
+          notesHistory: [note, ...(selectedService.notesHistory || [])],
         });
       }
       return;
@@ -1892,6 +1912,40 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           <button type="button" onClick={undoWorkOrderDelete} style={{ ...goldButtonStyle, width: "auto", minHeight: 38, padding: "7px 13px" }}>Undo</button>
         </div>
       ) : null}
+      {rescheduleRecord ? (
+        <div
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setRescheduleRecord(null);
+          }}
+          style={{ position: "fixed", inset: 0, zIndex: 1200, display: "grid", placeItems: "center", padding: 18, background: "rgba(7,27,47,.68)" }}
+        >
+          <div role="dialog" aria-modal="true" aria-label="Reschedule work" style={{ width: "min(100%,420px)", borderRadius: 16, background: "#FFFFFF", padding: 16, boxShadow: "0 24px 70px rgba(0,0,0,.28)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div>
+                <div style={eyebrowStyle}>Reschedule</div>
+                <strong style={{ color: colors.navy, fontSize: 18 }}>{rescheduleRecord.title || "Work"}</strong>
+              </div>
+              <button type="button" onClick={() => setRescheduleRecord(null)} aria-label="Close reschedule calendar" style={{ ...secondaryButtonStyle, width: 40, minWidth: 40, height: 40, padding: 0, borderRadius: 999, fontSize: 22 }}>×</button>
+            </div>
+            <label style={{ display: "grid", gap: 6, marginTop: 14 }}>
+              <span style={fieldLabelStyle}>Choose New Date</span>
+              <input
+                ref={rescheduleInputRef}
+                type="date"
+                value={rescheduleDate}
+                onClick={(event) => event.currentTarget.showPicker?.()}
+                onFocus={(event) => event.currentTarget.showPicker?.()}
+                onKeyDown={(event) => event.preventDefault()}
+                onPaste={(event) => event.preventDefault()}
+                onChange={(event) => void saveQuickReschedule(event.currentTarget.value)}
+                style={{ ...inputStyle, minHeight: 46, fontSize: 15 }}
+              />
+            </label>
+            <div style={{ marginTop: 10, color: colors.muted, fontSize: 12 }}>Choose a day from the calendar. The work order reschedules immediately.</div>
+          </div>
+        </div>
+      ) : null}
       {photoChooserOpen ? (
         <div role="dialog" aria-modal="true" aria-label="Add work order photos" onClick={(event) => { if (event.currentTarget === event.target) setPhotoChooserOpen(false); }} style={{ position: "fixed", inset: 0, zIndex: 280, display: "grid", placeItems: "center", padding: 18, background: "rgba(7,27,47,.68)" }}>
           <div style={{ width: "min(100%,420px)", borderRadius: 16, background: "#FFFFFF", padding: 16, boxShadow: "0 24px 70px rgba(0,0,0,.28)" }}>
@@ -2190,9 +2244,11 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                             {isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : (
                               <>
                                 <option value="start">In Progress</option>
-                                {selectedService.recurring ? <option value="not-needed">Not Needed</option> : null}
+                                <option value="waiting">Waiting</option>
+                                <option value="not-needed">Not Needed</option>
                                 <option value="didnt-get-to">Didn't Get To It</option>
-                                <option value="reschedule">Reschedule</option>
+                                <option value="reschedule">Reschedule…</option>
+                                <option value="today">Move Today</option>
                                 <option value="tomorrow">Move Tomorrow</option>
                                 <option value="next-week">Move Next Week</option>
                                 <option value="edit">Edit</option>
