@@ -310,6 +310,9 @@ export default function AtlasDashboardWorkspace(props: any) {
   const [dashboardWorkNote, setDashboardWorkNote] = useState("");
   const [dashboardCompletionNotes, setDashboardCompletionNotes] = useState<Record<string, string>>({});
   const [dashboardWorkNoteOpen, setDashboardWorkNoteOpen] = useState<Record<string, boolean>>({});
+  const [dashboardRescheduleTarget, setDashboardRescheduleTarget] = useState<ServiceRecord | null>(null);
+  const [dashboardRescheduleDate, setDashboardRescheduleDate] = useState("");
+  const dashboardRescheduleInputRef = useRef<HTMLInputElement | null>(null);
   const [dashboardWorkAssignee, setDashboardWorkAssignee] = useState(initialDashboardAssignee);
   const [dashboardWorkDate, setDashboardWorkDate] = useState(() => todayISO());
   const [dashboardWorkListFilter, setDashboardWorkListFilter] = useState<"Today" | "All" | "Upcoming" | "Overdue">("Today");
@@ -2430,10 +2433,13 @@ export default function AtlasDashboardWorkspace(props: any) {
             >
               <option value="">Actions</option>
               <option value="in-progress">In Progress</option>
-              {record.recurring ? <option value="not-needed">Not Needed</option> : null}
+              <option value="waiting">Waiting</option>
+              <option value="not-needed">Not Needed</option>
               <option value="didnt-get-to-it">Didn’t Get To It</option>
-              <option value="reschedule">Reschedule</option>
+              <option value="reschedule">Reschedule…</option>
+              <option value="today">Move Today</option>
               <option value="tomorrow">Move Tomorrow</option>
+              <option value="next-week">Move Next Week</option>
               <option value="edit">Edit</option>
               <option value="delete">Delete</option>
             </select>
@@ -2628,6 +2634,41 @@ export default function AtlasDashboardWorkspace(props: any) {
           <button type="button" onClick={logDashboardVendorVisit} disabled={!dashboardVendorVisitId && !dashboardVendorVisitNote.trim()} style={{ ...goldButtonStyle, minHeight: 34, padding: "5px 12px", fontSize: 11, opacity: !dashboardVendorVisitId && !dashboardVendorVisitNote.trim() ? .55 : 1 }}>Log Visit</button>
         </div>
       </section>
+
+      {dashboardRescheduleTarget ? (
+        <div
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setDashboardRescheduleTarget(null);
+          }}
+          style={{ position: "fixed", inset: 0, zIndex: 10060, background: "rgba(4,18,31,.62)", display: "grid", placeItems: "center", padding: 16 }}
+        >
+          <section role="dialog" aria-modal="true" aria-label="Reschedule work" style={{ ...cardStyle, width: "min(420px,100%)", padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+              <div>
+                <div style={eyebrowStyle}>Reschedule</div>
+                <strong style={{ color: colors.navy, fontSize: 17 }}>{dashboardRescheduleTarget.title}</strong>
+              </div>
+              <button type="button" onClick={() => setDashboardRescheduleTarget(null)} style={mapIconButtonStyle}>×</button>
+            </div>
+            <label style={{ display: "grid", gap: 6, marginTop: 14 }}>
+              <span style={{ color: colors.muted, fontSize: 11, fontWeight: 850 }}>CHOOSE NEW DATE</span>
+              <input
+                ref={dashboardRescheduleInputRef}
+                type="date"
+                value={dashboardRescheduleDate}
+                onClick={(event) => event.currentTarget.showPicker?.()}
+                onFocus={(event) => event.currentTarget.showPicker?.()}
+                onKeyDown={(event) => event.preventDefault()}
+                onPaste={(event) => event.preventDefault()}
+                onChange={(event) => void saveDashboardReschedule(event.currentTarget.value)}
+                style={{ ...inputStyle, minHeight: 44, fontSize: 15 }}
+              />
+            </label>
+            <div style={{ marginTop: 10, color: colors.muted, fontSize: 11 }}>Pick a day from the calendar. Atlas reschedules it as soon as you choose the date.</div>
+          </section>
+        </div>
+      ) : null}
 
       {morningBriefOpen ? <div role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setMorningBriefOpen(false); }} style={{ position: "fixed", inset: 0, zIndex: 10050, background: "rgba(4,18,31,.68)", display: "grid", placeItems: "center", padding: 16 }}><section role="dialog" aria-modal="true" aria-label="Morning Brief" style={{ ...cardStyle, width: "min(620px,100%)", maxHeight: "86vh", overflowY: "auto", padding: isMobile ? 16 : 20 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}><div><div style={eyebrowStyle}>Atlas Morning Brief</div><h2 style={{ margin: "3px 0", color: colors.navy }}>{dayName} at {activeProperty.name}</h2></div><button type="button" onClick={() => setMorningBriefOpen(false)} style={mapIconButtonStyle}>×</button></div><p style={{ lineHeight: 1.65, color: colors.text }}>{morningBriefText}</p><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={readMorningBrief} style={goldButtonStyle}>Read Aloud</button><button type="button" onClick={() => setMorningBriefOpen(false)} style={secondaryButtonStyle}>Start Checklist</button></div></section></div> : null}
     </div>
@@ -2902,11 +2943,8 @@ export default function AtlasDashboardWorkspace(props: any) {
     await syncWorkOrderPatch(record, { date: "", status: "Open", notesHistory });
   };
   const notNeededDashboardWork = async (record: ServiceRecord) => {
-    if (!record.recurring) return;
     const atlasRecord = record as AtlasServiceRecord;
     const scheduledDate = String(record.date || todayISO()).slice(0, 10);
-    const unit = isWorkOrderRecurrenceUnit(record.recurrenceUnit) ? record.recurrenceUnit : "Weeks";
-    const nextDate = nextRecurrenceDate(scheduledDate, record.recurrenceInterval || 1, unit);
     const notesHistory = [
       {
         id: uid("note"),
@@ -2915,17 +2953,33 @@ export default function AtlasDashboardWorkspace(props: any) {
       },
       ...(atlasRecord.notesHistory || []),
     ];
-    await syncWorkOrderPatch(record, { date: nextDate, status: "Scheduled", notesHistory });
-  };
-  const rescheduleDashboardWork = async (record: ServiceRecord) => {
-    const currentDate = String(record.date || todayISO()).slice(0, 10);
-    const nextDate = window.prompt("Reschedule work to (YYYY-MM-DD):", currentDate)?.trim();
-    if (!nextDate || nextDate === currentDate) return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
-      showSaveToast("Use a date in YYYY-MM-DD format.", "warning");
+
+    if (record.recurring) {
+      const unit = isWorkOrderRecurrenceUnit(record.recurrenceUnit) ? record.recurrenceUnit : "Weeks";
+      const nextDate = nextRecurrenceDate(
+        scheduledDate,
+        record.recurrenceInterval || 1,
+        unit,
+        Array.isArray((record as any).recurrenceDays) ? (record as any).recurrenceDays : [],
+      );
+      await syncWorkOrderPatch(record, { date: nextDate, status: "Scheduled", notesHistory });
       return;
     }
+
+    await syncWorkOrderPatch(record, { status: "Cancelled", notesHistory });
+  };
+  const rescheduleDashboardWork = (record: ServiceRecord) => {
+    const currentDate = String(record.date || todayISO()).slice(0, 10);
+    setDashboardRescheduleTarget(record);
+    setDashboardRescheduleDate(currentDate);
+    window.setTimeout(() => dashboardRescheduleInputRef.current?.showPicker?.(), 0);
+  };
+  const saveDashboardReschedule = async (nextDate: string) => {
+    const record = dashboardRescheduleTarget;
+    if (!record || !nextDate) return;
+    setDashboardRescheduleDate(nextDate);
     await syncWorkOrderPatch(record, { date: nextDate, status: "Scheduled" });
+    setDashboardRescheduleTarget(null);
   };
   const markDashboardWorkInProgress = async (record: ServiceRecord) => {
     const atlasRecord = record as AtlasServiceRecord;
@@ -2944,7 +2998,10 @@ export default function AtlasDashboardWorkspace(props: any) {
     if (action === "not-needed") return notNeededDashboardWork(record);
     if (action === "didnt-get-to-it") return didntGetToDashboardWork(record);
     if (action === "reschedule") return rescheduleDashboardWork(record);
+    if (action === "today") return syncWorkOrderPatch(record, { date: todayISO(), status: "Scheduled" });
     if (action === "tomorrow") return syncWorkOrderPatch(record, { date: addDays(todayISO(), 1), status: "Scheduled" });
+    if (action === "next-week") return syncWorkOrderPatch(record, { date: addDays(todayISO(), 7), status: "Scheduled" });
+    if (action === "waiting") return syncWorkOrderPatch(record, { status: "Waiting" });
     if (action === "edit") {
       openWorkOrderById(record.id);
       return;
