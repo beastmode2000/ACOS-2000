@@ -202,6 +202,9 @@ function markDashboard(root: HTMLElement) {
 
   const workSection = command.querySelector<HTMLElement>(".atlas-dashboard-polish-work");
   if (workSection) {
+    for (const lane of Array.from(workSection.querySelectorAll<HTMLElement>("[data-atlas-dashboard-work-lane]"))) {
+      lane.classList.add("atlas-dashboard-polish-person-lane");
+    }
     for (const section of Array.from(workSection.querySelectorAll<HTMLElement>("section"))) {
       const title = normalized(section.querySelector<HTMLElement>("strong")?.textContent || "");
       if (["nick", "addison", "pat", "sean", "patrick tanner", "sean powell"].includes(title)) {
