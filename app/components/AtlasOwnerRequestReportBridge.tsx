@@ -25,7 +25,7 @@ function normalized(value: unknown) {
 
 function ownerReportMain(doc: Document = document) {
   const heading = Array.from(doc.querySelectorAll<HTMLElement>("main h1, main h2")).find(
-    (node) => normalized(node.textContent) === "owner report",
+    (node) => ["weekly report", "owner report"].includes(normalized(node.textContent)),
   );
   return (heading?.closest("main") as HTMLElement | null) || null;
 }
