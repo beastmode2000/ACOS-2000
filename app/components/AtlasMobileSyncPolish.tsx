@@ -325,7 +325,7 @@ function markOwnerReport() {
 
   root.classList.add("atlas-mobile-owner-report-root");
   const sharedHeading = Array.from(root.querySelectorAll<HTMLElement>("h2")).find(
-    (node) => normalized(node.textContent) === "owners report",
+    (node) => ["weekly report", "owners report"].includes(normalized(node.textContent)),
   );
   sharedHeading
     ?.closest<HTMLElement>("section")
