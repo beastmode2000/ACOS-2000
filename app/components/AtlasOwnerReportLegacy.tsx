@@ -750,7 +750,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     await saveReport(
       activeReportId ? status : "Draft",
       items,
-      item.sourceType === "Manual" ? "Note saved to the owner report." : "Report item saved.",
+      item.sourceType === "Manual" ? "Note saved to the weekly report." : "Report item saved.",
     );
   }
 
@@ -765,7 +765,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     }
 
     setSaving(true);
-    setMessage("Saving owner report...");
+    setMessage("Saving weekly report...");
 
     try {
       const id = activeReportId || `owner-report-${propertyId}-${periodStart}-${periodEnd}`;
@@ -837,7 +837,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     await saveReport(
       activeReportId ? status : "Draft",
       nextItems,
-      "Item deleted permanently from the owner report.",
+      "Item deleted permanently from the weekly report.",
     );
   }
 
@@ -992,42 +992,6 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
 
   return (
     <section style={cardStyle}>
-      <section
-        style={{
-          border: `1px solid ${colors.line}`,
-          borderRadius: 12,
-          background: "#fff",
-          padding: isMobile ? 10 : 12,
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <div>
-            <div style={{ color: colors.gold, fontSize: 9, fontWeight: 900, letterSpacing: ".11em", textTransform: "uppercase" }}>Next Week</div>
-            <strong style={{ display: "block", color: colors.navy, marginTop: 2 }}>Upcoming</strong>
-          </div>
-          <button type="button" onClick={addUpcomingItem} style={quietButtonStyle}>Add Upcoming</button>
-        </div>
-        <div style={{ display: "grid", gap: 7, marginTop: 9 }}>
-          {upcomingItems.length ? upcomingItems.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "125px minmax(180px,1fr) minmax(180px,1fr) auto",
-                gap: 7,
-                alignItems: "start",
-              }}
-            >
-              <input type="date" value={item.date} onChange={(event) => updateUpcomingItem(item.id, { date: event.currentTarget.value })} style={controlStyle} />
-              <input value={item.title} onChange={(event) => updateUpcomingItem(item.id, { title: event.currentTarget.value })} placeholder="Upcoming work" style={controlStyle} />
-              <input value={item.notes} onChange={(event) => updateUpcomingItem(item.id, { notes: event.currentTarget.value })} placeholder="Note (optional)" style={controlStyle} />
-              <button type="button" onClick={() => deleteUpcomingItem(item.id)} style={{ ...quietButtonStyle, padding: "9px 10px" }}>Delete</button>
-            </div>
-          )) : <div style={{ color: colors.muted, fontSize: 12 }}>No upcoming items. Add one or refresh from Atlas.</div>}
-        </div>
-      </section>
-
       <div
         style={{
           display: "flex",
@@ -1218,6 +1182,42 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
           {upcomingItems.length ? <span>{upcomingItems.length} upcoming</span> : null}
         </div>
       </div>
+
+      <section
+        style={{
+          border: `1px solid ${colors.line}`,
+          borderRadius: 12,
+          background: "#fff",
+          padding: isMobile ? 10 : 12,
+          marginBottom: 12,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ color: colors.gold, fontSize: 9, fontWeight: 900, letterSpacing: ".11em", textTransform: "uppercase" }}>Next Week</div>
+            <strong style={{ display: "block", color: colors.navy, marginTop: 2 }}>Upcoming</strong>
+          </div>
+          <button type="button" onClick={addUpcomingItem} style={quietButtonStyle}>Add Upcoming</button>
+        </div>
+        <div style={{ display: "grid", gap: 7, marginTop: 9 }}>
+          {upcomingItems.length ? upcomingItems.map((item) => (
+            <div
+              key={item.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "125px minmax(180px,1fr) minmax(180px,1fr) auto",
+                gap: 7,
+                alignItems: "start",
+              }}
+            >
+              <input type="date" value={item.date} onChange={(event) => updateUpcomingItem(item.id, { date: event.currentTarget.value })} style={controlStyle} />
+              <input value={item.title} onChange={(event) => updateUpcomingItem(item.id, { title: event.currentTarget.value })} placeholder="Upcoming work" style={controlStyle} />
+              <input value={item.notes} onChange={(event) => updateUpcomingItem(item.id, { notes: event.currentTarget.value })} placeholder="Note (optional)" style={controlStyle} />
+              <button type="button" onClick={() => deleteUpcomingItem(item.id)} style={{ ...quietButtonStyle, padding: "9px 10px" }}>Delete</button>
+            </div>
+          )) : <div style={{ color: colors.muted, fontSize: 12 }}>No upcoming items. Add one or refresh from Atlas.</div>}
+        </div>
+      </section>
 
       <div
         style={{
