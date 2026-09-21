@@ -551,14 +551,17 @@ export default function AtlasServiceLinkPolish() {
           position: sticky !important;
           top: 0 !important;
           align-self: start !important;
-          height: 100dvh !important;
-          min-height: 100dvh !important;
-          max-height: 100dvh !important;
-          overflow-y: auto !important;
-          overflow-x: hidden !important;
-          overscroll-behavior: contain !important;
           box-sizing: border-box !important;
-          scrollbar-gutter: stable !important;
+        }
+
+        .atlas-sidebar-polished:not(.atlas-sidebar-shell) {
+          height: auto !important;
+          min-height: 0 !important;
+          max-height: none !important;
+          overflow-x: visible !important;
+          overflow-y: visible !important;
+          overscroll-behavior: auto !important;
+          scrollbar-gutter: auto !important;
         }
       }
 
