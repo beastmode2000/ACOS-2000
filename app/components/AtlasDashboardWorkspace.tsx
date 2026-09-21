@@ -2971,7 +2971,10 @@ export default function AtlasDashboardWorkspace(props: any) {
       return;
     }
 
-    await syncWorkOrderPatch(record, { status: "Cancelled", notesHistory });
+    // Atlas DB does not accept "Cancelled" as a work-order status. For a one-time
+    // occurrence, Not Needed closes the item without creating completion history;
+    // notesHistory preserves the explicit NOT NEEDED outcome for reporting/history.
+    await syncWorkOrderPatch(record, { status: "Completed", notesHistory });
   };
   const rescheduleDashboardWork = (record: ServiceRecord) => {
     const currentDate = String(record.date || todayISO()).slice(0, 10);
