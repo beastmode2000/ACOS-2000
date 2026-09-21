@@ -596,6 +596,11 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   const [teamMembers, setTeamMembers] = useState<string[]>([]);
   const [upcomingItems, setUpcomingItems] = useState<UpcomingReportItem[]>([]);
   const [upcomingTouched, setUpcomingTouched] = useState(false);
+  const [reportSearch, setReportSearch] = useState("");
+  const [reportTypeFilter, setReportTypeFilter] = useState<"All" | ReportClass>("All");
+  const [reportDepartmentFilter, setReportDepartmentFilter] = useState("All");
+  const [reportPersonFilter, setReportPersonFilter] = useState("All");
+  const [ownerFacingOnly, setOwnerFacingOnly] = useState(false);
 
   const sourceItems = useMemo(
     () =>
@@ -622,6 +627,54 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   );
 
   const presentation = useMemo(() => buildReportPresentation(items), [items]);
+  const reportEditorItems = useMemo(() => {
+    const search = reportSearch.trim().toLowerCase();
+    return sortReportItems(items).filter((item) => {
+      const reportClass = reportClassForItem(item);
+      if (ownerFacingOnly && reportClass === "Internal Task") return false;
+      if (reportTypeFilter !== "All" && reportClass !== reportTypeFilter) return false;
+      if (reportDepartmentFilter !== "All" && item.department !== reportDepartmentFilter) return false;
+      if (reportPersonFilter !== "All" && item.person !== reportPersonFilter) return false;
+      if (
+        search &&
+        ![
+          item.title,
+          item.notes,
+          item.person,
+          item.department,
+          reportClass,
+          item.sourceType,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(search)
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [
+    items,
+    ownerFacingOnly,
+    reportTypeFilter,
+    reportDepartmentFilter,
+    reportPersonFilter,
+    reportSearch,
+  ]);
+  const reportPeople = useMemo(
+    () =>
+      Array.from(
+        new Set(items.map((item) => item.person.trim()).filter(Boolean)),
+      ).sort((a, b) => a.localeCompare(b)),
+    [items],
+  );
+  const reportDepartments = useMemo(
+    () =>
+      Array.from(
+        new Set(items.map((item) => item.department.trim()).filter(Boolean)),
+      ).sort((a, b) => a.localeCompare(b)),
+    [items],
+  );
   const weekdayColumns = useMemo(() => businessDays(periodStart, periodEnd), [periodStart, periodEnd]);
 
   const atlasUpcomingItems = useMemo(() => {
@@ -1342,11 +1395,116 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
             padding: "8px 0",
           }}
         >
-          Edit report items
+          Prepare Weekly Report
         </summary>
+
+        <div
+          style={{
+            border: `1px solid ${colors.line}`,
+            borderRadius: 11,
+            background: colors.panel,
+            padding: 10,
+            display: "grid",
+            gap: 8,
+            margin: "4px 0 9px",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "minmax(190px,1.4fr) repeat(3,minmax(135px,.8fr))",
+              gap: 7,
+            }}
+          >
+            <input
+              value={reportSearch}
+              onChange={(event) => setReportSearch(event.currentTarget.value)}
+              placeholder="Search title, note, person, area…"
+              aria-label="Search weekly report items"
+              style={controlStyle}
+            />
+            <select
+              value={reportTypeFilter}
+              onChange={(event) => setReportTypeFilter(event.currentTarget.value as "All" | ReportClass)}
+              aria-label="Filter by weekly report type"
+              style={controlStyle}
+            >
+              <option value="All">All report types</option>
+              {reportClasses.map((reportClass) => (
+                <option key={reportClass} value={reportClass}>{reportClass}</option>
+              ))}
+            </select>
+            <select
+              value={reportDepartmentFilter}
+              onChange={(event) => setReportDepartmentFilter(event.currentTarget.value)}
+              aria-label="Filter by department"
+              style={controlStyle}
+            >
+              <option value="All">All departments</option>
+              {reportDepartments.map((department) => (
+                <option key={department} value={department}>{department}</option>
+              ))}
+            </select>
+            <select
+              value={reportPersonFilter}
+              onChange={(event) => setReportPersonFilter(event.currentTarget.value)}
+              aria-label="Filter by person"
+              style={controlStyle}
+            >
+              <option value="All">All people</option>
+              {reportPeople.map((person) => (
+                <option key={person} value={person}>{person}</option>
+              ))}
+            </select>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 8,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => setOwnerFacingOnly((current) => !current)}
+                style={{
+                  ...quietButtonStyle,
+                  padding: "7px 9px",
+                  background: ownerFacingOnly ? colors.navy : "#fff",
+                  color: ownerFacingOnly ? "#fff" : colors.navy,
+                }}
+              >
+                {ownerFacingOnly ? "Owner-facing only ✓" : "Owner-facing only"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setReportSearch("");
+                  setReportTypeFilter("All");
+                  setReportDepartmentFilter("All");
+                  setReportPersonFilter("All");
+                  setOwnerFacingOnly(false);
+                }}
+                style={{ ...quietButtonStyle, padding: "7px 9px" }}
+              >
+                Clear Filters
+              </button>
+            </div>
+            <span style={{ color: colors.muted, fontSize: 11, fontWeight: 750 }}>
+              Showing {reportEditorItems.length} of {items.length}
+            </span>
+          </div>
+        </div>
+
         <div style={{ display: "grid", gap: 7, marginTop: 4 }}>
-          {items.length ? (
-            sortReportItems(items).map((item) => (
+          {reportEditorItems.length ? (
+            reportEditorItems.map((item) => (
               <div
                 key={item.id}
                 style={{
@@ -1425,6 +1583,21 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
                   </button>
                   <button
                     type="button"
+                    onClick={() =>
+                      updateItem(item.id, {
+                        reportClass:
+                          reportClassForItem(item) === "Internal Task"
+                            ? "Completed Work"
+                            : "Internal Task",
+                      })
+                    }
+                    disabled={saving}
+                    style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}
+                  >
+                    {reportClassForItem(item) === "Internal Task" ? "Owner-facing" : "Keep Internal"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => void deleteReportItem(item.id)}
                     disabled={saving}
                     style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}
@@ -1444,7 +1617,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
                 fontSize: 12,
               }}
             >
-              No work activity found for this date range.
+              {items.length ? "No report items match these filters." : "No work activity found for this date range."}
             </div>
           )}
         </div>
