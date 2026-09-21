@@ -176,8 +176,16 @@ export default function AtlasOwnerInputPanel(props: any) {
 
   async function deleteItem(id: string) {
     if (!window.confirm("Delete this owner input request?")) return;
-    await fetch(`/api/atlas-owner-input?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-    await load();
+    setMessage("");
+    try {
+      const res = await fetch(`/api/atlas-owner-input?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Owner input request could not be deleted.");
+      setItems((current) => current.filter((item) => String(item.id) !== String(id)));
+      setMessage("Owner input request deleted.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Owner input request could not be deleted.");
+    }
   }
 
   async function copyLink(item: any) {
@@ -335,8 +343,19 @@ export default function AtlasOwnerInputPanel(props: any) {
             <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
               {answered.map((item) => (
                 <article key={item.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 9, background: "#FAFCFD", display: "grid", gap: 7 }}>
-                  {item.projectTitle ? <div style={{ fontSize: 10, color: colors.muted }}>{item.projectTitle}</div> : null}
-                  <div style={{ fontSize: 11, fontWeight: 800, color: colors.navy }}>{item.question}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                    <div style={{ minWidth: 0 }}>
+                      {item.projectTitle ? <div style={{ fontSize: 10, color: colors.muted }}>{item.projectTitle}</div> : null}
+                      <div style={{ fontSize: 11, fontWeight: 800, color: colors.navy }}>{item.question}</div>
+                    </div>
+                    <button
+                      type="button"
+                      style={{ ...smallButton, color: colors.red, flex: "0 0 auto" }}
+                      onClick={() => deleteItem(item.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
                   {item.context ? <div style={{ fontSize: 10, lineHeight: 1.4, color: colors.text, whiteSpace: "pre-wrap" }}>{item.context}</div> : null}
                   {photoGrid(item.photos)}
                   <div style={{ fontSize: 11, color: colors.green }}>{[item.responseChoice, item.response].filter(Boolean).join(" — ")}</div>
