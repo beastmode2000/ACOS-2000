@@ -22,6 +22,7 @@ type ReportItem = {
   department: string;
   title: string;
   notes: string;
+  vendor?: string;
   reportClass?: ReportClass;
   recurring?: boolean;
 };
@@ -52,6 +53,21 @@ type RoutineGroup = {
   department: string;
   person: string;
   dates: string[];
+};
+
+type RoutineSummary = {
+  key: string;
+  title: string;
+  detail: string;
+  dates: string[];
+};
+
+type VehicleCareItem = {
+  key: string;
+  vehicle: string;
+  status: "Washed" | "Not washed" | "Not needed";
+  date: string;
+  person: string;
 };
 
 type Props = {
@@ -178,8 +194,8 @@ function inferReportClass(row: Row, sourceType: ReportItem["sourceType"]): Repor
   const department = inferDepartment(row);
   const workType = String(row.workType || row.work_type || row.type || "").trim().toLowerCase();
   if (department === "Projects" || workType === "project") return "Project Update";
-  if (isRecurringRecord(row)) return "Routine";
   if (row.vendorId || row.vendor_id || row.vendorName || row.vendor_name) return "Vendor Activity";
+  if (isRecurringRecord(row)) return "Routine";
   if (sourceType === "Task / Routine") return "Internal Task";
   return "Completed Work";
 }
@@ -198,6 +214,14 @@ function displayPerson(row: Row) {
       row.completedBy ||
       "",
   ).trim();
+}
+
+function displayVendor(row: Row) {
+  const values = [row.vendorName, row.vendor_name, row.vendor];
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
 }
 
 function normalizedOutcome(value: unknown) {
@@ -275,6 +299,7 @@ function completedWorkOrderItems(workOrders: Row[]) {
         department: inferDepartment(row),
         title: String(row.title || row.name || "Work order completed"),
         notes: String(historyEntry?.notes || row.completionNotes || ""),
+        vendor: displayVendor(row),
         reportClass: inferReportClass(row, "Work Order"),
         recurring: isRecurringRecord(row),
       });
@@ -323,6 +348,7 @@ function workOrderActionItems(workOrders: Row[]) {
           outcome.detail && normalizedOutcome(outcome.detail) !== normalizedOutcome(outcome.label)
             ? `${outcome.label} — ${outcome.detail}`
             : outcome.label,
+        vendor: displayVendor(row),
         reportClass: "Issue / Follow-Up",
         recurring: isRecurringRecord(row),
       });
@@ -350,6 +376,7 @@ function workOrderActionItems(workOrders: Row[]) {
           department: inferDepartment(row),
           title: String(row.title || row.name || "Work order"),
           notes: lastOutcome,
+          vendor: displayVendor(row),
           reportClass: "Issue / Follow-Up",
           recurring: isRecurringRecord(row),
         });
@@ -392,6 +419,7 @@ function completedTaskItems(tasks: Row[]) {
             meta.addisonNote ||
             "",
         ),
+        vendor: displayVendor({ ...row, ...meta }),
         reportClass: inferReportClass({ ...row, ...meta }, "Task / Routine"),
         recurring: isRecurringRecord({ ...row, ...meta }),
       });
@@ -425,6 +453,7 @@ function completedTeamItems(rows: Row[], propertyId: string) {
         department: inferDepartment(row),
         title: String(row.taskTitle || row.task_title || row.title || "Team work"),
         notes: outcome ? (baseNote ? `${outcome} — ${baseNote}` : outcome) : baseNote,
+        vendor: displayVendor(row),
         reportClass: inferReportClass(row, "Team Work"),
         recurring: isRecurringRecord(row),
       };
@@ -521,15 +550,250 @@ function businessDays(start: string, end: string) {
   return result;
 }
 
+function isNotNeededItem(item: ReportItem) {
+  return normalizedOutcome(item.notes).startsWith("not needed");
+}
+
+function vehicleNameFromTitle(value: unknown) {
+  const title = String(value || "").trim();
+  const match = title.match(/^(?:clean|wash|detail)\s+(.+)$/i);
+  if (!match) return "";
+  const vehicle = match[1].trim();
+  if (
+    !vehicle ||
+    /\b(gutter|garage|floor|room|bar|cabinet|window|door|track|trash|garbage|can|fountain|bird bath|dog|turf)\b/i.test(
+      vehicle,
+    )
+  ) {
+    return "";
+  }
+  return vehicle;
+}
+
+function routineBucket(group: Pick<RoutineGroup, "title" | "department">) {
+  const title = group.title.toLowerCase();
+  if (vehicleNameFromTitle(group.title)) return "vehicle";
+  if (/owner.?update draft|set schedule|schedule.?addison/.test(title)) return "internal";
+  if (/gutter|downspout|flat roof|roof drain/.test(title)) return "gutters";
+  if (/goose|geese/.test(title)) return "goose";
+  if (group.department === "Pool & Spa" || /pool|spa|hot tub|sundance/.test(title)) return "pool";
+  if (group.department === "Landscape") return "grounds";
+  if (group.department === "Dock & Marine") return "dock";
+  if (/check|inspect|walkthrough|mechanical room|front entry/.test(title)) return "checks";
+  if (
+    group.department === "Maintenance & Cleaning" ||
+    /trash|recycl|garbage|laundry|bbq|dog|webs|sliding.?door|pest/.test(title)
+  ) {
+    return "care";
+  }
+  return `other:${group.department || "Other"}`;
+}
+
+function routineSummaries(
+  groups: RoutineGroup[],
+  suppressedNotNeeded: ReportItem[],
+): RoutineSummary[] {
+  const buckets = new Map<string, { dates: Set<string>; examples: Set<string> }>();
+  const add = (key: string, title: string, dates: string[]) => {
+    if (key === "vehicle" || key === "internal") return;
+    const current = buckets.get(key) || { dates: new Set<string>(), examples: new Set<string>() };
+    dates.forEach((date) => current.dates.add(date));
+    if (title) current.examples.add(title);
+    buckets.set(key, current);
+  };
+
+  groups.forEach((group) => add(routineBucket(group), group.title, group.dates));
+  suppressedNotNeeded.forEach((item) =>
+    add(
+      routineBucket({ title: item.title, department: item.department }),
+      item.title,
+      item.date ? [item.date] : [],
+    ),
+  );
+
+  const order = ["gutters", "goose", "grounds", "pool", "checks", "dock", "care"];
+  const titleFor = (key: string) => {
+    if (key === "gutters") return "Gutters / Roof Drainage";
+    if (key === "goose") return "Goose Control";
+    if (key === "grounds") return "Grounds";
+    if (key === "pool") return "Pool & Spa";
+    if (key === "checks") return "Property Checks";
+    if (key === "dock") return "Dock & Marine";
+    if (key === "care") return "Property Care";
+    return key.startsWith("other:") ? key.slice(6) : "Routine Property Care";
+  };
+  const detailFor = (key: string, dates: string[]) => {
+    if (key === "gutters") return "Weekly gutters and roof-drainage areas checked and cleaned as needed.";
+    if (key === "goose") {
+      const noCleanup = suppressedNotNeeded.some(
+        (item) => /goose|geese/i.test(item.title) && isNotNeededItem(item),
+      );
+      return noCleanup
+        ? "Goose control monitored; no cleanup was needed this week."
+        : "Goose control, deterrents, and cleanup needs were monitored and handled as needed.";
+    }
+    if (key === "grounds") return "Routine mowing, edging, leaf cleanup, beds, and grounds care completed.";
+    if (key === "pool") {
+      const hadThursday = dates.some(
+        (date) => new Date(`${date}T12:00:00`).getDay() === 4,
+      );
+      return hadThursday
+        ? "Thursday pool and spa service completed."
+        : "Weekly pool and spa service completed.";
+    }
+    if (key === "checks") return "Routine property checks and walkthroughs completed.";
+    if (key === "dock") return "Routine dock and watercraft care completed.";
+    if (key === "care") return "Routine property cleaning and upkeep completed.";
+    return "Routine work completed.";
+  };
+
+  return Array.from(buckets.entries())
+    .sort(([a], [b]) => {
+      const ai = order.indexOf(a);
+      const bi = order.indexOf(b);
+      if (ai >= 0 || bi >= 0) return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi);
+      return a.localeCompare(b);
+    })
+    .map(([key, value]) => {
+      const dates = Array.from(value.dates).sort();
+      return {
+        key,
+        title: titleFor(key),
+        detail: detailFor(key, dates),
+        dates,
+      };
+    });
+}
+
+function collapseByTitle(rows: ReportItem[]) {
+  const groups = new Map<string, ReportItem[]>();
+  rows.forEach((item) => {
+    const key = itemTitleKey(item) || item.id;
+    groups.set(key, [...(groups.get(key) || []), item]);
+  });
+  return Array.from(groups.values()).map((group) => {
+    const first = group[0];
+    const notes = Array.from(
+      new Set(group.map((item) => meaningfulNotes(item.notes)).filter(Boolean)),
+    );
+    const people = Array.from(new Set(group.map((item) => item.person).filter(Boolean)));
+    return {
+      ...first,
+      id: group.map((item) => item.id).join("|"),
+      date: group.map((item) => item.date).filter(Boolean).sort().at(-1) || first.date,
+      person: people.join(", "),
+      notes: notes.join(" • "),
+    };
+  });
+}
+
+function collapseVendorRows(rows: ReportItem[]) {
+  const groups = new Map<string, ReportItem[]>();
+  rows.forEach((item) => {
+    const key = (item.vendor || item.title || item.id).trim().toLowerCase();
+    groups.set(key, [...(groups.get(key) || []), item]);
+  });
+  return Array.from(groups.values()).map((group) => {
+    const first = group[0];
+    const vendor = group.map((item) => item.vendor).find(Boolean) || "";
+    const activities = Array.from(
+      new Set(
+        group
+          .map((item) => {
+            const note = meaningfulNotes(item.notes);
+            if (vendor && item.title.trim().toLowerCase() !== vendor.trim().toLowerCase()) {
+              return [item.title, note].filter(Boolean).join(" — ");
+            }
+            return note || item.title;
+          })
+          .filter(Boolean),
+      ),
+    );
+    const people = Array.from(new Set(group.map((item) => item.person).filter(Boolean)));
+    return {
+      ...first,
+      id: group.map((item) => item.id).join("|"),
+      title: vendor || first.title,
+      vendor,
+      date: group.map((item) => item.date).filter(Boolean).sort().at(-1) || first.date,
+      person: people.join(", "),
+      notes: activities.join(" • "),
+    };
+  });
+}
+
+function buildVehicleCare(
+  workOrders: Row[],
+  sourceItems: ReportItem[],
+): VehicleCareItem[] {
+  const vehicles = new Map<string, { label: string; sourceIds: Set<string> }>();
+
+  workOrders.forEach((row) => {
+    if (inferDepartment(row) !== "Garage / Vehicles") return;
+    const label = vehicleNameFromTitle(row.title || row.name);
+    if (!label) return;
+    const key = label.toLowerCase();
+    const current = vehicles.get(key) || { label, sourceIds: new Set<string>() };
+    if (row.id) current.sourceIds.add(String(row.id));
+    vehicles.set(key, current);
+  });
+
+  sourceItems.forEach((item) => {
+    const label = vehicleNameFromTitle(item.title);
+    if (!label) return;
+    const key = label.toLowerCase();
+    const current = vehicles.get(key) || { label, sourceIds: new Set<string>() };
+    if (item.sourceId) current.sourceIds.add(item.sourceId);
+    vehicles.set(key, current);
+  });
+
+  return Array.from(vehicles.entries())
+    .map(([key, vehicle]) => {
+      const related = sourceItems.filter((item) => {
+        const itemVehicle = vehicleNameFromTitle(item.title).toLowerCase();
+        return (
+          itemVehicle === key ||
+          (item.sourceId && vehicle.sourceIds.has(item.sourceId))
+        );
+      });
+      const completed = related
+        .filter((item) => !isOutcomeItem(item))
+        .sort((a, b) => b.date.localeCompare(a.date))[0];
+      const notNeeded = related
+        .filter((item) => isNotNeededItem(item))
+        .sort((a, b) => b.date.localeCompare(a.date))[0];
+      const deferred = related
+        .filter((item) => /didn.?t get to|deferred/i.test(item.notes))
+        .sort((a, b) => b.date.localeCompare(a.date))[0];
+      const result = completed || notNeeded || deferred;
+      return {
+        key,
+        vehicle: vehicle.label,
+        status: completed ? "Washed" : notNeeded ? "Not needed" : "Not washed",
+        date: result?.date || "",
+        person: result?.person || "",
+      } as VehicleCareItem;
+    })
+    .sort((a, b) => a.vehicle.localeCompare(b.vehicle));
+}
+
 function buildReportPresentation(items: ReportItem[]) {
+  const suppressedNotNeeded = items.filter(isNotNeededItem);
+  const suppressedNotNeededIds = new Set(suppressedNotNeeded.map((item) => item.id));
+
   const exceptions = items
-    .filter((item) => reportClassForItem(item) === "Issue / Follow-Up" || isOutcomeItem(item))
+    .filter(
+      (item) =>
+        !suppressedNotNeededIds.has(item.id) &&
+        (reportClassForItem(item) === "Issue / Follow-Up" || isOutcomeItem(item)),
+    )
     .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
 
   const exceptionIds = new Set(exceptions.map((item) => item.id));
   const routineItems = items.filter(
     (item) =>
       !exceptionIds.has(item.id) &&
+      !suppressedNotNeededIds.has(item.id) &&
       reportClassForItem(item) === "Routine",
   );
   const grouped = new Map<string, ReportItem[]>();
@@ -557,7 +821,11 @@ function buildReportPresentation(items: ReportItem[]) {
   routineGroups.sort((a, b) => a.department.localeCompare(b.department) || a.title.localeCompare(b.title));
 
   const remaining = items.filter(
-    (item) => !routineItemIds.has(item.id) && !exceptionIds.has(item.id),
+    (item) =>
+      !routineItemIds.has(item.id) &&
+      !exceptionIds.has(item.id) &&
+      !suppressedNotNeededIds.has(item.id) &&
+      !vehicleNameFromTitle(item.title),
   );
   const byClass = (reportClass: ReportClass) =>
     remaining
@@ -571,11 +839,13 @@ function buildReportPresentation(items: ReportItem[]) {
 
   return {
     routineGroups,
-    projectUpdates: byClass("Project Update"),
-    vendorActivity: byClass("Vendor Activity"),
+    routineSummaries: routineSummaries(routineGroups, suppressedNotNeeded),
+    projectUpdates: collapseByTitle(byClass("Project Update")),
+    vendorActivity: collapseVendorRows(byClass("Vendor Activity")),
     completed: byClass("Completed Work"),
     internalTasks: byClass("Internal Task"),
     exceptions,
+    suppressedNotNeeded,
   };
 }
 
@@ -600,7 +870,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   const [reportTypeFilter, setReportTypeFilter] = useState<"All" | ReportClass>("All");
   const [reportDepartmentFilter, setReportDepartmentFilter] = useState("All");
   const [reportPersonFilter, setReportPersonFilter] = useState("All");
-  const [ownerFacingOnly, setOwnerFacingOnly] = useState(false);
+  const [ownerFacingOnly, setOwnerFacingOnly] = useState(true);
 
   const sourceItems = useMemo(
     () =>
@@ -627,11 +897,18 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   );
 
   const presentation = useMemo(() => buildReportPresentation(items), [items]);
+  const vehicleCare = useMemo(
+    () => buildVehicleCare(workOrders, filteredSourceItems),
+    [workOrders, filteredSourceItems],
+  );
   const reportEditorItems = useMemo(() => {
     const search = reportSearch.trim().toLowerCase();
     return sortReportItems(items).filter((item) => {
       const reportClass = reportClassForItem(item);
-      if (ownerFacingOnly && reportClass === "Internal Task") return false;
+      if (
+        ownerFacingOnly &&
+        (reportClass === "Internal Task" || reportClass === "Routine" || isNotNeededItem(item))
+      ) return false;
       if (reportTypeFilter !== "All" && reportClass !== reportTypeFilter) return false;
       if (reportDepartmentFilter !== "All" && item.department !== reportDepartmentFilter) return false;
       if (reportPersonFilter !== "All" && item.person !== reportPersonFilter) return false;
@@ -642,6 +919,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
           item.notes,
           item.person,
           item.department,
+          item.vendor,
           reportClass,
           item.sourceType,
         ]
@@ -690,6 +968,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
       .filter((row) => {
         const statusValue = String(row.status || "").toLowerCase();
         if (statusValue === "completed" || statusValue === "closed" || statusValue === "cancelled") return false;
+        if (isRecurringRecord(row) && inferReportClass(row, "Work Order") === "Routine") return false;
         const due = dateOnly(row.date || row.dueDate || row.due_date);
         return Boolean(due && due >= startKey && due <= endKey);
       })
@@ -735,34 +1014,31 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   }, [propertyId]);
 
   const reportSummary = useMemo(() => {
-    const completedCount =
-      presentation.completed.length +
+    const ownerFacingCount =
+      presentation.routineSummaries.length +
+      vehicleCare.length +
       presentation.projectUpdates.length +
       presentation.vendorActivity.length +
-      presentation.routineGroups.reduce((total, group) => total + group.dates.length, 0);
-    const areaCount = new Set(items.map((item) => item.department).filter(Boolean)).size;
+      presentation.completed.length +
+      presentation.exceptions.length;
     const pieces = [
-      `${completedCount} owner-facing work item${completedCount === 1 ? "" : "s"} recorded${areaCount ? ` across ${areaCount} areas` : ""}.`,
+      `${ownerFacingCount} owner-facing update${ownerFacingCount === 1 ? "" : "s"} prepared from Atlas activity.`,
     ];
-    if (presentation.routineGroups.length) {
-      pieces.push(
-        `${presentation.routineGroups.length} recurring routine${presentation.routineGroups.length === 1 ? " is" : "s are"} summarized regardless of whether the source is a Task or Work Order.`,
-      );
+    if (presentation.routineSummaries.length) {
+      pieces.push(`${presentation.routineSummaries.length} routine property-care summaries.`);
     }
-    if (presentation.projectUpdates.length) {
-      pieces.push(`${presentation.projectUpdates.length} project update${presentation.projectUpdates.length === 1 ? "" : "s"} included.`);
+    if (vehicleCare.length) {
+      const washed = vehicleCare.filter((item) => item.status === "Washed").length;
+      pieces.push(`${washed} of ${vehicleCare.length} tracked vehicles washed this week.`);
     }
     if (presentation.vendorActivity.length) {
-      pieces.push(`${presentation.vendorActivity.length} vendor activit${presentation.vendorActivity.length === 1 ? "y" : "ies"} included.`);
+      pieces.push(`${presentation.vendorActivity.length} vendor update${presentation.vendorActivity.length === 1 ? "" : "s"}.`);
     }
     if (presentation.exceptions.length) {
       pieces.push(`${presentation.exceptions.length} issue/follow-up item${presentation.exceptions.length === 1 ? "" : "s"} need visibility.`);
     }
-    if (presentation.internalTasks.length) {
-      pieces.push(`${presentation.internalTasks.length} internal task${presentation.internalTasks.length === 1 ? " is" : "s are"} held out of the owner-facing PDF unless reclassified.`);
-    }
     return pieces.join(" ");
-  }, [items, presentation]);
+  }, [presentation, vehicleCare]);
 
   async function loadSavedReports(openCurrentReport = false) {
     const response = await fetch(
@@ -1039,21 +1315,26 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
             .join("")}</section>`
         : "";
 
-    const routineMarkup = presentation.routineGroups.length
-      ? `<section class="section"><h2>Routine Work Summary</h2><div class="routine-wrap"><table class="routine"><thead><tr><th>Routine</th>${weekdayColumns
-          .map((day) => `<th>${escapeHtml(day.label)}<span>${escapeHtml(displayDate(day.date))}</span></th>`)
-          .join("")}</tr></thead><tbody>${presentation.routineGroups
+    const routineMarkup = presentation.routineSummaries.length
+      ? `<section class="section"><h2>Routine Property Care</h2>${presentation.routineSummaries
           .map(
-            (group) =>
-              `<tr><td><strong>${escapeHtml(group.title)}</strong><span>${escapeHtml([group.department, group.person].filter(Boolean).join(" · "))}</span></td>${weekdayColumns
-                .map((day) => `<td class="mark">${group.dates.includes(day.date) ? "✓" : "—"}</td>`)
-                .join("")}</tr>`,
+            (row) =>
+              `<div class="item"><div class="item-main"><strong>${escapeHtml(row.title)}</strong></div><div class="note">${escapeHtml(row.detail)}</div></div>`,
           )
-          .join("")}</tbody></table></div></section>`
+          .join("")}</section>`
+      : "";
+
+    const vehicleMarkup = vehicleCare.length
+      ? `<section class="section"><h2>Vehicle Care</h2>${vehicleCare
+          .map(
+            (row) =>
+              `<div class="item"><div class="item-main"><strong>${escapeHtml(row.vehicle)}</strong><span>${escapeHtml([row.person, displayDate(row.date)].filter(Boolean).join(" · "))}</span></div><div class="note">${escapeHtml(row.status)}</div></div>`,
+          )
+          .join("")}</section>`
       : "";
 
     const projectMarkup = sectionMarkup("Project Updates", presentation.projectUpdates);
-    const vendorMarkup = sectionMarkup("Vendor Activity", presentation.vendorActivity);
+    const vendorMarkup = sectionMarkup("Vendors", presentation.vendorActivity);
     const completedMarkup = sectionMarkup("Completed Work", presentation.completed);
 
     const exceptionMarkup = presentation.exceptions.length
@@ -1094,7 +1375,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     </style></head><body>
       <header class="header"><div class="brand"><img class="logo" src="${escapeHtml(logoUrl)}" alt="Atlas"><div><div class="brand-name">ATLAS</div><div class="brand-sub">2000 Estate Systems</div></div></div><div class="report-head"><h1>Weekly Report</h1><div class="property">Property ${escapeHtml(propertyId)}</div><div class="dates">${escapeHtml(displayDate(periodStart))} – ${escapeHtml(displayDate(periodEnd))}</div></div></header>
       <div class="summary"><strong>This Week</strong><br>${escapeHtml(reportSummary)}</div>
-      ${routineMarkup}${projectMarkup}${vendorMarkup}${completedMarkup}${exceptionMarkup}${upcomingMarkup}
+      ${routineMarkup}${vehicleMarkup}${projectMarkup}${vendorMarkup}${completedMarkup}${exceptionMarkup}${upcomingMarkup}
       <div class="footer"><span>Atlas Estate Operations</span><span>${escapeHtml(reportTitle(periodStart, periodEnd))}</span></div>
     </body></html>`);
     popup.document.close();
@@ -1322,15 +1603,62 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         </div>
         <div style={{ color: colors.navy, fontSize: 13, lineHeight: 1.5, marginTop: 5 }}>{reportSummary}</div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, color: colors.muted, fontSize: 10.5 }}>
-          {presentation.routineGroups.length ? <span>{presentation.routineGroups.length} routines summarized</span> : null}
+          {presentation.routineSummaries.length ? <span>{presentation.routineSummaries.length} routine summaries</span> : null}
+          {vehicleCare.length ? <span>{vehicleCare.filter((item) => item.status === "Washed").length}/{vehicleCare.length} vehicles washed</span> : null}
           {presentation.projectUpdates.length ? <span>{presentation.projectUpdates.length} project updates</span> : null}
-          {presentation.vendorActivity.length ? <span>{presentation.vendorActivity.length} vendor updates</span> : null}
+          {presentation.vendorActivity.length ? <span>{presentation.vendorActivity.length} vendors</span> : null}
           {presentation.completed.length ? <span>{presentation.completed.length} completed work</span> : null}
           {presentation.exceptions.length ? <span>{presentation.exceptions.length} issues / follow-up</span> : null}
           {presentation.internalTasks.length ? <span>{presentation.internalTasks.length} internal tasks held out</span> : null}
           {upcomingItems.length ? <span>{upcomingItems.length} upcoming</span> : null}
         </div>
       </div>
+
+      <section
+        style={{
+          border: `1px solid ${colors.line}`,
+          borderRadius: 12,
+          background: "#fff",
+          padding: isMobile ? 10 : 12,
+          marginBottom: 12,
+        }}
+      >
+        <div style={{ color: colors.gold, fontSize: 9, fontWeight: 900, letterSpacing: ".11em", textTransform: "uppercase" }}>
+          Owner-facing draft
+        </div>
+        <strong style={{ display: "block", color: colors.navy, marginTop: 2 }}>Quick Review</strong>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginTop: 9 }}>
+          <div style={{ display: "grid", gap: 5 }}>
+            <strong style={{ color: colors.navy, fontSize: 11 }}>Routine Property Care</strong>
+            {presentation.routineSummaries.length ? presentation.routineSummaries.map((row) => (
+              <div key={row.key} style={{ fontSize: 11, color: colors.text || colors.navy }}>
+                <strong>{row.title}</strong> — {row.detail}
+              </div>
+            )) : <div style={{ color: colors.muted, fontSize: 11 }}>No routine summary for this period.</div>}
+          </div>
+          <div style={{ display: "grid", gap: 5 }}>
+            <strong style={{ color: colors.navy, fontSize: 11 }}>Vehicle Care</strong>
+            {vehicleCare.length ? vehicleCare.map((row) => (
+              <div key={row.key} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
+                <span>{row.vehicle}</span>
+                <strong style={{ color: colors.navy }}>{row.status}</strong>
+              </div>
+            )) : <div style={{ color: colors.muted, fontSize: 11 }}>No tracked vehicle-cleaning records found.</div>}
+          </div>
+        </div>
+        {presentation.vendorActivity.length ? (
+          <div style={{ marginTop: 10 }}>
+            <strong style={{ color: colors.navy, fontSize: 11 }}>Vendors</strong>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 5 }}>
+              {presentation.vendorActivity.map((item) => (
+                <span key={item.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 999, padding: "4px 7px", fontSize: 10, color: colors.navy }}>
+                  {item.title}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </section>
 
       <section
         style={{
@@ -1382,7 +1710,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         <span>
           <strong style={{ color: colors.navy }}>{items.length}</strong> source items in report
         </span>
-        <span>Recurring Tasks and recurring Work Orders both roll into Routine Work. Internal Tasks stay out of the owner-facing PDF unless you reclassify them.</span>
+        <span>Routine source work is condensed into owner-facing summaries. Use Prepare Weekly Report for exceptions, projects, vendors, completed work, and anything you want to hide.</span>
       </div>
 
       <details>
@@ -1480,7 +1808,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
                   color: ownerFacingOnly ? "#fff" : colors.navy,
                 }}
               >
-                {ownerFacingOnly ? "Owner-facing only ✓" : "Owner-facing only"}
+                {ownerFacingOnly ? "Owner review queue ✓" : "Owner review queue"}
               </button>
               <button
                 type="button"
@@ -1489,7 +1817,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
                   setReportTypeFilter("All");
                   setReportDepartmentFilter("All");
                   setReportPersonFilter("All");
-                  setOwnerFacingOnly(false);
+                  setOwnerFacingOnly(true);
                 }}
                 style={{ ...quietButtonStyle, padding: "7px 9px" }}
               >
