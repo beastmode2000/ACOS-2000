@@ -8,8 +8,10 @@ type ReportClass =
   | "Routine"
   | "Project Update"
   | "Vendor Activity"
+  | "IT / Technology"
   | "Completed Work"
   | "Issue / Follow-Up"
+  | "Other"
   | "Internal Task";
 
 type ReportItem = {
@@ -25,6 +27,7 @@ type ReportItem = {
   vendor?: string;
   reportClass?: ReportClass;
   recurring?: boolean;
+  includeInReport?: boolean;
 };
 
 type UpcomingReportItem = {
@@ -100,10 +103,17 @@ const reportClasses: ReportClass[] = [
   "Routine",
   "Project Update",
   "Vendor Activity",
+  "IT / Technology",
   "Completed Work",
   "Issue / Follow-Up",
+  "Other",
   "Internal Task",
 ];
+
+function reportClassLabel(reportClass: ReportClass) {
+  if (reportClass === "Vendor Activity") return "Vendors";
+  return reportClass;
+}
 
 const reportOutcomeLabels = [
   "not needed this time",
@@ -195,6 +205,19 @@ function inferReportClass(row: Row, sourceType: ReportItem["sourceType"]): Repor
   const workType = String(row.workType || row.work_type || row.type || "").trim().toLowerCase();
   if (department === "Projects" || workType === "project") return "Project Update";
   if (row.vendorId || row.vendor_id || row.vendorName || row.vendor_name) return "Vendor Activity";
+  const value = recordText(
+    row.title,
+    row.name,
+    row.notes,
+    row.note,
+    row.category,
+    row.workCategory,
+    row.work_category,
+    row.location,
+  );
+  if (/\b(xfinity|wi-?fi|wifi|network|internet|unifi|control4|alarm\.com|router|modem|ethernet|access point|computer|printer|server|av|audio|video)\b/.test(value)) {
+    return "IT / Technology";
+  }
   if (isRecurringRecord(row)) return "Routine";
   if (sourceType === "Task / Routine") return "Internal Task";
   return "Completed Work";
@@ -559,9 +582,9 @@ function vehicleNameFromTitle(value: unknown) {
   const match = title.match(/^(?:clean|wash|detail)\s+(.+)$/i);
   if (!match) return "";
   const vehicle = match[1].trim();
+  if (!vehicle) return "";
   if (
-    !vehicle ||
-    /\b(gutter|garage|floor|room|bar|cabinet|window|door|track|trash|garbage|can|fountain|bird bath|dog|turf)\b/i.test(
+    !/\b(ford|f-?150|raptor|mercedes|porsche|rivian|lucid|kia|sportage|subaru|car|truck|suv|vehicle)\b/i.test(
       vehicle,
     )
   ) {
@@ -778,10 +801,11 @@ function buildVehicleCare(
 }
 
 function buildReportPresentation(items: ReportItem[]) {
-  const suppressedNotNeeded = items.filter(isNotNeededItem);
+  const includedItems = items.filter((item) => item.includeInReport !== false);
+  const suppressedNotNeeded = includedItems.filter(isNotNeededItem);
   const suppressedNotNeededIds = new Set(suppressedNotNeeded.map((item) => item.id));
 
-  const exceptions = items
+  const exceptions = includedItems
     .filter(
       (item) =>
         !suppressedNotNeededIds.has(item.id) &&
@@ -790,7 +814,7 @@ function buildReportPresentation(items: ReportItem[]) {
     .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
 
   const exceptionIds = new Set(exceptions.map((item) => item.id));
-  const routineItems = items.filter(
+  const routineItems = includedItems.filter(
     (item) =>
       !exceptionIds.has(item.id) &&
       !suppressedNotNeededIds.has(item.id) &&
@@ -820,7 +844,7 @@ function buildReportPresentation(items: ReportItem[]) {
 
   routineGroups.sort((a, b) => a.department.localeCompare(b.department) || a.title.localeCompare(b.title));
 
-  const remaining = items.filter(
+  const remaining = includedItems.filter(
     (item) =>
       !routineItemIds.has(item.id) &&
       !exceptionIds.has(item.id) &&
@@ -842,7 +866,9 @@ function buildReportPresentation(items: ReportItem[]) {
     routineSummaries: routineSummaries(routineGroups, suppressedNotNeeded),
     projectUpdates: collapseByTitle(byClass("Project Update")),
     vendorActivity: collapseVendorRows(byClass("Vendor Activity")),
+    itTechnology: byClass("IT / Technology"),
     completed: byClass("Completed Work"),
+    other: byClass("Other"),
     internalTasks: byClass("Internal Task"),
     exceptions,
     suppressedNotNeeded,
@@ -870,7 +896,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   const [reportTypeFilter, setReportTypeFilter] = useState<"All" | ReportClass>("All");
   const [reportDepartmentFilter, setReportDepartmentFilter] = useState("All");
   const [reportPersonFilter, setReportPersonFilter] = useState("All");
-  const [ownerFacingOnly, setOwnerFacingOnly] = useState(true);
+  const [reportIncludeFilter, setReportIncludeFilter] = useState<"All" | "Included" | "Removed">("All");
 
   const sourceItems = useMemo(
     () =>
@@ -905,10 +931,9 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     const search = reportSearch.trim().toLowerCase();
     return sortReportItems(items).filter((item) => {
       const reportClass = reportClassForItem(item);
-      if (
-        ownerFacingOnly &&
-        (reportClass === "Internal Task" || reportClass === "Routine" || isNotNeededItem(item))
-      ) return false;
+      const included = item.includeInReport !== false;
+      if (reportIncludeFilter === "Included" && !included) return false;
+      if (reportIncludeFilter === "Removed" && included) return false;
       if (reportTypeFilter !== "All" && reportClass !== reportTypeFilter) return false;
       if (reportDepartmentFilter !== "All" && item.department !== reportDepartmentFilter) return false;
       if (reportPersonFilter !== "All" && item.person !== reportPersonFilter) return false;
@@ -920,7 +945,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
           item.person,
           item.department,
           item.vendor,
-          reportClass,
+          reportClassLabel(reportClass),
           item.sourceType,
         ]
           .join(" ")
@@ -933,12 +958,43 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     });
   }, [
     items,
-    ownerFacingOnly,
+    reportIncludeFilter,
     reportTypeFilter,
     reportDepartmentFilter,
     reportPersonFilter,
     reportSearch,
   ]);
+
+  const reviewQueueItems = useMemo(
+    () =>
+      reportEditorItems.filter((item) => {
+        const reportClass = reportClassForItem(item);
+        return (
+          item.includeInReport !== false &&
+          reportClass !== "Routine" &&
+          reportClass !== "Internal Task" &&
+          !isNotNeededItem(item)
+        );
+      }),
+    [reportEditorItems],
+  );
+
+  const supportingReportItems = useMemo(
+    () =>
+      reportEditorItems.filter((item) => {
+        const reportClass = reportClassForItem(item);
+        return (
+          item.includeInReport !== false &&
+          (reportClass === "Routine" || reportClass === "Internal Task" || isNotNeededItem(item))
+        );
+      }),
+    [reportEditorItems],
+  );
+
+  const removedReportItems = useMemo(
+    () => reportEditorItems.filter((item) => item.includeInReport === false),
+    [reportEditorItems],
+  );
   const reportPeople = useMemo(
     () =>
       Array.from(
@@ -1019,7 +1075,9 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
       vehicleCare.length +
       presentation.projectUpdates.length +
       presentation.vendorActivity.length +
+      presentation.itTechnology.length +
       presentation.completed.length +
+      presentation.other.length +
       presentation.exceptions.length;
     const pieces = [
       `${ownerFacingCount} owner-facing update${ownerFacingCount === 1 ? "" : "s"} prepared from Atlas activity.`,
@@ -1166,6 +1224,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         notes: "",
         reportClass: "Completed Work",
         recurring: false,
+        includeInReport: true,
       },
     ]);
   }
@@ -1335,7 +1394,9 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
 
     const projectMarkup = sectionMarkup("Project Updates", presentation.projectUpdates);
     const vendorMarkup = sectionMarkup("Vendors", presentation.vendorActivity);
+    const itMarkup = sectionMarkup("IT / Technology", presentation.itTechnology);
     const completedMarkup = sectionMarkup("Completed Work", presentation.completed);
+    const otherMarkup = sectionMarkup("Other Updates", presentation.other);
 
     const exceptionMarkup = presentation.exceptions.length
       ? `<section class="section"><h2>Issues / Follow-Up</h2>${presentation.exceptions
@@ -1375,7 +1436,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     </style></head><body>
       <header class="header"><div class="brand"><img class="logo" src="${escapeHtml(logoUrl)}" alt="Atlas"><div><div class="brand-name">ATLAS</div><div class="brand-sub">2000 Estate Systems</div></div></div><div class="report-head"><h1>Weekly Report</h1><div class="property">Property ${escapeHtml(propertyId)}</div><div class="dates">${escapeHtml(displayDate(periodStart))} – ${escapeHtml(displayDate(periodEnd))}</div></div></header>
       <div class="summary"><strong>This Week</strong><br>${escapeHtml(reportSummary)}</div>
-      ${routineMarkup}${vehicleMarkup}${projectMarkup}${vendorMarkup}${completedMarkup}${exceptionMarkup}${upcomingMarkup}
+      ${routineMarkup}${vehicleMarkup}${projectMarkup}${vendorMarkup}${itMarkup}${completedMarkup}${otherMarkup}${exceptionMarkup}${upcomingMarkup}
       <div class="footer"><span>Atlas Estate Operations</span><span>${escapeHtml(reportTitle(periodStart, periodEnd))}</span></div>
     </body></html>`);
     popup.document.close();
@@ -1416,6 +1477,105 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     background: "#fff",
     border: `1px solid ${colors.line}`,
   };
+
+  const renderReportItemEditor = (item: ReportItem) => (
+    <div
+      key={item.id}
+      style={{
+        border: `1px solid ${colors.line}`,
+        borderRadius: 11,
+        padding: 9,
+        display: "grid",
+        gridTemplateColumns: isMobile
+          ? "1fr"
+          : "110px 120px 150px minmax(145px,.8fr) minmax(200px,1.35fr) minmax(200px,1.35fr) auto",
+        gap: 7,
+        alignItems: "start",
+        opacity: item.includeInReport === false ? 0.72 : 1,
+        background: item.includeInReport === false ? colors.panel : "#fff",
+      }}
+    >
+      <input
+        type="date"
+        value={item.date}
+        onChange={(event) => updateItem(item.id, { date: event.currentTarget.value })}
+        style={controlStyle}
+      />
+      <select
+        value={item.person}
+        onChange={(event) => updateItem(item.id, { person: event.currentTarget.value })}
+        aria-label="Who did it"
+        style={controlStyle}
+      >
+        <option value="">Who did it…</option>
+        {item.person && !teamMembers.includes(item.person) ? <option value={item.person}>{item.person}</option> : null}
+        {teamMembers.map((name) => <option key={name} value={name}>{name}</option>)}
+      </select>
+      <select
+        value={reportClassForItem(item)}
+        onChange={(event) =>
+          updateItem(item.id, {
+            reportClass: event.currentTarget.value as ReportClass,
+            recurring: event.currentTarget.value === "Routine" ? true : item.recurring,
+          })
+        }
+        aria-label="Weekly report section"
+        style={controlStyle}
+      >
+        {reportClasses.map((reportClass) => (
+          <option key={reportClass} value={reportClass}>{reportClassLabel(reportClass)}</option>
+        ))}
+      </select>
+      <select
+        value={item.department}
+        onChange={(event) => updateItem(item.id, { department: event.currentTarget.value })}
+        style={controlStyle}
+      >
+        {departments.map((department) => (
+          <option key={department}>{department}</option>
+        ))}
+      </select>
+      <input
+        value={item.title}
+        onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })}
+        placeholder="Work activity"
+        style={controlStyle}
+      />
+      <textarea
+        value={item.notes}
+        onChange={(event) => updateItem(item.id, { notes: event.currentTarget.value })}
+        placeholder="Outcome / notes"
+        rows={isMobile ? 2 : 1}
+        style={{ ...controlStyle, resize: "vertical", minHeight: 38 }}
+      />
+      <div style={{ display: "grid", gap: 5 }}>
+        <button
+          type="button"
+          onClick={() => void saveReportItem(item.id)}
+          disabled={saving}
+          style={{ ...buttonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          onClick={() => updateItem(item.id, { includeInReport: item.includeInReport === false })}
+          disabled={saving}
+          style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}
+        >
+          {item.includeInReport === false ? "Add to Report" : "Remove from Report"}
+        </button>
+        <button
+          type="button"
+          onClick={() => void deleteReportItem(item.id)}
+          disabled={saving}
+          style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <section style={cardStyle}>
@@ -1710,7 +1870,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         <span>
           <strong style={{ color: colors.navy }}>{items.length}</strong> source items in report
         </span>
-        <span>Routine source work is condensed into owner-facing summaries. Use Prepare Weekly Report for exceptions, projects, vendors, completed work, and anything you want to hide.</span>
+        <span>Use Prepare Weekly Report to filter by section, area, person, and report status. Remove from Report hides an item from the owner PDF without deleting the Atlas record.</span>
       </div>
 
       <details>
@@ -1742,7 +1902,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
               display: "grid",
               gridTemplateColumns: isMobile
                 ? "1fr"
-                : "minmax(190px,1.4fr) repeat(3,minmax(135px,.8fr))",
+                : "minmax(190px,1.4fr) repeat(4,minmax(125px,.8fr))",
               gap: 7,
             }}
           >
@@ -1759,10 +1919,20 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
               aria-label="Filter by weekly report type"
               style={controlStyle}
             >
-              <option value="All">All report types</option>
+              <option value="All">All sections</option>
               {reportClasses.map((reportClass) => (
-                <option key={reportClass} value={reportClass}>{reportClass}</option>
+                <option key={reportClass} value={reportClass}>{reportClassLabel(reportClass)}</option>
               ))}
+            </select>
+            <select
+              value={reportIncludeFilter}
+              onChange={(event) => setReportIncludeFilter(event.currentTarget.value as "All" | "Included" | "Removed")}
+              aria-label="Filter by report inclusion"
+              style={controlStyle}
+            >
+              <option value="All">All items</option>
+              <option value="Included">In report</option>
+              <option value="Removed">Removed from report</option>
             </select>
             <select
               value={reportDepartmentFilter}
@@ -1797,145 +1967,59 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
               flexWrap: "wrap",
             }}
           >
-            <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={() => setOwnerFacingOnly((current) => !current)}
-                style={{
-                  ...quietButtonStyle,
-                  padding: "7px 9px",
-                  background: ownerFacingOnly ? colors.navy : "#fff",
-                  color: ownerFacingOnly ? "#fff" : colors.navy,
-                }}
-              >
-                {ownerFacingOnly ? "Owner review queue ✓" : "Owner review queue"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setReportSearch("");
-                  setReportTypeFilter("All");
-                  setReportDepartmentFilter("All");
-                  setReportPersonFilter("All");
-                  setOwnerFacingOnly(true);
-                }}
-                style={{ ...quietButtonStyle, padding: "7px 9px" }}
-              >
-                Clear Filters
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setReportSearch("");
+                setReportTypeFilter("All");
+                setReportIncludeFilter("All");
+                setReportDepartmentFilter("All");
+                setReportPersonFilter("All");
+              }}
+              style={{ ...quietButtonStyle, padding: "7px 9px" }}
+            >
+              Clear Filters
+            </button>
             <span style={{ color: colors.muted, fontSize: 11, fontWeight: 750 }}>
-              Showing {reportEditorItems.length} of {items.length}
+              Showing {reportEditorItems.length} of {items.length} · {items.filter((item) => item.includeInReport !== false).length} in report · {items.filter((item) => item.includeInReport === false).length} removed
             </span>
           </div>
         </div>
 
-        <div style={{ display: "grid", gap: 7, marginTop: 4 }}>
-          {reportEditorItems.length ? (
-            reportEditorItems.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  border: `1px solid ${colors.line}`,
-                  borderRadius: 11,
-                  padding: 9,
-                  display: "grid",
-                  gridTemplateColumns: isMobile
-                    ? "1fr"
-                    : "110px 120px 150px minmax(145px,.8fr) minmax(200px,1.35fr) minmax(200px,1.35fr) auto",
-                  gap: 7,
-                  alignItems: "start",
-                }}
-              >
-                <input
-                  type="date"
-                  value={item.date}
-                  onChange={(event) => updateItem(item.id, { date: event.currentTarget.value })}
-                  style={controlStyle}
-                />
-                <select
-                  value={item.person}
-                  onChange={(event) => updateItem(item.id, { person: event.currentTarget.value })}
-                  aria-label="Who did it"
-                  style={controlStyle}
-                >
-                  <option value="">Who did it…</option>
-                  {item.person && !teamMembers.includes(item.person) ? <option value={item.person}>{item.person}</option> : null}
-                  {teamMembers.map((name) => <option key={name} value={name}>{name}</option>)}
-                </select>
-                <select
-                  value={reportClassForItem(item)}
-                  onChange={(event) =>
-                    updateItem(item.id, {
-                      reportClass: event.currentTarget.value as ReportClass,
-                      recurring: event.currentTarget.value === "Routine" ? true : item.recurring,
-                    })
-                  }
-                  aria-label="Weekly report type"
-                  style={controlStyle}
-                >
-                  {reportClasses.map((reportClass) => (
-                    <option key={reportClass} value={reportClass}>{reportClass}</option>
-                  ))}
-                </select>
-                <select
-                  value={item.department}
-                  onChange={(event) => updateItem(item.id, { department: event.currentTarget.value })}
-                  style={controlStyle}
-                >
-                  {departments.map((department) => (
-                    <option key={department}>{department}</option>
-                  ))}
-                </select>
-                <input
-                  value={item.title}
-                  onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })}
-                  placeholder="Work activity"
-                  style={controlStyle}
-                />
-                <textarea
-                  value={item.notes}
-                  onChange={(event) => updateItem(item.id, { notes: event.currentTarget.value })}
-                  placeholder="Outcome / notes"
-                  rows={isMobile ? 2 : 1}
-                  style={{ ...controlStyle, resize: "vertical", minHeight: 38 }}
-                />
-                <div style={{ display: "grid", gap: 5 }}>
-                  <button
-                    type="button"
-                    onClick={() => void saveReportItem(item.id)}
-                    disabled={saving}
-                    style={{ ...buttonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateItem(item.id, {
-                        reportClass:
-                          reportClassForItem(item) === "Internal Task"
-                            ? "Completed Work"
-                            : "Internal Task",
-                      })
-                    }
-                    disabled={saving}
-                    style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}
-                  >
-                    {reportClassForItem(item) === "Internal Task" ? "Owner-facing" : "Keep Internal"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void deleteReportItem(item.id)}
-                    disabled={saving}
-                    style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}
-                  >
-                    Delete
-                  </button>
-                </div>
+        <div style={{ display: "grid", gap: 9, marginTop: 4 }}>
+          {reviewQueueItems.length ? (
+            <section style={{ display: "grid", gap: 7, border: 0, padding: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                <strong style={{ color: colors.navy, fontSize: 12 }}>Owner Review</strong>
+                <span style={{ color: colors.muted, fontSize: 10 }}>{reviewQueueItems.length}</span>
               </div>
-            ))
-          ) : (
+              {reviewQueueItems.map(renderReportItemEditor)}
+            </section>
+          ) : null}
+
+          {supportingReportItems.length ? (
+            <details>
+              <summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 800, fontSize: 12, padding: "6px 0" }}>
+                Routine / Internal / Not Needed ({supportingReportItems.length})
+              </summary>
+              <div style={{ display: "grid", gap: 7, marginTop: 6 }}>
+                {supportingReportItems.map(renderReportItemEditor)}
+              </div>
+            </details>
+          ) : null}
+
+          {removedReportItems.length ? (
+            <details>
+              <summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 800, fontSize: 12, padding: "6px 0" }}>
+                Removed from Report ({removedReportItems.length})
+              </summary>
+              <div style={{ display: "grid", gap: 7, marginTop: 6 }}>
+                {removedReportItems.map(renderReportItemEditor)}
+              </div>
+            </details>
+          ) : null}
+
+          {!reportEditorItems.length ? (
             <div
               style={{
                 padding: 16,
@@ -1947,7 +2031,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
             >
               {items.length ? "No report items match these filters." : "No work activity found for this date range."}
             </div>
-          )}
+          ) : null}
         </div>
       </details>
 
