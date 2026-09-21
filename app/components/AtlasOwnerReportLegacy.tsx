@@ -4,6 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 
 type Row = Record<string, unknown>;
 
+type ReportClass =
+  | "Routine"
+  | "Project Update"
+  | "Vendor Activity"
+  | "Completed Work"
+  | "Issue / Follow-Up"
+  | "Internal Task";
+
 type ReportItem = {
   id: string;
   sourceKey: string;
@@ -14,6 +22,8 @@ type ReportItem = {
   department: string;
   title: string;
   notes: string;
+  reportClass?: ReportClass;
+  recurring?: boolean;
 };
 
 type UpcomingReportItem = {
@@ -68,6 +78,15 @@ const departments = [
   "Projects",
   "Administration",
   "Other",
+];
+
+const reportClasses: ReportClass[] = [
+  "Routine",
+  "Project Update",
+  "Vendor Activity",
+  "Completed Work",
+  "Issue / Follow-Up",
+  "Internal Task",
 ];
 
 const reportOutcomeLabels = [
@@ -143,6 +162,26 @@ function inferDepartment(row: Row) {
   if (/admin|invoice|receipt|owner update|meeting|email|computer/.test(value)) return "Administration";
   if (/clean|maintenance|appliance|house|window|trash|reset|service|repair|inspect/.test(value)) return "Maintenance & Cleaning";
   return "Other";
+}
+
+function isRecurringRecord(row: Row) {
+  return Boolean(
+    row.recurring === true ||
+      row.isRecurring === true ||
+      row.is_recurring === true ||
+      row.repeat === true ||
+      row.repeats === true,
+  );
+}
+
+function inferReportClass(row: Row, sourceType: ReportItem["sourceType"]): ReportClass {
+  const department = inferDepartment(row);
+  const workType = String(row.workType || row.work_type || row.type || "").trim().toLowerCase();
+  if (department === "Projects" || workType === "project") return "Project Update";
+  if (isRecurringRecord(row)) return "Routine";
+  if (row.vendorId || row.vendor_id || row.vendorName || row.vendor_name) return "Vendor Activity";
+  if (sourceType === "Task / Routine") return "Internal Task";
+  return "Completed Work";
 }
 
 function displayPerson(row: Row) {
@@ -236,6 +275,8 @@ function completedWorkOrderItems(workOrders: Row[]) {
         department: inferDepartment(row),
         title: String(row.title || row.name || "Work order completed"),
         notes: String(historyEntry?.notes || row.completionNotes || ""),
+        reportClass: inferReportClass(row, "Work Order"),
+        recurring: isRecurringRecord(row),
       });
     }
   }
@@ -282,6 +323,8 @@ function workOrderActionItems(workOrders: Row[]) {
           outcome.detail && normalizedOutcome(outcome.detail) !== normalizedOutcome(outcome.label)
             ? `${outcome.label} — ${outcome.detail}`
             : outcome.label,
+        reportClass: "Issue / Follow-Up",
+        recurring: isRecurringRecord(row),
       });
     }
 
@@ -307,6 +350,8 @@ function workOrderActionItems(workOrders: Row[]) {
           department: inferDepartment(row),
           title: String(row.title || row.name || "Work order"),
           notes: lastOutcome,
+          reportClass: "Issue / Follow-Up",
+          recurring: isRecurringRecord(row),
         });
       }
     }
@@ -347,6 +392,8 @@ function completedTaskItems(tasks: Row[]) {
             meta.addisonNote ||
             "",
         ),
+        reportClass: inferReportClass({ ...row, ...meta }, "Task / Routine"),
+        recurring: isRecurringRecord({ ...row, ...meta }),
       });
     }
   }
@@ -378,6 +425,8 @@ function completedTeamItems(rows: Row[], propertyId: string) {
         department: inferDepartment(row),
         title: String(row.taskTitle || row.task_title || row.title || "Team work"),
         notes: outcome ? (baseNote ? `${outcome} — ${baseNote}` : outcome) : baseNote,
+        reportClass: inferReportClass(row, "Team Work"),
+        recurring: isRecurringRecord(row),
       };
     })
     .filter((item) => Boolean(item.id && item.date));
@@ -431,6 +480,15 @@ function isOutcomeItem(item: ReportItem) {
   return reportOutcomeLabels.some((label) => value.startsWith(label));
 }
 
+function reportClassForItem(item: ReportItem): ReportClass {
+  if (item.reportClass && reportClasses.includes(item.reportClass)) return item.reportClass;
+  if (isOutcomeItem(item)) return "Issue / Follow-Up";
+  if (item.recurring) return "Routine";
+  if (item.department === "Projects") return "Project Update";
+  if (item.sourceType === "Task / Routine") return "Internal Task";
+  return "Completed Work";
+}
+
 function meaningfulNotes(value: unknown) {
   const note = String(value || "").trim();
   if (!note) return "";
@@ -464,13 +522,21 @@ function businessDays(start: string, end: string) {
 }
 
 function buildReportPresentation(items: ReportItem[]) {
-  const outcomeItems = items.filter(isOutcomeItem);
-  const completedItems = items.filter((item) => !isOutcomeItem(item));
+  const exceptions = items
+    .filter((item) => reportClassForItem(item) === "Issue / Follow-Up" || isOutcomeItem(item))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
+
+  const exceptionIds = new Set(exceptions.map((item) => item.id));
+  const routineItems = items.filter(
+    (item) =>
+      !exceptionIds.has(item.id) &&
+      (reportClassForItem(item) === "Routine" || item.recurring === true),
+  );
   const grouped = new Map<string, ReportItem[]>();
 
-  completedItems.forEach((item) => {
+  routineItems.forEach((item) => {
     const identity = item.sourceId || itemTitleKey(item);
-    const key = `${item.sourceType}|${identity}|${itemTitleKey(item)}`;
+    const key = `routine|${identity}|${itemTitleKey(item)}`;
     grouped.set(key, [...(grouped.get(key) || []), item]);
   });
 
@@ -478,7 +544,6 @@ function buildReportPresentation(items: ReportItem[]) {
   const routineItemIds = new Set<string>();
   grouped.forEach((rows, key) => {
     const dates = uniqueDates(rows.map((row) => row.date));
-    if (dates.length < 2) return;
     rows.forEach((row) => routineItemIds.add(row.id));
     routineGroups.push({
       key,
@@ -489,13 +554,29 @@ function buildReportPresentation(items: ReportItem[]) {
     });
   });
 
-  routineGroups.sort((a, b) => a.title.localeCompare(b.title));
-  const completed = completedItems
-    .filter((item) => !routineItemIds.has(item.id))
-    .sort((a, b) => a.department.localeCompare(b.department) || a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
-  const exceptions = [...outcomeItems].sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
+  routineGroups.sort((a, b) => a.department.localeCompare(b.department) || a.title.localeCompare(b.title));
 
-  return { routineGroups, completed, exceptions };
+  const remaining = items.filter(
+    (item) => !routineItemIds.has(item.id) && !exceptionIds.has(item.id),
+  );
+  const byClass = (reportClass: ReportClass) =>
+    remaining
+      .filter((item) => reportClassForItem(item) === reportClass)
+      .sort(
+        (a, b) =>
+          a.date.localeCompare(b.date) ||
+          a.department.localeCompare(b.department) ||
+          a.title.localeCompare(b.title),
+      );
+
+  return {
+    routineGroups,
+    projectUpdates: byClass("Project Update"),
+    vendorActivity: byClass("Vendor Activity"),
+    completed: byClass("Completed Work"),
+    internalTasks: byClass("Internal Task"),
+    exceptions,
+  };
 }
 
 export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMobile }: Props) {
@@ -601,14 +682,31 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   }, [propertyId]);
 
   const reportSummary = useMemo(() => {
-    const completedCount = presentation.completed.length + presentation.routineGroups.reduce((total, group) => total + group.dates.length, 0);
+    const completedCount =
+      presentation.completed.length +
+      presentation.projectUpdates.length +
+      presentation.vendorActivity.length +
+      presentation.routineGroups.reduce((total, group) => total + group.dates.length, 0);
     const areaCount = new Set(items.map((item) => item.department).filter(Boolean)).size;
-    const pieces = [`${completedCount} completed work item${completedCount === 1 ? "" : "s"} recorded${areaCount ? ` across ${areaCount} areas` : ""}.`];
+    const pieces = [
+      `${completedCount} owner-facing work item${completedCount === 1 ? "" : "s"} recorded${areaCount ? ` across ${areaCount} areas` : ""}.`,
+    ];
     if (presentation.routineGroups.length) {
-      pieces.push(`${presentation.routineGroups.length} recurring routine${presentation.routineGroups.length === 1 ? " was" : "s were"} rolled up by completion day.`);
+      pieces.push(
+        `${presentation.routineGroups.length} recurring routine${presentation.routineGroups.length === 1 ? " is" : "s are"} summarized regardless of whether the source is a Task or Work Order.`,
+      );
+    }
+    if (presentation.projectUpdates.length) {
+      pieces.push(`${presentation.projectUpdates.length} project update${presentation.projectUpdates.length === 1 ? "" : "s"} included.`);
+    }
+    if (presentation.vendorActivity.length) {
+      pieces.push(`${presentation.vendorActivity.length} vendor activit${presentation.vendorActivity.length === 1 ? "y" : "ies"} included.`);
     }
     if (presentation.exceptions.length) {
-      pieces.push(`${presentation.exceptions.length} item${presentation.exceptions.length === 1 ? "" : "s"} had a deferred, not-needed, or in-progress update.`);
+      pieces.push(`${presentation.exceptions.length} issue/follow-up item${presentation.exceptions.length === 1 ? "" : "s"} need visibility.`);
+    }
+    if (presentation.internalTasks.length) {
+      pieces.push(`${presentation.internalTasks.length} internal task${presentation.internalTasks.length === 1 ? " is" : "s are"} held out of the owner-facing PDF unless reclassified.`);
     }
     return pieces.join(" ");
   }, [items, presentation]);
@@ -737,6 +835,8 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         department: "Other",
         title: "Note",
         notes: "",
+        reportClass: "Completed Work",
+        recurring: false,
       },
     ]);
   }
@@ -876,51 +976,44 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     if (!popup) return;
 
     const logoUrl = `${window.location.origin}/atlas-logo.png`;
-    const completedByDepartment = departments
-      .map((department) => ({
-        department,
-        rows: presentation.completed.filter((item) => item.department === department),
-      }))
-      .filter((group) => group.rows.length);
+    const sectionMarkup = (heading: string, rows: ReportItem[]) =>
+      rows.length
+        ? `<section class="section"><h2>${escapeHtml(heading)}</h2>${rows
+            .map((item) => {
+              const note = meaningfulNotes(item.notes);
+              return `<div class="item"><div class="item-main"><strong>${escapeHtml(item.title || "Work activity")}</strong><span>${escapeHtml([item.department, item.person, displayDate(item.date)].filter(Boolean).join(" · "))}</span></div>${note ? `<div class="note">${escapeHtml(note)}</div>` : ""}</div>`;
+            })
+            .join("")}</section>`
+        : "";
 
     const routineMarkup = presentation.routineGroups.length
-      ? `<section class="section"><h2>Routine Work</h2><div class="routine-wrap"><table class="routine"><thead><tr><th>Routine</th>${weekdayColumns
+      ? `<section class="section"><h2>Routine Work Summary</h2><div class="routine-wrap"><table class="routine"><thead><tr><th>Routine</th>${weekdayColumns
           .map((day) => `<th>${escapeHtml(day.label)}<span>${escapeHtml(displayDate(day.date))}</span></th>`)
           .join("")}</tr></thead><tbody>${presentation.routineGroups
           .map(
             (group) =>
-              `<tr><td><strong>${escapeHtml(group.title)}</strong>${group.person ? `<span>${escapeHtml(group.person)}</span>` : ""}</td>${weekdayColumns
+              `<tr><td><strong>${escapeHtml(group.title)}</strong><span>${escapeHtml([group.department, group.person].filter(Boolean).join(" · "))}</span></td>${weekdayColumns
                 .map((day) => `<td class="mark">${group.dates.includes(day.date) ? "✓" : "—"}</td>`)
                 .join("")}</tr>`,
           )
           .join("")}</tbody></table></div></section>`
       : "";
 
-    const completedMarkup = completedByDepartment.length
-      ? `<section class="section"><h2>Completed Work</h2>${completedByDepartment
-          .map(
-            (group) =>
-              `<div class="dept-group"><h3>${escapeHtml(group.department)}</h3>${group.rows
-                .map((item) => {
-                  const note = meaningfulNotes(item.notes);
-                  return `<div class="item"><div class="item-main"><strong>${escapeHtml(item.title || "Work activity")}</strong><span>${escapeHtml([item.person, displayDate(item.date)].filter(Boolean).join(" · "))}</span></div>${note ? `<div class="note">${escapeHtml(note)}</div>` : ""}</div>`;
-                })
-                .join("")}</div>`,
-          )
-          .join("")}</section>`
-      : "";
+    const projectMarkup = sectionMarkup("Project Updates", presentation.projectUpdates);
+    const vendorMarkup = sectionMarkup("Vendor Activity", presentation.vendorActivity);
+    const completedMarkup = sectionMarkup("Completed Work", presentation.completed);
 
     const exceptionMarkup = presentation.exceptions.length
-      ? `<section class="section"><h2>Open / Deferred</h2>${presentation.exceptions
+      ? `<section class="section"><h2>Issues / Follow-Up</h2>${presentation.exceptions
           .map(
             (item) =>
-              `<div class="item"><div class="item-main"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml([item.person, displayDate(item.date)].filter(Boolean).join(" · "))}</span></div><div class="note">${escapeHtml(item.notes)}</div></div>`,
+              `<div class="item"><div class="item-main"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml([item.department, item.person, displayDate(item.date)].filter(Boolean).join(" · "))}</span></div><div class="note">${escapeHtml(item.notes)}</div></div>`,
           )
           .join("")}</section>`
       : "";
 
     const upcomingMarkup = upcomingItems.length
-      ? `<section class="section"><h2>Next Week</h2>${upcomingItems
+      ? `<section class="section"><h2>Upcoming · Next 7 Days</h2>${upcomingItems
           .filter((row) => row.title.trim() || row.notes.trim())
           .map(
             (row) =>
@@ -948,7 +1041,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     </style></head><body>
       <header class="header"><div class="brand"><img class="logo" src="${escapeHtml(logoUrl)}" alt="Atlas"><div><div class="brand-name">ATLAS</div><div class="brand-sub">2000 Estate Systems</div></div></div><div class="report-head"><h1>Weekly Report</h1><div class="property">Property ${escapeHtml(propertyId)}</div><div class="dates">${escapeHtml(displayDate(periodStart))} – ${escapeHtml(displayDate(periodEnd))}</div></div></header>
       <div class="summary"><strong>This Week</strong><br>${escapeHtml(reportSummary)}</div>
-      ${routineMarkup}${completedMarkup}${exceptionMarkup}${upcomingMarkup}
+      ${routineMarkup}${projectMarkup}${vendorMarkup}${completedMarkup}${exceptionMarkup}${upcomingMarkup}
       <div class="footer"><span>Atlas Estate Operations</span><span>${escapeHtml(reportTitle(periodStart, periodEnd))}</span></div>
     </body></html>`);
     popup.document.close();
@@ -1176,9 +1269,12 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         </div>
         <div style={{ color: colors.navy, fontSize: 13, lineHeight: 1.5, marginTop: 5 }}>{reportSummary}</div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, color: colors.muted, fontSize: 10.5 }}>
-          {presentation.routineGroups.length ? <span>{presentation.routineGroups.length} routines rolled up</span> : null}
-          {presentation.completed.length ? <span>{presentation.completed.length} one-time items</span> : null}
-          {presentation.exceptions.length ? <span>{presentation.exceptions.length} open/deferred updates</span> : null}
+          {presentation.routineGroups.length ? <span>{presentation.routineGroups.length} routines summarized</span> : null}
+          {presentation.projectUpdates.length ? <span>{presentation.projectUpdates.length} project updates</span> : null}
+          {presentation.vendorActivity.length ? <span>{presentation.vendorActivity.length} vendor updates</span> : null}
+          {presentation.completed.length ? <span>{presentation.completed.length} completed work</span> : null}
+          {presentation.exceptions.length ? <span>{presentation.exceptions.length} issues / follow-up</span> : null}
+          {presentation.internalTasks.length ? <span>{presentation.internalTasks.length} internal tasks held out</span> : null}
           {upcomingItems.length ? <span>{upcomingItems.length} upcoming</span> : null}
         </div>
       </div>
@@ -1233,7 +1329,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
         <span>
           <strong style={{ color: colors.navy }}>{items.length}</strong> source items in report
         </span>
-        <span>Print / PDF now rolls recurring work into one line.</span>
+        <span>Recurring Tasks and recurring Work Orders both roll into Routine Work. Internal Tasks stay out of the owner-facing PDF unless you reclassify them.</span>
       </div>
 
       <details>
@@ -1260,7 +1356,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
                   display: "grid",
                   gridTemplateColumns: isMobile
                     ? "1fr"
-                    : "110px 120px minmax(145px,.8fr) minmax(220px,1.5fr) minmax(220px,1.5fr) auto",
+                    : "110px 120px 150px minmax(145px,.8fr) minmax(200px,1.35fr) minmax(200px,1.35fr) auto",
                   gap: 7,
                   alignItems: "start",
                 }}
@@ -1280,6 +1376,21 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
                   <option value="">Who did it…</option>
                   {item.person && !teamMembers.includes(item.person) ? <option value={item.person}>{item.person}</option> : null}
                   {teamMembers.map((name) => <option key={name} value={name}>{name}</option>)}
+                </select>
+                <select
+                  value={reportClassForItem(item)}
+                  onChange={(event) =>
+                    updateItem(item.id, {
+                      reportClass: event.currentTarget.value as ReportClass,
+                      recurring: event.currentTarget.value === "Routine" ? true : item.recurring,
+                    })
+                  }
+                  aria-label="Weekly report type"
+                  style={controlStyle}
+                >
+                  {reportClasses.map((reportClass) => (
+                    <option key={reportClass} value={reportClass}>{reportClass}</option>
+                  ))}
                 </select>
                 <select
                   value={item.department}
