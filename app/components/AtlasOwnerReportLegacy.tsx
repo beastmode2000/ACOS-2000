@@ -14,6 +14,14 @@ type ReportClass =
   | "Other"
   | "Internal Task";
 
+type ReportPhoto = {
+  id: string;
+  name: string;
+  caption: string;
+  dataUrl: string;
+  createdAt: string;
+};
+
 type ReportItem = {
   id: string;
   sourceKey: string;
@@ -28,6 +36,10 @@ type ReportItem = {
   reportClass?: ReportClass;
   recurring?: boolean;
   includeInReport?: boolean;
+  reportCategory?: string;
+  highPriority?: boolean;
+  ownerNote?: string;
+  reportPhotos?: ReportPhoto[];
 };
 
 type UpcomingReportItem = {
@@ -96,6 +108,20 @@ const departments = [
   "Pool & Spa",
   "Projects",
   "Administration",
+  "Other",
+];
+
+const reportCategories = [
+  "Garage / Vehicles",
+  "Dock & Marine",
+  "Landscaping",
+  "HVAC / Mechanical",
+  "Pool & Spa",
+  "Maintenance & Cleaning",
+  "Vendors",
+  "IT / Technology",
+  "Projects",
+  "Administration / Office",
   "Other",
 ];
 
@@ -539,6 +565,68 @@ function reportClassForItem(item: ReportItem): ReportClass {
   if (item.department === "Projects") return "Project Update";
   if (item.sourceType === "Task / Routine") return "Internal Task";
   return "Completed Work";
+}
+
+function reportCategoryForItem(item: ReportItem) {
+  if (item.reportCategory && reportCategories.includes(item.reportCategory)) return item.reportCategory;
+  const text = recordText(item.title, item.notes, item.department, item.vendor, item.reportClass);
+  if (item.vendor || reportClassForItem(item) === "Vendor Activity") return "Vendors";
+  if (reportClassForItem(item) === "IT / Technology" || /\b(xfinity|wi-?fi|wifi|network|internet|unifi|control4|alarm\.com|router|modem|ethernet|access point|printer|server|av)\b/.test(text)) return "IT / Technology";
+  if (/\b(hvac|boiler|furnace|heat pump|air handler|thermostat|filter|mechanical|radiant|vitodens|viessmann)\b/.test(text)) return "HVAC / Mechanical";
+  if (item.department === "Garage / Vehicles") return "Garage / Vehicles";
+  if (item.department === "Dock & Marine") return "Dock & Marine";
+  if (item.department === "Landscape") return "Landscaping";
+  if (item.department === "Pool & Spa") return "Pool & Spa";
+  if (item.department === "Projects") return "Projects";
+  if (item.department === "Administration") return "Administration / Office";
+  if (item.department === "Maintenance & Cleaning") return "Maintenance & Cleaning";
+  return "Other";
+}
+
+async function reportPhotoFromFile(file: File): Promise<ReportPhoto> {
+  const original = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Could not read image."));
+    reader.readAsDataURL(file);
+  });
+
+  let dataUrl = original;
+  try {
+    dataUrl = await new Promise<string>((resolve) => {
+      const image = new Image();
+      image.onload = () => {
+        const max = 1200;
+        const scale = Math.min(1, max / Math.max(image.naturalWidth || 1, image.naturalHeight || 1));
+        if (scale >= 1 && original.length < 900_000) {
+          resolve(original);
+          return;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const context = canvas.getContext("2d");
+        if (!context) {
+          resolve(original);
+          return;
+        }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.78));
+      };
+      image.onerror = () => resolve(original);
+      image.src = original;
+    });
+  } catch {
+    dataUrl = original;
+  }
+
+  return {
+    id: `weekly-report-photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: file.name || "Photo",
+    caption: "",
+    dataUrl,
+    createdAt: new Date().toISOString(),
+  };
 }
 
 function meaningfulNotes(value: unknown) {
@@ -1046,9 +1134,9 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
 
   useEffect(() => {
     if (!activeReportId && !upcomingTouched) {
-      setUpcomingItems(atlasUpcomingItems);
+      setUpcomingItems([]);
     }
-  }, [atlasUpcomingItems, activeReportId, upcomingTouched]);
+  }, [periodStart, periodEnd, activeReportId, upcomingTouched]);
 
   useEffect(() => {
     void fetch("/api/atlas-team", { cache: "no-store", credentials: "include" })
@@ -1070,33 +1158,17 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   }, [propertyId]);
 
   const reportSummary = useMemo(() => {
-    const ownerFacingCount =
-      presentation.routineSummaries.length +
-      vehicleCare.length +
-      presentation.projectUpdates.length +
-      presentation.vendorActivity.length +
-      presentation.itTechnology.length +
-      presentation.completed.length +
-      presentation.other.length +
-      presentation.exceptions.length;
+    const included = items.filter((item) => item.includeInReport !== false);
+    const priorities = included.filter((item) => item.highPriority).length;
+    const categories = new Set(included.map(reportCategoryForItem)).size;
     const pieces = [
-      `${ownerFacingCount} owner-facing update${ownerFacingCount === 1 ? "" : "s"} prepared from Atlas activity.`,
+      `${included.length} item${included.length === 1 ? "" : "s"} selected for the owner report across ${categories} categor${categories === 1 ? "y" : "ies"}.`,
     ];
-    if (presentation.routineSummaries.length) {
-      pieces.push(`${presentation.routineSummaries.length} routine property-care summaries.`);
-    }
-    if (vehicleCare.length) {
-      const washed = vehicleCare.filter((item) => item.status === "Washed").length;
-      pieces.push(`${washed} of ${vehicleCare.length} tracked vehicles washed this week.`);
-    }
-    if (presentation.vendorActivity.length) {
-      pieces.push(`${presentation.vendorActivity.length} vendor update${presentation.vendorActivity.length === 1 ? "" : "s"}.`);
-    }
-    if (presentation.exceptions.length) {
-      pieces.push(`${presentation.exceptions.length} issue/follow-up item${presentation.exceptions.length === 1 ? "" : "s"} need visibility.`);
-    }
+    if (priorities) pieces.push(`${priorities} high-priority item${priorities === 1 ? "" : "s"}.`);
+    if (upcomingItems.length) pieces.push(`${upcomingItems.length} upcoming item${upcomingItems.length === 1 ? "" : "s"} selected.`);
     return pieces.join(" ");
-  }, [presentation, vehicleCare]);
+  }, [items, upcomingItems]);
+
 
   async function loadSavedReports(openCurrentReport = false) {
     const response = await fetch(
@@ -1170,7 +1242,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     setActiveReportId("");
     setStatus("Draft");
     setItems(filteredSourceItems);
-    setUpcomingItems(atlasUpcomingItems);
+    setUpcomingItems([]);
     setDraftTouched(false);
     setUpcomingTouched(false);
     setMessage("Weekly report refreshed from Atlas work activity.");
@@ -1205,6 +1277,50 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   function deleteUpcomingItem(id: string) {
     setUpcomingTouched(true);
     setUpcomingItems((current) => current.filter((item) => item.id !== id));
+  }
+
+  function addAtlasUpcomingItem(item: UpcomingReportItem) {
+    setUpcomingTouched(true);
+    setUpcomingItems((current) =>
+      current.some((row) => row.id === item.id) ? current : [...current, { ...item }],
+    );
+  }
+
+  async function addReportPhotoFiles(itemId: string, files: FileList | File[]) {
+    const selected = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
+    if (!selected.length) return;
+    const currentItem = items.find((item) => item.id === itemId);
+    const room = Math.max(0, 3 - (currentItem?.reportPhotos?.length || 0));
+    if (!room) {
+      setMessage("Weekly report items support up to 3 photos.");
+      return;
+    }
+    try {
+      const photos = await Promise.all(selected.slice(0, room).map(reportPhotoFromFile));
+      updateItem(itemId, {
+        reportPhotos: [...(currentItem?.reportPhotos || []), ...photos].slice(0, 3),
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Photo could not be added.");
+    }
+  }
+
+  function removeReportPhoto(itemId: string, photoId: string) {
+    const item = items.find((row) => row.id === itemId);
+    if (!item) return;
+    updateItem(itemId, {
+      reportPhotos: (item.reportPhotos || []).filter((photo) => photo.id !== photoId),
+    });
+  }
+
+  function updateReportPhotoCaption(itemId: string, photoId: string, caption: string) {
+    const item = items.find((row) => row.id === itemId);
+    if (!item) return;
+    updateItem(itemId, {
+      reportPhotos: (item.reportPhotos || []).map((photo) =>
+        photo.id === photoId ? { ...photo, caption } : photo,
+      ),
+    });
   }
 
   function addManualItem() {
@@ -1359,67 +1475,54 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
   }
 
   function printReport() {
-    if (!items.length) return;
+    const included = sortReportItems(items.filter((item) => item.includeInReport !== false));
+    if (!included.length && !upcomingItems.length) return;
     const popup = window.open("", "_blank");
     if (!popup) return;
 
     const logoUrl = `${window.location.origin}/atlas-logo.png`;
-    const sectionMarkup = (heading: string, rows: ReportItem[]) =>
-      rows.length
-        ? `<section class="section"><h2>${escapeHtml(heading)}</h2>${rows
-            .map((item) => {
-              const note = meaningfulNotes(item.notes);
-              return `<div class="item"><div class="item-main"><strong>${escapeHtml(item.title || "Work activity")}</strong><span>${escapeHtml([item.department, item.person, displayDate(item.date)].filter(Boolean).join(" · "))}</span></div>${note ? `<div class="note">${escapeHtml(note)}</div>` : ""}</div>`;
-            })
-            .join("")}</section>`
-        : "";
+    const photoMarkup = (item: ReportItem) => {
+      const photos = Array.isArray(item.reportPhotos) ? item.reportPhotos.filter((photo) => photo?.dataUrl) : [];
+      if (!photos.length) return "";
+      return `<div class="photos">${photos
+        .slice(0, 3)
+        .map((photo) => `<figure><img src="${escapeHtml(photo.dataUrl)}" alt="${escapeHtml(photo.caption || photo.name || "Report photo")}">${photo.caption ? `<figcaption>${escapeHtml(photo.caption)}</figcaption>` : ""}</figure>`)
+        .join("")}</div>`;
+    };
+    const itemMarkup = (item: ReportItem) => {
+      const note = String(item.ownerNote || "").trim();
+      return `<div class="item"><div class="item-main"><strong>${escapeHtml(item.title || "Work activity")}</strong><span>${escapeHtml(displayDate(item.date))}</span></div>${note ? `<div class="note">${escapeHtml(note)}</div>` : ""}${photoMarkup(item)}</div>`;
+    };
 
-    const routineMarkup = presentation.routineSummaries.length
-      ? `<section class="section"><h2>Routine Property Care</h2>${presentation.routineSummaries
-          .map(
-            (row) =>
-              `<div class="item"><div class="item-main"><strong>${escapeHtml(row.title)}</strong></div><div class="note">${escapeHtml(row.detail)}</div></div>`,
-          )
-          .join("")}</section>`
+    const highPriority = included.filter((item) => item.highPriority);
+    const normalItems = included.filter((item) => !item.highPriority);
+    const grouped = new Map<string, ReportItem[]>();
+    normalItems.forEach((item) => {
+      const category = reportCategoryForItem(item);
+      grouped.set(category, [...(grouped.get(category) || []), item]);
+    });
+
+    const priorityMarkup = highPriority.length
+      ? `<section class="section priority"><h2>High Priority / Needs Attention</h2>${highPriority.map(itemMarkup).join("")}</section>`
       : "";
 
-    const vehicleMarkup = vehicleCare.length
-      ? `<section class="section"><h2>Vehicle Care</h2>${vehicleCare
-          .map(
-            (row) =>
-              `<div class="item"><div class="item-main"><strong>${escapeHtml(row.vehicle)}</strong><span>${escapeHtml([row.person, displayDate(row.date)].filter(Boolean).join(" · "))}</span></div><div class="note">${escapeHtml(row.status)}</div></div>`,
-          )
-          .join("")}</section>`
-      : "";
-
-    const projectMarkup = sectionMarkup("Project Updates", presentation.projectUpdates);
-    const vendorMarkup = sectionMarkup("Vendors", presentation.vendorActivity);
-    const itMarkup = sectionMarkup("IT / Technology", presentation.itTechnology);
-    const completedMarkup = sectionMarkup("Completed Work", presentation.completed);
-    const otherMarkup = sectionMarkup("Other Updates", presentation.other);
-
-    const exceptionMarkup = presentation.exceptions.length
-      ? `<section class="section"><h2>Issues / Follow-Up</h2>${presentation.exceptions
-          .map(
-            (item) =>
-              `<div class="item"><div class="item-main"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml([item.department, item.person, displayDate(item.date)].filter(Boolean).join(" · "))}</span></div><div class="note">${escapeHtml(item.notes)}</div></div>`,
-          )
-          .join("")}</section>`
-      : "";
+    const categoryMarkup = reportCategories
+      .map((category) => {
+        const rows = grouped.get(category) || [];
+        if (!rows.length) return "";
+        return `<section class="section"><h2>${escapeHtml(category)}</h2>${rows.map(itemMarkup).join("")}</section>`;
+      })
+      .join("");
 
     const upcomingMarkup = upcomingItems.length
-      ? `<section class="section"><h2>Upcoming · Next 7 Days</h2>${upcomingItems
+      ? `<section class="section"><h2>Upcoming</h2>${upcomingItems
           .filter((row) => row.title.trim() || row.notes.trim())
-          .map(
-            (row) =>
-              `<div class="upcoming"><div><strong>${escapeHtml(row.title || "Upcoming work")}</strong>${row.notes ? `<div class="note">${escapeHtml(row.notes)}</div>` : ""}</div><span>${escapeHtml(displayDate(row.date))}</span></div>`,
-          )
+          .sort((a, b) => a.date.localeCompare(b.date))
+          .map((row) => `<div class="item"><div class="item-main"><strong>${escapeHtml(row.title || "Upcoming work")}</strong><span>${escapeHtml(displayDate(row.date))}</span></div>${row.notes ? `<div class="note">${escapeHtml(row.notes)}</div>` : ""}</div>`)
           .join("")}</section>`
       : "";
 
-    popup.document.write(`<!doctype html><html><head><title>${escapeHtml(
-      reportTitle(periodStart, periodEnd),
-    )}</title><style>
+    popup.document.write(`<!doctype html><html><head><title>${escapeHtml(reportTitle(periodStart, periodEnd))}</title><style>
       @page{size:letter;margin:.48in}
       *{box-sizing:border-box}
       body{font-family:Arial,Helvetica,sans-serif;color:#0b2a44;margin:0;background:#fff;font-size:10px;line-height:1.35}
@@ -1427,16 +1530,16 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
       .brand{display:flex;align-items:center;gap:11px}.logo{width:58px;height:58px;object-fit:contain}.brand-name{font-size:18px;font-weight:800;letter-spacing:.08em}.brand-sub{font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:#667788;margin-top:2px}
       .report-head{text-align:right}.report-head h1{margin:0;font-size:22px;line-height:1.05}.report-head .property{font-size:11px;font-weight:700;margin-top:4px}.report-head .dates{font-size:9px;color:#667788;margin-top:2px}
       .summary{padding:11px 13px;background:#f5f8fb;border-left:4px solid #c99a3d;margin-bottom:14px;font-size:10.5px}
-      .section{margin:0 0 15px;break-inside:auto}.section h2{font-size:13px;margin:0 0 7px;padding-bottom:4px;border-bottom:1px solid #cfd9e2;text-transform:uppercase;letter-spacing:.06em}.dept-group{margin-bottom:8px}.dept-group h3{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#7a8794;margin:8px 0 2px}
-      .item{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;padding:4px 0;border-bottom:1px solid #edf1f4;break-inside:avoid}.item-main{display:flex;justify-content:space-between;gap:14px;align-items:baseline}.item-main strong{font-size:10px}.item-main span{font-size:8.5px;color:#6a7886;white-space:nowrap}.note{font-size:9px;color:#46596b;padding-right:8px}
-      .routine-wrap{overflow:hidden;border:1px solid #d7e0e8;border-radius:6px}.routine{width:100%;border-collapse:collapse}.routine th,.routine td{border-right:1px solid #e4e9ee;border-bottom:1px solid #e4e9ee;padding:5px 6px;text-align:center}.routine th:first-child,.routine td:first-child{text-align:left;width:48%}.routine th{background:#f5f8fb;font-size:8px;text-transform:uppercase;letter-spacing:.04em}.routine th span{display:block;font-size:7px;color:#7a8794;margin-top:1px}.routine td:first-child strong{display:block;font-size:9.5px}.routine td:first-child span{display:block;font-size:7.5px;color:#7a8794;margin-top:1px}.routine .mark{font-size:12px;font-weight:800;color:#0b6b48}.routine tr:last-child td{border-bottom:0}.routine th:last-child,.routine td:last-child{border-right:0}
-      .upcoming{display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px solid #edf1f4}.upcoming strong{font-size:9.5px}.upcoming span{font-size:8.5px;color:#6a7886;white-space:nowrap}
+      .section{margin:0 0 15px}.section h2{font-size:13px;margin:0 0 7px;padding-bottom:4px;border-bottom:1px solid #cfd9e2;text-transform:uppercase;letter-spacing:.06em}
+      .priority{border:1px solid #e8c66f;border-left:4px solid #c99a3d;border-radius:7px;padding:9px 11px;background:#fffaf0}
+      .item{display:grid;gap:3px;padding:5px 0;border-bottom:1px solid #edf1f4;break-inside:avoid}.item-main{display:flex;justify-content:space-between;gap:14px;align-items:baseline}.item-main strong{font-size:10px}.item-main span{font-size:8.5px;color:#6a7886;white-space:nowrap}.note{font-size:9px;color:#46596b;padding-right:8px}
+      .photos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:5px}.photos figure{margin:0}.photos img{width:100%;max-height:160px;object-fit:cover;border:1px solid #d7e0e8;border-radius:6px}.photos figcaption{font-size:7.5px;color:#6a7886;margin-top:2px}
       .footer{margin-top:16px;padding-top:7px;border-top:1px solid #c99a3d;display:flex;justify-content:space-between;color:#7a8794;font-size:7.5px}
-      @media print{.section{page-break-inside:auto}.item,.routine tr,.upcoming{page-break-inside:avoid}}
+      @media print{.section,.item,.photos figure{page-break-inside:avoid}}
     </style></head><body>
       <header class="header"><div class="brand"><img class="logo" src="${escapeHtml(logoUrl)}" alt="Atlas"><div><div class="brand-name">ATLAS</div><div class="brand-sub">2000 Estate Systems</div></div></div><div class="report-head"><h1>Weekly Report</h1><div class="property">Property ${escapeHtml(propertyId)}</div><div class="dates">${escapeHtml(displayDate(periodStart))} – ${escapeHtml(displayDate(periodEnd))}</div></div></header>
       <div class="summary"><strong>This Week</strong><br>${escapeHtml(reportSummary)}</div>
-      ${routineMarkup}${vehicleMarkup}${projectMarkup}${vendorMarkup}${itMarkup}${completedMarkup}${otherMarkup}${exceptionMarkup}${upcomingMarkup}
+      ${priorityMarkup}${categoryMarkup}${upcomingMarkup}
       <div class="footer"><span>Atlas Estate Operations</span><span>${escapeHtml(reportTitle(periodStart, periodEnd))}</span></div>
     </body></html>`);
     popup.document.close();
@@ -1478,104 +1581,148 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
     border: `1px solid ${colors.line}`,
   };
 
-  const renderReportItemEditor = (item: ReportItem) => (
-    <div
-      key={item.id}
-      style={{
-        border: `1px solid ${colors.line}`,
-        borderRadius: 11,
-        padding: 9,
-        display: "grid",
-        gridTemplateColumns: isMobile
-          ? "1fr"
-          : "110px 120px 150px minmax(145px,.8fr) minmax(200px,1.35fr) minmax(200px,1.35fr) auto",
-        gap: 7,
-        alignItems: "start",
-        opacity: item.includeInReport === false ? 0.72 : 1,
-        background: item.includeInReport === false ? colors.panel : "#fff",
-      }}
-    >
-      <input
-        type="date"
-        value={item.date}
-        onChange={(event) => updateItem(item.id, { date: event.currentTarget.value })}
-        style={controlStyle}
-      />
-      <select
-        value={item.person}
-        onChange={(event) => updateItem(item.id, { person: event.currentTarget.value })}
-        aria-label="Who did it"
-        style={controlStyle}
+  const renderReportItemEditor = (item: ReportItem) => {
+    const photos = Array.isArray(item.reportPhotos) ? item.reportPhotos : [];
+    return (
+      <div
+        key={item.id}
+        onPaste={(event) => {
+          const files = Array.from(event.clipboardData?.files || []).filter((file) => file.type.startsWith("image/"));
+          if (files.length) {
+            event.preventDefault();
+            void addReportPhotoFiles(item.id, files);
+          }
+        }}
+        style={{
+          border: `1px solid ${item.highPriority ? colors.gold : colors.line}`,
+          borderRadius: 11,
+          padding: 9,
+          display: "grid",
+          gap: 7,
+          opacity: item.includeInReport === false ? 0.65 : 1,
+          background: item.includeInReport === false ? colors.panel : "#fff",
+        }}
       >
-        <option value="">Who did it…</option>
-        {item.person && !teamMembers.includes(item.person) ? <option value={item.person}>{item.person}</option> : null}
-        {teamMembers.map((name) => <option key={name} value={name}>{name}</option>)}
-      </select>
-      <select
-        value={reportClassForItem(item)}
-        onChange={(event) =>
-          updateItem(item.id, {
-            reportClass: event.currentTarget.value as ReportClass,
-            recurring: event.currentTarget.value === "Routine" ? true : item.recurring,
-          })
-        }
-        aria-label="Weekly report section"
-        style={controlStyle}
-      >
-        {reportClasses.map((reportClass) => (
-          <option key={reportClass} value={reportClass}>{reportClassLabel(reportClass)}</option>
-        ))}
-      </select>
-      <select
-        value={item.department}
-        onChange={(event) => updateItem(item.id, { department: event.currentTarget.value })}
-        style={controlStyle}
-      >
-        {departments.map((department) => (
-          <option key={department}>{department}</option>
-        ))}
-      </select>
-      <input
-        value={item.title}
-        onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })}
-        placeholder="Work activity"
-        style={controlStyle}
-      />
-      <textarea
-        value={item.notes}
-        onChange={(event) => updateItem(item.id, { notes: event.currentTarget.value })}
-        placeholder="Outcome / notes"
-        rows={isMobile ? 2 : 1}
-        style={{ ...controlStyle, resize: "vertical", minHeight: 38 }}
-      />
-      <div style={{ display: "grid", gap: 5 }}>
-        <button
-          type="button"
-          onClick={() => void saveReportItem(item.id)}
-          disabled={saving}
-          style={{ ...buttonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "110px 165px minmax(220px,1.3fr) minmax(220px,1.1fr) auto",
+            gap: 7,
+            alignItems: "start",
+          }}
         >
-          Save
-        </button>
-        <button
-          type="button"
-          onClick={() => updateItem(item.id, { includeInReport: item.includeInReport === false })}
-          disabled={saving}
-          style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}
-        >
-          {item.includeInReport === false ? "Add to Report" : "Remove from Report"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void deleteReportItem(item.id)}
-          disabled={saving}
-          style={{ ...quietButtonStyle, padding: "9px 10px", opacity: saving ? 0.5 : 1 }}
-        >
-          Delete
-        </button>
+          <input
+            type="date"
+            value={item.date}
+            onChange={(event) => updateItem(item.id, { date: event.currentTarget.value })}
+            style={controlStyle}
+          />
+          <select
+            value={reportCategoryForItem(item)}
+            onChange={(event) => updateItem(item.id, { reportCategory: event.currentTarget.value })}
+            aria-label="Owner report category"
+            style={controlStyle}
+          >
+            {reportCategories.map((category) => (
+              <option key={category} value={category}>{category}</option>
+            ))}
+          </select>
+          <input
+            value={item.title}
+            onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })}
+            placeholder="What happened"
+            style={controlStyle}
+          />
+          <textarea
+            value={item.ownerNote || ""}
+            onChange={(event) => updateItem(item.id, { ownerNote: event.currentTarget.value })}
+            placeholder="Owner-facing note (optional)"
+            rows={isMobile ? 2 : 1}
+            style={{ ...controlStyle, resize: "vertical", minHeight: 38 }}
+          />
+          <div style={{ display: "grid", gap: 5 }}>
+            <button
+              type="button"
+              onClick={() => updateItem(item.id, { highPriority: !item.highPriority })}
+              style={{
+                ...quietButtonStyle,
+                padding: "8px 9px",
+                background: item.highPriority ? "#fff6dd" : "#fff",
+                borderColor: item.highPriority ? colors.gold : colors.line,
+              }}
+            >
+              {item.highPriority ? "High Priority ✓" : "High Priority"}
+            </button>
+            <button
+              type="button"
+              onClick={() => updateItem(item.id, { includeInReport: item.includeInReport === false })}
+              style={{ ...quietButtonStyle, padding: "8px 9px" }}
+            >
+              {item.includeInReport === false ? "Add to Report" : "Remove from Report"}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+          <label style={{ ...quietButtonStyle, padding: "6px 8px", fontSize: 10, cursor: "pointer" }}>
+            Add Photo
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(event) => {
+                void addReportPhotoFiles(item.id, event.currentTarget.files || []);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          <label style={{ ...quietButtonStyle, padding: "6px 8px", fontSize: 10, cursor: "pointer" }}>
+            Take Photo
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              hidden
+              onChange={(event) => {
+                void addReportPhotoFiles(item.id, event.currentTarget.files || []);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          <span style={{ color: colors.muted, fontSize: 10 }}>Paste an image with Ctrl+V · up to 3 photos</span>
+          <span style={{ marginLeft: "auto", color: colors.muted, fontSize: 10 }}>
+            {item.includeInReport === false ? "Removed from report" : reportCategoryForItem(item)}
+          </span>
+        </div>
+
+        {photos.length ? (
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 7 }}>
+            {photos.map((photo) => (
+              <div key={photo.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, overflow: "hidden", background: "#fff" }}>
+                <img src={photo.dataUrl} alt={photo.caption || photo.name || "Report photo"} style={{ width: "100%", height: 120, objectFit: "cover", display: "block" }} />
+                <div style={{ padding: 6, display: "grid", gap: 5 }}>
+                  <input
+                    value={photo.caption || ""}
+                    onChange={(event) => updateReportPhotoCaption(item.id, photo.id, event.currentTarget.value)}
+                    placeholder="Photo caption (optional)"
+                    style={{ ...controlStyle, minHeight: 30, padding: "5px 7px", fontSize: 10 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeReportPhoto(item.id, photo.id)}
+                    style={{ ...quietButtonStyle, padding: "5px 7px", fontSize: 10 }}
+                  >
+                    Remove Photo
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <section style={cardStyle}>
@@ -1762,16 +1909,6 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
           This Week
         </div>
         <div style={{ color: colors.navy, fontSize: 13, lineHeight: 1.5, marginTop: 5 }}>{reportSummary}</div>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, color: colors.muted, fontSize: 10.5 }}>
-          {presentation.routineSummaries.length ? <span>{presentation.routineSummaries.length} routine summaries</span> : null}
-          {vehicleCare.length ? <span>{vehicleCare.filter((item) => item.status === "Washed").length}/{vehicleCare.length} vehicles washed</span> : null}
-          {presentation.projectUpdates.length ? <span>{presentation.projectUpdates.length} project updates</span> : null}
-          {presentation.vendorActivity.length ? <span>{presentation.vendorActivity.length} vendors</span> : null}
-          {presentation.completed.length ? <span>{presentation.completed.length} completed work</span> : null}
-          {presentation.exceptions.length ? <span>{presentation.exceptions.length} issues / follow-up</span> : null}
-          {presentation.internalTasks.length ? <span>{presentation.internalTasks.length} internal tasks held out</span> : null}
-          {upcomingItems.length ? <span>{upcomingItems.length} upcoming</span> : null}
-        </div>
       </div>
 
       <section
@@ -1783,41 +1920,20 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
           marginBottom: 12,
         }}
       >
-        <div style={{ color: colors.gold, fontSize: 9, fontWeight: 900, letterSpacing: ".11em", textTransform: "uppercase" }}>
-          Owner-facing draft
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ color: colors.gold, fontSize: 9, fontWeight: 900, letterSpacing: ".11em", textTransform: "uppercase" }}>Report Prep</div>
+            <strong style={{ display: "block", color: colors.navy, marginTop: 2 }}>Weekly Report List</strong>
+          </div>
+          <span style={{ color: colors.muted, fontSize: 10 }}>
+            Choose a category, mark High Priority if needed, and remove anything the owners do not need.
+          </span>
         </div>
-        <strong style={{ display: "block", color: colors.navy, marginTop: 2 }}>Quick Review</strong>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginTop: 9 }}>
-          <div style={{ display: "grid", gap: 5 }}>
-            <strong style={{ color: colors.navy, fontSize: 11 }}>Routine Property Care</strong>
-            {presentation.routineSummaries.length ? presentation.routineSummaries.map((row) => (
-              <div key={row.key} style={{ fontSize: 11, color: colors.navy }}>
-                <strong>{row.title}</strong> — {row.detail}
-              </div>
-            )) : <div style={{ color: colors.muted, fontSize: 11 }}>No routine summary for this period.</div>}
-          </div>
-          <div style={{ display: "grid", gap: 5 }}>
-            <strong style={{ color: colors.navy, fontSize: 11 }}>Vehicle Care</strong>
-            {vehicleCare.length ? vehicleCare.map((row) => (
-              <div key={row.key} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
-                <span>{row.vehicle}</span>
-                <strong style={{ color: colors.navy }}>{row.status}</strong>
-              </div>
-            )) : <div style={{ color: colors.muted, fontSize: 11 }}>No tracked vehicle-cleaning records found.</div>}
-          </div>
+        <div style={{ display: "grid", gap: 7, marginTop: 9 }}>
+          {sortReportItems(items).length ? sortReportItems(items).map(renderReportItemEditor) : (
+            <div style={{ color: colors.muted, fontSize: 12 }}>No work activity found for this date range.</div>
+          )}
         </div>
-        {presentation.vendorActivity.length ? (
-          <div style={{ marginTop: 10 }}>
-            <strong style={{ color: colors.navy, fontSize: 11 }}>Vendors</strong>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 5 }}>
-              {presentation.vendorActivity.map((item) => (
-                <span key={item.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 999, padding: "4px 7px", fontSize: 10, color: colors.navy }}>
-                  {item.title}
-                </span>
-              ))}
-            </div>
-          </div>
-        ) : null}
       </section>
 
       <section
@@ -1834,206 +1950,52 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
             <div style={{ color: colors.gold, fontSize: 9, fontWeight: 900, letterSpacing: ".11em", textTransform: "uppercase" }}>Next Week</div>
             <strong style={{ display: "block", color: colors.navy, marginTop: 2 }}>Upcoming</strong>
           </div>
-          <button type="button" onClick={addUpcomingItem} style={quietButtonStyle}>Add Upcoming</button>
+          <button type="button" onClick={addUpcomingItem} style={quietButtonStyle}>Add Manual Upcoming</button>
         </div>
-        <div style={{ display: "grid", gap: 7, marginTop: 9 }}>
-          {upcomingItems.length ? upcomingItems.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "125px minmax(180px,1fr) minmax(180px,1fr) auto",
-                gap: 7,
-                alignItems: "start",
-              }}
-            >
-              <input type="date" value={item.date} onChange={(event) => updateUpcomingItem(item.id, { date: event.currentTarget.value })} style={controlStyle} />
-              <input value={item.title} onChange={(event) => updateUpcomingItem(item.id, { title: event.currentTarget.value })} placeholder="Upcoming work" style={controlStyle} />
-              <input value={item.notes} onChange={(event) => updateUpcomingItem(item.id, { notes: event.currentTarget.value })} placeholder="Note (optional)" style={controlStyle} />
-              <button type="button" onClick={() => deleteUpcomingItem(item.id)} style={{ ...quietButtonStyle, padding: "9px 10px" }}>Delete</button>
-            </div>
-          )) : <div style={{ color: colors.muted, fontSize: 12 }}>No upcoming items. Add one or refresh from Atlas.</div>}
+
+        <div style={{ marginTop: 10 }}>
+          <strong style={{ color: colors.navy, fontSize: 11 }}>Available from Atlas</strong>
+          <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+            {atlasUpcomingItems.filter((candidate) => !upcomingItems.some((item) => item.id === candidate.id)).length ? (
+              atlasUpcomingItems
+                .filter((candidate) => !upcomingItems.some((item) => item.id === candidate.id))
+                .map((candidate) => (
+                  <div key={candidate.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 8, padding: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={{ color: colors.navy, fontSize: 11 }}>{candidate.title}</strong>
+                      <div style={{ color: colors.muted, fontSize: 10 }}>{displayDate(candidate.date)}</div>
+                    </div>
+                    <button type="button" onClick={() => addAtlasUpcomingItem(candidate)} style={{ ...quietButtonStyle, padding: "7px 9px", fontSize: 10 }}>
+                      Add to Report
+                    </button>
+                  </div>
+                ))
+            ) : <div style={{ color: colors.muted, fontSize: 11 }}>No additional upcoming Atlas items for this period.</div>}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <strong style={{ color: colors.navy, fontSize: 11 }}>Included in Owner Report</strong>
+          <div style={{ display: "grid", gap: 7, marginTop: 6 }}>
+            {upcomingItems.length ? upcomingItems.map((item) => (
+              <div
+                key={item.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr" : "125px minmax(180px,1fr) minmax(180px,1fr) auto",
+                  gap: 7,
+                  alignItems: "start",
+                }}
+              >
+                <input type="date" value={item.date} onChange={(event) => updateUpcomingItem(item.id, { date: event.currentTarget.value })} style={controlStyle} />
+                <input value={item.title} onChange={(event) => updateUpcomingItem(item.id, { title: event.currentTarget.value })} placeholder="Upcoming work" style={controlStyle} />
+                <input value={item.notes} onChange={(event) => updateUpcomingItem(item.id, { notes: event.currentTarget.value })} placeholder="Owner note (optional)" style={controlStyle} />
+                <button type="button" onClick={() => deleteUpcomingItem(item.id)} style={{ ...quietButtonStyle, padding: "9px 10px" }}>Remove</button>
+              </div>
+            )) : <div style={{ color: colors.muted, fontSize: 11 }}>Nothing upcoming has been added to the owner report yet.</div>}
+          </div>
         </div>
       </section>
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 8,
-          flexWrap: "wrap",
-          marginBottom: 8,
-          color: colors.muted,
-          fontSize: 11,
-        }}
-      >
-        <span>
-          <strong style={{ color: colors.navy }}>{items.length}</strong> source items in report
-        </span>
-        <span>Use Prepare Weekly Report to filter by section, area, person, and report status. Remove from Report hides an item from the owner PDF without deleting the Atlas record.</span>
-      </div>
-
-      <details>
-        <summary
-          style={{
-            cursor: "pointer",
-            color: colors.navy,
-            fontSize: 12,
-            fontWeight: 850,
-            padding: "8px 0",
-          }}
-        >
-          Prepare Weekly Report
-        </summary>
-
-        <div
-          style={{
-            border: `1px solid ${colors.line}`,
-            borderRadius: 11,
-            background: colors.panel,
-            padding: 10,
-            display: "grid",
-            gap: 8,
-            margin: "4px 0 9px",
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isMobile
-                ? "1fr"
-                : "minmax(190px,1.4fr) repeat(4,minmax(125px,.8fr))",
-              gap: 7,
-            }}
-          >
-            <input
-              value={reportSearch}
-              onChange={(event) => setReportSearch(event.currentTarget.value)}
-              placeholder="Search title, note, person, area…"
-              aria-label="Search weekly report items"
-              style={controlStyle}
-            />
-            <select
-              value={reportTypeFilter}
-              onChange={(event) => setReportTypeFilter(event.currentTarget.value as "All" | ReportClass)}
-              aria-label="Filter by weekly report type"
-              style={controlStyle}
-            >
-              <option value="All">All sections</option>
-              {reportClasses.map((reportClass) => (
-                <option key={reportClass} value={reportClass}>{reportClassLabel(reportClass)}</option>
-              ))}
-            </select>
-            <select
-              value={reportIncludeFilter}
-              onChange={(event) => setReportIncludeFilter(event.currentTarget.value as "All" | "Included" | "Removed")}
-              aria-label="Filter by report inclusion"
-              style={controlStyle}
-            >
-              <option value="All">All items</option>
-              <option value="Included">In report</option>
-              <option value="Removed">Removed from report</option>
-            </select>
-            <select
-              value={reportDepartmentFilter}
-              onChange={(event) => setReportDepartmentFilter(event.currentTarget.value)}
-              aria-label="Filter by department"
-              style={controlStyle}
-            >
-              <option value="All">All departments</option>
-              {reportDepartments.map((department) => (
-                <option key={department} value={department}>{department}</option>
-              ))}
-            </select>
-            <select
-              value={reportPersonFilter}
-              onChange={(event) => setReportPersonFilter(event.currentTarget.value)}
-              aria-label="Filter by person"
-              style={controlStyle}
-            >
-              <option value="All">All people</option>
-              {reportPeople.map((person) => (
-                <option key={person} value={person}>{person}</option>
-              ))}
-            </select>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setReportSearch("");
-                setReportTypeFilter("All");
-                setReportIncludeFilter("All");
-                setReportDepartmentFilter("All");
-                setReportPersonFilter("All");
-              }}
-              style={{ ...quietButtonStyle, padding: "7px 9px" }}
-            >
-              Clear Filters
-            </button>
-            <span style={{ color: colors.muted, fontSize: 11, fontWeight: 750 }}>
-              Showing {reportEditorItems.length} of {items.length} · {items.filter((item) => item.includeInReport !== false).length} in report · {items.filter((item) => item.includeInReport === false).length} removed
-            </span>
-          </div>
-        </div>
-
-        <div style={{ display: "grid", gap: 9, marginTop: 4 }}>
-          {reviewQueueItems.length ? (
-            <section style={{ display: "grid", gap: 7, border: 0, padding: 0 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                <strong style={{ color: colors.navy, fontSize: 12 }}>Owner Review</strong>
-                <span style={{ color: colors.muted, fontSize: 10 }}>{reviewQueueItems.length}</span>
-              </div>
-              {reviewQueueItems.map(renderReportItemEditor)}
-            </section>
-          ) : null}
-
-          {supportingReportItems.length ? (
-            <details>
-              <summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 800, fontSize: 12, padding: "6px 0" }}>
-                Routine / Internal / Not Needed ({supportingReportItems.length})
-              </summary>
-              <div style={{ display: "grid", gap: 7, marginTop: 6 }}>
-                {supportingReportItems.map(renderReportItemEditor)}
-              </div>
-            </details>
-          ) : null}
-
-          {removedReportItems.length ? (
-            <details>
-              <summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 800, fontSize: 12, padding: "6px 0" }}>
-                Removed from Report ({removedReportItems.length})
-              </summary>
-              <div style={{ display: "grid", gap: 7, marginTop: 6 }}>
-                {removedReportItems.map(renderReportItemEditor)}
-              </div>
-            </details>
-          ) : null}
-
-          {!reportEditorItems.length ? (
-            <div
-              style={{
-                padding: 16,
-                border: `1px dashed ${colors.line}`,
-                borderRadius: 11,
-                color: colors.muted,
-                fontSize: 12,
-              }}
-            >
-              {items.length ? "No report items match these filters." : "No work activity found for this date range."}
-            </div>
-          ) : null}
-        </div>
-      </details>
 
       {message ? (
         <div style={{ marginTop: 10, color: colors.navy, fontSize: 12, fontWeight: 800 }}>{message}</div>
