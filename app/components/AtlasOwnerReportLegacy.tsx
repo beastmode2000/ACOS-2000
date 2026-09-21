@@ -1631,7 +1631,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
           <div style={{ display: "grid", gap: 5 }}>
             <strong style={{ color: colors.navy, fontSize: 11 }}>Routine Property Care</strong>
             {presentation.routineSummaries.length ? presentation.routineSummaries.map((row) => (
-              <div key={row.key} style={{ fontSize: 11, color: colors.text || colors.navy }}>
+              <div key={row.key} style={{ fontSize: 11, color: colors.navy }}>
                 <strong>{row.title}</strong> — {row.detail}
               </div>
             )) : <div style={{ color: colors.muted, fontSize: 11 }}>No routine summary for this period.</div>}
