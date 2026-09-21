@@ -530,7 +530,7 @@ function buildReportPresentation(items: ReportItem[]) {
   const routineItems = items.filter(
     (item) =>
       !exceptionIds.has(item.id) &&
-      (reportClassForItem(item) === "Routine" || item.recurring === true),
+      reportClassForItem(item) === "Routine",
   );
   const grouped = new Map<string, ReportItem[]>();
 
