@@ -412,6 +412,9 @@ export default function AtlasOwnerReportHeaderPolish() {
       );
       if (!heading) return;
 
+      if (normalized(heading.textContent) === "owner report") {
+        heading.textContent = "Weekly Report";
+      }
       heading.classList.add("atlas-owner-report-compact-title");
 
       const header = (heading.closest("header") as HTMLElement | null) || heading.parentElement;
@@ -457,7 +460,6 @@ export default function AtlasOwnerReportHeaderPolish() {
         const repairPopup = () => {
           attempts += 1;
           try {
-            flattenRoutineWork(popup.document);
             const completedSection = sectionByHeading(popup.document, "Completed Work");
             if (completedSection) orderCompletedWorkByDay(completedSection);
             ownerInputPrintSection(popup.document, ownerInputCache.get(property) || []);
