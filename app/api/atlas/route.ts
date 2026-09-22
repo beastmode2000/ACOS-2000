@@ -131,6 +131,19 @@ function asArray(value: unknown) {
   return [];
 }
 
+function asJsonArray(value: unknown) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 function asStringArray(value: unknown) {
   if (Array.isArray(value)) {
     return value.map(function (item) {
@@ -760,7 +773,7 @@ function mapWorkOrder(row: JsonRecord) {
       Number(row.recurrence_interval || 1),
     ),
     recurrenceUnit: String(row.recurrence_unit || "Weeks"),
-    recurrenceDays: asArray(row.recurrence_days)
+    recurrenceDays: asJsonArray(row.recurrence_days)
       .map((value) => Math.floor(Number(value)))
       .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
     recurrenceEndDate: databaseDateKey(row.recurrence_end_date),
