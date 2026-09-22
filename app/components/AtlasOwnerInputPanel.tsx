@@ -101,6 +101,10 @@ export default function AtlasOwnerInputPanel(props: any) {
     void load();
   }, [propertyId]);
 
+  useEffect(() => {
+    if (typeof props.onItemsChange === "function") props.onItemsChange(items);
+  }, [items, props.onItemsChange]);
+
   async function addPhotoFiles(files: FileList | null) {
     const selected = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
     if (!selected.length) return;
