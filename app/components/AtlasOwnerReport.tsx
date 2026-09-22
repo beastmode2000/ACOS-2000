@@ -155,6 +155,7 @@ function printPhotoMarkup(photos: ReportPhoto[]) {
 export default function AtlasOwnerReport(props: any) {
   const propertyId = String(props.propertyId || "2000");
   const [projects, setProjects] = useState<any[]>([]);
+  const [ownerInputItems, setOwnerInputItems] = useState<any[]>([]);
   const [range, setRange] = useState({ start: "", end: "" });
   const rootRef = useRef<HTMLDivElement | null>(null);
   const printRangeRef = useRef({ start: "", end: "" });
@@ -264,8 +265,9 @@ export default function AtlasOwnerReport(props: any) {
         projects={projects}
         isMobile={props.isMobile}
         colors={props.colors}
+        onItemsChange={setOwnerInputItems}
       />
-      <AtlasOwnerReportLegacy {...props} workOrders={workOrders} />
+      <AtlasOwnerReportLegacy {...props} workOrders={workOrders} ownerInputItems={ownerInputItems} />
       {reportPhotos.length ? (
         <section style={{ border: `1px solid ${props.colors?.line || "#D9E2EA"}`, borderRadius: 12, background: "#FFFFFF", padding: props.isMobile ? 10 : 13 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 9 }}>
