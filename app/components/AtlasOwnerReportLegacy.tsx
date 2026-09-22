@@ -1664,7 +1664,13 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
             value={item.title}
             onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })}
             placeholder="What happened"
-            style={controlStyle}
+            style={{
+              ...controlStyle,
+              background: "#EEF5FB",
+              borderColor: "#AFC8DC",
+              color: colors.navy,
+              fontWeight: 850,
+            }}
           />
           <textarea
             value={item.ownerNote || ""}
