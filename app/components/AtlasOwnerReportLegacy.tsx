@@ -88,6 +88,7 @@ type VehicleCareItem = {
 type Props = {
   propertyId: string;
   workOrders: Row[];
+  ownerInputItems?: Row[];
   colors: {
     navy: string;
     gold: string;
@@ -117,6 +118,7 @@ const reportCategories = [
   "Landscaping",
   "HVAC / Mechanical",
   "Pool & Spa",
+  "Property Operations",
   "Maintenance & Cleaning",
   "Vendors",
   "IT / Technology",
@@ -571,6 +573,7 @@ function reportCategoryForItem(item: ReportItem) {
   if (item.reportCategory && reportCategories.includes(item.reportCategory)) return item.reportCategory;
   const text = recordText(item.title, item.notes, item.department, item.vendor, item.reportClass);
   if (item.vendor || reportClassForItem(item) === "Vendor Activity") return "Vendors";
+  if (/\b(trash|recycl|garbage|yard[- ]?waste|front entry|walkthrough|property check|exterior walkthrough)\b/.test(text)) return "Property Operations";
   if (reportClassForItem(item) === "IT / Technology" || /\b(xfinity|wi-?fi|wifi|network|internet|unifi|control4|alarm\.com|router|modem|ethernet|access point|printer|server|av)\b/.test(text)) return "IT / Technology";
   if (/\b(hvac|boiler|furnace|heat pump|air handler|thermostat|filter|mechanical|radiant|vitodens|viessmann)\b/.test(text)) return "HVAC / Mechanical";
   if (item.department === "Garage / Vehicles") return "Garage / Vehicles";
@@ -963,7 +966,7 @@ function buildReportPresentation(items: ReportItem[]) {
   };
 }
 
-export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMobile }: Props) {
+export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputItems = [], colors, isMobile }: Props) {
   const [periodStart, setPeriodStart] = useState(mondayOfCurrentWeek());
   const [periodEnd, setPeriodEnd] = useState(localDate());
   const [tasks, setTasks] = useState<Row[]>([]);
@@ -1157,17 +1160,26 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
       .catch(() => setTeamMembers([]));
   }, [propertyId]);
 
+  const awaitingOwnerInput = useMemo(
+    () => ownerInputItems.filter((item) => String(item?.status || "") === "Awaiting Owner"),
+    [ownerInputItems],
+  );
+
   const reportSummary = useMemo(() => {
     const included = items.filter((item) => item.includeInReport !== false);
     const priorities = included.filter((item) => item.highPriority).length;
-    const categories = new Set(included.map(reportCategoryForItem)).size;
     const pieces = [
-      `${included.length} item${included.length === 1 ? "" : "s"} selected for the owner report across ${categories} categor${categories === 1 ? "y" : "ies"}.`,
+      `${included.length} weekly update${included.length === 1 ? "" : "s"}`,
     ];
-    if (priorities) pieces.push(`${priorities} high-priority item${priorities === 1 ? "" : "s"}.`);
-    if (upcomingItems.length) pieces.push(`${upcomingItems.length} upcoming item${upcomingItems.length === 1 ? "" : "s"} selected.`);
-    return pieces.join(" ");
-  }, [items, upcomingItems]);
+    if (awaitingOwnerInput.length) {
+      pieces.unshift(
+        `${awaitingOwnerInput.length} owner input item${awaitingOwnerInput.length === 1 ? "" : "s"} needed`,
+      );
+    }
+    if (priorities) pieces.splice(awaitingOwnerInput.length ? 1 : 0, 0, `${priorities} high-priority item${priorities === 1 ? "" : "s"}`);
+    if (upcomingItems.length) pieces.push(`${upcomingItems.length} upcoming`);
+    return pieces.join(" · ");
+  }, [items, upcomingItems, awaitingOwnerInput]);
 
 
   async function loadSavedReports(openCurrentReport = false) {
@@ -1476,7 +1488,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
 
   function printReport() {
     const included = sortReportItems(items.filter((item) => item.includeInReport !== false));
-    if (!included.length && !upcomingItems.length) return;
+    if (!included.length && !upcomingItems.length && !awaitingOwnerInput.length) return;
     const popup = window.open("", "_blank");
     if (!popup) return;
 
@@ -1493,6 +1505,25 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
       const note = String(item.ownerNote || "").trim();
       return `<div class="item"><div class="item-main"><strong>${escapeHtml(item.title || "Work activity")}</strong><span>${escapeHtml(displayDate(item.date))}</span></div>${note ? `<div class="note">${escapeHtml(note)}</div>` : ""}${photoMarkup(item)}</div>`;
     };
+
+    const ownerInputMarkup = awaitingOwnerInput.length
+      ? `<section class="section owner-input" data-atlas-owner-input-print="true"><h2>Owner Input Needed</h2>${awaitingOwnerInput
+          .map((request) => {
+            const question = String(request?.question || "Owner decision needed");
+            const project = String(request?.projectTitle || "").trim();
+            const due = String(request?.dueDate || "").slice(0, 10);
+            const context = String(request?.context || "").trim();
+            const photos = Array.isArray(request?.photos)
+              ? request.photos.filter((photo: Row) => String(photo?.dataUrl || "").startsWith("data:image/")).slice(0, 3)
+              : [];
+            const meta = [project, due ? `By ${displayDate(due)}` : ""].filter(Boolean).join(" · ");
+            const photoHtml = photos.length
+              ? `<div class="photos">${photos.map((photo: Row) => `<figure><img src="${escapeHtml(photo.dataUrl)}" alt="${escapeHtml(photo.caption || photo.name || "Owner request photo")}">${photo.caption ? `<figcaption>${escapeHtml(photo.caption)}</figcaption>` : ""}</figure>`).join("")}</div>`
+              : "";
+            return `<div class="item"><div class="item-main"><strong>${escapeHtml(question)}</strong>${meta ? `<span>${escapeHtml(meta)}</span>` : ""}</div>${context ? `<div class="note">${escapeHtml(context)}</div>` : ""}${photoHtml}</div>`;
+          })
+          .join("")}</section>`
+      : "";
 
     const highPriority = included.filter((item) => item.highPriority);
     const normalItems = included.filter((item) => !item.highPriority);
@@ -1531,6 +1562,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
       .report-head{text-align:right}.report-head h1{margin:0;font-size:22px;line-height:1.05}.report-head .property{font-size:11px;font-weight:700;margin-top:4px}.report-head .dates{font-size:9px;color:#667788;margin-top:2px}
       .summary{padding:11px 13px;background:#f5f8fb;border-left:4px solid #c99a3d;margin-bottom:14px;font-size:10.5px}
       .section{margin:0 0 15px}.section h2{font-size:13px;margin:0 0 7px;padding-bottom:4px;border-bottom:1px solid #cfd9e2;text-transform:uppercase;letter-spacing:.06em}
+      .owner-input{border:1px solid #d9e2ea;border-left:4px solid #c99a3d;border-radius:7px;padding:9px 11px;background:#fffdf7}
       .priority{border:1px solid #e8c66f;border-left:4px solid #c99a3d;border-radius:7px;padding:9px 11px;background:#fffaf0}
       .item{display:grid;gap:3px;padding:5px 0;border-bottom:1px solid #edf1f4;break-inside:avoid}.item-main{display:flex;justify-content:space-between;gap:14px;align-items:baseline}.item-main strong{font-size:10px}.item-main span{font-size:8.5px;color:#6a7886;white-space:nowrap}.note{font-size:9px;color:#46596b;padding-right:8px}
       .photos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:5px}.photos figure{margin:0}.photos img{width:100%;max-height:160px;object-fit:cover;border:1px solid #d7e0e8;border-radius:6px}.photos figcaption{font-size:7.5px;color:#6a7886;margin-top:2px}
@@ -1538,6 +1570,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
       @media print{.section,.item,.photos figure{page-break-inside:avoid}}
     </style></head><body>
       <header class="header"><div class="brand"><img class="logo" src="${escapeHtml(logoUrl)}" alt="Atlas"><div><div class="brand-name">ATLAS</div><div class="brand-sub">2000 Estate Systems</div></div></div><div class="report-head"><h1>Weekly Report</h1><div class="property">Property ${escapeHtml(propertyId)}</div><div class="dates">${escapeHtml(displayDate(periodStart))} – ${escapeHtml(displayDate(periodEnd))}</div></div></header>
+      ${ownerInputMarkup}
       <div class="summary"><strong>This Week</strong><br>${escapeHtml(reportSummary)}</div>
       ${priorityMarkup}${categoryMarkup}${upcomingMarkup}
       <div class="footer"><span>Atlas Estate Operations</span><span>${escapeHtml(reportTitle(periodStart, periodEnd))}</span></div>
@@ -1767,8 +1800,8 @@ export default function AtlasOwnerReport({ propertyId, workOrders, colors, isMob
           <button
             type="button"
             onClick={printReport}
-            disabled={!items.length}
-            style={{ ...quietButtonStyle, opacity: items.length ? 1 : 0.5 }}
+            disabled={!items.length && !awaitingOwnerInput.length && !upcomingItems.length}
+            style={{ ...quietButtonStyle, opacity: items.length || awaitingOwnerInput.length || upcomingItems.length ? 1 : 0.5 }}
           >
             Print / PDF
           </button>
