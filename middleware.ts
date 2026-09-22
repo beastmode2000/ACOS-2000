@@ -25,7 +25,7 @@ function isPublicPath(request: NextRequest) {
   if (p === "/api/addison-create-work" && hasShareToken(request)) return true;
   if (p === "/request" || p.startsWith("/request/")) return true;
   if (p === "/api/atlas-requests" && hasShareToken(request)) return true;
-  if (p === "/owner-input" && hasShareToken(request)) return true;
+  if (p === "/owner-input" || p.startsWith("/owner-input/")) return true;
   if (p === "/api/atlas-owner-input" && hasShareToken(request)) return true;
   if (p === "/reset-password" && hasShareToken(request)) return true;
   if (p === "/api/atlas-password-reset") return true;
