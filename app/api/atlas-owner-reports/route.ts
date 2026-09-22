@@ -34,6 +34,25 @@ function cleanImage(value: unknown) {
   return result.slice(0, 8_000_000);
 }
 
+function cleanReportPhotos(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, 3)
+    .map((entry, index) => {
+      const row = entry && typeof entry === "object" ? (entry as Row) : {};
+      const dataUrl = cleanImage(row.dataUrl);
+      if (!dataUrl) return null;
+      return {
+        id: String(row.id || `weekly-report-photo-${index}`).slice(0, 240),
+        name: String(row.name || `Photo ${index + 1}`).slice(0, 240),
+        caption: String(row.caption || "").slice(0, 1000),
+        dataUrl,
+        createdAt: String(row.createdAt || "").slice(0, 100),
+      };
+    })
+    .filter(Boolean);
+}
+
 function cleanItems(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value
@@ -54,6 +73,10 @@ function cleanItems(value: unknown) {
         reportClass: String(row.reportClass || "").slice(0, 80),
         recurring: row.recurring === true,
         includeInReport: row.includeInReport !== false,
+        reportCategory: String(row.reportCategory || "").slice(0, 160),
+        highPriority: row.highPriority === true,
+        ownerNote: String(row.ownerNote || "").slice(0, 5000),
+        reportPhotos: cleanReportPhotos(row.reportPhotos),
         ownerAttention: row.ownerAttention === true,
         highlight: row.highlight === true,
         reportSection: String(row.reportSection || "Auto").slice(0, 80),
