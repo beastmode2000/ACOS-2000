@@ -1422,6 +1422,10 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
   async function deleteReportItem(itemId: string) {
     const deletedItem = items.find((item) => item.id === itemId);
     if (!deletedItem) return;
+    const warning = deletedItem.sourceType === "Manual"
+      ? "Delete this manually added entry from the weekly report?"
+      : "Delete this entry from the weekly report? The original Atlas work and completion history will remain unchanged. This entry will not return when the report is refreshed from Atlas.";
+    if (!window.confirm(warning)) return;
     const nextItems = items.filter((item) => item.id !== itemId);
     setDraftTouched(true);
     setItems(nextItems);
@@ -1650,16 +1654,20 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
             onChange={(event) => updateItem(item.id, { date: event.currentTarget.value })}
             style={controlStyle}
           />
-          <select
-            value={reportCategoryForItem(item)}
-            onChange={(event) => updateItem(item.id, { reportCategory: event.currentTarget.value })}
-            aria-label="Owner report category"
-            style={controlStyle}
-          >
-            {reportCategories.map((category) => (
-              <option key={category} value={category}>{category}</option>
-            ))}
-          </select>
+          <label style={{ display: "grid", gap: 2 }}>
+            <select
+              value={reportCategoryForItem(item)}
+              onChange={(event) => updateItem(item.id, { reportCategory: event.currentTarget.value })}
+              aria-label="Change weekly report category"
+              title="Change the category for this report entry. Use Save or Finalize to keep the change."
+              style={controlStyle}
+            >
+              {reportCategories.map((category) => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+            <span style={{ fontSize: 10, color: colors.muted }}>Change category</span>
+          </label>
           <input
             value={item.title}
             onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })}
@@ -1698,6 +1706,15 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
               style={{ ...quietButtonStyle, padding: "8px 9px" }}
             >
               {item.includeInReport === false ? "Add to Report" : "Remove from Report"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void deleteReportItem(item.id)}
+              disabled={saving}
+              title="Permanently delete this entry from weekly reporting, not the original Atlas work."
+              style={{ ...quietButtonStyle, padding: "8px 9px", color: "#991B1B", borderColor: "#E9B4B4" }}
+            >
+              Delete
             </button>
           </div>
         </div>
