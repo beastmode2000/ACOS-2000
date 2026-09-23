@@ -283,12 +283,19 @@ export type PartRecord = {
   id: string;
   name: string;
   category: string;
+  manufacturer: string;
+  partNumber: string;
   locationId: string;
+  storageLocation: string;
   assetId?: string;
   vendorId?: string;
   quantity: number;
   minQuantity: number;
   status: PartStatus;
+  purchaseUrl: string;
+  unitCost: number;
+  photoUrl: string;
+  lastUsedDate: string;
   notes: string;
 };
 
