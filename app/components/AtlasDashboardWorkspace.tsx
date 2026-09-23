@@ -315,7 +315,7 @@ export default function AtlasDashboardWorkspace(props: any) {
   const dashboardRescheduleInputRef = useRef<HTMLInputElement | null>(null);
   const [dashboardWorkAssignee, setDashboardWorkAssignee] = useState(initialDashboardAssignee);
   const [dashboardWorkDate, setDashboardWorkDate] = useState(() => todayISO());
-  const [dashboardWorkListFilter, setDashboardWorkListFilter] = useState<"Today" | "All" | "Upcoming" | "Overdue">("Today");
+  const [dashboardWorkListFilter, setDashboardWorkListFilter] = useState<"Today" | "All" | "Upcoming" | "Overdue" | "Waiting">("Today");
   const [dashboardWorkPersonFilter, setDashboardWorkPersonFilter] = useState<string>("Everyone");
   const [dashboardRightList, setDashboardRightList] = useState<string>("Upcoming");
   const [dashboardQuickDrafts, setDashboardQuickDrafts] = useState<Record<string, string>>({ Nick: "", Addison: "", "Sean Powell": "", "Patrick Tanner": "" });
@@ -332,6 +332,7 @@ export default function AtlasDashboardWorkspace(props: any) {
       if (dashboardWorkListFilter === "All") return true;
       if (dashboardWorkListFilter === "Upcoming") return Boolean(date && date > todayISO());
       if (dashboardWorkListFilter === "Overdue") return Boolean(date && date < todayISO());
+      if (dashboardWorkListFilter === "Waiting") return record.status === "Waiting";
       if (dashboardWasUnscheduledAfterMiss(record)) return false;
       return !date || date <= todayISO();
     })
@@ -2412,12 +2413,30 @@ export default function AtlasDashboardWorkspace(props: any) {
 
   const renderDashboardWorkCard = (record: ServiceRecord) => {
     const completionNote = dashboardCompletionNotes[String(record.id)] || "";
+    const atlasRecord = record as AtlasServiceRecord;
+    const dueDate = String(record.date || "").slice(0, 10);
+    const isOverdue = Boolean(dueDate && dueDate < todayISO());
+    const assignee = dashboardAssigneeName(atlasRecord.assignedTo || "");
+    const noteCount = Array.isArray(atlasRecord.notesHistory) ? atlasRecord.notesHistory.length : 0;
     return (
-      <div key={record.id} style={{ border: `1px solid ${colors.line}`, borderRadius: 9, padding: 8, background: "#FFFFFF" }}>
+      <div
+        key={record.id}
+        style={{
+          border: `1px solid ${isOverdue ? "#E7B8B8" : colors.line}`,
+          borderLeft: isOverdue ? `3px solid ${colors.red}` : `1px solid ${colors.line}`,
+          borderRadius: 9,
+          padding: 8,
+          background: "#FFFFFF",
+        }}
+      >
         <div style={{ display: "grid", gap: 7 }}>
           <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: "pointer" }}>
             <strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14, lineHeight: 1.3, fontWeight: 700 }}>{record.title}</strong>
-            <small style={{ color: colors.muted, display: "block", marginTop: 2, fontSize: 12, lineHeight: 1.3, fontWeight: 500 }}>{record.date ? `${String(record.date).slice(0,10) < todayISO() ? "Overdue · " : ""}${formatDate(String(record.date).slice(0,10))}` : "No due date"} · {record.recurring ? `Recurring ${recurrenceLabel(record as AtlasServiceRecord)}` : "One time"}</small>
+            <small style={{ color: colors.muted, display: "block", marginTop: 2, fontSize: 12, lineHeight: 1.3, fontWeight: 500 }}>{record.date ? `${isOverdue ? "Overdue · " : ""}${formatDate(dueDate)}` : "No due date"} · {record.recurring ? `Recurring ${recurrenceLabel(atlasRecord)}` : "One time"}</small>
+            <small style={{ color: colors.muted, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 3, fontSize: 10.5, lineHeight: 1.25, fontWeight: 650 }}>
+              <span>{assignee ? `Assigned: ${dashboardPersonLabel(assignee)}` : "Unassigned"}</span>
+              {noteCount ? <span aria-label={`${noteCount} work note${noteCount === 1 ? "" : "s"}`}>📝 {noteCount}</span> : null}
+            </small>
           </button>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
             <button type="button" onClick={async () => { await completeWorkOrder(record as AtlasServiceRecord, { completionNote }); setDashboardCompletionNotes((current) => { const next = { ...current }; delete next[String(record.id)]; return next; }); setDashboardWorkNoteOpen((current) => ({ ...current, [String(record.id)]: false })); }} style={{ ...goldButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Done</button>
@@ -2445,7 +2464,7 @@ export default function AtlasDashboardWorkspace(props: any) {
             </select>
             <select
               value={dashboardAssigneeName((record as AtlasServiceRecord).assignedTo || "")}
-              onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })}
+              onChange={(event) => void quickAssignDashboardWork(record, event.currentTarget.value)}
               aria-label={`Assign ${record.title}`}
               title="Quick assign"
               style={{ ...selectStyle, width: "auto", minHeight: 28, padding: "3px 26px 3px 8px", fontSize: 11, fontWeight: 800 }}
@@ -2527,7 +2546,7 @@ export default function AtlasDashboardWorkspace(props: any) {
 
         {!rightLane ? (
           <div style={{ display: "flex", gap: 6, overflowX: "auto", marginTop: 9, paddingBottom: 2 }}>
-            {(["Today", "All", "Overdue"] as const).map((filter) => (
+            {(["Today", "All", "Overdue", "Waiting"] as const).map((filter) => (
               <button key={filter} type="button" onClick={() => setDashboardWorkListFilter(filter)} style={{ ...(dashboardWorkListFilter === filter ? goldButtonStyle : secondaryButtonStyle), minHeight: 30, padding: "4px 9px", fontSize: 11, whiteSpace: "nowrap" }}>{filter}</button>
             ))}
           </div>
@@ -2895,6 +2914,16 @@ export default function AtlasDashboardWorkspace(props: any) {
     setServiceRecords((current) => byTitle(current.map((item) => item.id === updated.id ? updated : item)));
     const saved = await postAtlasRecord("work_orders", updated);
     showSaveToast(saved ? `Saved ${updated.title}.` : `${updated.title} changed locally, but shared sync did not finish.`, saved ? "success" : "warning");
+  };
+  const quickAssignDashboardWork = async (record: ServiceRecord, person: string) => {
+    const updated = normalizeService({ ...(record as AtlasServiceRecord), assignedTo: person });
+    setServiceRecords((current) => byTitle(current.map((item) => item.id === updated.id ? updated : item)));
+    const saved = await postAtlasRecord("work_orders", updated);
+    const label = person ? dashboardPersonLabel(dashboardAssigneeName(person)) : "Unassigned";
+    showSaveToast(
+      saved ? `Assigned ${updated.title} to ${label}.` : `${updated.title} changed locally, but the assignment did not finish syncing.`,
+      saved ? "success" : "warning",
+    );
   };
   const saveDashboardWorkUpdate = async (record: ServiceRecord) => {
     const text = String(dashboardCompletionNotes[String(record.id)] || "").trim();
