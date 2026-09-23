@@ -2443,6 +2443,18 @@ export default function AtlasDashboardWorkspace(props: any) {
               <option value="edit">Edit</option>
               <option value="delete">Delete</option>
             </select>
+            <select
+              value={dashboardAssigneeName((record as AtlasServiceRecord).assignedTo || "")}
+              onChange={(event) => void syncWorkOrderPatch(record, { assignedTo: event.currentTarget.value })}
+              aria-label={`Assign ${record.title}`}
+              title="Quick assign"
+              style={{ ...selectStyle, width: "auto", minHeight: 28, padding: "3px 26px 3px 8px", fontSize: 11, fontWeight: 800 }}
+            >
+              <option value="">Unassigned</option>
+              {dashboardWorkPeople.map((person) => (
+                <option key={person} value={person}>{dashboardPersonLabel(person)}</option>
+              ))}
+            </select>
             <button type="button" onClick={() => setDashboardWorkNoteOpen((current) => ({ ...current, [String(record.id)]: !current[String(record.id)] }))} aria-expanded={Boolean(dashboardWorkNoteOpen[String(record.id)])} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Add Note</button>
           </div>
           {dashboardWorkNoteOpen[String(record.id)] ? (
