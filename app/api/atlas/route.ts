@@ -472,16 +472,30 @@ async function ensurePartsTable(sql: ReturnType<typeof neon>) {
       id text PRIMARY KEY,
       name text NOT NULL,
       category text NOT NULL DEFAULT 'General',
+      manufacturer text NOT NULL DEFAULT '',
+      part_number text NOT NULL DEFAULT '',
       location_id text,
+      storage_location text NOT NULL DEFAULT '',
       asset_id text,
       vendor_id text,
       quantity integer NOT NULL DEFAULT 0,
       min_quantity integer NOT NULL DEFAULT 0,
       status text NOT NULL DEFAULT 'In Stock',
+      purchase_url text NOT NULL DEFAULT '',
+      unit_cost numeric NOT NULL DEFAULT 0,
+      photo_url text NOT NULL DEFAULT '',
+      last_used_date date,
       notes text NOT NULL DEFAULT '',
       updated_at timestamptz NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE atlas_parts ADD COLUMN IF NOT EXISTS manufacturer text NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE atlas_parts ADD COLUMN IF NOT EXISTS part_number text NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE atlas_parts ADD COLUMN IF NOT EXISTS storage_location text NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE atlas_parts ADD COLUMN IF NOT EXISTS purchase_url text NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE atlas_parts ADD COLUMN IF NOT EXISTS unit_cost numeric NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE atlas_parts ADD COLUMN IF NOT EXISTS photo_url text NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE atlas_parts ADD COLUMN IF NOT EXISTS last_used_date date`;
 }
 
 async function recordChange(
@@ -742,12 +756,19 @@ function mapPart(row: JsonRecord) {
     id: String(row.id || ""),
     name: String(row.name || ""),
     category: String(row.category || "General"),
+    manufacturer: String(row.manufacturer || ""),
+    partNumber: String(row.part_number || ""),
     locationId: String(row.location_id || ""),
+    storageLocation: String(row.storage_location || ""),
     assetId: String(row.asset_id || ""),
     vendorId: String(row.vendor_id || ""),
     quantity: Number(row.quantity || 0),
     minQuantity: Number(row.min_quantity || 0),
     status: String(row.status || "In Stock"),
+    purchaseUrl: String(row.purchase_url || ""),
+    unitCost: Number(row.unit_cost || 0),
+    photoUrl: String(row.photo_url || ""),
+    lastUsedDate: databaseDateKey(row.last_used_date),
     notes: String(row.notes || ""),
   };
 }
@@ -1219,9 +1240,11 @@ export async function GET(request: NextRequest) {
       ORDER BY created_at DESC
     `) as unknown as JsonRecord[];
 
+    await ensurePartsTable(sql);
     const partRows = (await sql`
-      SELECT id, name, category, location_id, asset_id, vendor_id,
-             quantity, min_quantity, status, notes
+      SELECT id, name, category, manufacturer, part_number, location_id,
+             storage_location, asset_id, vendor_id, quantity, min_quantity,
+             status, purchase_url, unit_cost, photo_url, last_used_date, notes
       FROM atlas_parts
       WHERE property_id = ${propertyId}
       ORDER BY lower(name) ASC
@@ -2245,18 +2268,27 @@ if (table === "assets") {
 
       await sql`
         INSERT INTO atlas_parts (
-          id, name, category, location_id, asset_id, vendor_id,
-          quantity, min_quantity, status, notes, updated_at, property_id
+          id, name, category, manufacturer, part_number, location_id,
+          storage_location, asset_id, vendor_id, quantity, min_quantity,
+          status, purchase_url, unit_cost, photo_url, last_used_date,
+          notes, updated_at, property_id
         ) VALUES (
           ${id},
           ${asString(record.name) || "Untitled Part"},
           ${asString(record.category) || "General"},
+          ${asString(record.manufacturer)},
+          ${asString(record.partNumber)},
           ${nullableString(record.locationId)},
+          ${asString(record.storageLocation)},
           ${nullableString(record.assetId)},
           ${nullableString(record.vendorId)},
           ${quantity},
           ${minQuantity},
           ${asStatus(record.status, automaticStatus)},
+          ${asString(record.purchaseUrl)},
+          ${Math.max(0, Number(record.unitCost) || 0)},
+          ${asString(record.photoUrl)},
+          ${asDate(record.lastUsedDate)},
           ${asString(record.notes)},
           NOW(),
           ${propertyId}
@@ -2264,12 +2296,19 @@ if (table === "assets") {
         ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
           category = EXCLUDED.category,
+          manufacturer = EXCLUDED.manufacturer,
+          part_number = EXCLUDED.part_number,
           location_id = EXCLUDED.location_id,
+          storage_location = EXCLUDED.storage_location,
           asset_id = EXCLUDED.asset_id,
           vendor_id = EXCLUDED.vendor_id,
           quantity = EXCLUDED.quantity,
           min_quantity = EXCLUDED.min_quantity,
           status = EXCLUDED.status,
+          purchase_url = EXCLUDED.purchase_url,
+          unit_cost = EXCLUDED.unit_cost,
+          photo_url = EXCLUDED.photo_url,
+          last_used_date = EXCLUDED.last_used_date,
           notes = EXCLUDED.notes,
           updated_at = NOW(),
           property_id = EXCLUDED.property_id
