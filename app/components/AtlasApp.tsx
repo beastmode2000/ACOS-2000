@@ -1779,9 +1779,36 @@ export default function AtlasApp() {
   const [manualSortOrder, setManualSortOrder] = useState<
     "Alphabetical" | "Newest" | "Category"
   >("Alphabetical");
+  const [hiddenManualKeys, setHiddenManualKeys] = useState<string[]>([]);
+  const [manualShowHidden, setManualShowHidden] = useState(false);
   const [manualMessage, setManualMessage] = useState(
     "Paste a manual PDF link, upload a file, or select an existing manual.",
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    setManualShowHidden(false);
+    void fetch(`/api/atlas-manual-visibility?propertyId=${encodeURIComponent(activePropertyId)}`, {
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Manual visibility request failed: ${response.status}`);
+        const payload = await response.json();
+        if (!cancelled) {
+          setHiddenManualKeys(
+            Array.isArray(payload.hiddenKeys)
+              ? payload.hiddenKeys.map(String).filter(Boolean)
+              : [],
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setHiddenManualKeys([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activePropertyId]);
 
   const [intakeTitle, setIntakeTitle] = useState("");
   const [intakeType, setIntakeType] = useState("Paperwork / Scan");
@@ -6338,6 +6365,55 @@ export default function AtlasApp() {
     const merged = mergeDocuments(documents, intakeDocs);
     return isSeanMarineUser ? merged.filter((document) => isMarineDocumentRecord(document)) : merged;
   }, [documents, intakeDocs, isSeanMarineUser, assetRecords, locations]);
+
+  const manualVisibilityKey = (manual: ManualRecord) => {
+    const href = cleanManualOpenUrl(manual.href).toLowerCase();
+    if (href) return `href:${href}`;
+    return `record:${manual.title.trim().toLowerCase()}|${String(
+      manual.linkedAssetId || manual.linkedAssetName || "",
+    ).trim().toLowerCase()}`;
+  };
+
+  async function setManualHiddenFromManuals(manual: ManualRecord, hidden: boolean) {
+    const manualKey = manualVisibilityKey(manual);
+    if (!manualKey) return;
+
+    try {
+      const response = await fetch("/api/atlas-manual-visibility", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId: activePropertyId,
+          manualKey,
+          title: manual.title,
+          hidden,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(String(payload?.error || "Manual visibility could not be saved."));
+      }
+
+      setHiddenManualKeys((current) => {
+        const next = new Set(current);
+        if (hidden) next.add(manualKey);
+        else next.delete(manualKey);
+        return Array.from(next);
+      });
+      setSelectedManualId("");
+      showSaveToast(
+        hidden
+          ? `${manual.title} removed from Manuals. The Atlas record was kept.`
+          : `${manual.title} restored to Manuals.`,
+        "success",
+      );
+    } catch (error) {
+      showSaveToast(
+        error instanceof Error ? error.message : "Manual visibility could not be saved.",
+        "warning",
+      );
+    }
+  }
 
   const allManualRecords = useMemo(() => {
     const documentManuals = allDocuments
@@ -21641,12 +21717,16 @@ ${notes.trim()}` : notes.trim(),
 
   function renderManuals() {
     const normalizedSearch = manualSearch.trim().toLowerCase();
+    const manualPool = allManualRecords.filter((manual) => {
+      const hidden = hiddenManualKeys.includes(manualVisibilityKey(manual));
+      return manualShowHidden ? hidden : !hidden;
+    });
 
     const selectedManual =
-      allManualRecords.find((manual) => manual.id === selectedManualId) ||
-      allManualRecords[0];
+      manualPool.find((manual) => manual.id === selectedManualId) ||
+      manualPool[0];
 
-    const filteredManuals = [...allManualRecords]
+    const filteredManuals = [...manualPool]
       .filter((manual) => {
         const matchesSearch =
           !normalizedSearch ||
@@ -21926,23 +22006,37 @@ ${notes.trim()}` : notes.trim(),
                 }}
               >
                 <span style={mutedSmallStyle}>
-                  {filteredManuals.length} of {allManualRecords.length} manuals
+                  {filteredManuals.length} of {manualPool.length} {manualShowHidden ? "hidden " : ""}manuals
                 </span>
-                {manualSearch ||
-                manualCategoryFilter !== "All" ||
-                manualLinkedFilter !== "All" ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setManualSearch("");
-                      setManualCategoryFilter("All");
-                      setManualLinkedFilter("All");
-                    }}
-                    style={smallSubtleButtonStyle}
-                  >
-                    Clear Filters
-                  </button>
-                ) : null}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {hiddenManualKeys.length ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedManualId("");
+                        setManualShowHidden((current) => !current);
+                      }}
+                      style={smallSubtleButtonStyle}
+                    >
+                      {manualShowHidden ? "Back to Manuals" : `Hidden (${hiddenManualKeys.length})`}
+                    </button>
+                  ) : null}
+                  {manualSearch ||
+                  manualCategoryFilter !== "All" ||
+                  manualLinkedFilter !== "All" ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManualSearch("");
+                        setManualCategoryFilter("All");
+                        setManualLinkedFilter("All");
+                      }}
+                      style={smallSubtleButtonStyle}
+                    >
+                      Clear Filters
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </section>
 
@@ -22348,6 +22442,28 @@ ${notes.trim()}` : notes.trim(),
                       style={smallSubtleButtonStyle}
                     >
                       Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void setManualHiddenFromManuals(
+                          selectedManual,
+                          !hiddenManualKeys.includes(manualVisibilityKey(selectedManual)),
+                        )
+                      }
+                      style={{
+                        ...smallSubtleButtonStyle,
+                        color: hiddenManualKeys.includes(manualVisibilityKey(selectedManual))
+                          ? colors.navy
+                          : "#8A5A00",
+                        borderColor: hiddenManualKeys.includes(manualVisibilityKey(selectedManual))
+                          ? colors.line
+                          : "#E3C37A",
+                      }}
+                    >
+                      {hiddenManualKeys.includes(manualVisibilityKey(selectedManual))
+                        ? "Restore to Manuals"
+                        : "Remove from Manuals"}
                     </button>
                     <button
                       type="button"
