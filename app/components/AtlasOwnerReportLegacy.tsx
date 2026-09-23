@@ -99,6 +99,7 @@ type Props = {
     green: string;
   };
   isMobile: boolean;
+  onOpenWorkOrder?: (recordId: string) => void;
 };
 
 const departments = [
@@ -966,7 +967,7 @@ function buildReportPresentation(items: ReportItem[]) {
   };
 }
 
-export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputItems = [], colors, isMobile }: Props) {
+export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputItems = [], colors, isMobile, onOpenWorkOrder }: Props) {
   const [periodStart, setPeriodStart] = useState(mondayOfCurrentWeek());
   const [periodEnd, setPeriodEnd] = useState(localDate());
   const [tasks, setTasks] = useState<Row[]>([]);
@@ -1688,6 +1689,16 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
             style={{ ...controlStyle, resize: "vertical", minHeight: 38 }}
           />
           <div style={{ display: "grid", gap: 5 }}>
+            {item.sourceType === "Work Order" && item.sourceId && onOpenWorkOrder ? (
+              <button
+                type="button"
+                onClick={() => onOpenWorkOrder(item.sourceId)}
+                title="Open the original finished work so you can review, reopen, add notes, or edit it."
+                style={{ ...quietButtonStyle, padding: "8px 9px", borderColor: colors.navy, color: colors.navy, fontWeight: 850 }}
+              >
+                Open Work
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => updateItem(item.id, { highPriority: !item.highPriority })}
