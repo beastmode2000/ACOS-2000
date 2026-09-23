@@ -22111,187 +22111,161 @@ ${notes.trim()}` : notes.trim(),
             {filteredManuals.length ? (
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(0, 1fr)",
-                  gap: 9,
+                  ...assetAlphabeticalListStyle,
+                  gap: 6,
+                  padding: 0,
+                  border: 0,
+                  borderRadius: 0,
+                  background: "transparent",
+                  overflow: "visible",
                 }}
               >
                 {filteredManuals.map((manual) => {
                   const manualOpenUrl = openManualUrl(manual);
                   const selected = selectedManual?.id === manual.id;
                   const firstFile = (manual.files || [])[0];
+                  const firstFileSource =
+                    firstFile?.type?.startsWith("image/") &&
+                    (firstFile.url || firstFile.dataUrl)
+                      ? firstFile.url || firstFile.dataUrl
+                      : "";
+                  const relationship =
+                    manual.linkedAssetName ||
+                    [manual.manufacturer, manual.model].filter(Boolean).join(" · ") ||
+                    "Not linked to an asset";
 
                   return (
-                    <article
+                    <div
                       key={manual.id}
+                      className="atlas-gold-hover-card"
                       style={{
-                        border: `1px solid ${
-                          selected ? colors.gold : colors.line
-                        }`,
-                        borderRadius: 14,
-                        background: selected ? "#FFF9E8" : "#FFFFFF",
-                        padding: 10,
-                        minWidth: 0,
-                        boxShadow: selected
-                          ? "0 8px 20px rgba(172, 121, 0, 0.11)"
-                          : "0 3px 11px rgba(15, 42, 67, 0.04)",
+                        position: "relative",
+                        display: "grid",
+                        gridTemplateColumns: "minmax(0, 1fr) auto",
+                        alignItems: "stretch",
+                        border: `1px solid ${selected ? colors.gold : colors.line}`,
+                        borderRadius: 12,
+                        background: selected ? "#F4F8FD" : "#FFFFFF",
+                        overflow: "hidden",
                       }}
                     >
+                      <span className="atlas-gold-hover-card-accent" aria-hidden="true" />
                       <button
                         type="button"
                         onClick={() => setSelectedManualId(manual.id)}
                         style={{
+                          ...assetListRowStyle,
                           width: "100%",
+                          minHeight: 64,
                           border: 0,
+                          borderRadius: 12,
                           background: "transparent",
-                          padding: 0,
+                          padding: "8px 106px 8px 9px",
                           textAlign: "left",
-                          cursor: "pointer",
-                          display: "grid",
-                          gridTemplateColumns: "54px minmax(0, 1fr)",
-                          gap: 10,
-                          minWidth: 0,
                         }}
                       >
-                        <div
-                          style={{
-                            width: 54,
-                            height: 68,
-                            borderRadius: 10,
-                            border: `1px solid ${colors.line}`,
-                            background: "#F4F7FA",
-                            display: "grid",
-                            placeItems: "center",
-                            overflow: "hidden",
-                            color: colors.navy,
-                            fontWeight: 900,
-                            fontSize: 11,
-                          }}
-                        >
-                          {firstFile?.type?.startsWith("image/") &&
-                          (firstFile.url || firstFile.dataUrl) ? (
-                            <img
-                              src={firstFile.url || firstFile.dataUrl}
-                              alt=""
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                              }}
-                            />
-                          ) : (
-                            <span>PDF</span>
-                          )}
-                        </div>
+                        <div style={{ ...recordListIdentityStyle, alignItems: "center" }}>
+                          <div
+                            style={{
+                              ...assetListThumbStyle,
+                              width: 38,
+                              height: 38,
+                              minWidth: 38,
+                              flex: "0 0 38px",
+                              background: selected ? "#FFF8E5" : colors.navy,
+                            }}
+                          >
+                            {firstFileSource ? (
+                              <img
+                                src={firstFileSource}
+                                alt=""
+                                style={recordListThumbImageStyle}
+                              />
+                            ) : (
+                              <span style={{ fontSize: 9 }}>PDF</span>
+                            )}
+                          </div>
 
-                        <div style={{ minWidth: 0 }}>
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              border: `1px solid ${colors.line}`,
-                              borderRadius: 999,
-                              background: colors.panel,
-                              padding: "3px 7px",
-                              fontSize: 8,
-                              fontWeight: 850,
-                              color: colors.navy,
-                              marginBottom: 5,
-                            }}
-                          >
-                            {manual.category}
-                          </span>
-                          <strong
-                            style={{
-                              display: "block",
-                              color: colors.navy,
-                              fontSize: 12,
-                              lineHeight: 1.35,
-                              overflowWrap: "anywhere",
-                            }}
-                          >
-                            {manual.title}
-                          </strong>
-                          <span
-                            style={{
-                              ...mutedSmallStyle,
-                              display: "block",
-                              marginTop: 5,
-                            }}
-                          >
-                            {manual.linkedAssetName || "Not linked to an asset"}
-                          </span>
-                          <span
-                            style={{
-                              ...mutedSmallStyle,
-                              display: "block",
-                              marginTop: 3,
-                            }}
-                          >
-                            {[manual.manufacturer, manual.model]
-                              .filter(Boolean)
-                              .join(" · ") || "Manufacturer not recorded"}
-                          </span>
+                          <div style={{ minWidth: 0, display: "grid", gap: 3 }}>
+                            <strong style={assetListNameStyle}>
+                              {manual.title}
+                            </strong>
+                            <span
+                              style={{
+                                ...mutedSmallStyle,
+                                display: "block",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {manual.category}
+                            </span>
+                            <span
+                              style={{
+                                ...mutedSmallStyle,
+                                display: "block",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                fontSize: 10,
+                              }}
+                            >
+                              {relationship}
+                            </span>
+                          </div>
                         </div>
                       </button>
 
                       <div
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          flexWrap: "wrap",
-                          gap: 6,
-                          marginTop: 9,
-                          paddingTop: 8,
-                          borderTop: `1px solid ${colors.line}`,
+                          position: "absolute",
+                          right: 7,
+                          top: 7,
+                          display: "grid",
+                          gap: 4,
+                          zIndex: 3,
                         }}
                       >
-                        <span style={mutedSmallStyle}>
-                          {(manual.files || []).length} file
-                          {(manual.files || []).length === 1 ? "" : "s"}
-                        </span>
-                        <div
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            gap: 5,
-                          }}
-                        >
-                          {manualOpenUrl ? (
-                            <a
-                              href={manualOpenUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={manualCompactFileStyle}
-                            >
-                              Open
-                            </a>
-                          ) : null}
+                        {manualOpenUrl ? (
+                          <a
+                            href={manualOpenUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              ...assetTinyButtonStyle,
+                              minWidth: 74,
+                              textAlign: "center",
+                              textDecoration: "none",
+                            }}
+                          >
+                            Open
+                          </a>
+                        ) : (
                           <button
                             type="button"
                             onClick={() => setSelectedManualId(manual.id)}
-                            style={smallSubtleButtonStyle}
+                            style={{ ...assetTinyButtonStyle, minWidth: 74 }}
                           >
                             Details
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => void deleteManualRecord(manual)}
-                            style={{
-                              ...manualDeleteButtonStyle,
-                              width: 30,
-                              minWidth: 30,
-                              padding: 0,
-                              fontSize: 15,
-                            }}
-                            title="Delete manual"
-                            aria-label={`Delete ${manual.title}`}
-                          >
-                            🗑
-                          </button>
-                        </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void deleteManualRecord(manual)}
+                          style={{
+                            ...assetTinyButtonStyle,
+                            minWidth: 74,
+                            color: colors.red,
+                            borderColor: "#F1B8B4",
+                          }}
+                          title="Delete manual"
+                          aria-label={`Delete ${manual.title}`}
+                        >
+                          Delete
+                        </button>
                       </div>
-                    </article>
+                    </div>
                   );
                 })}
               </div>
