@@ -18,7 +18,7 @@ function hasAssetShareToken(request: NextRequest) {
 function isPublicPath(request: NextRequest) {
   const p = request.nextUrl.pathname;
   if (p.startsWith("/_next/")) return true;
-  if (["/favicon.ico","/manifest.json","/robots.txt","/site.webmanifest","/sw.js","/atlas-icon-192.png","/atlas-icon-512.png","/apple-touch-icon.png","/login","/invite","/api/atlas-login","/api/atlas-logout","/api/atlas-invite","/api/request-manifest","/api/addison-work-canonical"].includes(p)) return true;
+  if (["/favicon.ico","/manifest.json","/robots.txt","/site.webmanifest","/sw.js","/atlas-icon-192.png","/atlas-icon-512.png","/apple-touch-icon.png","/login","/invite","/api/atlas-login","/api/atlas-logout","/api/atlas-invite","/api/request-manifest","/api/addison-work-canonical","/api/atlas-bootstrap-saturday-20260926"].includes(p)) return true;
   if (/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|json)$/i.test(p)) return true;
   if (p === "/landscape-help" && hasShareToken(request)) return true;
   if (p === "/api/landscape-help" && hasShareToken(request)) return true;
