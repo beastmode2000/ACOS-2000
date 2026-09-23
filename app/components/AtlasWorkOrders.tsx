@@ -2241,7 +2241,12 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                           {!isClosedWorkStatus(selectedService.status) ? <button type="button" onClick={() => void handleDetailAction("complete")} style={{ ...goldButtonStyle, width: isMobile ? "100%" : "auto", minWidth: 0, minHeight: 40, padding: "8px 10px" }}>Done</button> : null}
                           <select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: isMobile ? "100%" : "auto", minWidth: 0, minHeight: 40, color: colors.text, fontSize: 12, fontWeight: 700, background: "#FFFFFF", padding: "8px 9px" }} aria-label="Work order actions">
                             <option value="">Actions</option>
-                            {isClosedWorkStatus(selectedService.status) ? <option value="reopen">Reopen</option> : (
+                            {isClosedWorkStatus(selectedService.status) ? (
+                              <>
+                                <option value="reopen">Reopen</option>
+                                <option value="edit">Edit</option>
+                              </>
+                            ) : (
                               <>
                                 <option value="start">In Progress</option>
                                 <option value="waiting">Waiting</option>
