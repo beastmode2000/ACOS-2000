@@ -705,6 +705,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const workNotesRef = useRef<HTMLElement | null>(null);
   const workHistoryRef = useRef<HTMLDivElement | null>(null);
   const [noteAuthor, setNoteAuthor] = useState("");
+  const [noteScope, setNoteScope] = useState<"occurrence" | "persistent">("occurrence");
   const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
   const pendingDeleteTimerRef = useRef<number | null>(null);
   const [completionNoteDraft, setCompletionNoteDraft] = useState("");
@@ -1592,6 +1593,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         id: uid("note"),
         text: `Not needed${occurrenceDate ? ` for ${formatDate(occurrenceDate)}` : ""}.`,
         createdAt: new Date().toISOString(),
+        scope: "occurrence",
+        occurrenceDate: dateKey(occurrenceDate) || todayKey(),
+        outcome: "Not Needed",
       };
 
       if (selectedService.recurring) {
@@ -1624,7 +1628,14 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         lastOutcome: "Didn't Get To This Week",
         lastOutcomeAt: new Date().toISOString(),
         notesHistory: [
-          { id: uid("note"), text: noteText, createdAt: new Date().toISOString(), outcome: "Deferred" },
+          {
+            id: uid("note"),
+            text: noteText,
+            createdAt: new Date().toISOString(),
+            outcome: "Deferred",
+            scope: "occurrence",
+            occurrenceDate: dateKey(occurrenceDate) || todayKey(),
+          },
           ...(selectedService.notesHistory || []),
         ],
       });
@@ -1768,11 +1779,50 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     });
   }
 
+  function workNoteScope(note: any): "occurrence" | "persistent" {
+    if (note?.scope === "occurrence" || note?.scope === "persistent") return note.scope;
+    const text = String(note?.text || "").trim();
+    if (
+      note?.outcome ||
+      /^not needed\b/i.test(text) ||
+      /^didn['’]?t get to\b/i.test(text) ||
+      /^no activity\b/i.test(text)
+    ) {
+      return "occurrence";
+    }
+    return "persistent";
+  }
+
+  function workNoteOccurrenceDate(note: any) {
+    return dateKey(
+      note?.occurrenceDate ||
+      note?.workDate ||
+      note?.dueDate ||
+      note?.createdAt ||
+      "",
+    );
+  }
+
+  const currentWorkNotes = (selectedService.notesHistory || []).filter((note: any) => {
+    if (workNoteScope(note) === "persistent") return true;
+    const noteDate = workNoteOccurrenceDate(note);
+    const currentDate = dateKey(selectedService.date || "");
+    return Boolean(noteDate && currentDate && noteDate === currentDate);
+  });
+
   async function addHistoryNote() {
     const text = newHistoryNote.trim();
     if (!text || !selectedService) return;
+    const occurrenceDate = dateKey(selectedService.date || "") || todayKey();
     const notesHistory = [
-      { id: uid("note"), text, createdAt: new Date().toISOString(), createdBy: noteAuthor.trim() || "Team Member" },
+      {
+        id: uid("note"),
+        text,
+        createdAt: new Date().toISOString(),
+        createdBy: noteAuthor.trim() || "Team Member",
+        scope: noteScope,
+        ...(noteScope === "occurrence" ? { occurrenceDate } : {}),
+      },
       ...(selectedService.notesHistory || []),
     ];
     await updateWorkOrderRecord(selectedService, { notesHistory });
@@ -2329,9 +2379,25 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               {workEditorOpen || (selectedService.photos || []).length ? <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 9 }}><summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Photos ({(selectedService.photos || []).length})</summary><input ref={photoInputRef} type="file" accept="image/*" multiple onChange={(event) => void addPhotos(event.currentTarget.files)} style={{ display: "none" }} /><div style={{ display: "flex", justifyContent: "flex-end", gap: 7, flexWrap: "wrap", marginTop: 8 }}><label style={{ ...secondaryButtonStyle, width: "auto", cursor: "pointer" }}>Take Photo<input type="file" accept="image/*" capture="environment" onChange={async (event) => { const input = event.currentTarget; const files = input.files; await addPhotos(files); input.value = ""; }} style={{ display: "none" }} /></label><button type="button" onClick={() => photoInputRef.current?.click()} style={{ ...secondaryButtonStyle, width: "auto" }}>Choose from Library</button></div>{photoMessage ? <p style={mutedSmallStyle}>{photoMessage}</p> : null}{(selectedService.photos || []).length ? (() => { const photos = selectedService.photos || []; const safeIndex = Math.min(selectedPhotoIndex, Math.max(0, photos.length - 1)); const photo = photos[safeIndex] as PhotoLike; const source = photoSource(photo); return <div style={{ display: "grid", gap: 8, marginTop: 8 }}><div style={{ position: "relative", minHeight: isMobile ? 220 : 320, border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#F8FAFC", display: "flex", alignItems: "center", justifyContent: "center" }}>{source ? <img src={source} alt={photo.name || "Work photo"} style={{ width: "100%", height: "100%", maxHeight: 460, objectFit: "contain" }} /> : <span style={mutedSmallStyle}>Photo unavailable</span>}{photos.length > 1 ? <><button type="button" onClick={() => setSelectedPhotoIndex((safeIndex - 1 + photos.length) % photos.length)} aria-label="Previous photo" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, borderRadius: 999, border: `1px solid ${colors.line}`, background: "rgba(255,255,255,.94)", fontSize: 24, cursor: "pointer" }}>‹</button><button type="button" onClick={() => setSelectedPhotoIndex((safeIndex + 1) % photos.length)} aria-label="Next photo" style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, borderRadius: 999, border: `1px solid ${colors.line}`, background: "rgba(255,255,255,.94)", fontSize: 24, cursor: "pointer" }}>›</button><span style={{ position: "absolute", left: "50%", bottom: 9, transform: "translateX(-50%)", background: "rgba(7,23,47,.78)", color: "white", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 800 }}>{safeIndex + 1} / {photos.length}</span></> : null}</div><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><a href={source || undefined} target="_blank" rel="noreferrer" style={{ color: colors.text, fontSize: 13, fontWeight: 700, textDecoration: "none" }}>{photo.name || "Work photo"}</a><button type="button" onClick={() => { removePhoto(photo.id); setSelectedPhotoIndex(0); }} style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer", fontSize: 12 }}>Remove</button></div></div>; })() : null}</details> : null}
 
               <section ref={workNotesRef} style={{ ...detailSectionStyle, padding: isMobile ? 12 : 9, scrollMarginTop: isMobile ? 58 : undefined }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><strong style={{ fontSize: 13 }}>Work notes</strong><span style={mutedSmallStyle}>{(selectedService.notesHistory || []).length} saved</span></div>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(140px,.35fr) minmax(0,1fr) auto", gap: 7, marginTop: isMobile ? 8 : 5 }}><select value={noteAuthor} onChange={(event) => setNoteAuthor(event.currentTarget.value)} style={inputStyle} aria-label="Note added by"><option value="">Added by…</option>{assignmentChoices.map((name) => <option key={name} value={name}>{name}</option>)}</select><input ref={historyNoteInputRef} value={newHistoryNote} onChange={(event) => setNewHistoryNote(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void addHistoryNote(); }} placeholder="Add a work note…" style={inputStyle} /><button type="button" onClick={() => void addHistoryNote()} style={{ ...secondaryButtonStyle, width: "auto" }}>Add Note</button></div>
-                {(selectedService.notesHistory || []).length ? <div style={{ display: "grid", gap: 6, marginTop: 9 }}>{(selectedService.notesHistory || []).slice(0, 8).map((note: any) => <div key={note.id} style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 7 }}><div style={{ fontSize: 12.5, color: colors.text }}>{note.text}</div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 3 }}><div style={mutedSmallStyle}>{note.createdBy ? `${note.createdBy} · ` : ""}{note.createdAt ? new Date(note.createdAt).toLocaleString() : ""}{note.editedAt ? " · edited" : ""}</div><div style={{ display: "flex", gap: 5 }}><button type="button" onClick={() => void editHistoryNote(note)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 28, padding: "3px 7px", fontSize: 11 }}>Edit</button><button type="button" onClick={() => void deleteHistoryNote(note)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 28, padding: "3px 7px", fontSize: 11, color: colors.red }}>Delete</button></div></div></div>)}</div> : null}
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                  <div>
+                    <strong style={{ fontSize: 13 }}>Work notes</strong>
+                    <div style={{ ...mutedSmallStyle, marginTop: 2 }}>
+                      “This occurrence” stays in history but does not follow the next recurring visit. “Keep with work” stays visible every time.
+                    </div>
+                  </div>
+                  <span style={mutedSmallStyle}>{currentWorkNotes.length} current · {(selectedService.notesHistory || []).length} total</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(125px,.28fr) minmax(145px,.32fr) minmax(0,1fr) auto", gap: 7, marginTop: isMobile ? 8 : 5 }}>
+                  <select value={noteScope} onChange={(event) => setNoteScope(event.currentTarget.value as "occurrence" | "persistent")} style={inputStyle} aria-label="Note type">
+                    <option value="occurrence">This occurrence</option>
+                    <option value="persistent">Keep with work</option>
+                  </select>
+                  <select value={noteAuthor} onChange={(event) => setNoteAuthor(event.currentTarget.value)} style={inputStyle} aria-label="Note added by"><option value="">Added by…</option>{assignmentChoices.map((name) => <option key={name} value={name}>{name}</option>)}</select>
+                  <input ref={historyNoteInputRef} value={newHistoryNote} onChange={(event) => setNewHistoryNote(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") void addHistoryNote(); }} placeholder={noteScope === "persistent" ? "Add a note that should stay with this work…" : "Add a note for this occurrence only…"} style={inputStyle} />
+                  <button type="button" onClick={() => void addHistoryNote()} style={{ ...secondaryButtonStyle, width: "auto" }}>Add Note</button>
+                </div>
+                {currentWorkNotes.length ? <div style={{ display: "grid", gap: 6, marginTop: 9 }}>{currentWorkNotes.slice(0, 8).map((note: any) => <div key={note.id} style={{ borderTop: `1px solid ${colors.line}`, paddingTop: 7 }}><div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><div style={{ fontSize: 12.5, color: colors.text }}>{note.text}</div><span style={{ fontSize: 9, fontWeight: 800, color: workNoteScope(note) === "persistent" ? colors.navy : colors.muted }}>{workNoteScope(note) === "persistent" ? "Keeps with work" : "This occurrence"}</span></div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 3 }}><div style={mutedSmallStyle}>{note.createdBy ? `${note.createdBy} · ` : ""}{note.createdAt ? new Date(note.createdAt).toLocaleString() : ""}{note.editedAt ? " · edited" : ""}</div><div style={{ display: "flex", gap: 5 }}><button type="button" onClick={() => void editHistoryNote(note)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 28, padding: "3px 7px", fontSize: 11 }}>Edit</button><button type="button" onClick={() => void deleteHistoryNote(note)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 28, padding: "3px 7px", fontSize: 11, color: colors.red }}>Delete</button></div></div></div>)}</div> : <div style={{ ...mutedSmallStyle, marginTop: 8 }}>No current notes. Older occurrence notes remain in Work Order History.</div>}
               </section>
 
               <div ref={workHistoryRef} style={{ scrollMarginTop: isMobile ? 58 : undefined }} />
