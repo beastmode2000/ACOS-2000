@@ -1993,29 +1993,16 @@ export function mergeCalendarItemRecords(
 
 export function normalizePart(record: Partial<PartRecord>): PartRecord {
   const name = String(record.name ?? "Unnamed Part");
-  const quantity = Math.max(0, Number(record.quantity ?? 0));
-  const minQuantity = Math.max(0, Number(record.minQuantity ?? 1));
-  const automaticStatus: PartStatus =
-    quantity <= 0 ? "Out" : quantity <= minQuantity ? "Low" : "In Stock";
-
   return {
-    propertyId: String(record.propertyId || "2000"),
     id: String(record.id || slugify(name)),
     name,
     category: String(record.category ?? "General"),
-    manufacturer: String(record.manufacturer || ""),
-    partNumber: String(record.partNumber || ""),
     locationId: String(record.locationId ?? "general"),
-    storageLocation: String(record.storageLocation || ""),
     assetId: record.assetId || "",
     vendorId: record.vendorId || "",
-    quantity,
-    minQuantity,
-    status: record.status === "Order" ? "Order" : automaticStatus,
-    purchaseUrl: String(record.purchaseUrl || ""),
-    unitCost: Math.max(0, Number(record.unitCost || 0)),
-    photoUrl: String(record.photoUrl || ""),
-    lastUsedDate: String(record.lastUsedDate || "").slice(0, 10),
+    quantity: Number(record.quantity ?? 0),
+    minQuantity: Number(record.minQuantity ?? 1),
+    status: isPartStatus(record.status) ? record.status : "In Stock",
     notes: String(record.notes || ""),
   };
 }
