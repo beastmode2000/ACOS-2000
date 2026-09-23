@@ -27546,6 +27546,7 @@ ${notes.trim()}` : notes.trim(),
           workOrders={serviceRecords}
           colors={colors}
           isMobile={isMobile}
+          onOpenWorkOrder={openWorkOrderById}
         />
       </section>
     );
