@@ -287,7 +287,7 @@ export type InboxStatus =
 export type InboxReviewDraft = {
   documentType: string;
   summary: string;
-  manufacturer: string;
+  manufacturer?: string;
   model: string;
   serial: string;
   invoiceNumber: string;
@@ -374,18 +374,18 @@ export type PartRecord = {
   name: string;
   category: string;
   manufacturer: string;
-  partNumber: string;
+  partNumber?: string;
   locationId: string;
-  storageLocation: string;
+  storageLocation?: string;
   assetId?: string;
   vendorId?: string;
   quantity: number;
   minQuantity: number;
   status: PartStatus;
-  purchaseUrl: string;
-  unitCost: number;
-  photoUrl: string;
-  lastUsedDate: string;
+  purchaseUrl?: string;
+  unitCost?: number;
+  photoUrl?: string;
+  lastUsedDate?: string;
   notes: string;
 };
 
