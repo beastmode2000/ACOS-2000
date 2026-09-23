@@ -2528,7 +2528,7 @@ export default function AtlasDashboardWorkspace(props: any) {
         <option key={person} value={person}>{dashboardPersonLabel(person)}</option>
       ))}
       {dashboardChecklistWorkOrders.length ? (
-        <optgroup label="Work Checklists">
+        <optgroup label="Work Lists">
           {dashboardChecklistWorkOrders.map((record) => (
             <option key={record.id} value={`checklist:${record.id}`}>{record.title}</option>
           ))}
