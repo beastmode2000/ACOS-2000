@@ -22123,16 +22123,36 @@ ${notes.trim()}` : notes.trim(),
                 {filteredManuals.map((manual) => {
                   const manualOpenUrl = openManualUrl(manual);
                   const selected = selectedManual?.id === manual.id;
-                  const firstFile = (manual.files || [])[0];
-                  const firstFileSource =
-                    firstFile?.type?.startsWith("image/") &&
-                    (firstFile.url || firstFile.dataUrl)
-                      ? firstFile.url || firstFile.dataUrl
-                      : "";
+                  const linkedAsset = manual.linkedAssetId
+                    ? assetRecords.find((asset) => asset.id === manual.linkedAssetId)
+                    : undefined;
+                  const linkedAssetPhotos = manual.linkedAssetId
+                    ? photos.filter((photo) => photo.assetId === manual.linkedAssetId && Boolean(photoSource(photo)))
+                    : [];
+                  const assetCoverPhoto =
+                    linkedAssetPhotos.find((photo) =>
+                      /(^|\\s)(cover|main|primary|hero)(\\s|$)/i.test(photo.name || ""),
+                    ) ||
+                    [...linkedAssetPhotos].sort((a, b) => {
+                      const left = new Date(a.createdAt || 0).getTime() || 0;
+                      const right = new Date(b.createdAt || 0).getTime() || 0;
+                      return left - right;
+                    })[0];
+                  const assetCoverSource = assetCoverPhoto ? photoSource(assetCoverPhoto) : "";
                   const relationship =
+                    linkedAsset?.name ||
                     manual.linkedAssetName ||
                     [manual.manufacturer, manual.model].filter(Boolean).join(" · ") ||
                     "Not linked to an asset";
+                  const equipmentLine =
+                    [manual.manufacturer, manual.model].filter(Boolean).join(" · ") ||
+                    (linkedAsset ? locationName(linkedAsset.locationId) : "") ||
+                    "Manual record";
+                  const fallbackInitial =
+                    String(linkedAsset?.name || manual.linkedAssetName || manual.title || "M")
+                      .trim()
+                      .slice(0, 1)
+                      .toUpperCase() || "M";
 
                   return (
                     <div
@@ -22160,7 +22180,7 @@ ${notes.trim()}` : notes.trim(),
                           border: 0,
                           borderRadius: 12,
                           background: "transparent",
-                          padding: "8px 106px 8px 9px",
+                          padding: manualOpenUrl ? "8px 92px 8px 9px" : "8px 9px",
                           textAlign: "left",
                         }}
                       >
@@ -22168,21 +22188,22 @@ ${notes.trim()}` : notes.trim(),
                           <div
                             style={{
                               ...assetListThumbStyle,
-                              width: 38,
-                              height: 38,
-                              minWidth: 38,
-                              flex: "0 0 38px",
+                              width: 42,
+                              height: 42,
+                              minWidth: 42,
+                              flex: "0 0 42px",
                               background: selected ? "#FFF8E5" : colors.navy,
+                              overflow: "hidden",
                             }}
                           >
-                            {firstFileSource ? (
+                            {assetCoverSource ? (
                               <img
-                                src={firstFileSource}
+                                src={assetCoverSource}
                                 alt=""
                                 style={recordListThumbImageStyle}
                               />
                             ) : (
-                              <span style={{ fontSize: 9 }}>PDF</span>
+                              <span style={{ fontSize: 13 }}>{fallbackInitial}</span>
                             )}
                           </div>
 
@@ -22212,59 +22233,37 @@ ${notes.trim()}` : notes.trim(),
                               }}
                             >
                               {relationship}
+                              {equipmentLine && equipmentLine !== relationship ? ` · ${equipmentLine}` : ""}
                             </span>
                           </div>
                         </div>
                       </button>
 
-                      <div
-                        style={{
-                          position: "absolute",
-                          right: 7,
-                          top: 7,
-                          display: "grid",
-                          gap: 4,
-                          zIndex: 3,
-                        }}
-                      >
-                        {manualOpenUrl ? (
+                      {manualOpenUrl ? (
+                        <div
+                          style={{
+                            position: "absolute",
+                            right: 7,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            zIndex: 3,
+                          }}
+                        >
                           <a
                             href={manualOpenUrl}
                             target="_blank"
                             rel="noreferrer"
                             style={{
                               ...assetTinyButtonStyle,
-                              minWidth: 74,
+                              minWidth: 72,
                               textAlign: "center",
                               textDecoration: "none",
                             }}
                           >
                             Open
                           </a>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setSelectedManualId(manual.id)}
-                            style={{ ...assetTinyButtonStyle, minWidth: 74 }}
-                          >
-                            Details
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => void deleteManualRecord(manual)}
-                          style={{
-                            ...assetTinyButtonStyle,
-                            minWidth: 74,
-                            color: colors.red,
-                            borderColor: "#F1B8B4",
-                          }}
-                          title="Delete manual"
-                          aria-label={`Delete ${manual.title}`}
-                        >
-                          Delete
-                        </button>
-                      </div>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
