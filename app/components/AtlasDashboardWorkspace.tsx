@@ -318,6 +318,7 @@ export default function AtlasDashboardWorkspace(props: any) {
   const [dashboardWorkListFilter, setDashboardWorkListFilter] = useState<"Today" | "All" | "Upcoming" | "Overdue" | "Waiting">("Today");
   const [dashboardWorkPersonFilter, setDashboardWorkPersonFilter] = useState<string>("Everyone");
   const [dashboardRightList, setDashboardRightList] = useState<string>("Upcoming");
+  const [dashboardChecklistDrafts, setDashboardChecklistDrafts] = useState<Record<string, string>>({});
   const [dashboardQuickDrafts, setDashboardQuickDrafts] = useState<Record<string, string>>({ Nick: "", Addison: "", "Sean Powell": "", "Patrick Tanner": "" });
   const dashboardQuickInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const dashboardWasUnscheduledAfterMiss = (record: ServiceRecord) =>
@@ -2510,6 +2511,11 @@ export default function AtlasDashboardWorkspace(props: any) {
       </button>
     );
 
+  const dashboardChecklistWorkOrders = serviceRecords
+    .filter((record) => record.status !== "Completed")
+    .filter((record) => Array.isArray((record as AtlasServiceRecord).checklist) && (record as AtlasServiceRecord).checklist!.length > 0)
+    .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || a.title.localeCompare(b.title));
+
   const dashboardRightSelector = (
     <select
       value={dashboardRightList}
@@ -2521,6 +2527,13 @@ export default function AtlasDashboardWorkspace(props: any) {
       {dashboardWorkPeople.filter((person) => person !== "Nick").map((person) => (
         <option key={person} value={person}>{dashboardPersonLabel(person)}</option>
       ))}
+      {dashboardChecklistWorkOrders.length ? (
+        <optgroup label="Work Checklists">
+          {dashboardChecklistWorkOrders.map((record) => (
+            <option key={record.id} value={`checklist:${record.id}`}>{record.title}</option>
+          ))}
+        </optgroup>
+      ) : null}
     </select>
   );
 
@@ -2606,6 +2619,64 @@ export default function AtlasDashboardWorkspace(props: any) {
     );
   };
 
+  const renderDashboardChecklistLane = (record: ServiceRecord) => {
+    const checklist = Array.isArray((record as AtlasServiceRecord).checklist)
+      ? (record as AtlasServiceRecord).checklist!
+      : [];
+    const completed = checklist.filter((item) => item.completed).length;
+    const draft = String(dashboardChecklistDrafts[String(record.id)] || "");
+
+    const toggleItem = async (itemId: string) => {
+      await syncWorkOrderPatch(record, {
+        checklist: checklist.map((item) =>
+          item.id === itemId ? { ...item, completed: !item.completed } : item,
+        ),
+      });
+    };
+
+    const addItem = async () => {
+      const text = draft.trim();
+      if (!text) return;
+      await syncWorkOrderPatch(record, {
+        checklist: [...checklist, { id: uid("check"), text, completed: false }],
+      });
+      setDashboardChecklistDrafts((current) => ({ ...current, [String(record.id)]: "" }));
+    };
+
+    return (
+      <div data-atlas-dashboard-work-lane={`checklist-${record.id}`} style={{ border: `1px solid ${colors.line}`, borderRadius: 12, padding: 10, background: "#FAFCFE", minWidth: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+          <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", minWidth: 0 }}>
+            <strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>{record.title}</strong>
+            <small style={mutedSmallStyle}>{record.date ? formatDate(String(record.date)) : "No due date"} · {completed} of {checklist.length} complete</small>
+          </button>
+          <span style={badgeStyle(completed === checklist.length && checklist.length ? "Completed" : "Scheduled")}>{completed}/{checklist.length}</span>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 6, marginTop: 9 }}>
+          <input
+            value={draft}
+            onChange={(event) => setDashboardChecklistDrafts((current) => ({ ...current, [String(record.id)]: event.currentTarget.value }))}
+            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void addItem(); } }}
+            placeholder="Add checklist item…"
+            style={{ ...inputStyle, minHeight: 34 }}
+          />
+          <button type="button" onClick={() => void addItem()} disabled={!draft.trim()} style={{ ...goldButtonStyle, minHeight: 34, padding: "6px 10px", opacity: draft.trim() ? 1 : .55 }}>Add</button>
+        </div>
+
+        <div style={{ display: "grid", gap: 5, marginTop: 9, maxHeight: isMobile ? 340 : 470, overflowY: "auto", paddingRight: 2 }}>
+          {checklist.map((item) => (
+            <label key={item.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 8, alignItems: "center", border: `1px solid ${colors.line}`, borderRadius: 8, padding: 8, background: "#FFFFFF", cursor: "pointer" }}>
+              <input type="checkbox" checked={Boolean(item.completed)} onChange={() => void toggleItem(item.id)} />
+              <span style={{ color: colors.navy, fontSize: 13, textDecoration: item.completed ? "line-through" : "none", opacity: item.completed ? .6 : 1 }}>{item.text}</span>
+            </label>
+          ))}
+          {!checklist.length ? <div style={noticeStyle}>No checklist items yet.</div> : null}
+        </div>
+      </div>
+    );
+  };
+
   const dailyForemanPanel = (
     <div style={{ display: "grid", gap: isMobile ? 8 : 12 }}>
       <section style={{ ...cardStyle, padding: isMobile ? 10 : 12, borderColor: "#D7C07A", background: "linear-gradient(135deg,#FFFDF6,#FFFFFF)" }}>
@@ -2645,7 +2716,12 @@ export default function AtlasDashboardWorkspace(props: any) {
           {renderDashboardPersonLane("Nick")}
           {dashboardRightList === "Upcoming"
             ? renderDashboardUpcomingLane()
-            : renderDashboardPersonLane(dashboardRightList, true)}
+            : dashboardRightList.startsWith("checklist:")
+              ? (() => {
+                  const record = serviceRecords.find((item) => String(item.id) === dashboardRightList.slice("checklist:".length));
+                  return record ? renderDashboardChecklistLane(record) : renderDashboardUpcomingLane();
+                })()
+              : renderDashboardPersonLane(dashboardRightList, true)}
         </div>
       </section>
 
