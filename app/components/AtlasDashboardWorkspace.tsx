@@ -2500,9 +2500,15 @@ export default function AtlasDashboardWorkspace(props: any) {
 
   const renderDashboardUpcomingItem = (item: any, index: number, prefix: string) =>
     item.kind === "work" ? (
-      <button key={`${prefix}-work-${item.record.id}`} type="button" onClick={() => openWorkOrderById(item.record.id)} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#FFFFFF", textAlign: "left", cursor: "pointer" }}>
+      <button key={`${prefix}-work-${item.record.id}`} type="button" onClick={() => {
+        if (Array.isArray((item.record as AtlasServiceRecord).checklist) && (item.record as AtlasServiceRecord).checklist!.length > 0) {
+          setDashboardRightList(`checklist:${item.record.id}`);
+        } else {
+          openWorkOrderById(item.record.id);
+        }
+      }} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#FFFFFF", textAlign: "left", cursor: "pointer" }}>
         <strong style={{ display: "block", color: colors.navy, fontSize: 13 }}>{item.title}</strong>
-        <small style={{ ...mutedSmallStyle, display: "block" }}>{formatDate(item.date)} · Work</small>
+        <small style={{ ...mutedSmallStyle, display: "block" }}>{formatDate(item.date)} · {Array.isArray((item.record as AtlasServiceRecord).checklist) && (item.record as AtlasServiceRecord).checklist!.length > 0 ? "Open checklist" : "Work"}</small>
       </button>
     ) : (
       <button key={`${prefix}-calendar-${item.event.instanceId || item.event.id}-${index}`} type="button" onClick={() => openDashboardCalendarItem(item.event as AtlasCalendarItem)} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#FFFFFF", textAlign: "left", cursor: "pointer" }}>

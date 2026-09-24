@@ -54,7 +54,10 @@ function currentPropertyId() {
 function visibleDepartmentPage() {
   for (const heading of Array.from(document.querySelectorAll<HTMLElement>("main h1"))) {
     if (heading.closest("[data-atlas-department-hub-host]")) continue;
-    if (heading.offsetParent === null) continue;
+    // The hub hides the original main children after mounting. Keep recognizing
+    // its heading while that main is active, or the observer will repeatedly
+    // remove and recreate the hub on every frame.
+    if (heading.offsetParent === null && !heading.closest("main.atlas-department-hub-active")) continue;
     const text = normalized(heading.textContent);
     const config = DEPARTMENTS.find((item) => item.aliases.includes(text));
     if (config) return { main: heading.closest("main") as HTMLElement, config };
