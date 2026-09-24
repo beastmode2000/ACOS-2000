@@ -43,6 +43,7 @@ import DocumentIntelligencePanel from "./ai/DocumentIntelligencePanel";
 import PhotoIntelligencePanel from "./ai/PhotoIntelligencePanel";
 import AtlasGroupedSearchResults from "./ai/AtlasGroupedSearchResults";
 import AtlasNotifications from "./AtlasNotifications";
+import { printAtlasChecklist, type PrintableChecklistItem, type PrintableChecklistSection } from "../lib/atlas-print-checklist";
 import AtlasPortfolioCenter from "./AtlasPortfolioCenter";
 import AtlasParts from "./AtlasParts";
 import { findRelatedRecords } from "../lib/ai/relationship-engine";
@@ -2412,6 +2413,42 @@ export default function AtlasDashboardWorkspace(props: any) {
   const dashboardPersonLabel = (person: string) =>
     person === "Patrick Tanner" ? "Pat" : person === "Sean Powell" ? "Sean" : person;
 
+  const printableWorkItem = (record: ServiceRecord): PrintableChecklistItem => {
+    const checklist = (record as AtlasServiceRecord).checklist || [];
+    const dueDate = String(record.date || "").slice(0, 10);
+    return {
+      text: record.title,
+      detail: [dueDate && dueDate !== todayISO() ? `Due ${formatDate(dueDate)}` : "", record.status === "Waiting" ? "Waiting" : ""].filter(Boolean).join(" · "),
+      children: checklist.map((item) => ({ text: item.text, completed: Boolean(item.completed) })),
+    };
+  };
+
+  const printableCalendarItem = (event: AtlasCalendarItem): PrintableChecklistItem => ({
+    text: event.title,
+    detail: [event.time || "All day", event.notes || ""].filter(Boolean).join(" · "),
+  });
+
+  const printDashboardDay = (person?: string) => {
+    const people = person ? [person] : dashboardWorkPeople;
+    const sections: PrintableChecklistSection[] = people.map((name) => {
+      const work = dashboardTodayWorkForPerson(name).map(printableWorkItem);
+      const events = dashboardCalendarForPersonToday(name).map((event) => printableCalendarItem(event as AtlasCalendarItem));
+      return { title: dashboardPersonLabel(name), items: [...work, ...events] };
+    }).filter((section) => section.items.length);
+    if (!printAtlasChecklist(`${activeProperty.name} · Daily Work`, `${formatDate(todayISO())}${person ? ` · ${dashboardPersonLabel(person)}` : ""}`, sections)) {
+      showSaveToast("Allow pop-ups to print the daily checklist.", "warning");
+    }
+  };
+
+  const printDashboardWorkChecklist = (record: ServiceRecord) => {
+    const checklist = (record as AtlasServiceRecord).checklist || [];
+    const assignee = dashboardAssigneeName((record as AtlasServiceRecord).assignedTo || "");
+    const subtitle = [activeProperty.name, record.date ? formatDate(String(record.date)) : "No due date", assignee ? dashboardPersonLabel(assignee) : ""].filter(Boolean).join(" · ");
+    if (!printAtlasChecklist(record.title, subtitle, [{ title: "Checklist", items: checklist.map((item) => ({ text: item.text, completed: Boolean(item.completed) })) }])) {
+      showSaveToast("Allow pop-ups to print this checklist.", "warning");
+    }
+  };
+
   const renderDashboardWorkCard = (record: ServiceRecord) => {
     const completionNote = dashboardCompletionNotes[String(record.id)] || "";
     const atlasRecord = record as AtlasServiceRecord;
@@ -2560,7 +2597,10 @@ export default function AtlasDashboardWorkspace(props: any) {
             <strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>{dashboardPersonLabel(person)}</strong>
             <small style={mutedSmallStyle}>{records.length} active · {completedToday.length} done today</small>
           </div>
-          <span style={badgeStyle(records.length ? "Scheduled" : completedToday.length ? "Completed" : "Monitor")}>{records.length}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button type="button" onClick={() => printDashboardDay(person)} aria-label={`Print ${dashboardPersonLabel(person)}'s daily work`} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Print</button>
+            <span style={badgeStyle(records.length ? "Scheduled" : completedToday.length ? "Completed" : "Monitor")}>{records.length}</span>
+          </div>
         </div>
 
         {!rightLane ? (
@@ -2656,7 +2696,10 @@ export default function AtlasDashboardWorkspace(props: any) {
             <strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>{record.title}</strong>
             <small style={mutedSmallStyle}>{record.date ? formatDate(String(record.date)) : "No due date"} · {completed} of {checklist.length} complete</small>
           </button>
-          <span style={badgeStyle(completed === checklist.length && checklist.length ? "Completed" : "Scheduled")}>{completed}/{checklist.length}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button type="button" onClick={() => printDashboardWorkChecklist(record)} aria-label={`Print ${record.title} checklist`} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Print</button>
+            <span style={badgeStyle(completed === checklist.length && checklist.length ? "Completed" : "Scheduled")}>{completed}/{checklist.length}</span>
+          </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 6, marginTop: 9 }}>
@@ -2715,6 +2758,7 @@ export default function AtlasDashboardWorkspace(props: any) {
           <div><div style={eyebrowStyle}>Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Work Lists</h2></div>
           <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
             {dashboardRightSelector}
+            <button type="button" onClick={() => printDashboardDay()} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Print Day</button>
             <button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Open All Work</button>
           </div>
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { printAtlasChecklist } from "../lib/atlas-print-checklist";
 import type {
   CalendarColorName,
   CalendarLinkType,
@@ -720,6 +721,17 @@ export default function AtlasCalendar(
     return serviceRecords.find((record: any) => String(record.id || "") === linkedId) || null;
   }
 
+  function printEventChecklist(event: any) {
+    const work = workRecordForEvent(event);
+    if (!work || !Array.isArray(work.checklist) || !work.checklist.length) return;
+    const printed = printAtlasChecklist(
+      String(event.title || work.title || "Event checklist"),
+      [event.date ? formatDate(event.date) : "", calendarTimeRangeLabel(event), String(work.assignedTo || "")].filter(Boolean).join(" · "),
+      [{ title: "Checklist", items: work.checklist.map((item: any) => ({ text: String(item.text || ""), completed: Boolean(item.completed) })) }],
+    );
+    if (!printed) window.alert("Allow pop-ups to print this checklist.");
+  }
+
   function eventPeopleLabel(event: any) {
     const workRecord = workRecordForEvent(event);
     if (workRecord) {
@@ -1364,6 +1376,7 @@ export default function AtlasCalendar(
                           >
                             Edit
                           </button>
+                          {workRecordForEvent(event)?.checklist?.length ? <button type="button" onClick={() => printEventChecklist(event)} style={secondaryButtonStyle}>Print Checklist</button> : null}
                           <details style={{ minWidth: 120 }}>
                             <summary style={{ cursor: "pointer", color: colors.muted, fontSize: 12, fontWeight: 800 }}>More details</summary>
                             <div style={{ display: "grid", gap: 7, marginTop: 8, padding: 9, border: `1px solid ${colors.line}`, borderRadius: 10, background: "#FFFFFF" }}>
@@ -1860,6 +1873,9 @@ export default function AtlasCalendar(
                   borderTop: `1px solid ${colors.line}`,
                 }}
               >
+                {hasSelectedEvent && workRecordForEvent(selectedCalendar)?.checklist?.length ? (
+                  <button type="button" onClick={() => printEventChecklist(selectedCalendar)} style={secondaryButtonStyle}>Print Checklist</button>
+                ) : null}
                 {showCalendarSave ? (
                   selectedCalendarOccurrenceDate && selectedCalendar.repeat && selectedCalendar.repeat !== "None" && onSaveOccurrence ? (
                     <>
