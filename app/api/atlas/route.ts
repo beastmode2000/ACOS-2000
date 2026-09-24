@@ -606,6 +606,16 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
     ADD COLUMN IF NOT EXISTS assigned_to text
   `;
 
+  // Keep additional work assignees alongside the legacy primary person and vendor.
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS assigned_person_ids jsonb NOT NULL DEFAULT '[]'::jsonb
+  `;
+  await sql`
+    ALTER TABLE atlas_work_orders
+    ADD COLUMN IF NOT EXISTS assigned_vendor_ids jsonb NOT NULL DEFAULT '[]'::jsonb
+  `;
+
   await sql`
     ALTER TABLE atlas_work_orders
     ADD COLUMN IF NOT EXISTS checklist jsonb NOT NULL DEFAULT '[]'::jsonb
@@ -788,6 +798,11 @@ function mapWorkOrder(row: JsonRecord) {
       : "",
     emoji: row.emoji ? String(row.emoji) : "",
     assignedTo: row.assigned_to ? String(row.assigned_to) : "",
+    assignedPersonIds: asArray(row.assigned_person_ids).map(String),
+    assignedVendorIds: Array.from(new Set([
+      ...(row.vendor_id ? [String(row.vendor_id)] : []),
+      ...asArray(row.assigned_vendor_ids).map(String),
+    ])),
     checklist: asArray(row.checklist),
     notesHistory: asArray(row.notes_history),
     serviceHistory: asArray(row.service_history),
@@ -1162,6 +1177,8 @@ export async function GET(request: NextRequest) {
         responsibility_area,
         emoji,
         assigned_to,
+        assigned_person_ids,
+        assigned_vendor_ids,
         checklist,
         notes_history,
         service_history,
@@ -1943,6 +1960,8 @@ if (table === "assets") {
           responsibility_area = ${nullableString(record.responsibilityArea)},
           emoji = ${nullableString(record.emoji)},
           assigned_to = ${nullableString(record.assignedTo)},
+          assigned_person_ids = COALESCE(${Array.isArray(record.assignedPersonIds) ? jsonArray(record.assignedPersonIds) : null}::jsonb, assigned_person_ids),
+          assigned_vendor_ids = COALESCE(${Array.isArray(record.assignedVendorIds) ? jsonArray(record.assignedVendorIds) : null}::jsonb, assigned_vendor_ids),
           checklist = ${jsonArray(record.checklist)}::jsonb,
           notes_history = ${jsonArray(record.notesHistory)}::jsonb,
           service_history = ${jsonArray(record.serviceHistory)}::jsonb,
@@ -1987,6 +2006,8 @@ if (table === "assets") {
             responsibility_area,
             emoji,
             assigned_to,
+            assigned_person_ids,
+            assigned_vendor_ids,
             checklist,
             notes_history,
             service_history,
@@ -2026,6 +2047,8 @@ if (table === "assets") {
             ${nullableString(record.responsibilityArea)},
             ${nullableString(record.emoji)},
             ${nullableString(record.assignedTo)},
+            ${jsonArray(Array.isArray(record.assignedPersonIds) ? record.assignedPersonIds : (record.assignedTo ? [record.assignedTo] : []))}::jsonb,
+            ${jsonArray(Array.isArray(record.assignedVendorIds) ? record.assignedVendorIds : (record.vendorId ? [record.vendorId] : []))}::jsonb,
             ${jsonArray(record.checklist)}::jsonb,
             ${jsonArray(record.notesHistory)}::jsonb,
             ${jsonArray(record.serviceHistory)}::jsonb,
