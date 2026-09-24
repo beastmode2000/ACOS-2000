@@ -212,7 +212,9 @@ function printReport(title: string, rows: Row[]) {
     *{box-sizing:border-box}
     body{font-family:Arial,sans-serif;color:#071b2f;margin:0;background:#fff}
     .header{display:flex;align-items:center;gap:12px;border-bottom:3px solid #c99a3d;padding-bottom:10px;margin-bottom:12px}
-    .logo{width:90px;height:54px;object-fit:contain}
+    .logo{width:64px;height:64px;object-fit:contain}
+    .company{display:flex;align-items:center;gap:7px;margin-top:16px;padding-top:7px;border-top:1px solid #d8e0e8;color:#637487;font-size:9px;break-inside:avoid}
+    .company img{width:52px;height:32px;object-fit:contain}
     h1{font-size:22px;margin:0 0 3px}.meta{color:#637487;font-size:10px}
     .summary{display:flex;gap:8px;margin:0 0 12px}
     .stat{border:1px solid #d8e0e8;border-radius:7px;padding:7px 10px;min-width:115px}
@@ -224,18 +226,23 @@ function printReport(title: string, rows: Row[]) {
     tbody tr:nth-child(even){background:#f5f8fb}
     tr{break-inside:avoid}
   </style></head><body>
-    <div class="header"><img class="logo" src="${escape(window.location.origin + "/arctic-asset-logo.png")}" alt="Arctic Asset Management"><div><h1>${escape(title)}</h1><div class="meta">Arctic Asset Management · ${rows.length} records · ${escape(new Date().toLocaleString())}</div></div></div>
+    <div class="header"><img class="logo" src="${escape(window.location.origin + "/atlas-logo.png")}" alt="Atlas"><div><h1>${escape(title)}</h1><div class="meta">Atlas · ${rows.length} records · ${escape(new Date().toLocaleString())}</div></div></div>
     <!-- Cost summary intentionally removed. -->
     <table><thead><tr>${columns.map((column)=>`<th>${escape(column.label)}</th>`).join("")}</tr></thead><tbody>${rows.map((row)=>`<tr>${columns.map((column)=>`<td>${escape(formatPrintValue(column.key, row[column.source!]))}</td>`).join("")}</tr>`).join("")}</tbody></table>
+    <div class="company"><img src="${escape(window.location.origin + "/arctic-asset-logo.png")}" alt="Arctic Asset Management"><span>Prepared by Arctic Asset Management</span></div>
   </body></html>`);
   popup.document.close();
   popup.focus();
-  const logo = popup.document.querySelector<HTMLImageElement>(".header .logo");
   let printed = false;
   const print = () => { if (printed || popup.closed) return; printed = true; popup.print(); };
-  if (logo && !logo.complete) {
-    logo.addEventListener("load", () => window.setTimeout(print, 150), { once: true });
-    logo.addEventListener("error", () => window.setTimeout(print, 150), { once: true });
+  const pendingImages = Array.from(popup.document.images).filter((image) => !image.complete);
+  if (pendingImages.length) {
+    let remaining = pendingImages.length;
+    const ready = () => { remaining -= 1; if (!remaining) window.setTimeout(print, 150); };
+    pendingImages.forEach((image) => {
+      image.addEventListener("load", ready, { once: true });
+      image.addEventListener("error", ready, { once: true });
+    });
     window.setTimeout(print, 2500);
   } else {
     window.setTimeout(print, 300);

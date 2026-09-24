@@ -38,8 +38,9 @@ export function printAtlasChecklist(title: string, subtitle: string, sections: P
       body { margin: 0; color: #172b3a; font: 12pt/1.4 Arial, sans-serif; }
       header { border-bottom: 2px solid #172b3a; padding-bottom: 12px; margin-bottom: 20px; }
       .brand { display: flex; align-items: center; gap: 11px; margin-bottom: 12px; }
-      .brand img { width: 88px; height: 53px; object-fit: contain; }
-      .brand strong { font-size: 11pt; }
+      .brand img { width: 72px; height: 72px; object-fit: contain; }
+      .company { display: flex; align-items: center; gap: 8px; margin-top: 22px; padding-top: 7px; border-top: 1px solid #bac6ce; color: #52616d; font-size: 8pt; break-inside: avoid; }
+      .company img { width: 55px; height: 34px; object-fit: contain; }
       h1 { font-size: 20pt; line-height: 1.2; margin: 0 0 5px; }
       header p { color: #52616d; margin: 0; }
       section { margin: 0 0 22px; break-inside: avoid-page; }
@@ -56,14 +57,14 @@ export function printAtlasChecklist(title: string, subtitle: string, sections: P
       @media print { .toolbar { display: none; } }
     </style></head><body>
     <div class="toolbar"><button type="button" onclick="window.print()">Print</button></div>
-    <div class="brand"><img src="${escapeHtml(`${window.location.origin}/arctic-asset-logo.png`)}" alt="Arctic Asset Management logo"><strong>Arctic Asset Management</strong></div>
+    <div class="brand"><img src="${escapeHtml(`${window.location.origin}/atlas-logo.png`)}" alt="Atlas logo"></div>
     <header><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></header>
     ${sections.length ? sections.map((section) => `<section><h2>${escapeHtml(section.title)}</h2>${section.items.length ? `<ul>${section.items.map((item) => renderItem(item)).join("")}</ul>` : '<p class="empty">No checklist items.</p>'}</section>`).join("") : '<p class="empty">No work scheduled.</p>'}
+    <footer class="company"><img src="${escapeHtml(`${window.location.origin}/arctic-asset-logo.png`)}" alt="Arctic Asset Management logo"><span>Prepared by Arctic Asset Management</span></footer>
     </body></html>`;
   printWindow.document.open();
   printWindow.document.write(page);
   printWindow.document.close();
-  const logo = printWindow.document.querySelector<HTMLImageElement>(".brand img");
   let printed = false;
   const print = () => {
     if (printed || printWindow.closed) return;
@@ -71,9 +72,14 @@ export function printAtlasChecklist(title: string, subtitle: string, sections: P
     printWindow.focus();
     printWindow.print();
   };
-  if (logo && !logo.complete) {
-    logo.addEventListener("load", () => printWindow.setTimeout(print, 150), { once: true });
-    logo.addEventListener("error", () => printWindow.setTimeout(print, 150), { once: true });
+  const pendingImages = Array.from(printWindow.document.images).filter((image) => !image.complete);
+  if (pendingImages.length) {
+    let remaining = pendingImages.length;
+    const ready = () => { remaining -= 1; if (!remaining) printWindow.setTimeout(print, 150); };
+    pendingImages.forEach((image) => {
+      image.addEventListener("load", ready, { once: true });
+      image.addEventListener("error", ready, { once: true });
+    });
     printWindow.setTimeout(print, 2000);
   } else {
     printWindow.setTimeout(print, 200);

@@ -1497,7 +1497,8 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
     const popup = window.open("", "_blank");
     if (!popup) return;
 
-    const logoUrl = `${window.location.origin}/arctic-asset-logo.png`;
+    const logoUrl = `${window.location.origin}/atlas-logo.png`;
+    const arcticLogoUrl = `${window.location.origin}/arctic-asset-logo.png`;
     const photoMarkup = (item: ReportItem) => {
       const photos = Array.isArray(item.reportPhotos) ? item.reportPhotos.filter((photo) => photo?.dataUrl) : [];
       if (!photos.length) return "";
@@ -1563,7 +1564,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
       *{box-sizing:border-box}
       body{font-family:Arial,Helvetica,sans-serif;color:#0b2a44;margin:0;background:#fff;font-size:10px;line-height:1.35}
       .header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-bottom:12px;border-bottom:3px solid #c99a3d;margin-bottom:14px}
-      .brand{display:flex;align-items:center;gap:11px}.logo{width:90px;height:54px;object-fit:contain}.brand-name{font-size:13px;font-weight:800}.brand-sub{font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:#667788;margin-top:2px}
+      .brand{display:flex;align-items:center}.logo{width:64px;height:64px;object-fit:contain}
       .report-head{text-align:right}.report-head h1{margin:0;font-size:22px;line-height:1.05}.report-head .property{font-size:11px;font-weight:700;margin-top:4px}.report-head .dates{font-size:9px;color:#667788;margin-top:2px}
       .summary{padding:11px 13px;background:#f5f8fb;border-left:4px solid #c99a3d;margin-bottom:14px;font-size:10.5px}
       .section{margin:0 0 15px}.section h2{font-size:13px;margin:0 0 7px;padding-bottom:4px;border-bottom:1px solid #cfd9e2;text-transform:uppercase;letter-spacing:.06em}
@@ -1571,24 +1572,29 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
       .priority{border:1px solid #e8c66f;border-left:4px solid #c99a3d;border-radius:7px;padding:9px 11px;background:#fffaf0}
       .item{display:grid;gap:3px;padding:5px 0;border-bottom:1px solid #edf1f4;break-inside:avoid}.item-main{display:flex;justify-content:space-between;gap:14px;align-items:baseline}.item-main strong{font-size:10px}.item-main span{font-size:8.5px;color:#6a7886;white-space:nowrap}.note{font-size:9px;color:#46596b;padding-right:8px}
       .photos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:5px}.photos figure{margin:0}.photos img{width:100%;max-height:160px;object-fit:cover;border:1px solid #d7e0e8;border-radius:6px}.photos figcaption{font-size:7.5px;color:#6a7886;margin-top:2px}
-      .footer{margin-top:16px;padding-top:7px;border-top:1px solid #c99a3d;display:flex;justify-content:space-between;color:#7a8794;font-size:7.5px}
+      .footer{margin-top:16px;padding-top:7px;border-top:1px solid #c99a3d;display:flex;justify-content:space-between;align-items:center;gap:12px;color:#7a8794;font-size:7.5px;break-inside:avoid}
+      .company{display:flex;align-items:center;gap:6px}.company img{width:52px;height:32px;object-fit:contain}
       @media print{.section,.item,.photos figure{page-break-inside:avoid}}
     </style></head><body>
-      <header class="header"><div class="brand"><img class="logo" src="${escapeHtml(logoUrl)}" alt="Arctic Asset Management"><div><div class="brand-name">Arctic Asset Management</div><div class="brand-sub">Estate Operations</div></div></div><div class="report-head"><h1>Weekly Report</h1><div class="property">Property ${escapeHtml(propertyId)}</div><div class="dates">${escapeHtml(displayDate(periodStart))} – ${escapeHtml(displayDate(periodEnd))}</div></div></header>
+      <header class="header"><div class="brand"><img class="logo" src="${escapeHtml(logoUrl)}" alt="Atlas"></div><div class="report-head"><h1>Weekly Report</h1><div class="property">Property ${escapeHtml(propertyId)}</div><div class="dates">${escapeHtml(displayDate(periodStart))} – ${escapeHtml(displayDate(periodEnd))}</div></div></header>
       ${ownerInputMarkup}
       <div class="summary"><strong>This Week</strong><br>${escapeHtml(reportSummary)}</div>
       ${priorityMarkup}${categoryMarkup}${upcomingMarkup}
-      <div class="footer"><span>Arctic Asset Management</span><span>${escapeHtml(reportTitle(periodStart, periodEnd))}</span></div>
+      <div class="footer"><div class="company"><img src="${escapeHtml(arcticLogoUrl)}" alt="Arctic Asset Management"><span>Prepared by Arctic Asset Management</span></div><span>${escapeHtml(reportTitle(periodStart, periodEnd))}</span></div>
     </body></html>`);
     popup.document.close();
     popup.focus();
-    const logo = popup.document.querySelector<HTMLImageElement>(".brand .logo");
     let printed = false;
     const print = () => { if (printed || popup.closed) return; printed = true; popup.print(); };
-    if (logo && !logo.complete) {
-      logo.addEventListener("load", () => window.setTimeout(print, 150), { once: true });
-      logo.addEventListener("error", () => window.setTimeout(print, 150), { once: true });
-      window.setTimeout(print, 2500);
+    const pendingImages = Array.from(popup.document.images).filter((image) => !image.complete);
+    if (pendingImages.length) {
+      let remaining = pendingImages.length;
+      const ready = () => { remaining -= 1; if (!remaining) window.setTimeout(print, 150); };
+      pendingImages.forEach((image) => {
+        image.addEventListener("load", ready, { once: true });
+        image.addEventListener("error", ready, { once: true });
+      });
+      window.setTimeout(print, 4000);
     } else {
       window.setTimeout(print, 350);
     }
@@ -1813,7 +1819,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
         }}
       >
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <img src="/arctic-asset-logo.png" alt="Arctic Asset Management" style={{ width: 72, height: 48, objectFit: "contain" }} />
+          <img src="/atlas-logo.png" alt="Atlas" style={{ width: 56, height: 56, objectFit: "contain" }} />
           <div>
             <div
               style={{

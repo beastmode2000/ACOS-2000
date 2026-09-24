@@ -26620,7 +26620,7 @@ ${notes.trim()}` : notes.trim(),
           }
         />
 
-        <div className="atlas-qr-print-brand"><img src="/arctic-asset-logo.png" alt="Arctic Asset Management" /><strong>Arctic Asset Management</strong></div>
+        <div className="atlas-qr-print-brand"><img src="/atlas-logo.png" alt="Atlas" /></div>
 
         {requestPortalToken && typeof window !== "undefined" ? (
           <article
@@ -26882,6 +26882,7 @@ ${notes.trim()}` : notes.trim(),
             );
           })}
         </div>
+        <div className="atlas-qr-print-company"><img src="/arctic-asset-logo.png" alt="Arctic Asset Management" /><span>Prepared by Arctic Asset Management</span></div>
       </section>
     );
   }
@@ -30378,7 +30379,7 @@ ${notes.trim()}` : notes.trim(),
         .atlas-procedure-print {
           display: none;
         }
-        .atlas-qr-print-brand { display: none; }
+        .atlas-qr-print-brand, .atlas-qr-print-company { display: none; }
         @media print {
           @page {
             size: letter;
@@ -30434,12 +30435,24 @@ ${notes.trim()}` : notes.trim(),
           }
           .atlas-procedure-print__brand {
             display: block;
-            width: 94px;
-            height: 57px;
+            width: 72px;
+            height: 72px;
             object-fit: contain;
             object-position: left center;
             margin-bottom: 7px;
           }
+          .atlas-procedure-print__company {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 22px;
+            padding-top: 7px;
+            border-top: 1px solid #d1d5db;
+            color: #52616d;
+            font-size: 8pt;
+            break-inside: avoid;
+          }
+          .atlas-procedure-print__company img { width: 55px; height: 34px; object-fit: contain; }
           .atlas-procedure-print__meta-grid {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -30534,7 +30547,19 @@ ${notes.trim()}` : notes.trim(),
             padding-bottom: 8px;
             color: #0b2a44;
           }
-          .atlas-qr-print-brand img { width: 78px; height: 48px; object-fit: contain; }
+          .atlas-qr-print-brand img { width: 64px; height: 64px; object-fit: contain; }
+          .atlas-qr-print-company {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 18px;
+            padding-top: 7px;
+            border-top: 1px solid #bdc9d2;
+            color: #52616d;
+            font-size: 8pt;
+            break-inside: avoid;
+          }
+          .atlas-qr-print-company img { width: 55px; height: 34px; object-fit: contain; }
         }
         .atlas-command-dashboard {
           perspective: 1200px;

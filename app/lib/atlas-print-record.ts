@@ -43,8 +43,9 @@ function printPage(target: Window, title: string, body: string, waitForImage = f
       h2 { font-size: 13pt; margin: 17px 0 9px; padding-bottom: 5px; border-bottom: 1px solid #bdc9d2; }
       header { border-bottom: 2px solid #172b3a; padding-bottom: 12px; margin-bottom: 16px; }
       .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 13px; }
-      .brand img { width: 90px; height: 54px; object-fit: contain; object-position: left center; }
-      .brand strong { font-size: 11pt; }
+      .brand img { width: 72px; height: 72px; object-fit: contain; object-position: left center; }
+      .company { display: flex; align-items: center; gap: 8px; margin-top: 22px; padding-top: 7px; border-top: 1px solid #bdc9d2; color: #556675; font-size: 8pt; break-inside: avoid; }
+      .company img { width: 55px; height: 34px; object-fit: contain; }
       .sub { color: #556675; font-size: 10pt; }
       .toolbar { padding: 12px 0 18px; display: flex; gap: 10px; align-items: center; }
       button { padding: 8px 13px; cursor: pointer; font: inherit; }
@@ -66,8 +67,10 @@ function printPage(target: Window, title: string, body: string, waitForImage = f
       @media print { .toolbar { display: none; } }
     </style></head><body>
     <div class="toolbar"><button type="button" onclick="window.print()">Print / Save as PDF</button><small>Choose “Save as PDF” as the printer destination to email a copy.</small></div>
-    <div class="brand"><img src="${escapeHtml(`${window.location.origin}/arctic-asset-logo.png`)}" alt="Arctic Asset Management logo"><strong>Arctic Asset Management</strong></div>
-    ${body}</body></html>`;
+    <div class="brand"><img src="${escapeHtml(`${window.location.origin}/atlas-logo.png`)}" alt="Atlas logo"></div>
+    ${body}
+    <footer class="company"><img src="${escapeHtml(`${window.location.origin}/arctic-asset-logo.png`)}" alt="Arctic Asset Management logo"><span>Prepared by Arctic Asset Management</span></footer>
+    </body></html>`;
   target.document.open();
   target.document.write(page);
   target.document.close();

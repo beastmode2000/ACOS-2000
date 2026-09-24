@@ -783,9 +783,9 @@ export default function AtlasProceduresWorkspace(props: any) {
       >
         <header className="atlas-procedure-print__header">
           <div>
-            <img src="/arctic-asset-logo.png" alt="Arctic Asset Management" className="atlas-procedure-print__brand" />
+            <img src="/atlas-logo.png" alt="Atlas" className="atlas-procedure-print__brand" />
             <div className="atlas-procedure-print__eyebrow">
-              ARCTIC ASSET MANAGEMENT · PROCEDURE
+              ATLAS · PROCEDURE
             </div>
             <h1>{selectedProcedure.title.trim() || "New Procedure"}</h1>
           </div>
@@ -952,6 +952,10 @@ export default function AtlasProceduresWorkspace(props: any) {
             </ul>
           </section>
         ) : null}
+        <footer className="atlas-procedure-print__company">
+          <img src="/arctic-asset-logo.png" alt="Arctic Asset Management" />
+          <span>Prepared by Arctic Asset Management</span>
+        </footer>
       </section>
     </div>
   ) : (
