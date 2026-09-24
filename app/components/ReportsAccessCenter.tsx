@@ -212,7 +212,7 @@ function printReport(title: string, rows: Row[]) {
     *{box-sizing:border-box}
     body{font-family:Arial,sans-serif;color:#071b2f;margin:0;background:#fff}
     .header{display:flex;align-items:center;gap:12px;border-bottom:3px solid #c99a3d;padding-bottom:10px;margin-bottom:12px}
-    .logo{width:48px;height:48px;object-fit:contain}
+    .logo{width:90px;height:54px;object-fit:contain}
     h1{font-size:22px;margin:0 0 3px}.meta{color:#637487;font-size:10px}
     .summary{display:flex;gap:8px;margin:0 0 12px}
     .stat{border:1px solid #d8e0e8;border-radius:7px;padding:7px 10px;min-width:115px}
@@ -224,15 +224,22 @@ function printReport(title: string, rows: Row[]) {
     tbody tr:nth-child(even){background:#f5f8fb}
     tr{break-inside:avoid}
   </style></head><body>
-    <div class="header"><img class="logo" src="/atlas-logo.png" alt="Atlas"><div><h1>${escape(title)}</h1><div class="meta">${rows.length} records · ${escape(new Date().toLocaleString())}</div></div></div>
+    <div class="header"><img class="logo" src="${escape(window.location.origin + "/arctic-asset-logo.png")}" alt="Arctic Asset Management"><div><h1>${escape(title)}</h1><div class="meta">Arctic Asset Management · ${rows.length} records · ${escape(new Date().toLocaleString())}</div></div></div>
     <!-- Cost summary intentionally removed. -->
     <table><thead><tr>${columns.map((column)=>`<th>${escape(column.label)}</th>`).join("")}</tr></thead><tbody>${rows.map((row)=>`<tr>${columns.map((column)=>`<td>${escape(formatPrintValue(column.key, row[column.source!]))}</td>`).join("")}</tr>`).join("")}</tbody></table>
   </body></html>`);
   popup.document.close();
   popup.focus();
-  window.setTimeout(() => {
-    popup.print();
-  }, 300);
+  const logo = popup.document.querySelector<HTMLImageElement>(".header .logo");
+  let printed = false;
+  const print = () => { if (printed || popup.closed) return; printed = true; popup.print(); };
+  if (logo && !logo.complete) {
+    logo.addEventListener("load", () => window.setTimeout(print, 150), { once: true });
+    logo.addEventListener("error", () => window.setTimeout(print, 150), { once: true });
+    window.setTimeout(print, 2500);
+  } else {
+    window.setTimeout(print, 300);
+  }
 }
 
 export default function ReportsAccessCenter({ propertyId, data, colors, isMobile, analytics }: Props) {

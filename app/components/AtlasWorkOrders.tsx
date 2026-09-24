@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { openAtlasRecordPrint, renderAtlasWorkOrderPrint } from "../lib/atlas-print-record";
 
 import type { WorkOrderRecurrenceUnit } from "../lib/atlas-types";
 
@@ -847,6 +848,39 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     if (/^pat(?:rick)?(?:[^a-z]|$)/.test(normalized)) return "Patrick Tanner";
     if (/^sean(?:[^a-z]|$)/.test(normalized)) return "Sean Powell";
     return name;
+  };
+
+  const printSelectedWorkOrder = () => {
+    if (!selectedService?.id) return;
+    const target = openAtlasRecordPrint();
+    if (!target) {
+      window.alert("Allow pop-ups to print or save this work order as a PDF.");
+      return;
+    }
+    const assignedVendors = Array.from(new Set([
+      ...(selectedService.vendorId ? [selectedService.vendorId] : []),
+      ...(Array.isArray(selectedService.assignedVendorIds) ? selectedService.assignedVendorIds : []),
+    ])).map((id) => vendorRecords.find((vendor: any) => vendor.id === id)?.name).filter(Boolean);
+    renderAtlasWorkOrderPrint(target, {
+      title: String(selectedService.title || "Work order"),
+      fields: [
+        { label: "Status", value: String(selectedService.status || "Open") },
+        { label: "Due date", value: selectedService.date ? formatDate(selectedService.date) : "" },
+        { label: "Work type", value: itemType(selectedService) },
+        { label: "Priority", value: String(selectedService.priority || "") },
+        { label: "Assigned to", value: canonicalAssigneeName(selectedService.assignedTo) },
+        { label: "Category", value: categoryLabel(selectedService) },
+        { label: "Location", value: locationRecords.find((location: any) => location.id === selectedService.locationId)?.name || "" },
+        { label: "Asset", value: assetRecords.find((asset: any) => asset.id === selectedService.assetId)?.name || "" },
+        { label: "Vendor", value: assignedVendors.join(", ") },
+        { label: "Procedure", value: procedureRecords.find((procedure: any) => procedure.id === selectedService.procedureId)?.title || "" },
+        { label: "Reference", value: String(selectedService.id) },
+      ],
+      description: String(selectedService.notes || ""),
+      checklist: Array.isArray(selectedService.checklist)
+        ? selectedService.checklist.map((item: any) => ({ text: String(item.text || ""), completed: Boolean(item.completed) })).filter((item: { text: string }) => item.text.trim())
+        : [],
+    });
   };
 
   const assignmentChoices = useMemo(
@@ -2286,6 +2320,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                           </div>
                           <h2 style={{ margin: isMobile ? "10px 0 0" : "6px 0 0", color: colors.text, fontSize: isMobile ? 23 : 27, lineHeight: 1.12, letterSpacing: "-.02em", maxWidth: "100%" }}>{selectedService.title || "Untitled Work"}</h2>
                           <div style={{ display: "grid", gap: 4, marginTop: isMobile ? 12 : 8, padding: isMobile ? 11 : 9, borderRadius: 10, border: `1px solid ${colors.line}`, background: "#FFFFFF" }}><span style={fieldLabelStyle}>Description / What to Do</span><div style={{ color: selectedService.notes ? colors.text : colors.muted, fontSize: 14, lineHeight: 1.45 }}>{selectedService.notes || "No description added."}</div></div>
+                          <button type="button" onClick={printSelectedWorkOrder} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, marginTop: 8, padding: "6px 10px" }}>Print / PDF</button>
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: isMobile ? (!isClosedWorkStatus(selectedService.status) ? "repeat(3,minmax(0,1fr))" : "repeat(2,minmax(0,1fr))") : (!isClosedWorkStatus(selectedService.status) ? "auto minmax(128px,auto) auto" : "minmax(128px,auto) auto"), gap: 7, alignItems: "center", justifyContent: isMobile ? "stretch" : "start", width: "100%" }}>
                           {!isClosedWorkStatus(selectedService.status) ? <button type="button" onClick={() => void handleDetailAction("complete")} style={{ ...goldButtonStyle, width: isMobile ? "100%" : "auto", minWidth: 0, minHeight: 40, padding: "8px 10px" }}>Done</button> : null}

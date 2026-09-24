@@ -783,8 +783,9 @@ export default function AtlasProceduresWorkspace(props: any) {
       >
         <header className="atlas-procedure-print__header">
           <div>
+            <img src="/arctic-asset-logo.png" alt="Arctic Asset Management" className="atlas-procedure-print__brand" />
             <div className="atlas-procedure-print__eyebrow">
-              ATLAS PROCEDURE
+              ARCTIC ASSET MANAGEMENT · PROCEDURE
             </div>
             <h1>{selectedProcedure.title.trim() || "New Procedure"}</h1>
           </div>

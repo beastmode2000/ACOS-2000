@@ -43,6 +43,7 @@ import DocumentIntelligencePanel from "./ai/DocumentIntelligencePanel";
 import PhotoIntelligencePanel from "./ai/PhotoIntelligencePanel";
 import AtlasGroupedSearchResults from "./ai/AtlasGroupedSearchResults";
 import AtlasNotifications from "./AtlasNotifications";
+import { openAtlasRecordPrint, renderAtlasAssetPrint } from "../lib/atlas-print-record";
 import AtlasPortfolioCenter from "./AtlasPortfolioCenter";
 import AtlasParts from "./AtlasParts";
 import AtlasAddisonWork from "./AtlasAddisonWork";
@@ -762,6 +763,68 @@ export default function AtlasAssetsWorkspace(props: any) {
           String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
         )
     : [];
+
+  const printSelectedAsset = async () => {
+    const target = openAtlasRecordPrint();
+    if (!target) {
+      showSaveToast("Allow pop-ups to print or save this asset as a PDF.", "warning");
+      return;
+    }
+    let detailsUnavailable = false;
+    let additionalDetails: Array<{ label: string; value: string }> = [];
+    let visibleInfo = new Map<string, { label: string; visible: boolean }>();
+    try {
+      const response = await fetch(`/api/atlas-asset-details?propertyId=${encodeURIComponent(activePropertyId)}&assetId=${encodeURIComponent(selectedAsset.id)}`, { cache: "no-store", credentials: "include" });
+      const data = await response.json();
+      if (!response.ok || !data?.ok) throw new Error("Additional asset information could not load.");
+      additionalDetails = (Array.isArray(data.details?.customDetails) ? data.details.customDetails : [])
+        .map((detail: any) => ({ label: String(detail.label || "").trim(), value: String(detail.value || "").trim() }))
+        .filter((detail: { label: string; value: string }) => detail.label && detail.value);
+      const legacyPlate = String(data.details?.licensePlate || "").trim();
+      if (legacyPlate && !additionalDetails.some((detail) => /licen[cs]e plate|plate number/i.test(detail.label))) {
+        additionalDetails.unshift({ label: "License plate", value: legacyPlate });
+      }
+      visibleInfo = new Map((Array.isArray(data.details?.infoFields) ? data.details.infoFields : [])
+        .map((field: any) => [String(field.key || ""), { label: String(field.label || ""), visible: field.visible !== false }]));
+    } catch {
+      detailsUnavailable = true;
+    }
+
+    const standard = (key: string, label: string, value: unknown) => {
+      const config = visibleInfo.get(key);
+      return config?.visible === false || !String(value || "").trim() ? [] : [{ label: config?.label || label, value: String(value).trim() }];
+    };
+    const vehicle = /\b(vehicle|car|truck|suv|ford|mercedes|porsche|rivian|raptor|lucid)\b/i.test(`${selectedAsset.category} ${selectedAsset.name}`);
+    const plate = additionalDetails.find((detail) => /licen[cs]e plate|plate number/i.test(detail.label));
+    const registration = additionalDetails.filter((detail) => /registration|tab(s)? (expire|renew)|plate expi/i.test(detail.label));
+    const registrationDocuments = linkedAssetDocuments.filter((document) => /registration|tabs|vehicle title/i.test(String(document.title || "")));
+    const vehicleFields = vehicle ? [
+      { label: plate?.label || "License plate", value: plate?.value || "Not recorded" },
+      ...(registration.length ? registration : [{ label: "Registration", value: registrationDocuments.length ? `Document in Atlas: ${registrationDocuments.map((document) => document.title).join(", ")}` : "Not recorded" }]),
+    ] : [];
+    const highlighted = new Set([plate, ...registration].filter(Boolean));
+    renderAtlasAssetPrint(target, {
+      title: selectedAsset.name,
+      property: activePropertyId,
+      photoUrl: selectedAssetCoverSource,
+      vehicleFields,
+      fields: [
+        ...standard("make", "Make", selectedAsset.make),
+        ...standard("model", "Model", selectedAsset.model),
+        ...standard("year", "Year", selectedAsset.year),
+        ...standard("serial", "Serial / VIN / HIN", selectedAsset.serial),
+        ...standard("serial2", "Serial number 2", selectedAsset.serial2),
+        ...standard("manufacturer", "Manufacturer", selectedAsset.manufacturer),
+        ...standard("category", "Category", selectedAsset.category),
+        ...standard("location", "Location", locationName(selectedAsset.locationId || "")),
+        { label: "Status", value: selectedAsset.status || "" },
+        ...additionalDetails.filter((detail) => !highlighted.has(detail)),
+      ],
+      notes: selectedAsset.notes,
+      documents: linkedAssetDocuments.map((document) => String(document.title || "Document")),
+      detailsUnavailable,
+    });
+  };
   const linkedAssetProcedures = selectedAsset.id
     ? procedureRecords
         .filter((procedure) =>
@@ -1651,6 +1714,9 @@ export default function AtlasAssetsWorkspace(props: any) {
                       style={assetActionButtonStyle}
                     >
                       Share
+                    </button>
+                    <button type="button" onClick={() => void printSelectedAsset()} style={assetActionButtonStyle}>
+                      Print / PDF
                     </button>
                     <button
                       type="button"

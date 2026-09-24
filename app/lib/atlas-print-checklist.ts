@@ -37,6 +37,9 @@ export function printAtlasChecklist(title: string, subtitle: string, sections: P
       * { box-sizing: border-box; }
       body { margin: 0; color: #172b3a; font: 12pt/1.4 Arial, sans-serif; }
       header { border-bottom: 2px solid #172b3a; padding-bottom: 12px; margin-bottom: 20px; }
+      .brand { display: flex; align-items: center; gap: 11px; margin-bottom: 12px; }
+      .brand img { width: 88px; height: 53px; object-fit: contain; }
+      .brand strong { font-size: 11pt; }
       h1 { font-size: 20pt; line-height: 1.2; margin: 0 0 5px; }
       header p { color: #52616d; margin: 0; }
       section { margin: 0 0 22px; break-inside: avoid-page; }
@@ -53,12 +56,27 @@ export function printAtlasChecklist(title: string, subtitle: string, sections: P
       @media print { .toolbar { display: none; } }
     </style></head><body>
     <div class="toolbar"><button type="button" onclick="window.print()">Print</button></div>
+    <div class="brand"><img src="${escapeHtml(`${window.location.origin}/arctic-asset-logo.png`)}" alt="Arctic Asset Management logo"><strong>Arctic Asset Management</strong></div>
     <header><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></header>
     ${sections.length ? sections.map((section) => `<section><h2>${escapeHtml(section.title)}</h2>${section.items.length ? `<ul>${section.items.map((item) => renderItem(item)).join("")}</ul>` : '<p class="empty">No checklist items.</p>'}</section>`).join("") : '<p class="empty">No work scheduled.</p>'}
     </body></html>`;
   printWindow.document.open();
   printWindow.document.write(page);
   printWindow.document.close();
-  printWindow.setTimeout(() => { printWindow.focus(); printWindow.print(); }, 200);
+  const logo = printWindow.document.querySelector<HTMLImageElement>(".brand img");
+  let printed = false;
+  const print = () => {
+    if (printed || printWindow.closed) return;
+    printed = true;
+    printWindow.focus();
+    printWindow.print();
+  };
+  if (logo && !logo.complete) {
+    logo.addEventListener("load", () => printWindow.setTimeout(print, 150), { once: true });
+    logo.addEventListener("error", () => printWindow.setTimeout(print, 150), { once: true });
+    printWindow.setTimeout(print, 2000);
+  } else {
+    printWindow.setTimeout(print, 200);
+  }
   return true;
 }

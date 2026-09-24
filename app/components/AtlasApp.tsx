@@ -26620,6 +26620,8 @@ ${notes.trim()}` : notes.trim(),
           }
         />
 
+        <div className="atlas-qr-print-brand"><img src="/arctic-asset-logo.png" alt="Arctic Asset Management" /><strong>Arctic Asset Management</strong></div>
+
         {requestPortalToken && typeof window !== "undefined" ? (
           <article
             className="atlas-qr-print-card"
@@ -30376,6 +30378,7 @@ ${notes.trim()}` : notes.trim(),
         .atlas-procedure-print {
           display: none;
         }
+        .atlas-qr-print-brand { display: none; }
         @media print {
           @page {
             size: letter;
@@ -30428,6 +30431,14 @@ ${notes.trim()}` : notes.trim(),
             font-size: 8pt;
             font-weight: 800;
             letter-spacing: 0.14em;
+          }
+          .atlas-procedure-print__brand {
+            display: block;
+            width: 94px;
+            height: 57px;
+            object-fit: contain;
+            object-position: left center;
+            margin-bottom: 7px;
           }
           .atlas-procedure-print__meta-grid {
             display: grid;
@@ -30514,6 +30525,16 @@ ${notes.trim()}` : notes.trim(),
             break-inside: avoid;
             page-break-inside: avoid;
           }
+          .atlas-qr-print-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+            border-bottom: 2px solid #0b2a44;
+            padding-bottom: 8px;
+            color: #0b2a44;
+          }
+          .atlas-qr-print-brand img { width: 78px; height: 48px; object-fit: contain; }
         }
         .atlas-command-dashboard {
           perspective: 1200px;
