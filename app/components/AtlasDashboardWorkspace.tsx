@@ -2413,6 +2413,26 @@ export default function AtlasDashboardWorkspace(props: any) {
   const dashboardPersonLabel = (person: string) =>
     person === "Patrick Tanner" ? "Pat" : person === "Sean Powell" ? "Sean" : person;
 
+  const chooseDashboardCompletionDate = (record: ServiceRecord) => {
+    const scheduledDate = String(record.date || "").slice(0, 10);
+    const today = todayISO();
+    if (!scheduledDate || scheduledDate === today) return today;
+
+    const answer = window.prompt(
+      `Completed when?\n\nType 1 for Today (${formatDate(today)})\nType 2 for Scheduled date (${formatDate(scheduledDate)})\nOr enter another date as YYYY-MM-DD.`,
+      scheduledDate < today ? "2" : "1",
+    );
+    if (answer === null) return "";
+
+    const value = answer.trim().toLowerCase();
+    if (["1", "today", "t"].includes(value)) return today;
+    if (["2", "scheduled", "schedule", "s"].includes(value)) return scheduledDate;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+    window.alert("Enter 1 for Today, 2 for Scheduled date, or a date like 2026-09-25.");
+    return "";
+  };
+
   const printableWorkItem = (record: ServiceRecord): PrintableChecklistItem => {
     const checklist = (record as AtlasServiceRecord).checklist || [];
     const dueDate = String(record.date || "").slice(0, 10);
@@ -2477,7 +2497,7 @@ export default function AtlasDashboardWorkspace(props: any) {
             </small>
           </button>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-            <button type="button" onClick={async () => { await completeWorkOrder(record as AtlasServiceRecord, { completionNote }); setDashboardCompletionNotes((current) => { const next = { ...current }; delete next[String(record.id)]; return next; }); setDashboardWorkNoteOpen((current) => ({ ...current, [String(record.id)]: false })); }} style={{ ...goldButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Done</button>
+            <button type="button" onClick={async () => { const completedDate = chooseDashboardCompletionDate(record); if (!completedDate) return; await completeWorkOrder(record as AtlasServiceRecord, { completedDate, completionNote, allowEarly: Boolean(record.recurring && record.date && String(record.date).slice(0,10) > todayISO()) }); setDashboardCompletionNotes((current) => { const next = { ...current }; delete next[String(record.id)]; return next; }); setDashboardWorkNoteOpen((current) => ({ ...current, [String(record.id)]: false })); }} style={{ ...goldButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Done</button>
             <select
               value=""
               onChange={(event) => {
