@@ -2500,6 +2500,19 @@ export default function AtlasDashboardWorkspace(props: any) {
               <option value="edit">Edit</option>
               <option value="delete">Delete</option>
             </select>
+            <input
+              type="date"
+              value={dueDate}
+              onClick={(event) => event.currentTarget.showPicker?.()}
+              onFocus={(event) => event.currentTarget.showPicker?.()}
+              onChange={(event) => {
+                const nextDate = event.currentTarget.value;
+                if (nextDate) void syncWorkOrderPatch(record, { date: nextDate });
+              }}
+              aria-label={`Change due date for ${record.title}`}
+              title="Change due date"
+              style={{ ...inputStyle, width: "auto", minHeight: 28, padding: "3px 8px", fontSize: 11, fontWeight: 800 }}
+            />
             <select
               value={dashboardAssigneeName((record as AtlasServiceRecord).assignedTo || "")}
               onChange={(event) => void quickAssignDashboardWork(record, event.currentTarget.value)}
