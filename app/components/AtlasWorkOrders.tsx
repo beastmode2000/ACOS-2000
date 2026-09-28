@@ -1523,15 +1523,37 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     }, 12000);
   }
 
+  function chooseCompletionDate(record: any) {
+    const scheduledDate = dateKey(record?.date);
+    const today = todayKey();
+    if (!scheduledDate || scheduledDate === today) return today;
+
+    const scheduledLabel = formatDate(scheduledDate);
+    const todayLabel = formatDate(today);
+    const answer = window.prompt(
+      `Completed when?\n\nType 1 for Today (${todayLabel})\nType 2 for Scheduled date (${scheduledLabel})\nOr enter another date as YYYY-MM-DD.`,
+      scheduledDate < today ? "2" : "1",
+    );
+    if (answer === null) return "";
+
+    const value = answer.trim().toLowerCase();
+    if (["1", "today", "t"].includes(value)) return today;
+    if (["2", "scheduled", "schedule", "s"].includes(value)) return scheduledDate;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value) && parseDate(value)) return value;
+
+    window.alert("Enter 1 for Today, 2 for Scheduled date, or a date like 2026-09-25.");
+    return "";
+  }
+
   async function completeRecordWithUndo(
     record: any,
     options?: { completedDate?: string; completionNote?: string; allowEarly?: boolean },
   ) {
     if (!record?.id) return;
     const scheduledDate = dateKey(record.date);
-    const defaultCompletedDate =
-      scheduledDate && scheduledDate < todayKey() ? scheduledDate : todayKey();
-    const completedDate = options?.completedDate || defaultCompletedDate;
+    const completedDate = options?.completedDate || chooseCompletionDate(record);
+    if (!completedDate) return;
+
     const completedEarly = Boolean(
       record.recurring &&
       scheduledDate &&
