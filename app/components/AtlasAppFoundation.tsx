@@ -1775,6 +1775,7 @@ export function normalizeService(
       ? record.serviceHistory.map((entry) => ({
           id: String(entry.id || uid("completion")),
           completedAt: String(entry.completedAt || new Date().toISOString()),
+          completedBy: String(entry.completedBy || entry.performedBy || entry.actionBy || ""),
           statusBefore: String(entry.statusBefore || "Open"),
           dueDate: String(entry.dueDate || ""),
           notes: String(entry.notes || ""),
