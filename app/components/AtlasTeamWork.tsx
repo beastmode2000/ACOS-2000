@@ -403,11 +403,37 @@ export default function AtlasTeamWork({
 
   useEffect(() => {
     if (activePropertyId !== "2000") return;
-    void loadAddisonWork(true);
+
+    let refreshInFlight = false;
+    const refresh = async (showLoading = false) => {
+      if (refreshInFlight || document.visibilityState !== "visible") return;
+      refreshInFlight = true;
+      try {
+        await loadAddisonWork(showLoading);
+      } finally {
+        refreshInFlight = false;
+      }
+    };
+
+    void refresh(true);
+
     const timer = window.setInterval(() => {
-      void loadAddisonWork(false);
-    }, 2000);
-    return () => window.clearInterval(timer);
+      void refresh(false);
+    }, 30_000);
+
+    const refreshOnFocus = () => void refresh(false);
+    const refreshOnVisibility = () => {
+      if (document.visibilityState === "visible") void refresh(false);
+    };
+
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnVisibility);
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnVisibility);
+    };
   }, [activePropertyId]);
 
   const assigneeOptions = useMemo(() => {
