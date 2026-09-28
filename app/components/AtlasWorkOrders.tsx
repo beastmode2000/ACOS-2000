@@ -710,6 +710,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
   const pendingDeleteTimerRef = useRef<number | null>(null);
   const [completionNoteDraft, setCompletionNoteDraft] = useState("");
+  const [completionDatePrompt, setCompletionDatePrompt] = useState<{ record: any; options?: { completedDate?: string; completionNote?: string; allowEarly?: boolean } } | null>(null);
+  const [completionDateCustom, setCompletionDateCustom] = useState("");
   const [undoCompletion, setUndoCompletion] = useState<{ id: string; title: string } | null>(null);
   const undoCompletionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [recurrenceIntervalDraft, setRecurrenceIntervalDraft] = useState("1");
@@ -1523,37 +1525,12 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     }, 12000);
   }
 
-  function chooseCompletionDate(record: any) {
-    const scheduledDate = dateKey(record?.date);
-    const today = todayKey();
-    if (!scheduledDate || scheduledDate === today) return today;
-
-    const scheduledLabel = formatDate(scheduledDate);
-    const todayLabel = formatDate(today);
-    const answer = window.prompt(
-      `Completed when?\n\nType 1 for Today (${todayLabel})\nType 2 for Scheduled date (${scheduledLabel})\nOr enter another date as YYYY-MM-DD.`,
-      scheduledDate < today ? "2" : "1",
-    );
-    if (answer === null) return "";
-
-    const value = answer.trim().toLowerCase();
-    if (["1", "today", "t"].includes(value)) return today;
-    if (["2", "scheduled", "schedule", "s"].includes(value)) return scheduledDate;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value) && parseDate(value)) return value;
-
-    window.alert("Enter 1 for Today, 2 for Scheduled date, or a date like 2026-09-25.");
-    return "";
-  }
-
-  async function completeRecordWithUndo(
+  async function finishWorkWithDate(
     record: any,
+    completedDate: string,
     options?: { completedDate?: string; completionNote?: string; allowEarly?: boolean },
   ) {
-    if (!record?.id) return;
     const scheduledDate = dateKey(record.date);
-    const completedDate = options?.completedDate || chooseCompletionDate(record);
-    if (!completedDate) return;
-
     const completedEarly = Boolean(
       record.recurring &&
       scheduledDate &&
@@ -1577,6 +1554,27 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     }
 
     armCompletionUndo(record);
+  }
+
+  async function completeRecordWithUndo(
+    record: any,
+    options?: { completedDate?: string; completionNote?: string; allowEarly?: boolean },
+  ) {
+    if (!record?.id) return;
+    if (options?.completedDate) {
+      await finishWorkWithDate(record, options.completedDate, options);
+      return;
+    }
+
+    const scheduledDate = dateKey(record.date);
+    const today = todayKey();
+    if (!scheduledDate || scheduledDate === today) {
+      await finishWorkWithDate(record, today, options);
+      return;
+    }
+
+    setCompletionDateCustom(scheduledDate);
+    setCompletionDatePrompt({ record, options });
   }
 
   async function undoRecentCompletion() {
@@ -2126,6 +2124,35 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                 Choose from Library
                 <input type="file" accept="image/*" multiple onChange={async (event) => { const input = event.currentTarget; const files = input.files; await addPhotos(files); input.value = ""; setPhotoChooserOpen(false); }} style={{ display: "none" }} />
               </label>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {completionDatePrompt ? (
+        <div
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setCompletionDatePrompt(null);
+          }}
+          style={{ position: "fixed", inset: 0, zIndex: 1400, display: "grid", placeItems: "center", padding: 18, background: "rgba(7,27,47,.68)" }}
+        >
+          <div role="dialog" aria-modal="true" aria-label="Completed when" style={{ width: "min(100%,420px)", borderRadius: 16, background: "#FFFFFF", padding: 16, boxShadow: "0 24px 70px rgba(0,0,0,.28)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div>
+                <div style={eyebrowStyle}>Completed When?</div>
+                <strong style={{ color: colors.navy, fontSize: 18 }}>{completionDatePrompt.record.title || "Work"}</strong>
+              </div>
+              <button type="button" onClick={() => setCompletionDatePrompt(null)} aria-label="Cancel" style={{ ...secondaryButtonStyle, width: 40, minWidth: 40, height: 40, padding: 0, borderRadius: 999, fontSize: 22 }}>×</button>
+            </div>
+            <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
+              <button type="button" onClick={async () => { const current = completionDatePrompt; setCompletionDatePrompt(null); await finishWorkWithDate(current.record, todayKey(), current.options); }} style={{ ...goldButtonStyle, width: "100%", minHeight: 44 }}>Today · {formatDate(todayKey())}</button>
+              <button type="button" onClick={async () => { const current = completionDatePrompt; const scheduled = dateKey(current.record.date); setCompletionDatePrompt(null); await finishWorkWithDate(current.record, scheduled, current.options); }} style={{ ...secondaryButtonStyle, width: "100%", minHeight: 44 }}>Scheduled Date · {formatDate(dateKey(completionDatePrompt.record.date))}</button>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={fieldLabelStyle}>Pick Another Date</span>
+                <input type="date" value={completionDateCustom} onClick={(event) => event.currentTarget.showPicker?.()} onFocus={(event) => event.currentTarget.showPicker?.()} onChange={(event) => setCompletionDateCustom(event.currentTarget.value)} style={{ ...inputStyle, minHeight: 44 }} />
+              </label>
+              <button type="button" disabled={!completionDateCustom} onClick={async () => { if (!completionDateCustom) return; const current = completionDatePrompt; const selectedDate = completionDateCustom; setCompletionDatePrompt(null); await finishWorkWithDate(current.record, selectedDate, current.options); }} style={{ ...secondaryButtonStyle, width: "100%", minHeight: 44, opacity: completionDateCustom ? 1 : .55 }}>Use Selected Date</button>
+              <button type="button" onClick={() => setCompletionDatePrompt(null)} style={{ ...secondaryButtonStyle, width: "100%", minHeight: 40 }}>Cancel</button>
             </div>
           </div>
         </div>
