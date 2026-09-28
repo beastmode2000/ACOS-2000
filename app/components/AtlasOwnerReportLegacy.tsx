@@ -1659,7 +1659,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "110px 165px minmax(220px,1.3fr) minmax(220px,1.1fr) auto",
+            gridTemplateColumns: isMobile ? "1fr" : "110px 145px 165px minmax(220px,1.3fr) minmax(220px,1.1fr) auto",
             gap: 7,
             alignItems: "start",
           }}
@@ -1670,6 +1670,16 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
             onChange={(event) => updateItem(item.id, { date: event.currentTarget.value })}
             style={controlStyle}
           />
+          <label style={{ display: "grid", gap: 2 }}>
+            <input
+              value={item.person || ""}
+              onChange={(event) => updateItem(item.id, { person: event.currentTarget.value })}
+              placeholder="Completed by"
+              aria-label="Who completed this work"
+              style={controlStyle}
+            />
+            <span style={{ fontSize: 10, color: colors.muted }}>Completed by</span>
+          </label>
           <label style={{ display: "grid", gap: 2 }}>
             <select
               value={reportCategoryForItem(item)}
