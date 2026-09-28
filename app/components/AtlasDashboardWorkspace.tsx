@@ -314,6 +314,8 @@ export default function AtlasDashboardWorkspace(props: any) {
   const [dashboardRescheduleTarget, setDashboardRescheduleTarget] = useState<ServiceRecord | null>(null);
   const [dashboardRescheduleDate, setDashboardRescheduleDate] = useState("");
   const dashboardRescheduleInputRef = useRef<HTMLInputElement | null>(null);
+  const [dashboardCompletionPrompt, setDashboardCompletionPrompt] = useState<ServiceRecord | null>(null);
+  const [dashboardCompletionDate, setDashboardCompletionDate] = useState("");
   const [dashboardWorkAssignee, setDashboardWorkAssignee] = useState(initialDashboardAssignee);
   const [dashboardWorkDate, setDashboardWorkDate] = useState(() => todayISO());
   const [dashboardWorkListFilter, setDashboardWorkListFilter] = useState<"Today" | "All" | "Upcoming" | "Overdue" | "Waiting">("Today");
@@ -2413,24 +2415,30 @@ export default function AtlasDashboardWorkspace(props: any) {
   const dashboardPersonLabel = (person: string) =>
     person === "Patrick Tanner" ? "Pat" : person === "Sean Powell" ? "Sean" : person;
 
-  const chooseDashboardCompletionDate = (record: ServiceRecord) => {
+  const finishDashboardWork = async (record: ServiceRecord, completedDate: string) => {
+    const completionNote = dashboardCompletionNotes[String(record.id)] || "";
+    await completeWorkOrder(record as AtlasServiceRecord, {
+      completedDate,
+      completionNote,
+      allowEarly: Boolean(record.recurring && record.date && String(record.date).slice(0,10) > todayISO()),
+    });
+    setDashboardCompletionNotes((current) => {
+      const next = { ...current };
+      delete next[String(record.id)];
+      return next;
+    });
+    setDashboardWorkNoteOpen((current) => ({ ...current, [String(record.id)]: false }));
+  };
+
+  const requestDashboardCompletion = async (record: ServiceRecord) => {
     const scheduledDate = String(record.date || "").slice(0, 10);
     const today = todayISO();
-    if (!scheduledDate || scheduledDate === today) return today;
-
-    const answer = window.prompt(
-      `Completed when?\n\nType 1 for Today (${formatDate(today)})\nType 2 for Scheduled date (${formatDate(scheduledDate)})\nOr enter another date as YYYY-MM-DD.`,
-      scheduledDate < today ? "2" : "1",
-    );
-    if (answer === null) return "";
-
-    const value = answer.trim().toLowerCase();
-    if (["1", "today", "t"].includes(value)) return today;
-    if (["2", "scheduled", "schedule", "s"].includes(value)) return scheduledDate;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-
-    window.alert("Enter 1 for Today, 2 for Scheduled date, or a date like 2026-09-25.");
-    return "";
+    if (!scheduledDate || scheduledDate === today) {
+      await finishDashboardWork(record, today);
+      return;
+    }
+    setDashboardCompletionDate(scheduledDate);
+    setDashboardCompletionPrompt(record);
   };
 
   const printableWorkItem = (record: ServiceRecord): PrintableChecklistItem => {
@@ -2497,7 +2505,7 @@ export default function AtlasDashboardWorkspace(props: any) {
             </small>
           </button>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-            <button type="button" onClick={async () => { const completedDate = chooseDashboardCompletionDate(record); if (!completedDate) return; await completeWorkOrder(record as AtlasServiceRecord, { completedDate, completionNote, allowEarly: Boolean(record.recurring && record.date && String(record.date).slice(0,10) > todayISO()) }); setDashboardCompletionNotes((current) => { const next = { ...current }; delete next[String(record.id)]; return next; }); setDashboardWorkNoteOpen((current) => ({ ...current, [String(record.id)]: false })); }} style={{ ...goldButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Done</button>
+            <button type="button" onClick={() => void requestDashboardCompletion(record)} style={{ ...goldButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Done</button>
             <select
               value=""
               onChange={(event) => {
@@ -3326,7 +3334,31 @@ export default function AtlasDashboardWorkspace(props: any) {
     </div>
   );
 
-  return <div className="atlas-command-dashboard" style={{ display: "grid", gap: 12 }}>
+  return <>
+    {dashboardCompletionPrompt ? (
+      <div role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setDashboardCompletionPrompt(null); }} style={{ position: "fixed", inset: 0, zIndex: 1400, display: "grid", placeItems: "center", padding: 18, background: "rgba(7,27,47,.68)" }}>
+        <div role="dialog" aria-modal="true" aria-label="Completed when" style={{ width: "min(100%,420px)", borderRadius: 16, background: "#FFFFFF", padding: 16, boxShadow: "0 24px 70px rgba(0,0,0,.28)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <div>
+              <div style={eyebrowStyle}>Completed When?</div>
+              <strong style={{ color: colors.navy, fontSize: 18 }}>{dashboardCompletionPrompt.title}</strong>
+            </div>
+            <button type="button" onClick={() => setDashboardCompletionPrompt(null)} aria-label="Cancel" style={{ ...secondaryButtonStyle, width: 40, minWidth: 40, height: 40, padding: 0, borderRadius: 999, fontSize: 22 }}>×</button>
+          </div>
+          <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
+            <button type="button" onClick={async () => { const record = dashboardCompletionPrompt; setDashboardCompletionPrompt(null); await finishDashboardWork(record, todayISO()); }} style={{ ...goldButtonStyle, width: "100%", minHeight: 44 }}>Today · {formatDate(todayISO())}</button>
+            <button type="button" onClick={async () => { const record = dashboardCompletionPrompt; const scheduled = String(record.date || "").slice(0,10); setDashboardCompletionPrompt(null); await finishDashboardWork(record, scheduled); }} style={{ ...secondaryButtonStyle, width: "100%", minHeight: 44 }}>Scheduled Date · {formatDate(String(dashboardCompletionPrompt.date || "").slice(0,10))}</button>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={fieldLabelStyle}>Pick Another Date</span>
+              <input type="date" value={dashboardCompletionDate} onClick={(event) => event.currentTarget.showPicker?.()} onFocus={(event) => event.currentTarget.showPicker?.()} onChange={(event) => setDashboardCompletionDate(event.currentTarget.value)} style={{ ...inputStyle, minHeight: 44 }} />
+            </label>
+            <button type="button" disabled={!dashboardCompletionDate} onClick={async () => { if (!dashboardCompletionDate) return; const record = dashboardCompletionPrompt; const selectedDate = dashboardCompletionDate; setDashboardCompletionPrompt(null); await finishDashboardWork(record, selectedDate); }} style={{ ...secondaryButtonStyle, width: "100%", minHeight: 44, opacity: dashboardCompletionDate ? 1 : .55 }}>Use Selected Date</button>
+            <button type="button" onClick={() => setDashboardCompletionPrompt(null)} style={{ ...secondaryButtonStyle, width: "100%", minHeight: 40 }}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    ) : null}
+    <div className="atlas-command-dashboard" style={{ display: "grid", gap: 12 }}>
     {dailyForemanPanel}
     <div className="atlas-dashboard-layout-grid" style={{ display: "grid", gridTemplateColumns: "repeat(12,minmax(0,1fr))", gridAutoRows: "max-content", gridAutoFlow: "row", gap: 14, alignItems: "start" }}>
       {dashboardWidgets.filter((widget) => widget.visible && widget.id !== "property-status").map((widget) => {
@@ -3364,5 +3396,6 @@ export default function AtlasDashboardWorkspace(props: any) {
         {dashboardEditMode && !widget.collapsed && !widget.locked && !isMobile ? <div onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); beginWidgetResize(event, widget, "x"); }} title="Resize widget width" style={{ position: "absolute", top: 42, right: -4, bottom: 4, width: 10, cursor: "ew-resize", zIndex: 5, touchAction: "none" }} /> : null}
       </div>;})}
     </div>
-  </div>;
+    </div>
+  </>;
 }
