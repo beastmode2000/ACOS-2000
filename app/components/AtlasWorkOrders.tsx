@@ -1528,7 +1528,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     options?: { completedDate?: string; completionNote?: string; allowEarly?: boolean },
   ) {
     if (!record?.id) return;
-    await completeWorkOrder(record, options);
+    const scheduledDate = dateKey(record.date);
+    const defaultCompletedDate =
+      scheduledDate && scheduledDate < todayKey() ? scheduledDate : todayKey();
+    await completeWorkOrder(record, {
+      ...options,
+      completedDate: options?.completedDate || defaultCompletedDate,
+    });
     armCompletionUndo(record);
   }
 
@@ -1877,6 +1883,39 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     if (!selectedService || !window.confirm("Delete this work note?")) return;
     const notesHistory = (selectedService.notesHistory || []).filter((item: any) => item.id !== note.id);
     await updateWorkOrderRecord(selectedService, { notesHistory });
+  }
+
+  async function updateCompletionSnapshot(entry: any, patch: { completedBy?: string; completedDate?: string }) {
+    if (!selectedService) return;
+
+    const nextHistory = (selectedService.serviceHistory || []).map((item: any) => {
+      if (item.id !== entry.id) return item;
+      const nextCompletedAt = patch.completedDate
+        ? `${patch.completedDate}T12:00:00.000Z`
+        : item.completedAt;
+      return {
+        ...item,
+        ...(patch.completedBy !== undefined ? { completedBy: patch.completedBy } : {}),
+        ...(patch.completedDate ? { completedAt: nextCompletedAt } : {}),
+      };
+    });
+
+    const completionDates = nextHistory
+      .map((item: any) => dateKey(item.completedAt))
+      .filter(Boolean)
+      .sort();
+    const latestCompletionDate = completionDates.length
+      ? completionDates[completionDates.length - 1]
+      : "";
+
+    await updateWorkOrderRecord(selectedService, {
+      serviceHistory: nextHistory,
+      completionHistory: Array.from(new Set(completionDates)),
+      lastCompletedDate: latestCompletionDate,
+      ...(patch.completedDate && dateKey(selectedService.completedAt) === dateKey(entry.completedAt)
+        ? { completedAt: `${patch.completedDate}T12:00:00.000Z` }
+        : {}),
+    });
   }
 
   async function reopenCompletionSnapshot(entry: any) {
@@ -2438,7 +2477,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
               <div ref={workHistoryRef} style={{ scrollMarginTop: isMobile ? 58 : undefined }} />
               {workActivity.length ? <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 10 }}><summary style={{ cursor: "pointer", fontWeight: 800, listStyle: "none" }}>Work Order History ({workActivity.length})</summary><div style={{ display: "grid", gap: 0, marginTop: 8 }}>{workActivity.slice(0, 20).map((item) => <div key={item.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 9, padding: "8px 0", borderTop: `1px solid ${colors.line}` }}><span style={{ ...badgeStyle(item.type), alignSelf: "start" }}>{item.type}</span><div><div style={{ fontSize: 13, color: colors.text }}>{item.text}</div><div style={{ ...mutedSmallStyle, marginTop: 2 }}>{item.person} · {item.date ? new Date(item.date).toLocaleString() : "Date not recorded"}</div></div></div>)}</div></details> : null}
 
-              {(selectedService.serviceHistory || []).length ? <details key={`history-${selectedService.id}`} open={completedHistoryOpen} onToggle={(event) => setCompletedHistoryOpen(event.currentTarget.open)} style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}><summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>History ({(selectedService.serviceHistory || []).length})</summary>{(selectedService.serviceHistory || []).length ? <div style={{ display: "grid", gap: 0, marginTop: 8 }}>{(selectedService.serviceHistory || []).map((entry: any) => { const completedBy = entry.completedBy || entry.performedBy || entry.actionBy || selectedService.assignedTo || "Not recorded"; const entryAsset = assetRecords.find((asset: any) => asset.id === entry.assetId)?.name || ""; const entryLocation = locationRecords.find((location: any) => location.id === entry.locationId)?.name || ""; const entryVendor = vendorRecords.find((vendor: any) => vendor.id === entry.vendorId)?.name || ""; return <details key={entry.id} style={{ padding: "9px 0", borderBottom: `1px solid ${colors.line}` }}><summary style={{ cursor: "pointer", color: colors.text, listStyle: "none", display: "grid", gap: 3 }}><strong style={{ display: "block", fontSize: 13 }}>Completed {new Date(entry.completedAt).toLocaleDateString()}</strong><span style={mutedSmallStyle}>By {completedBy} · {(entry.checklist || []).filter((item: any) => item.completed).length}/{(entry.checklist || []).length} steps · {(entry.photos || []).length} photos · Click for details</span></summary><div style={{ display: "grid", gap: 8, marginTop: 10, padding: isMobile ? 11 : 10, borderRadius: 10, background: "#F8FAFC", border: `1px solid ${colors.line}` }}><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 7 }}><div><span style={fieldLabelStyle}>Completed by</span><div style={{ marginTop: 3, fontWeight: 700 }}>{completedBy}</div></div><div><span style={fieldLabelStyle}>Completion date</span><div style={{ marginTop: 3, fontWeight: 700 }}>{new Date(entry.completedAt).toLocaleString()}</div></div>{entry.statusBefore ? <div><span style={fieldLabelStyle}>Previous status</span><div style={{ marginTop: 3 }}>{entry.statusBefore}</div></div> : null}{entryAsset ? <div><span style={fieldLabelStyle}>Asset</span><div style={{ marginTop: 3 }}>{entryAsset}</div></div> : null}{entryLocation ? <div><span style={fieldLabelStyle}>Location</span><div style={{ marginTop: 3 }}>{entryLocation}</div></div> : null}{entryVendor ? <div><span style={fieldLabelStyle}>Vendor</span><div style={{ marginTop: 3 }}>{entryVendor}</div></div> : null}</div><div><span style={fieldLabelStyle}>Completion note</span><div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{entry.notes || "No completion note was entered."}</div></div>{(entry.checklist || []).length ? <div><span style={fieldLabelStyle}>Checklist</span><div style={{ display: "grid", gap: 4, marginTop: 5 }}>{entry.checklist.map((item: any) => <div key={item.id || item.text} style={{ fontSize: 12.5 }}>{item.completed ? "✓" : "○"} {item.text}</div>)}</div></div> : null}<div style={{ fontSize: 12.5, color: colors.muted }}>{(entry.photos || []).length} photo{(entry.photos || []).length === 1 ? "" : "s"} · {(entry.documents || []).length} document{(entry.documents || []).length === 1 ? "" : "s"}</div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => void reopenCompletionSnapshot(entry)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "5px 8px", fontSize: 11.5 }}>Reopen This Completion</button></div></div></details>; })}</div> : null}</details> : null}
+              {(selectedService.serviceHistory || []).length ? <details key={`history-${selectedService.id}`} open={completedHistoryOpen} onToggle={(event) => setCompletedHistoryOpen(event.currentTarget.open)} style={{ ...detailSectionStyle, padding: isMobile ? 12 : 14 }}><summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>History ({(selectedService.serviceHistory || []).length})</summary>{(selectedService.serviceHistory || []).length ? <div style={{ display: "grid", gap: 0, marginTop: 8 }}>{(selectedService.serviceHistory || []).map((entry: any) => { const completedBy = entry.completedBy || entry.performedBy || entry.actionBy || selectedService.assignedTo || "Not recorded"; const entryAsset = assetRecords.find((asset: any) => asset.id === entry.assetId)?.name || ""; const entryLocation = locationRecords.find((location: any) => location.id === entry.locationId)?.name || ""; const entryVendor = vendorRecords.find((vendor: any) => vendor.id === entry.vendorId)?.name || ""; return <details key={entry.id} style={{ padding: "9px 0", borderBottom: `1px solid ${colors.line}` }}><summary style={{ cursor: "pointer", color: colors.text, listStyle: "none", display: "grid", gap: 3 }}><strong style={{ display: "block", fontSize: 13 }}>Completed {new Date(entry.completedAt).toLocaleDateString()}</strong><span style={mutedSmallStyle}>By {completedBy} · {(entry.checklist || []).filter((item: any) => item.completed).length}/{(entry.checklist || []).length} steps · {(entry.photos || []).length} photos · Click for details</span></summary><div style={{ display: "grid", gap: 8, marginTop: 10, padding: isMobile ? 11 : 10, borderRadius: 10, background: "#F8FAFC", border: `1px solid ${colors.line}` }}><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 7 }}><div><span style={fieldLabelStyle}>Completed by</span><input defaultValue={completedBy === "Not recorded" ? "" : completedBy} onBlur={(event) => { const value = event.currentTarget.value.trim(); if (value !== (entry.completedBy || entry.performedBy || entry.actionBy || "")) void updateCompletionSnapshot(entry, { completedBy: value }); }} placeholder="Who did this work?" style={{ ...inputStyle, marginTop: 4, minHeight: 36, fontSize: 12.5 }} /></div><div><span style={fieldLabelStyle}>Completion date</span><input type="date" value={dateKey(entry.completedAt)} onChange={(event) => void updateCompletionSnapshot(entry, { completedDate: event.currentTarget.value })} style={{ ...inputStyle, marginTop: 4, minHeight: 36, fontSize: 12.5 }} /></div>{entry.statusBefore ? <div><span style={fieldLabelStyle}>Previous status</span><div style={{ marginTop: 3 }}>{entry.statusBefore}</div></div> : null}{entryAsset ? <div><span style={fieldLabelStyle}>Asset</span><div style={{ marginTop: 3 }}>{entryAsset}</div></div> : null}{entryLocation ? <div><span style={fieldLabelStyle}>Location</span><div style={{ marginTop: 3 }}>{entryLocation}</div></div> : null}{entryVendor ? <div><span style={fieldLabelStyle}>Vendor</span><div style={{ marginTop: 3 }}>{entryVendor}</div></div> : null}</div><div><span style={fieldLabelStyle}>Completion note</span><div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{entry.notes || "No completion note was entered."}</div></div>{(entry.checklist || []).length ? <div><span style={fieldLabelStyle}>Checklist</span><div style={{ display: "grid", gap: 4, marginTop: 5 }}>{entry.checklist.map((item: any) => <div key={item.id || item.text} style={{ fontSize: 12.5 }}>{item.completed ? "✓" : "○"} {item.text}</div>)}</div></div> : null}<div style={{ fontSize: 12.5, color: colors.muted }}>{(entry.photos || []).length} photo{(entry.photos || []).length === 1 ? "" : "s"} · {(entry.documents || []).length} document{(entry.documents || []).length === 1 ? "" : "s"}</div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><button type="button" onClick={() => void reopenCompletionSnapshot(entry)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 30, padding: "5px 8px", fontSize: 11.5 }}>Reopen This Completion</button></div></div></details>; })}</div> : null}</details> : null}
 
               {!isClosedWorkStatus(selectedService.status) ? <section style={{ ...detailSectionStyle, padding: isMobile ? 12 : 9, background: "#FFFDF7", borderColor: "#E7D39E" }}><div style={{ display: "grid", gap: 7 }}><div><div style={eyebrowStyle}>What was done</div></div><textarea value={completionNoteDraft} onChange={(event) => setCompletionNoteDraft(event.currentTarget.value)} placeholder="What was done?" rows={2} style={{ ...inputStyle, minHeight: isMobile ? 62 : 48, resize: "vertical" }} /><div style={{ display: "flex", justifyContent: "flex-end" }}><button type="button" onClick={() => void completeSelectedWork()} style={{ ...goldButtonStyle, width: "auto" }}>{selectedService.recurring ? "Complete & Advance" : "Complete"}</button></div></div></section> : null}
 
