@@ -1531,10 +1531,29 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     const scheduledDate = dateKey(record.date);
     const defaultCompletedDate =
       scheduledDate && scheduledDate < todayKey() ? scheduledDate : todayKey();
+    const completedDate = options?.completedDate || defaultCompletedDate;
+    const completedEarly = Boolean(
+      record.recurring &&
+      scheduledDate &&
+      scheduledDate > todayKey(),
+    );
+
     await completeWorkOrder(record, {
       ...options,
-      completedDate: options?.completedDate || defaultCompletedDate,
+      completedDate,
+      allowEarly: completedEarly || options?.allowEarly,
     });
+
+    if (completedEarly) {
+      const nextDue = recurrencePreviewDates(record, 1)[0];
+      if (nextDue) {
+        await updateWorkOrderRecord(record, {
+          date: nextDue,
+          status: "Scheduled",
+        });
+      }
+    }
+
     armCompletionUndo(record);
   }
 
