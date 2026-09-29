@@ -253,6 +253,8 @@ async function patchUnifiedWorkForEmployee(
   if (!row || !isAssignedToName({ id: String(row.id || ""), assignedTo: row.assigned_to }, employee.name)) return false;
 
   const today = pacificDateKey();
+  const requestedCompletedDate = sqlDateKey(body.completedDate || "") || today;
+  const completedDate = requestedCompletedDate > today ? today : requestedCompletedDate;
   let status = String(row.status || "Open");
   let dueDate = sqlDateKey(row.due_date_value || row.date || today);
   let lastCompletedDate = row.last_completed_date ? sqlDateKey(row.last_completed_date) : "";
@@ -264,28 +266,29 @@ async function patchUnifiedWorkForEmployee(
   if (action === "task-status") {
     const completed = String(body.status || "Open") === "Completed";
     if (completed) {
-      history = Array.from(new Set([...history, today])).sort();
-      lastCompletedDate = today;
-      if (!serviceHistory.some((entry: any) => String(entry?.completedAt || "").slice(0, 10) === today)) {
+      history = Array.from(new Set([...history, completedDate])).sort();
+      lastCompletedDate = completedDate;
+      if (!serviceHistory.some((entry: any) => String(entry?.completedAt || "").slice(0, 10) === completedDate)) {
         serviceHistory.push({
-          id: `field-${id}-${today}`,
-          completedAt: new Date().toISOString(),
+          id: `field-${id}-${completedDate}`,
+          completedAt: `${completedDate}T12:00:00-07:00`,
           completedBy: employee.name,
           notes,
           dueDate,
         });
       }
       if (Boolean(row.recurring)) {
-        dueDate = nextRecurringDate(dueDate > today ? dueDate : today, row.recurrence_interval, row.recurrence_unit);
+        dueDate = nextRecurringDate(dueDate > completedDate ? dueDate : completedDate, row.recurrence_interval, row.recurrence_unit);
         status = "Scheduled";
       } else {
         status = "Completed";
       }
     } else {
+      const removeDate = sqlDateKey(body.completedDate || "") || lastCompletedDate || today;
       status = String(body.status || "Open");
-      history = history.filter((value: string) => value !== today);
-      serviceHistory = serviceHistory.filter((entry: any) => String(entry?.completedAt || "").slice(0, 10) !== today);
-      if (lastCompletedDate === today) lastCompletedDate = "";
+      history = history.filter((value: string) => value !== removeDate);
+      serviceHistory = serviceHistory.filter((entry: any) => String(entry?.completedAt || "").slice(0, 10) !== removeDate);
+      if (lastCompletedDate === removeDate) lastCompletedDate = "";
     }
   } else if (action === "task-note") {
     notes = String(body.note || "");
@@ -2167,18 +2170,24 @@ export async function PATCH(request: NextRequest) {
         const taskId = String(body.taskId || "");
         const status = String(body.status || "Open");
         const completed = status === "Completed";
+        const requestedCompletedDate = String(body.completedDate || "").slice(0, 10);
+        const completionDate =
+          /^\d{4}-\d{2}-\d{2}$/.test(requestedCompletedDate) && requestedCompletedDate <= today
+            ? requestedCompletedDate
+            : today;
         const currentWork = await loadAddisonWork();
         const currentTask = currentWork.tasks.find((task: any) => task.id === taskId);
         const currentMeta = currentTask ? addisonTaskMeta(currentTask) : {};
         const history = Array.isArray(currentMeta?.completionHistory)
           ? currentMeta.completionHistory.map(String)
           : [];
+        const removeDate = completed ? completionDate : (String(currentMeta?.lastCompletedDate || "").slice(0, 10) || today);
         const nextHistory = completed
-          ? Array.from(new Set([...history, today])).sort()
-          : history.filter((value: string) => value !== today);
+          ? Array.from(new Set([...history, completionDate])).sort()
+          : history.filter((value: string) => value !== removeDate);
 
         const recurring = Boolean(currentTask?.recurring);
-        const completedAt = completed ? new Date().toISOString() : "";
+        const completedAt = completed ? `${completionDate}T12:00:00-07:00` : "";
         const ok = await patchAddisonTask(
           taskId,
           completed && recurring
@@ -2187,16 +2196,16 @@ export async function PATCH(request: NextRequest) {
                 // due date separately; loadAddisonWork reopens it only when that date arrives.
                 status: "Completed",
                 completedAt,
-                lastCompletedDate: today,
+                lastCompletedDate: completionDate,
                 completionHistory: nextHistory,
                 nextDueDate: nextRecurringDate(
                   // Advance from today when a recurring task is completed late.
                   // Advancing from an overdue dueDate can produce a nextDueDate that
                   // is still today or in the past, which makes loadAddisonWork reopen
                   // the task immediately after refresh.
-                  String(currentMeta?.dueDate || today).slice(0, 10) > today
-                    ? String(currentMeta?.dueDate || today).slice(0, 10)
-                    : today,
+                  String(currentMeta?.dueDate || completionDate).slice(0, 10) > completionDate
+                    ? String(currentMeta?.dueDate || completionDate).slice(0, 10)
+                    : completionDate,
                   currentMeta?.recurrenceInterval,
                   currentMeta?.recurrenceUnit,
                 ),
@@ -2206,8 +2215,8 @@ export async function PATCH(request: NextRequest) {
                 status,
                 completedAt: completed ? completedAt : undefined,
                 lastCompletedDate: completed
-                  ? today
-                  : String(currentMeta?.lastCompletedDate || "").slice(0, 10) === today
+                  ? completionDate
+                  : String(currentMeta?.lastCompletedDate || "").slice(0, 10) === removeDate
                     ? ""
                     : currentMeta?.lastCompletedDate || "",
                 completionHistory: nextHistory,
@@ -2218,7 +2227,8 @@ export async function PATCH(request: NextRequest) {
         if (!ok) return NextResponse.json({ ok: false, error: "Addison task not found." }, { status: 404 });
 
         const sql = getSql();
-        const historyId = `${today}::${taskId}`;
+        const historyDate = completed ? completionDate : removeDate;
+        const historyId = `${historyDate}::${taskId}`;
         if (completed && currentTask) {
           const locationId = String(currentTask.locationId || "general");
           const locationRows = await sql`
@@ -2238,7 +2248,7 @@ export async function PATCH(request: NextRequest) {
             id: historyId,
             taskId,
             title: String(currentTask.title || "Task"),
-            date: today,
+            date: completionDate,
             completedAt,
             locationId,
             locationName,
