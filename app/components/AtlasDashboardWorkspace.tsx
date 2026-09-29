@@ -2842,7 +2842,6 @@ export default function AtlasDashboardWorkspace(props: any) {
                 <button type="button" onClick={() => { const text = window.prompt("Edit quick note", note.text)?.trim(); if (text) void saveDashboardNote(text, note.dueDate, note.id); }} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, color: colors.navy, fontWeight: 800, textDecoration: note.done ? "line-through" : "none", opacity: note.done ? .6 : 1 }}><span style={{ display: "block" }}>{note.text}</span>{note.dueDate ? <small style={{ ...mutedSmallStyle, display: "block", marginTop: 2 }}>Remind {formatDate(note.dueDate)}</small> : null}</button>
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7, paddingLeft: 24 }}>
-                {!note.done ? <><button type="button" onClick={() => void convertDashboardReminderToWork(note.id, "Nick")} style={compactUtilityButtonStyle}>→ Nick</button><button type="button" onClick={() => void convertDashboardReminderToWork(note.id, "Addison")} style={compactUtilityButtonStyle}>→ Addison</button></> : null}
                 <button type="button" onClick={() => void deleteDashboardNote(note.id)} style={{ ...compactUtilityButtonStyle, color: colors.red }}>Delete</button>
               </div>
             </div>)}
