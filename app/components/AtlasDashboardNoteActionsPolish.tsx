@@ -357,19 +357,6 @@ export default function AtlasDashboardNoteActionsPolish() {
         const settings = meta[row.key] || {};
         return createPortal(
           <div className="atlas-dashboard-note-actions" key={row.key}>
-            <select
-              aria-label={`Assign ${row.title}`}
-              value={String(settings.assigned_to || "")}
-              onChange={(event) => void saveMeta(row, { assigned_to: event.target.value })}
-            >
-              <option value="">Assign to…</option>
-              <option value="Everyone">Everyone</option>
-              {activeMembers.map((member) => (
-                <option key={String(member.id || member.name)} value={String(member.name || "")}>
-                  {member.name}
-                </option>
-              ))}
-            </select>
             <input
               type="date"
               aria-label={`Remind date for ${row.title}`}
