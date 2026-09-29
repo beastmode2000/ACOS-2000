@@ -2542,9 +2542,17 @@ export default function AtlasDashboardWorkspace(props: any) {
               <option value="today">Move Today</option>
               <option value="tomorrow">Move Tomorrow</option>
               <option value="next-week">Move Next Week</option>
-              <option value="edit">Edit</option>
               <option value="delete">Delete</option>
             </select>
+            <button
+              type="button"
+              onClick={() => void handleDashboardWorkAction(record, "edit")}
+              aria-label={`Edit ${record.title}`}
+              title="Edit work"
+              style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11, fontWeight: 800 }}
+            >
+              Edit
+            </button>
             <label
               style={{
                 display: "grid",
