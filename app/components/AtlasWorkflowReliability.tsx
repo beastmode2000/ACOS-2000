@@ -143,6 +143,43 @@ function isSeasonallyPaused(record: AtlasRecord) {
   const marker = latestMarker(record, ["ATLAS_SEASONAL_PAUSED|", "ATLAS_SEASONAL_RESUMED|"]);
   return marker.startsWith("ATLAS_SEASONAL_PAUSED|");
 }
+function seasonalRestartMode(record: AtlasRecord): "manual" | "automatic" {
+  const marker = latestMarker(record, ["ATLAS_SEASONAL_RESTART_MODE|"]);
+  if (marker) {
+    const mode = marker.split("|")[1];
+    if (mode === "automatic") return "automatic";
+    if (mode === "manual") return "manual";
+  }
+  const title = normalized(record.title || record.name);
+  return /(mow|mowing|lawn|grass|turf)/.test(title) ? "manual" : "automatic";
+}
+
+function suggestedSeasonRestartDate(record: AtlasRecord, season: string) {
+  const markers = notesHistory(record)
+    .map((entry) => text(entry?.text))
+    .filter(Boolean);
+
+  for (const marker of markers) {
+    if (marker.startsWith("ATLAS_SEASONAL_RESUMED|")) {
+      const parts = marker.split("|");
+      const savedDate = /^\d{4}-\d{2}-\d{2}$/.test(parts[2] || "") ? parts[2] : "";
+      if (savedDate) {
+        const targetYear = Number(nextSeasonStart(season).slice(0, 4));
+        return `${targetYear}-${savedDate.slice(5)}`;
+      }
+    }
+    if (marker.startsWith("ATLAS_RECURRING_RESUMED|")) {
+      const savedDate = marker.split("|")[1] || "";
+      if (/^\d{4}-\d{2}-\d{2}$/.test(savedDate)) {
+        const targetYear = Number(nextSeasonStart(season).slice(0, 4));
+        return `${targetYear}-${savedDate.slice(5)}`;
+      }
+    }
+  }
+
+  return nextSeasonStart(season);
+}
+
 
 function seasonIsActive(season: string, month = new Date().getMonth() + 1) {
   if (!season || season === "Year-Round") return true;
@@ -194,14 +231,15 @@ async function enforceSeasonalRecords() {
       continue;
     }
 
-    if (active && seasonalPaused) {
-      const marker = `ATLAS_SEASONAL_RESUMED|${season}|${new Date().toISOString()}`;
+    if (active && seasonalPaused && seasonalRestartMode(record) === "automatic") {
+      const restart = suggestedSeasonRestartDate(record, season);
+      const marker = `ATLAS_SEASONAL_RESUMED|${season}|${restart}|${new Date().toISOString()}`;
       await saveWorkRecord({
         ...record,
-        date: text(record.date).slice(0, 10) || todayKey(),
+        date: restart,
         status: "Scheduled",
         recurrenceEndDate: "",
-        lastOutcome: `Seasonal recurrence resumed — ${season}`,
+        lastOutcome: `Seasonal recurrence resumed automatically — ${season}`,
         lastOutcomeAt: new Date().toISOString(),
         notesHistory: prependNote(record, marker, "Seasonal Resume"),
       });
@@ -251,11 +289,13 @@ async function renderRecurringControl(host: HTMLElement, panel: HTMLElement) {
     const paused = isManuallyPaused(record);
     const season = text(record.season || "Year-Round") || "Year-Round";
     const seasonalPaused = isSeasonallyPaused(record);
-    const resumeDate = nextSeasonStart(season);
+    const restartMode = seasonalRestartMode(record);
+    const anyPaused = paused || seasonalPaused;
+    const resumeDate = suggestedSeasonRestartDate(record, season);
 
     host.innerHTML = "";
     const heading = document.createElement("div");
-    heading.innerHTML = `<strong style="color:#0B2C43;font-size:13px">Recurrence</strong><span style="font-size:11px;color:#667085">${paused ? "Paused" : seasonalPaused ? `Paused for ${season}` : season === "Year-Round" ? "Active year-round" : `Active · ${season}`}</span>`;
+    heading.innerHTML = `<strong style="color:#0B2C43;font-size:13px">Recurrence</strong><span style="font-size:11px;color:#667085">${paused ? "Paused" : seasonalPaused ? `Paused for ${season} · ${restartMode === "automatic" ? "automatic restart" : "restart when ready"}` : season === "Year-Round" ? "Active year-round" : `Active · ${season}`}</span>`;
     Object.assign(heading.style, { display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", flexWrap: "wrap" });
 
     const controls = document.createElement("div");
@@ -263,13 +303,13 @@ async function renderRecurringControl(host: HTMLElement, panel: HTMLElement) {
 
     const pauseButton = document.createElement("button");
     pauseButton.type = "button";
-    pauseButton.textContent = paused ? "Resume" : "Pause";
+    pauseButton.textContent = anyPaused ? "Restart" : "Pause";
     pauseButton.style.cssText = "min-height:38px;border:1px solid #D0D5DD;border-radius:10px;background:#fff;color:#0B2C43;font-weight:800;cursor:pointer;padding:7px 10px";
 
     const dateInput = document.createElement("input");
     dateInput.type = "date";
-    dateInput.value = paused ? todayKey() : resumeDate;
-    dateInput.title = paused ? "Resume date" : "Date to resume after pausing";
+    dateInput.value = anyPaused ? resumeDate : nextSeasonStart(season);
+    dateInput.title = anyPaused ? "Restart date" : "Suggested next-season restart date";
     dateInput.style.cssText = "min-height:38px;border:1px solid #D0D5DD;border-radius:10px;background:#fff;color:#0B2C43;padding:6px 8px;box-sizing:border-box";
 
     const seasonSelect = document.createElement("select");
@@ -281,11 +321,62 @@ async function renderRecurringControl(host: HTMLElement, panel: HTMLElement) {
       option.selected = season === optionValue;
       seasonSelect.appendChild(option);
     }
+    const restartModeSelect = document.createElement("select");
+    restartModeSelect.title = "Season restart behavior";
+    restartModeSelect.style.cssText = "min-height:38px;border:1px solid #D0D5DD;border-radius:10px;background:#fff;color:#0B2C43;padding:6px 8px;font-weight:700";
+    [
+      ["manual", "Restart when ready"],
+      ["automatic", "Automatic restart"],
+    ].forEach(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      option.selected = restartMode === value;
+      restartModeSelect.appendChild(option);
+    });
+
+    restartModeSelect.addEventListener("change", async () => {
+      restartModeSelect.disabled = true;
+      try {
+        const nextMode = restartModeSelect.value === "automatic" ? "automatic" : "manual";
+        const marker = `ATLAS_SEASONAL_RESTART_MODE|${nextMode}|${new Date().toISOString()}`;
+        let next: AtlasRecord = {
+          ...record,
+          notesHistory: prependNote(record, marker, "Season Restart Mode"),
+        };
+
+        if (nextMode === "automatic" && seasonalPaused && seasonIsActive(season) && !paused) {
+          const restart = suggestedSeasonRestartDate(record, season);
+          const resumeMarker = `ATLAS_SEASONAL_RESUMED|${season}|${restart}|${new Date().toISOString()}`;
+          next = {
+            ...next,
+            date: restart,
+            status: "Scheduled",
+            recurrenceEndDate: "",
+            lastOutcome: `Seasonal recurrence resumed automatically — ${season}`,
+            lastOutcomeAt: new Date().toISOString(),
+            notesHistory: [
+              { id: uid("note"), text: resumeMarker, outcome: "Seasonal Resume", createdAt: new Date().toISOString() },
+              ...(next.notesHistory || []),
+            ],
+          };
+        }
+
+        await saveWorkRecord(next);
+        showToast(nextMode === "automatic" ? "Season will restart automatically." : "Atlas will suggest a restart, but will wait for you.");
+        window.dispatchEvent(new CustomEvent("atlas:data-changed", { detail: { table: "work_orders" } }));
+        window.setTimeout(() => window.location.reload(), 450);
+      } catch (error) {
+        restartModeSelect.disabled = false;
+        showToast(error instanceof Error ? error.message : "Restart mode did not save.", true);
+      }
+    });
+
 
     pauseButton.addEventListener("click", async () => {
       pauseButton.disabled = true;
       try {
-        if (!paused) {
+        if (!anyPaused) {
           const previousDate = text(record.date).slice(0, 10);
           const marker = `ATLAS_RECURRING_PAUSED|${previousDate}|${new Date().toISOString()}`;
           await saveWorkRecord({
@@ -300,7 +391,8 @@ async function renderRecurringControl(host: HTMLElement, panel: HTMLElement) {
           showToast("Recurring work paused.");
         } else {
           const restart = dateInput.value || todayKey();
-          const marker = `ATLAS_RECURRING_RESUMED|${restart}|${new Date().toISOString()}`;
+          const recurringMarker = `ATLAS_RECURRING_RESUMED|${restart}|${new Date().toISOString()}`;
+          const seasonalMarker = `ATLAS_SEASONAL_RESUMED|${season}|${restart}|${new Date().toISOString()}`;
           await saveWorkRecord({
             ...record,
             date: restart,
@@ -308,9 +400,13 @@ async function renderRecurringControl(host: HTMLElement, panel: HTMLElement) {
             recurrenceEndDate: "",
             lastOutcome: "Recurring Series Resumed",
             lastOutcomeAt: new Date().toISOString(),
-            notesHistory: prependNote(record, marker, "Resumed"),
+            notesHistory: [
+              { id: uid("note"), text: recurringMarker, outcome: "Resumed", createdAt: new Date().toISOString() },
+              { id: uid("note"), text: seasonalMarker, outcome: "Seasonal Resume", createdAt: new Date().toISOString() },
+              ...notesHistory(record),
+            ],
           });
-          showToast("Recurring work resumed.");
+          showToast("Recurring work restarted.");
         }
         window.dispatchEvent(new CustomEvent("atlas:data-changed", { detail: { table: "work_orders" } }));
         window.setTimeout(() => window.location.reload(), 450);
@@ -339,14 +435,20 @@ async function renderRecurringControl(host: HTMLElement, panel: HTMLElement) {
             lastOutcomeAt: new Date().toISOString(),
             notesHistory: prependNote(record, marker, "Seasonal Pause"),
           };
-        } else if ((nextSeason === "Year-Round" || active) && isSeasonallyPaused(record) && !isManuallyPaused(record)) {
-          const marker = `ATLAS_SEASONAL_RESUMED|${nextSeason}|${new Date().toISOString()}`;
+        } else if (
+          (nextSeason === "Year-Round" || active) &&
+          isSeasonallyPaused(record) &&
+          !isManuallyPaused(record) &&
+          seasonalRestartMode(record) === "automatic"
+        ) {
+          const restart = suggestedSeasonRestartDate(record, nextSeason);
+          const marker = `ATLAS_SEASONAL_RESUMED|${nextSeason}|${restart}|${new Date().toISOString()}`;
           next = {
             ...next,
-            date: text(record.date).slice(0, 10) || todayKey(),
+            date: restart,
             status: "Scheduled",
             recurrenceEndDate: "",
-            lastOutcome: `Seasonal recurrence resumed — ${nextSeason}`,
+            lastOutcome: `Seasonal recurrence resumed automatically — ${nextSeason}`,
             lastOutcomeAt: new Date().toISOString(),
             notesHistory: prependNote(record, marker, "Seasonal Resume"),
           };
@@ -362,7 +464,7 @@ async function renderRecurringControl(host: HTMLElement, panel: HTMLElement) {
       }
     });
 
-    controls.append(pauseButton, dateInput, seasonSelect);
+    controls.append(pauseButton, dateInput, seasonSelect, restartModeSelect);
     host.append(heading, controls);
   } catch (error) {
     host.innerHTML = `<span style="font-size:12px;color:#B42318">${error instanceof Error ? error.message : "Recurring controls could not load."}</span>`;
