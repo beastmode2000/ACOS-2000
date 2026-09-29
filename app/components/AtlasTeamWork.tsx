@@ -1194,7 +1194,7 @@ export default function AtlasTeamWork({
               <button
                 type="button"
                 style={lightButtonStyle}
-                onClick={() => window.open("/addison-work", "_blank", "noopener,noreferrer")}
+                onClick={() => window.open("/landscape-help?token=addison-2000-7f94f468dca84de3a7b8c2d942ca3819", "_blank", "noopener,noreferrer")}
               >
                 View Addison Screen
               </button>
