@@ -89,7 +89,6 @@ type PersonWorkRow = {
   location: string;
   source: string;
   completedAt?: string;
-  recordId?: string;
 };
 
 const ACCESS_LABELS: Record<string, string> = {
@@ -253,7 +252,6 @@ export default function AtlasTeamPeoplePolish() {
   const [newPersonProperties, setNewPersonProperties] = useState<string[]>(["2000"]);
   const [addPersonBusy, setAddPersonBusy] = useState(false);
   const [addPersonMessage, setAddPersonMessage] = useState("");
-  const [historyDateSavingId, setHistoryDateSavingId] = useState("");
   const [newPersonInviteLink, setNewPersonInviteLink] = useState("");
   const [teamActionMessage, setTeamActionMessage] = useState("");
 
@@ -480,7 +478,6 @@ export default function AtlasTeamPeoplePolish() {
         location: atlasLocation(record),
         source: "Work Order",
         completedAt: atlasCompletedAt(record),
-        recordId: String(record.id || ""),
       }));
 
     const shared: PersonWorkRow[] = (payload?.workHistory || [])
@@ -529,67 +526,6 @@ export default function AtlasTeamPeoplePolish() {
         .filter(Boolean),
     [selected],
   );
-
-  const correctCompletedDate = async (item: PersonWorkRow, nextDate: string) => {
-    if (!item.recordId || !nextDate || historyDateSavingId) return;
-    const record = atlasWorkOrders.find((candidate) => String(candidate.id || "") === String(item.recordId));
-    if (!record) return;
-    const oldDate = String(item.completedAt || "").slice(0, 10);
-    const replaceDate = (value: unknown) => {
-      const text = String(value || "");
-      if (!text) return text;
-      if (oldDate && text.slice(0, 10) !== oldDate) return text;
-      return text.includes("T") ? `${nextDate}${text.slice(10)}` : nextDate;
-    };
-    const updated: Record<string, unknown> = {
-      ...record,
-      lastCompletedDate: nextDate,
-      completedAt: replaceDate(record.completedAt || record.completed_at || oldDate),
-    };
-    const completionHistory = Array.isArray((record as any).completionHistory)
-      ? (record as any).completionHistory.map((value: unknown) => replaceDate(value))
-      : Array.isArray((record as any).completion_history)
-        ? (record as any).completion_history.map((value: unknown) => replaceDate(value))
-        : [];
-    if (completionHistory.length) updated.completionHistory = completionHistory;
-    const serviceHistory = Array.isArray((record as any).serviceHistory)
-      ? (record as any).serviceHistory.map((entry: any) => ({
-          ...entry,
-          completedAt: replaceDate(entry?.completedAt || entry?.completed_at),
-        }))
-      : Array.isArray((record as any).service_history)
-        ? (record as any).service_history.map((entry: any) => ({
-            ...entry,
-            completedAt: replaceDate(entry?.completedAt || entry?.completed_at),
-          }))
-        : [];
-    if (serviceHistory.length) updated.serviceHistory = serviceHistory;
-
-    setHistoryDateSavingId(item.id);
-    setTeamActionMessage("Correcting completed date…");
-    try {
-      const response = await fetch("/api/atlas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ table: "work_orders", record: updated }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || data?.ok === false) throw new Error(data?.error || "Could not correct completed date.");
-      setAtlasPayload((current) => {
-        if (!current) return current;
-        const rows = Array.isArray(current.serviceRecords) ? current.serviceRecords : current.workOrders || [];
-        const nextRows = rows.map((candidate) => String(candidate.id || "") === String(item.recordId) ? { ...candidate, ...updated } : candidate);
-        return { ...current, serviceRecords: nextRows, workOrders: nextRows };
-      });
-      setTeamActionMessage("Completed date corrected.");
-      window.dispatchEvent(new CustomEvent("atlas:data-changed"));
-    } catch (error) {
-      setTeamActionMessage(error instanceof Error ? error.message : "Could not correct completed date.");
-    } finally {
-      setHistoryDateSavingId("");
-    }
-  };
 
   const addPerson = async () => {
     const name = newPersonName.trim();
@@ -929,37 +865,16 @@ export default function AtlasTeamPeoplePolish() {
                 </section>
 
                 <section className="atlas-team-detail-section">
-                  <div className="atlas-team-detail-heading-row">
-                    <div className="atlas-team-detail-heading">Completed Work History</div>
-                    <span>{selectedHistory.length} recorded</span>
-                  </div>
-                  <div className="atlas-team-detail-muted" style={{ marginBottom: 8 }}>
-                    Correct a completed date directly here. Work-order corrections update Atlas history and reporting.
-                  </div>
+                  <div className="atlas-team-detail-heading">Recent Completed Work</div>
                   {selectedHistory.length ? (
                     <div className="atlas-team-work-list">
-                      {selectedHistory.slice(0, 30).map((item) => (
+                      {selectedHistory.slice(0, 8).map((item) => (
                         <div key={item.id} className="atlas-team-work-row is-complete">
-                          <div style={{ minWidth: 0 }}>
+                          <div>
                             <strong>{item.title}</strong>
                             <span>{[item.source, item.location].filter(Boolean).join(" · ")}</span>
                           </div>
-                          {item.recordId ? (
-                            <label style={{ display: "grid", gap: 3, minWidth: 152 }}>
-                              <small style={{ fontWeight: 800, color: colors.muted }}>Completed date</small>
-                              <input
-                                type="date"
-                                value={String(item.completedAt || "").slice(0, 10)}
-                                disabled={historyDateSavingId === item.id}
-                                onClick={(event) => event.currentTarget.showPicker?.()}
-                                onFocus={(event) => event.currentTarget.showPicker?.()}
-                                onChange={(event) => void correctCompletedDate(item, event.currentTarget.value)}
-                                style={{ minHeight: 36, border: `1px solid ${colors.line}`, borderRadius: 9, padding: "6px 8px", background: "#FFFFFF", color: colors.text, font: "inherit", fontSize: 12, fontWeight: 750 }}
-                              />
-                            </label>
-                          ) : (
-                            <time>{displayDate(item.completedAt)}</time>
-                          )}
+                          <time>{displayDate(item.completedAt)}</time>
                         </div>
                       ))}
                     </div>
