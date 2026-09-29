@@ -331,8 +331,18 @@ export default function AtlasDashboardWorkspace(props: any) {
     !record.date && ((record as AtlasServiceRecord).notesHistory || []).some((entry) =>
       String(entry.text || "").startsWith("DIDN'T GET TO IT:")
     );
+  const dashboardStaleCompletedOccurrence = (record: ServiceRecord) => {
+    if (!record.recurring || !record.date || record.status === "Completed") return false;
+    const dueDate = String(record.date).slice(0, 10);
+    return ((record as AtlasServiceRecord).serviceHistory || []).some((entry) => {
+      const entryDueDate = String(entry.dueDate || "").slice(0, 10);
+      const completedDate = String(entry.completedAt || "").slice(0, 10);
+      return Boolean(entryDueDate && completedDate && entryDueDate === dueDate && completedDate <= dueDate);
+    });
+  };
   const dashboardWorkForPerson = (person: string) => serviceRecords
     .filter((record) => record.status !== "Completed")
+    .filter((record) => !dashboardStaleCompletedOccurrence(record))
     .filter((record) => dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) === person)
     .filter((record) => {
       const date = String(record.date || "").slice(0, 10);
@@ -353,6 +363,7 @@ export default function AtlasDashboardWorkspace(props: any) {
 
   const dashboardTodayWorkForPerson = (person: string) => serviceRecords
     .filter((record) => record.status !== "Completed")
+    .filter((record) => !dashboardStaleCompletedOccurrence(record))
     .filter((record) => dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) === person)
     .filter((record) => {
       const date = String(record.date || "").slice(0, 10);
@@ -414,6 +425,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     const horizon = addDays(dashboardViewDate, 7);
     const work = serviceRecords
       .filter((record) => record.status !== "Completed")
+    .filter((record) => !dashboardStaleCompletedOccurrence(record))
       .filter((record) => dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) === person)
       .filter((record) => {
         const date = String(record.date || "").slice(0, 10);
@@ -2631,6 +2643,7 @@ export default function AtlasDashboardWorkspace(props: any) {
 
   const dashboardChecklistWorkOrders = serviceRecords
     .filter((record) => record.status !== "Completed")
+    .filter((record) => !dashboardStaleCompletedOccurrence(record))
     .filter((record) => Array.isArray((record as AtlasServiceRecord).checklist) && (record as AtlasServiceRecord).checklist!.length > 0)
     .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || a.title.localeCompare(b.title));
 
@@ -3137,6 +3150,52 @@ export default function AtlasDashboardWorkspace(props: any) {
     const saved = await postAtlasRecord("work_orders", updated);
     showSaveToast(saved ? `Saved ${updated.title}.` : `${updated.title} changed locally, but shared sync did not finish.`, saved ? "success" : "warning");
   };
+  const recurringRepairInFlight = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const staleRecords = serviceRecords.filter((record) => dashboardStaleCompletedOccurrence(record));
+    if (!staleRecords.length) return;
+
+    staleRecords.forEach((record) => {
+      const id = String(record.id || "");
+      if (!id || recurringRepairInFlight.current.has(id)) return;
+
+      const dueDate = String(record.date || "").slice(0, 10);
+      const unit = isWorkOrderRecurrenceUnit(record.recurrenceUnit) ? record.recurrenceUnit : "Weeks";
+      const nextDate = nextRecurrenceDate(
+        dueDate,
+        record.recurrenceInterval || 1,
+        unit,
+        Array.isArray((record as AtlasServiceRecord).recurrenceDays)
+          ? (record as AtlasServiceRecord).recurrenceDays!
+          : [],
+      );
+      if (!nextDate || nextDate === dueDate) return;
+
+      recurringRepairInFlight.current.add(id);
+      const updated = normalizeService({
+        ...(record as AtlasServiceRecord),
+        date: nextDate,
+        status: "Scheduled",
+      });
+
+      setServiceRecords((current) =>
+        byTitle(current.map((item) => item.id === updated.id ? updated : item)),
+      );
+
+      void postAtlasRecord("work_orders", updated).then((saved) => {
+        if (!saved) {
+          setServiceRecords((current) =>
+            byTitle(current.map((item) => item.id === record.id ? record : item)),
+          );
+          showSaveToast(`${record.title} could not be reconciled yet.`, "warning");
+        }
+      }).finally(() => {
+        recurringRepairInFlight.current.delete(id);
+      });
+    });
+  }, [serviceRecords]);
+
   const quickAssignDashboardWork = async (record: ServiceRecord, person: string) => {
     const updated = normalizeService({ ...(record as AtlasServiceRecord), assignedTo: person });
     setServiceRecords((current) => byTitle(current.map((item) => item.id === updated.id ? updated : item)));
