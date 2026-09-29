@@ -2433,14 +2433,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                           <div style={{ display: "grid", gap: 4, marginTop: isMobile ? 12 : 8, padding: isMobile ? 11 : 9, borderRadius: 10, border: `1px solid ${colors.line}`, background: "#FFFFFF" }}><span style={fieldLabelStyle}>Description / What to Do</span><div style={{ color: selectedService.notes ? colors.text : colors.muted, fontSize: 14, lineHeight: 1.45 }}>{selectedService.notes || "No description added."}</div></div>
                           <button type="button" onClick={printSelectedWorkOrder} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, marginTop: 8, padding: "6px 10px" }}>Print / PDF</button>
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? (!isClosedWorkStatus(selectedService.status) ? "repeat(3,minmax(0,1fr))" : "repeat(2,minmax(0,1fr))") : (!isClosedWorkStatus(selectedService.status) ? "auto minmax(128px,auto) auto" : "minmax(128px,auto) auto"), gap: 7, alignItems: "center", justifyContent: isMobile ? "stretch" : "start", width: "100%" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? (!isClosedWorkStatus(selectedService.status) ? "repeat(2,minmax(0,1fr))" : "repeat(2,minmax(0,1fr))") : (!isClosedWorkStatus(selectedService.status) ? "auto minmax(128px,auto) auto auto" : "minmax(128px,auto) auto auto"), gap: 7, alignItems: "center", justifyContent: isMobile ? "stretch" : "start", width: "100%" }}>
                           {!isClosedWorkStatus(selectedService.status) ? <button type="button" onClick={() => void handleDetailAction("complete")} style={{ ...goldButtonStyle, width: isMobile ? "100%" : "auto", minWidth: 0, minHeight: 40, padding: "8px 10px" }}>Done</button> : null}
                           <select value="" onChange={(event) => { void handleDetailAction(event.currentTarget.value); event.currentTarget.value = ""; }} style={{ ...controlStyle, width: isMobile ? "100%" : "auto", minWidth: 0, minHeight: 40, color: colors.text, fontSize: 12, fontWeight: 700, background: "#FFFFFF", padding: "8px 9px" }} aria-label="Work order actions">
                             <option value="">Actions</option>
                             {isClosedWorkStatus(selectedService.status) ? (
                               <>
                                 <option value="reopen">Reopen</option>
-                                <option value="edit">Edit</option>
                               </>
                             ) : (
                               <>
@@ -2452,7 +2451,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                                 <option value="today">Move Today</option>
                                 <option value="tomorrow">Move Tomorrow</option>
                                 <option value="next-week">Move Next Week</option>
-                                <option value="edit">Edit</option>
                                 {selectedService.recurring ? <option value="stop-series">Stop Series</option> : null}
                               </>
                             )}
@@ -2460,6 +2458,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                             <option value="duplicate">Duplicate Work</option>
                             <option value="delete">Delete</option>
                           </select>
+                          <button
+                            type="button"
+                            onClick={() => void handleDetailAction("edit")}
+                            style={{ ...secondaryButtonStyle, width: isMobile ? "100%" : "auto", minWidth: 0, minHeight: 40, padding: "8px 10px", fontWeight: 800 }}
+                          >
+                            Edit
+                          </button>
                           <button type="button" onClick={focusHistoryNote} style={{ ...secondaryButtonStyle, width: isMobile ? "100%" : "auto", minWidth: 0, minHeight: 40, padding: "8px 9px" }}>Add Note</button>
                         </div>
                       </div>
