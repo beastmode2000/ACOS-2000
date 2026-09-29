@@ -3248,7 +3248,7 @@ export default function AtlasDashboardWorkspace(props: any) {
       openWorkOrderById(record.id);
       return;
     }
-    if (action === "delete" && window.confirm(`Delete ${record.title}? This removes it from Work and Calendar.`)) {
+    if (action === "delete") {
       await deleteWorkOrderRecord(record);
     }
   };
