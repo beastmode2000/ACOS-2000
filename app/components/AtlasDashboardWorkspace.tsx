@@ -2533,19 +2533,48 @@ export default function AtlasDashboardWorkspace(props: any) {
               <option value="edit">Edit</option>
               <option value="delete">Delete</option>
             </select>
-            <input
-              type="date"
-              value={dueDate}
-              onClick={(event) => event.currentTarget.showPicker?.()}
-              onFocus={(event) => event.currentTarget.showPicker?.()}
-              onChange={(event) => {
-                const nextDate = event.currentTarget.value;
-                if (nextDate) void syncWorkOrderPatch(record, { date: nextDate });
+            <label
+              style={{
+                display: "grid",
+                gridTemplateColumns: "auto minmax(126px, 1fr)",
+                alignItems: "center",
+                gap: 6,
+                minHeight: 42,
+                padding: "4px 8px",
+                border: `1px solid ${colors.line}`,
+                borderRadius: 10,
+                background: "#FFFFFF",
+                color: colors.navy,
+                fontSize: 11,
+                fontWeight: 900,
+                cursor: "pointer",
               }}
-              aria-label={`Change due date for ${record.title}`}
               title="Change due date"
-              style={{ ...inputStyle, width: "auto", minHeight: 28, padding: "3px 8px", fontSize: 11, fontWeight: 800 }}
-            />
+            >
+              <span style={{ whiteSpace: "nowrap" }}>Due Date</span>
+              <input
+                type="date"
+                value={dueDate}
+                onClick={(event) => event.currentTarget.showPicker?.()}
+                onFocus={(event) => event.currentTarget.showPicker?.()}
+                onChange={(event) => {
+                  const nextDate = event.currentTarget.value;
+                  if (nextDate) void syncWorkOrderPatch(record, { date: nextDate });
+                }}
+                aria-label={`Change due date for ${record.title}`}
+                style={{
+                  ...inputStyle,
+                  width: "100%",
+                  minWidth: 126,
+                  minHeight: 32,
+                  padding: "4px 7px",
+                  fontSize: 12,
+                  fontWeight: 850,
+                  borderColor: colors.gold,
+                  background: "#FFFDF7",
+                }}
+              />
+            </label>
             <select
               value={dashboardAssigneeName((record as AtlasServiceRecord).assignedTo || "")}
               onChange={(event) => void quickAssignDashboardWork(record, event.currentTarget.value)}
