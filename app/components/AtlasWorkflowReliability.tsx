@@ -107,6 +107,114 @@ async function saveWorkRecord(record: AtlasRecord) {
   if (!response.ok || payload?.ok === false) throw new Error(payload?.error || "Work did not save.");
   return payload;
 }
+async function deleteWorkRecord(record: AtlasRecord) {
+  const propertyId = text(record.propertyId || record.property_id) || activePropertyId();
+  const id = text(record.id);
+  if (!id) return;
+  const response = await fetch("/api/atlas", {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      "x-atlas-request-id": `workflow-delete-${id}-${Date.now()}`,
+    },
+    credentials: "include",
+    body: JSON.stringify({ table: "work_orders", propertyId, id }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) throw new Error(payload?.error || "Work did not delete.");
+}
+
+function uniqueStrings(values: unknown[]) {
+  return Array.from(new Set(values.map((value) => text(value)).filter(Boolean)));
+}
+
+function mergeObjectArray(records: AtlasRecord[], key: string) {
+  const seen = new Set<string>();
+  const merged: any[] = [];
+  for (const record of records) {
+    const values = Array.isArray(record?.[key]) ? record[key] : [];
+    for (const value of values) {
+      const identity = text(value?.id) || JSON.stringify(value);
+      if (!identity || seen.has(identity)) continue;
+      seen.add(identity);
+      merged.push(value);
+    }
+  }
+  return merged;
+}
+
+function garageGutterTarget(record: AtlasRecord) {
+  const title = normalized(record.title || record.name);
+  if (!/(gutter|downspout)/.test(title)) return "";
+  if (/(old garage|original garage|garage original)/.test(title)) return "Garage Original";
+  if (/(new garage|garage new)/.test(title)) return "Garage New";
+  return "";
+}
+
+async function consolidateGarageGutterWork() {
+  const propertyId = activePropertyId();
+  if (propertyId !== "2000") return;
+
+  const payload = await loadAtlas(propertyId);
+  const records = serviceRecords(payload);
+  let changed = false;
+
+  for (const targetTitle of ["Garage Original", "Garage New"]) {
+    const matches = records.filter((record) => {
+      const title = text(record.title || record.name);
+      return title === targetTitle || garageGutterTarget(record) === targetTitle;
+    });
+    if (!matches.length) continue;
+
+    const needsCleanup =
+      matches.length > 1 ||
+      matches.some((record) => text(record.title || record.name) !== targetTitle);
+    if (!needsCleanup) continue;
+
+    const primary =
+      matches.find((record) => text(record.title || record.name) === targetTitle) ||
+      [...matches].sort((a, b) => {
+        const aHistory = (Array.isArray(a.serviceHistory) ? a.serviceHistory.length : 0) + (Array.isArray(a.completionHistory) ? a.completionHistory.length : 0);
+        const bHistory = (Array.isArray(b.serviceHistory) ? b.serviceHistory.length : 0) + (Array.isArray(b.completionHistory) ? b.completionHistory.length : 0);
+        return bHistory - aHistory;
+      })[0];
+
+    const completionHistory = uniqueStrings(matches.flatMap((record) =>
+      Array.isArray(record.completionHistory) ? record.completionHistory : [],
+    )).sort();
+
+    const notes = uniqueStrings(matches.map((record) => record.notes)).join("\n\n");
+    const dates = uniqueStrings(matches.map((record) => record.date)).sort();
+    const nextDate = dates.find((date) => date >= todayKey()) || dates[dates.length - 1] || text(primary.date);
+
+    const merged: AtlasRecord = {
+      ...primary,
+      title: targetTitle,
+      name: targetTitle,
+      date: nextDate,
+      notes,
+      completionHistory,
+      lastCompletedDate: completionHistory[completionHistory.length - 1] || text(primary.lastCompletedDate),
+      serviceHistory: mergeObjectArray(matches, "serviceHistory"),
+      notesHistory: mergeObjectArray(matches, "notesHistory"),
+      checklist: mergeObjectArray(matches, "checklist"),
+      photos: mergeObjectArray(matches, "photos"),
+      documents: mergeObjectArray(matches, "documents"),
+    };
+
+    await saveWorkRecord(merged);
+    for (const duplicate of matches) {
+      if (text(duplicate.id) === text(primary.id)) continue;
+      await deleteWorkRecord(duplicate);
+    }
+    changed = true;
+  }
+
+  if (changed) {
+    window.dispatchEvent(new CustomEvent("atlas:data-changed", { detail: { table: "work_orders", reason: "garage-gutter-consolidation" } }));
+  }
+}
+
 
 async function saveCalendarRecord(propertyId: string, record: AtlasRecord) {
   const response = await fetch("/api/atlas", {
@@ -689,6 +797,10 @@ export default function AtlasWorkflowReliability() {
       void enforceSeasonalRecords().catch(() => undefined);
     }, 1800);
 
+    const gutterCleanupTimer = window.setTimeout(() => {
+      void consolidateGarageGutterWork().catch(() => undefined);
+    }, 2600);
+
     return () => {
       observer.disconnect();
       document.removeEventListener("click", onClickCapture, true);
@@ -696,6 +808,7 @@ export default function AtlasWorkflowReliability() {
       window.removeEventListener("atlas:data-changed", schedule as EventListener);
       if (frame) window.cancelAnimationFrame(frame);
       if (seasonalTimer) window.clearTimeout(seasonalTimer);
+      window.clearTimeout(gutterCleanupTimer);
     };
   }, []);
 
