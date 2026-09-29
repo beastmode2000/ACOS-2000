@@ -337,6 +337,8 @@ export default function AtlasTeamWork({
   const [editingMinutes, setEditingMinutes] = useState(30);
   const [historyCopied, setHistoryCopied] = useState(false);
   const [pendingAddisonDelete, setPendingAddisonDelete] = useState<{ id: string; title: string } | null>(null);
+  const [pendingAddisonComplete, setPendingAddisonComplete] = useState<Record<string, any> | null>(null);
+  const [pendingAddisonCompleteDate, setPendingAddisonCompleteDate] = useState("");
 
   useEffect(() => {
     setFieldEmployeePropertyId(activePropertyId);
@@ -1070,12 +1072,47 @@ export default function AtlasTeamWork({
   async function toggleAddisonLiveTask(task: Record<string, any>) {
     const meta = addisonMeta(task);
     const completed = String(meta?.status || "") === "Completed";
+
+    if (!completed) {
+      const dueDate = String(meta?.dueDate || "").slice(0, 10);
+      const today = new Date().toLocaleDateString("en-CA");
+      setPendingAddisonComplete(task);
+      setPendingAddisonCompleteDate(dueDate && dueDate <= today ? dueDate : today);
+      return;
+    }
+
     try {
       await patchAddisonLive(
         "task-status",
-        { taskId: task.id, status: completed ? "Open" : "Completed" },
-        completed ? "Task reopened." : "Task completed.",
+        {
+          taskId: task.id,
+          status: "Open",
+          completedDate: String(meta?.lastCompletedDate || "").slice(0, 10),
+        },
+        "Task reopened.",
       );
+    } catch (error) {
+      setAddisonLiveMessage(
+        error instanceof Error ? error.message : "Could not update task.",
+      );
+    }
+  }
+
+  async function completeAddisonTaskOnSelectedDate() {
+    if (!pendingAddisonComplete || !pendingAddisonCompleteDate) return;
+    const task = pendingAddisonComplete;
+    try {
+      await patchAddisonLive(
+        "task-status",
+        {
+          taskId: task.id,
+          status: "Completed",
+          completedDate: pendingAddisonCompleteDate,
+        },
+        `Task completed on ${pendingAddisonCompleteDate}.`,
+      );
+      setPendingAddisonComplete(null);
+      setPendingAddisonCompleteDate("");
     } catch (error) {
       setAddisonLiveMessage(
         error instanceof Error ? error.message : "Could not update task.",
@@ -1860,6 +1897,79 @@ export default function AtlasTeamWork({
               <input value={newMemberEmail} onChange={(e)=>setNewMemberEmail(e.target.value)} placeholder="Email" style={fieldStyle}/>
               <select value={newMemberRole} onChange={(e)=>setNewMemberRole(e.target.value as TeamRole)} style={fieldStyle}>{Object.keys(ROLE_DEFAULTS).map((role)=><option key={role}>{role}</option>)}</select>
               <button type="button" style={goldButtonStyle} onClick={inviteMember}>Invite</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingAddisonComplete ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose Addison completion date"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) {
+              setPendingAddisonComplete(null);
+              setPendingAddisonCompleteDate("");
+            }
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2050,
+            display: "grid",
+            placeItems: "center",
+            padding: 18,
+            background: "rgba(11,42,68,.26)",
+          }}
+        >
+          <div
+            style={{
+              width: "min(460px,100%)",
+              border: `1px solid ${colors.gold}`,
+              borderRadius: 18,
+              background: "#FFFFFF",
+              padding: 18,
+              boxShadow: "0 24px 70px rgba(7,27,47,.24)",
+            }}
+          >
+            <div style={{ color: colors.gold, fontSize: 10, fontWeight: 900, letterSpacing: ".12em", textTransform: "uppercase" }}>Atlas Work</div>
+            <h3 style={{ margin: "5px 0 6px", color: colors.text }}>When was this completed?</h3>
+            <div style={{ color: colors.text, fontSize: 14, fontWeight: 800 }}>{String(pendingAddisonComplete.title || "Addison task")}</div>
+            <div style={{ color: colors.muted, fontSize: 12.5, marginTop: 4 }}>
+              Pick the actual day the work was done. Atlas will use this date in completed work and weekly reports.
+            </div>
+            <label style={{ display: "grid", gap: 5, marginTop: 14, color: colors.muted, fontSize: 12, fontWeight: 800 }}>
+              Completed Date
+              <input
+                type="date"
+                value={pendingAddisonCompleteDate}
+                max={new Date().toLocaleDateString("en-CA")}
+                onClick={(event) => event.currentTarget.showPicker?.()}
+                onFocus={(event) => event.currentTarget.showPicker?.()}
+                onChange={(event) => setPendingAddisonCompleteDate(event.currentTarget.value)}
+                style={fieldStyle}
+              />
+            </label>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingAddisonComplete(null);
+                  setPendingAddisonCompleteDate("");
+                }}
+                style={lightButtonStyle}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!pendingAddisonCompleteDate}
+                onClick={() => void completeAddisonTaskOnSelectedDate()}
+                style={{ ...goldButtonStyle, opacity: pendingAddisonCompleteDate ? 1 : .55 }}
+              >
+                Save Completed Date
+              </button>
             </div>
           </div>
         </div>
