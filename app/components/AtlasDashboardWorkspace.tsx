@@ -318,6 +318,9 @@ export default function AtlasDashboardWorkspace(props: any) {
   const [dashboardCompletionDate, setDashboardCompletionDate] = useState("");
   const [dashboardWorkAssignee, setDashboardWorkAssignee] = useState(initialDashboardAssignee);
   const [dashboardWorkDate, setDashboardWorkDate] = useState(() => todayISO());
+  const [dashboardViewDate, setDashboardViewDate] = useState(() => todayISO());
+  const dashboardViewingToday = dashboardViewDate === todayISO();
+  const dashboardViewDateLabel = dashboardViewingToday ? "Today" : formatDate(dashboardViewDate);
   const [dashboardWorkListFilter, setDashboardWorkListFilter] = useState<"Today" | "All" | "Upcoming" | "Overdue" | "Waiting">("Today");
   const [dashboardWorkPersonFilter, setDashboardWorkPersonFilter] = useState<string>("Everyone");
   const [dashboardRightList, setDashboardRightList] = useState<string>("Upcoming");
@@ -334,18 +337,18 @@ export default function AtlasDashboardWorkspace(props: any) {
     .filter((record) => {
       const date = String(record.date || "").slice(0, 10);
       if (dashboardWorkListFilter === "All") return true;
-      if (dashboardWorkListFilter === "Upcoming") return Boolean(date && date > todayISO());
-      if (dashboardWorkListFilter === "Overdue") return Boolean(date && date < todayISO());
+      if (dashboardWorkListFilter === "Upcoming") return Boolean(date && date > dashboardViewDate);
+      if (dashboardWorkListFilter === "Overdue") return Boolean(date && date < dashboardViewDate);
       if (dashboardWorkListFilter === "Waiting") return record.status === "Waiting";
       if (dashboardWasUnscheduledAfterMiss(record)) return false;
-      return !date || date <= todayISO();
+      return !date || date <= dashboardViewDate;
     })
     .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || (a.priority === "High" ? 0 : a.priority === "Medium" ? 1 : 2) - (b.priority === "High" ? 0 : b.priority === "Medium" ? 1 : 2) || a.title.localeCompare(b.title));
 
   const dashboardCompletedForPersonToday = (person: string) => serviceRecords.filter((record) => {
     if (dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) !== person) return false;
-    const today = todayISO();
-    return record.lastCompletedDate === today || (record.completionHistory || []).includes(today) || (record.serviceHistory || []).some((entry) => String(entry.completedAt || "").slice(0, 10) === today);
+    const selectedDate = dashboardViewDate;
+    return record.lastCompletedDate === selectedDate || (record.completionHistory || []).includes(selectedDate) || (record.serviceHistory || []).some((entry) => String(entry.completedAt || "").slice(0, 10) === selectedDate);
   });
 
   const dashboardTodayWorkForPerson = (person: string) => serviceRecords
@@ -354,7 +357,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     .filter((record) => {
       const date = String(record.date || "").slice(0, 10);
       if (dashboardWasUnscheduledAfterMiss(record)) return false;
-      return !date || date <= todayISO();
+      return !date || date <= dashboardViewDate;
     })
     .sort((a, b) => String(a.date || "9999-12-31").localeCompare(String(b.date || "9999-12-31")) || (a.priority === "High" ? 0 : a.priority === "Medium" ? 1 : 2) - (b.priority === "High" ? 0 : b.priority === "Medium" ? 1 : 2) || a.title.localeCompare(b.title));
 
@@ -366,7 +369,7 @@ export default function AtlasDashboardWorkspace(props: any) {
       id: uid("work"),
       propertyId: activePropertyId,
       title,
-      date: todayISO(),
+      date: dashboardViewDate,
       status: "Open",
       priority: "Medium",
       assignedTo: person,
@@ -400,25 +403,27 @@ export default function AtlasDashboardWorkspace(props: any) {
   };
 
   const dashboardCalendarForPersonToday = (person: string) =>
-    todayEvents
+    [...todayEvents, ...upcomingEvents]
+      .filter((event, index, all) => all.findIndex((candidate) => String(candidate.instanceId || candidate.id) === String(event.instanceId || event.id)) === index)
+      .filter((event) => event.date === dashboardViewDate)
       .filter((event) => event.source !== "work-order" && event.source !== "us-holiday" && event.source !== "jewish-holiday")
       .filter((event) => dashboardCalendarOwner(event as AtlasCalendarItem) === person)
       .sort((a, b) => String(a.time || "99:99").localeCompare(String(b.time || "99:99")) || a.title.localeCompare(b.title));
 
   const dashboardUpcomingForPerson = (person: string) => {
-    const horizon = addDays(todayISO(), 7);
+    const horizon = addDays(dashboardViewDate, 7);
     const work = serviceRecords
       .filter((record) => record.status !== "Completed")
       .filter((record) => dashboardAssigneeName((record as AtlasServiceRecord).assignedTo) === person)
       .filter((record) => {
         const date = String(record.date || "").slice(0, 10);
-        return Boolean(date && date > todayISO() && date <= horizon);
+        return Boolean(date && date > dashboardViewDate && date <= horizon);
       })
       .map((record) => ({ kind: "work" as const, date: String(record.date || "").slice(0, 10), title: record.title, record }));
     const calendar = upcomingEvents
       .filter((event) => event.source !== "work-order" && event.source !== "us-holiday" && event.source !== "jewish-holiday")
       .filter((event) => dashboardCalendarOwner(event as AtlasCalendarItem) === person)
-      .filter((event) => event.date > todayISO() && event.date <= horizon)
+      .filter((event) => event.date > dashboardViewDate && event.date <= horizon)
       .map((event) => ({ kind: "calendar" as const, date: event.date, title: event.title, event }));
     return [...work, ...calendar]
       .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
@@ -2463,7 +2468,7 @@ export default function AtlasDashboardWorkspace(props: any) {
       const events = dashboardCalendarForPersonToday(name).map((event) => printableCalendarItem(event as AtlasCalendarItem));
       return { title: dashboardPersonLabel(name), items: [...work, ...events] };
     }).filter((section) => section.items.length);
-    if (!printAtlasChecklist(`${activeProperty.name} · Daily Work`, `${formatDate(todayISO())}${person ? ` · ${dashboardPersonLabel(person)}` : ""}`, sections)) {
+    if (!printAtlasChecklist(`${activeProperty.name} · Daily Work`, `${formatDate(dashboardViewDate)}${person ? ` · ${dashboardPersonLabel(person)}` : ""}`, sections)) {
       showSaveToast("Allow pop-ups to print the daily checklist.", "warning");
     }
   };
@@ -2636,7 +2641,7 @@ export default function AtlasDashboardWorkspace(props: any) {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
           <div>
             <strong style={{ display: "block", color: colors.navy, fontSize: 18 }}>{dashboardPersonLabel(person)}</strong>
-            <small style={mutedSmallStyle}>{records.length} active · {completedToday.length} done today</small>
+            <small style={mutedSmallStyle}>{records.length} active · {completedToday.length} done {dashboardViewingToday ? "today" : "this day"}</small>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <button type="button" onClick={() => printDashboardDay(person)} aria-label={`Print ${dashboardPersonLabel(person)}'s daily work`} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Print</button>
@@ -2670,7 +2675,7 @@ export default function AtlasDashboardWorkspace(props: any) {
 
         {completedToday.length ? (
           <details style={{ marginTop: 8 }}>
-            <summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 850 }}>Completed today · {completedToday.length}</summary>
+            <summary style={{ cursor: "pointer", color: colors.navy, fontWeight: 850 }}>Completed {dashboardViewingToday ? "today" : formatDate(dashboardViewDate)} · {completedToday.length}</summary>
             <div style={{ display: "grid", gap: 5, marginTop: 6 }}>
               {completedToday.map((record) => <button key={`done-${person}-${record.id}`} type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: `1px solid ${colors.line}`, borderRadius: 8, padding: 7, background: "#F3F7F4", textAlign: "left", color: colors.navy, textDecoration: "line-through", opacity: .7, fontSize: 13 }}>{record.title}</button>)}
             </div>
@@ -2796,8 +2801,29 @@ export default function AtlasDashboardWorkspace(props: any) {
       </section>
       <section style={{ ...cardStyle, minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <div><div style={eyebrowStyle}>Work</div><h2 style={{ margin: "2px 0", color: colors.navy }}>Work Lists</h2></div>
+          <div>
+            <div style={eyebrowStyle}>Work</div>
+            <h2 style={{ margin: "2px 0", color: colors.navy }}>Work Lists</h2>
+            <small style={mutedSmallStyle}>Showing {dashboardViewDateLabel}</small>
+          </div>
           <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              type="date"
+              value={dashboardViewDate}
+              onClick={(event) => event.currentTarget.showPicker?.()}
+              onFocus={(event) => event.currentTarget.showPicker?.()}
+              onChange={(event) => {
+                const nextDate = event.currentTarget.value;
+                if (nextDate) {
+                  setDashboardViewDate(nextDate);
+                  setDashboardWorkListFilter("Today");
+                }
+              }}
+              aria-label="Dashboard date"
+              title="Change dashboard date"
+              style={{ ...inputStyle, width: "auto", minHeight: 34, padding: "5px 9px", fontSize: 12, fontWeight: 800 }}
+            />
+            {!dashboardViewingToday ? <button type="button" onClick={() => { setDashboardViewDate(todayISO()); setDashboardWorkListFilter("Today"); }} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Today</button> : null}
             {dashboardRightSelector}
             <button type="button" onClick={() => printDashboardDay()} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Print Day</button>
             <button type="button" onClick={() => setScreen("history")} style={{ ...secondaryButtonStyle, minHeight: 32, padding: "5px 9px", fontSize: 11 }}>Open All Work</button>
