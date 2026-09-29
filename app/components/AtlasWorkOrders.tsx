@@ -1111,8 +1111,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }
 
   const displayServices = useMemo(
-    () => dedupeWorkListRecords(filteredServices),
-    [filteredServices],
+    () => dedupeWorkListRecords(filteredServices).filter((record: any) => String(record?.id || "") !== String(pendingDelete?.id || "")),
+    [filteredServices, pendingDelete?.id],
   );
 
   const visibleRecords = useMemo(() => {
@@ -2069,9 +2069,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   return (
     <>
       {pendingDelete ? (
-        <div role="status" style={{ position: "fixed", left: "50%", bottom: isMobile ? 78 : 24, transform: "translateX(-50%)", zIndex: 1000, display: "flex", alignItems: "center", gap: 12, width: isMobile ? "calc(100% - 24px)" : "auto", maxWidth: 520, padding: "12px 14px", borderRadius: 12, background: colors.text, color: "#FFFFFF", boxShadow: "0 12px 32px rgba(15,42,67,.28)" }}>
-          <span style={{ flex: 1, fontSize: 14, fontWeight: 700 }}>{pendingDelete.title} will be deleted.</span>
-          <button type="button" onClick={undoWorkOrderDelete} style={{ ...goldButtonStyle, width: "auto", minHeight: 38, padding: "7px 13px" }}>Undo</button>
+        <div role="status" aria-live="polite" style={{ position: "fixed", left: "50%", top: "50%", transform: "translate(-50%,-50%)", zIndex: 1600, width: isMobile ? "calc(100% - 30px)" : "min(460px,calc(100% - 40px))", border: `1px solid ${colors.gold}`, borderRadius: 18, background: "#FFFFFF", color: colors.text, boxShadow: "0 24px 70px rgba(7,27,47,.24)", padding: 18 }}>
+          <div style={{ ...eyebrowStyle, marginBottom: 5 }}>Atlas Work</div>
+          <strong style={{ display: "block", color: colors.navy, fontSize: 17 }}>Work removed</strong>
+          <div style={{ marginTop: 6, fontSize: 13.5, lineHeight: 1.45 }}>{pendingDelete.title} was removed from the list. Atlas will finish deleting it unless you undo.</div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+            <button type="button" onClick={undoWorkOrderDelete} style={{ ...goldButtonStyle, width: "auto", minHeight: 40, padding: "8px 15px" }}>Undo</button>
+          </div>
         </div>
       ) : null}
       {rescheduleRecord ? (
