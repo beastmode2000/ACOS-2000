@@ -210,38 +210,7 @@ function nextDateForWeekday(day: AddisonWeekday, fromDate?: string) {
 function dayFromTask(task: Record<string, any>): AddisonWeekday {
   const meta = addisonMeta(task);
   const value = String(task.preferredDay || meta?.preferredDay || "Auto");
-  return (
-    <>
-      {pendingAddisonDelete ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Delete Addison task"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 2000,
-            display: "grid",
-            placeItems: "center",
-            padding: 18,
-            background: "rgba(11,42,68,.26)",
-          }}
-          onMouseDown={(event) => {
-            if (event.currentTarget === event.target) setPendingAddisonDelete(null);
-          }}
-        >
-          <div style={{ width: "min(430px,100%)", border: `1px solid ${colors.gold}`, borderRadius: 18, background: "#FFFFFF", padding: 18, boxShadow: "0 24px 70px rgba(7,27,47,.24)" }}>
-            <div style={{ color: colors.gold, fontSize: 10, fontWeight: 900, letterSpacing: ".12em", textTransform: "uppercase" }}>Atlas Work</div>
-            <h3 style={{ margin: "5px 0 6px", color: colors.text }}>Delete this task?</h3>
-            <div style={{ color: colors.muted, fontSize: 13, lineHeight: 1.45 }}>{pendingAddisonDelete.title}</div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-              <button type="button" onClick={() => setPendingAddisonDelete(null)} style={secondaryButtonStyle}>Cancel</button>
-              <button type="button" onClick={() => void deleteAddisonLiveTask(pendingAddisonDelete.id)} style={{ ...goldButtonStyle, background: colors.red, color: "#FFFFFF" }}>Delete</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-ADDISON_WEEKDAYS as readonly string[]).includes(value) ? value as AddisonWeekday : "Auto";
+  return (ADDISON_WEEKDAYS as readonly string[]).includes(value) ? value as AddisonWeekday : "Auto";
 }
 
 function starterLists(): TeamList[] {
@@ -367,7 +336,6 @@ export default function AtlasTeamWork({
     useState<"High" | "Medium" | "Low">("Medium");
   const [editingMinutes, setEditingMinutes] = useState(30);
   const [historyCopied, setHistoryCopied] = useState(false);
-  const [pendingAddisonDelete, setPendingAddisonDelete] = useState<{ id: string; title: string } | null>(null);
 
   useEffect(() => {
     setFieldEmployeePropertyId(activePropertyId);
@@ -1046,13 +1014,11 @@ export default function AtlasTeamWork({
   }
 
   async function deleteAddisonLiveTask(taskId: string) {
+    if (!window.confirm("Delete this Addison task?")) return;
     try {
-      setPendingAddisonDelete(null);
-      setAddisonWork((current) => current ? { ...current, tasks: (current.tasks || []).filter((task) => String(task.id || "") !== taskId) } : current);
       await patchAddisonLive("task-delete", { taskId }, "Task deleted.");
       if (editingAddisonTaskId === taskId) setEditingAddisonTaskId("");
     } catch (error) {
-      await loadAddisonWork(false);
       setAddisonLiveMessage(
         error instanceof Error ? error.message : "Could not delete task.",
       );
@@ -1927,7 +1893,6 @@ function Stat({ label, value }: { label: string; value: string | number }) {
       <div style={statLabelStyle}>{label}</div>
       <div style={statValueStyle}>{value}</div>
     </div>
-    </>
   );
 }
 
