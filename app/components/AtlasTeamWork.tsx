@@ -336,6 +336,7 @@ export default function AtlasTeamWork({
     useState<"High" | "Medium" | "Low">("Medium");
   const [editingMinutes, setEditingMinutes] = useState(30);
   const [historyCopied, setHistoryCopied] = useState(false);
+  const [pendingAddisonDelete, setPendingAddisonDelete] = useState<{ id: string; title: string } | null>(null);
 
   useEffect(() => {
     setFieldEmployeePropertyId(activePropertyId);
@@ -1014,11 +1015,20 @@ export default function AtlasTeamWork({
   }
 
   async function deleteAddisonLiveTask(taskId: string) {
-    if (!window.confirm("Delete this Addison task?")) return;
     try {
+      setPendingAddisonDelete(null);
+      setAddisonWork((current) =>
+        current
+          ? {
+              ...current,
+              tasks: (current.tasks || []).filter((task) => String(task.id || "") !== taskId),
+            }
+          : current,
+      );
       await patchAddisonLive("task-delete", { taskId }, "Task deleted.");
       if (editingAddisonTaskId === taskId) setEditingAddisonTaskId("");
     } catch (error) {
+      await loadAddisonWork(false);
       setAddisonLiveMessage(
         error instanceof Error ? error.message : "Could not delete task.",
       );
@@ -1297,7 +1307,7 @@ export default function AtlasTeamWork({
                             {!completed && !addisonPaused(task) ? <button type="button" style={lightButtonStyle} onClick={() => void moveAddisonTask(taskId, 1)}>↓</button> : null}
                             <button type="button" style={lightButtonStyle} onClick={() => beginEditAddisonTask(task)}>Edit</button>
                             {!completed ? <button type="button" style={lightButtonStyle} onClick={() => void toggleAddisonPause(task)}>{addisonPaused(task) ? "Resume" : "Pause"}</button> : null}
-                            <button type="button" style={{ ...lightButtonStyle, color: colors.red }} onClick={() => void deleteAddisonLiveTask(taskId)}>Delete</button>
+                            <button type="button" style={{ ...lightButtonStyle, color: colors.red }} onClick={() => setPendingAddisonDelete({ id: taskId, title: String(task.title || "this task") })}>Delete</button>
                           </div>
                         </div>
                       )}
@@ -1850,6 +1860,45 @@ export default function AtlasTeamWork({
               <input value={newMemberEmail} onChange={(e)=>setNewMemberEmail(e.target.value)} placeholder="Email" style={fieldStyle}/>
               <select value={newMemberRole} onChange={(e)=>setNewMemberRole(e.target.value as TeamRole)} style={fieldStyle}>{Object.keys(ROLE_DEFAULTS).map((role)=><option key={role}>{role}</option>)}</select>
               <button type="button" style={goldButtonStyle} onClick={inviteMember}>Invite</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingAddisonDelete ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Delete Addison task"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setPendingAddisonDelete(null);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2000,
+            display: "grid",
+            placeItems: "center",
+            padding: 18,
+            background: "rgba(11,42,68,.26)",
+          }}
+        >
+          <div
+            style={{
+              width: "min(430px,100%)",
+              border: `1px solid ${colors.gold}`,
+              borderRadius: 18,
+              background: "#FFFFFF",
+              padding: 18,
+              boxShadow: "0 24px 70px rgba(7,27,47,.24)",
+            }}
+          >
+            <div style={{ color: colors.gold, fontSize: 10, fontWeight: 900, letterSpacing: ".12em", textTransform: "uppercase" }}>Atlas Work</div>
+            <h3 style={{ margin: "5px 0 6px", color: colors.text }}>Delete this task?</h3>
+            <div style={{ color: colors.muted, fontSize: 13, lineHeight: 1.45 }}>{pendingAddisonDelete.title}</div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button type="button" onClick={() => setPendingAddisonDelete(null)} style={lightButtonStyle}>Cancel</button>
+              <button type="button" onClick={() => void deleteAddisonLiveTask(pendingAddisonDelete.id)} style={{ ...goldButtonStyle, background: colors.red, color: "#FFFFFF" }}>Delete</button>
             </div>
           </div>
         </div>
