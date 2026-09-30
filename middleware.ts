@@ -36,7 +36,7 @@ function isPublicPath(request: NextRequest) {
 
 function shouldUseCanonicalAddisonWork(request: NextRequest) {
   return (
-    request.method === "GET" &&
+    (request.method === "GET" || request.method === "PATCH") &&
     request.nextUrl.pathname === "/api/landscape-help" &&
     request.nextUrl.searchParams.get("token") === ADDISON_WORK_TOKEN
   );
