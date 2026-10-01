@@ -1,5 +1,7 @@
 "use client";
 
+import { confirmAtlasDelete, showAtlasDeleteUndo } from "../lib/atlas-delete-ui";
+
 import { completedWorkNotes } from "../lib/atlas-work-notes";
 
 import React, {
@@ -1033,6 +1035,8 @@ export default function AtlasApp() {
     }
   }, [moreToolsOpen]);
   const [activePropertyId, setActivePropertyId] = useState("2000");
+  const deletePropertyRef = useRef(activePropertyId);
+  deletePropertyRef.current = activePropertyId;
 
   function calendarItemsByIdentity<T extends CalendarItem>(items: T[]): T[] {
     if (activePropertyId !== "4725") return byTitle(items);
@@ -9899,7 +9903,7 @@ export default function AtlasApp() {
 
   async function deleteWorkOrderRecord(record: ServiceRecord) {
     if (
-      !window.confirm(`Delete work order ${record.title || "this work order"}?`)
+      !await confirmAtlasDelete(`Delete “${record.title || "this work order"}”?`)
     )
       return;
     const recordId = String(record.id || "");
@@ -9945,7 +9949,21 @@ export default function AtlasApp() {
       setSelectedServiceId((current) => (current === recordId ? "" : current));
       clearRecordDirty("work_order", recordId);
       setDatabaseStatus(`Deleted ${record.title || "work order"}.`);
-      showSaveToast(`${record.title || "Work order"} deleted.`);
+      const deletedProperty = activePropertyId;
+      showAtlasDeleteUndo(async () => {
+        if (deletePropertyRef.current !== deletedProperty) return false;
+        clearWorkOrderTombstone(recordId);
+        const restored = await postAtlasRecord("work_orders", record);
+        if (!restored) { addWorkOrderTombstone(recordId); return false; }
+        setServiceRecords((current) => workOrdersByIdentity([record, ...current.filter((item) => item.id !== recordId)]));
+        for (const item of linkedCalendarRecords) {
+          clearCalendarDeletion(item);
+          const saved = await postAtlasRecord("calendar", item);
+          if (!saved) { rememberCalendarDeletion(item); continue; }
+          setCalendarItems((current) => [item, ...current.filter((entry) => entry.id !== item.id)]);
+        }
+        return true;
+      });
     } finally {
       atlasActionLocksRef.current.delete(actionKey);
     }

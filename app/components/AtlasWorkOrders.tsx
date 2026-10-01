@@ -1,5 +1,7 @@
 "use client";
 
+import { confirmAtlasDelete, showAtlasDeleteUndo } from "../lib/atlas-delete-ui";
+
 import { currentOccurrenceNotes } from "../lib/atlas-work-notes";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -708,8 +710,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const workNotesRef = useRef<HTMLElement | null>(null);
   const workHistoryRef = useRef<HTMLDivElement | null>(null);
   const [noteAuthor, setNoteAuthor] = useState("");
-  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
-  const pendingDeleteTimerRef = useRef<number | null>(null);
+  const noteUndoRecordsRef = useRef(serviceRecords);
+  noteUndoRecordsRef.current = serviceRecords;
   const [completionNoteDraft, setCompletionNoteDraft] = useState("");
   const [completionDatePrompt, setCompletionDatePrompt] = useState<{ record: any; options?: { completedDate?: string; completionNote?: string; allowEarly?: boolean } } | null>(null);
   const [completionDateCustom, setCompletionDateCustom] = useState("");
@@ -756,7 +758,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   useEffect(() => () => {
     if (undoCompletionTimerRef.current) clearTimeout(undoCompletionTimerRef.current);
-    if (pendingDeleteTimerRef.current) clearTimeout(pendingDeleteTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -1112,8 +1113,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }
 
   const displayServices = useMemo(
-    () => dedupeWorkListRecords(filteredServices).filter((record: any) => String(record?.id || "") !== String(pendingDelete?.id || "")),
-    [filteredServices, pendingDelete?.id],
+    () => dedupeWorkListRecords(filteredServices),
+    [filteredServices],
   );
 
   const visibleRecords = useMemo(() => {
@@ -1735,21 +1736,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }
 
   function scheduleWorkOrderDelete(record: any) {
-    const id = String(record?.id || "");
-    if (!id) return;
-    if (pendingDeleteTimerRef.current) clearTimeout(pendingDeleteTimerRef.current);
-    setPendingDelete({ id, title: record.title || "Work order" });
-    pendingDeleteTimerRef.current = window.setTimeout(() => {
-      pendingDeleteTimerRef.current = null;
-      setPendingDelete(null);
-      void deleteWorkOrderRecord(record);
-    }, 10_000);
-  }
-
-  function undoWorkOrderDelete() {
-    if (pendingDeleteTimerRef.current) clearTimeout(pendingDeleteTimerRef.current);
-    pendingDeleteTimerRef.current = null;
-    setPendingDelete(null);
+    if (record?.id) void deleteWorkOrderRecord(record);
   }
 
   function tomorrowDate() {
@@ -1891,9 +1878,19 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }
 
   async function deleteHistoryNote(note: any) {
-    if (!selectedService || !window.confirm("Delete this work note?")) return;
-    const notesHistory = (selectedService.notesHistory || []).filter((item: any) => item.id !== note.id);
-    await updateWorkOrderRecord(selectedService, { notesHistory });
+    if (!selectedService || !await confirmAtlasDelete("Delete this work note?")) return;
+    const record = selectedService;
+    const notesHistory = (record.notesHistory || []).filter((item: any) => item.id !== note.id);
+    const saved = await updateWorkOrderRecord(record, { notesHistory });
+    if (saved === false) return;
+    showAtlasDeleteUndo(async () => {
+      const current = noteUndoRecordsRef.current.find((item: any) => item.id === record.id);
+      if (!current) return false;
+      const notes = current.notesHistory || [];
+      return (await updateWorkOrderRecord(current, {
+        notesHistory: notes.some((item: any) => item.id === note.id) ? notes : [note, ...notes],
+      })) !== false;
+    });
   }
 
   async function updateCompletionSnapshot(entry: any, patch: { completedBy?: string; completedDate?: string }) {
@@ -2040,16 +2037,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
   return (
     <>
-      {pendingDelete ? (
-        <div role="status" aria-live="polite" style={{ position: "fixed", left: "50%", top: "50%", transform: "translate(-50%,-50%)", zIndex: 1600, width: isMobile ? "calc(100% - 30px)" : "min(460px,calc(100% - 40px))", border: `1px solid ${colors.gold}`, borderRadius: 18, background: "#FFFFFF", color: colors.text, boxShadow: "0 24px 70px rgba(7,27,47,.24)", padding: 18 }}>
-          <div style={{ ...eyebrowStyle, marginBottom: 5 }}>Atlas Work</div>
-          <strong style={{ display: "block", color: colors.navy, fontSize: 17 }}>Work removed</strong>
-          <div style={{ marginTop: 6, fontSize: 13.5, lineHeight: 1.45 }}>{pendingDelete.title} was removed from the list. Atlas will finish deleting it unless you undo.</div>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
-            <button type="button" onClick={undoWorkOrderDelete} style={{ ...goldButtonStyle, width: "auto", minHeight: 40, padding: "8px 15px" }}>Undo</button>
-          </div>
-        </div>
-      ) : null}
       {rescheduleRecord ? (
         <div
           role="presentation"
