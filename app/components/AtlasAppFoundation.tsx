@@ -434,6 +434,11 @@ export type WorkChecklistItem = {
 };
 
 export type WorkNoteEntry = {
+  scope?: "occurrence" | "persistent";
+  occurrenceDate?: string;
+  createdBy?: string;
+  editedAt?: string;
+  outcome?: string;
   id: string;
   text: string;
   createdAt: string;
@@ -1766,6 +1771,7 @@ export function normalizeService(
       : [],
     notesHistory: Array.isArray(record.notesHistory)
       ? record.notesHistory.map((entry) => ({
+          ...entry,
           id: String(entry.id || uid("note")),
           text: String(entry.text || ""),
           createdAt: String(entry.createdAt || new Date().toISOString()),

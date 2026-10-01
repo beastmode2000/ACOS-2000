@@ -19,7 +19,6 @@ import AtlasAssetsViewportPolish from "./components/AtlasAssetsViewportPolish";
 import AtlasDepartmentAssetPhotoPolish from "./components/AtlasDepartmentAssetPhotoPolish";
 import AtlasAssetListActionsPolish from "./components/AtlasAssetListActionsPolish";
 import AtlasWorkPolish from "./components/AtlasWorkPolish";
-import AtlasWorkNotesTogether from "./components/AtlasWorkNotesTogether";
 import AtlasWorkDeleteButtonRestore from "./components/AtlasWorkDeleteButtonRestore";
 import AtlasWorkMaintainXPolish from "./components/AtlasWorkMaintainXPolish";
 import AtlasWorkNoteSafety from "./components/AtlasWorkNoteSafety";
@@ -30,7 +29,6 @@ import AtlasWorkWeekWrap from "./components/AtlasWorkWeekWrap";
 import AtlasWorkWrapPlacement from "./components/AtlasWorkWrapPlacement";
 import AtlasWorkSpellAssist from "./components/AtlasWorkSpellAssist";
 import AtlasDashboardNoteActionsPolish from "./components/AtlasDashboardNoteActionsPolish";
-import AtlasDashboardWorkNoteEnterFix from "./components/AtlasDashboardWorkNoteEnterFix";
 import AtlasDashboardDefaultUpcoming from "./components/AtlasDashboardDefaultUpcoming";
 import AtlasHydrawiseWeatherLink from "./components/AtlasHydrawiseWeatherLink";
 import AtlasPhotoPastePolish from "./components/AtlasPhotoPastePolish";
@@ -129,7 +127,6 @@ export default function RootLayout({
         <AtlasDepartmentAssetPhotoPolish />
         <AtlasAssetListActionsPolish />
         <AtlasWorkPolish />
-        <AtlasWorkNotesTogether />
         <AtlasWorkDeleteButtonRestore />
         <AtlasWorkMaintainXPolish />
         <AtlasWorkNoteSafety />
@@ -140,7 +137,6 @@ export default function RootLayout({
         <AtlasWorkWrapPlacement />
         <AtlasWorkSpellAssist />
         <AtlasDashboardNoteActionsPolish />
-        <AtlasDashboardWorkNoteEnterFix />
         <AtlasDashboardDefaultUpcoming />
         <AtlasHydrawiseWeatherLink />
         <AtlasPhotoPastePolish />

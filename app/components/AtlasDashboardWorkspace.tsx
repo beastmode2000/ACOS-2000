@@ -1,5 +1,7 @@
 "use client";
 
+import { currentOccurrenceNotes } from "../lib/atlas-work-notes";
+
 import React, {
   useEffect,
   useId,
@@ -2500,7 +2502,7 @@ export default function AtlasDashboardWorkspace(props: any) {
     const dueDate = String(record.date || "").slice(0, 10);
     const isOverdue = Boolean(dueDate && dueDate < todayISO());
     const assignee = dashboardAssigneeName(atlasRecord.assignedTo || "");
-    const noteCount = Array.isArray(atlasRecord.notesHistory) ? atlasRecord.notesHistory.length : 0;
+    const noteCount = currentOccurrenceNotes(atlasRecord).length;
     return (
       <div
         key={record.id}
@@ -2546,12 +2548,13 @@ export default function AtlasDashboardWorkspace(props: any) {
             </select>
             <button
               type="button"
-              onClick={() => void handleDashboardWorkAction(record, "edit")}
-              aria-label={`Edit ${record.title}`}
-              title="Edit work"
+              onClick={() => setDashboardWorkNoteOpen((current) => ({ ...current, [String(record.id)]: !current[String(record.id)] }))}
+              aria-expanded={Boolean(dashboardWorkNoteOpen[String(record.id)])}
+              aria-label={`Add work note for ${record.title}`}
+              title="Add work note"
               style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11, fontWeight: 800 }}
             >
-              Edit
+              Add Note
             </button>
             <label
               style={{
@@ -2607,14 +2610,13 @@ export default function AtlasDashboardWorkspace(props: any) {
                 <option key={person} value={person}>{dashboardPersonLabel(person)}</option>
               ))}
             </select>
-            <button type="button" onClick={() => setDashboardWorkNoteOpen((current) => ({ ...current, [String(record.id)]: !current[String(record.id)] }))} aria-expanded={Boolean(dashboardWorkNoteOpen[String(record.id)])} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Add Note</button>
           </div>
           {dashboardWorkNoteOpen[String(record.id)] ? (
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto", gap: 6 }}>
               <input
                 autoFocus
                 value={completionNote}
-                onChange={(event) => setDashboardCompletionNotes((current) => ({ ...current, [String(record.id)]: event.currentTarget.value }))}
+                onChange={(event) => { const text = event.currentTarget.value; setDashboardCompletionNotes((current) => ({ ...current, [String(record.id)]: text })); }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && completionNote.trim()) void saveDashboardWorkUpdate(record);
                 }}
@@ -3219,15 +3221,15 @@ export default function AtlasDashboardWorkspace(props: any) {
     const updated = normalizeService({
       ...(record as AtlasServiceRecord),
       notesHistory: [
-        { id: uid("note"), text, createdAt: new Date().toISOString() },
+        { id: uid("note"), text, createdAt: new Date().toISOString(), scope: "occurrence", occurrenceDate: String(record.date || todayISO()).slice(0, 10) },
         ...((record as AtlasServiceRecord).notesHistory || []),
       ],
     });
-    setServiceRecords((current) =>
-      byTitle(current.map((item) => item.id === updated.id ? updated : item)),
-    );
     const saved = await postAtlasRecord("work_orders", updated);
     if (saved) {
+      setServiceRecords((current) =>
+        byTitle(current.map((item) => item.id === updated.id ? updated : item)),
+      );
       setDashboardCompletionNotes((current) => {
         const next = { ...current };
         delete next[String(record.id)];

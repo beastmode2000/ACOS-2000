@@ -1,5 +1,7 @@
 "use client";
 
+import { completedWorkNotes } from "../lib/atlas-work-notes";
+
 import React, {
   useEffect,
   useMemo,
@@ -12449,7 +12451,7 @@ export default function AtlasApp() {
       new Set([...(preparedRecord.completionHistory || []), completedDate]),
     ).sort();
     const completionNotes =
-      resolvedCompletionNote || String(preparedRecord.notes || "").trim();
+      completedWorkNotes(preparedRecord, resolvedCompletionNote);
     const completionEntry: WorkCompletionEntry = {
       id: uid("completion"),
       completedAt:
