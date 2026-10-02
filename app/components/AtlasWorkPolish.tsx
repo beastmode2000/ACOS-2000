@@ -182,7 +182,7 @@ function markWorkDetail(root: HTMLElement) {
     summaryCard?.classList.add("atlas-work-summary-card");
     const summaryFields = summaryCard?.children?.[1];
     if (summaryFields instanceof HTMLElement) {
-      summaryFields.classList.add("atlas-work-summary-fields");
+      summaryFields.classList.remove("atlas-work-summary-fields");
     }
 
     const description = titleBlock?.querySelector<HTMLElement>(":scope > p") || null;
@@ -205,7 +205,7 @@ function markWorkDetail(root: HTMLElement) {
     }
   }
 
-  markWeeklyVehicleDetail(panel, title);
+  // Keep the actual due date visible in the work detail.
 
   for (const button of Array.from(panel.querySelectorAll<HTMLButtonElement>("button"))) {
     const value = normalized(button.textContent).replace(/[’]/g, "'");
@@ -223,16 +223,16 @@ function markWorkDetail(root: HTMLElement) {
   );
   if (workDetails) {
     workDetails.classList.add("atlas-work-reference-details");
-    workDetails.open = true;
+
     const summary = workDetails.querySelector<HTMLElement>("summary");
     if (summary && normalized(summary.textContent) !== "work details") {
-      summary.textContent = "Work details";
+      summary.textContent = "More details";
     }
   }
 
   for (const strong of Array.from(panel.querySelectorAll<HTMLElement>("strong"))) {
     if (normalized(strong.textContent) === "work notes") {
-      strong.textContent = "Notes";
+      strong.textContent = "Work notes — what was done";
       strong.classList.add("atlas-work-notes-heading");
     }
   }

@@ -55,15 +55,7 @@ function decorateDetail(root: HTMLElement) {
   const summaryFields = summaryCard.querySelector<HTMLElement>(".atlas-work-summary-fields");
   summaryFields?.classList.add("atlas-work-mx-summary-fields");
 
-  const summaryHeader = summaryCard.querySelector<HTMLElement>(".atlas-work-summary-header");
-  if (summaryHeader && !summaryHeader.querySelector(".atlas-work-mx-note-action")) {
-    const note = document.createElement("button");
-    note.type = "button";
-    note.className = "atlas-work-mx-note-action";
-    note.textContent = "Add Note";
-    note.addEventListener("click", () => focusNotes(panel));
-    summaryHeader.appendChild(note);
-  }
+  panel.querySelectorAll(".atlas-work-mx-note-action").forEach((node) => node.remove());
 
   const actions = panel.querySelector<HTMLSelectElement>('select[aria-label="Work order actions"]');
   actions?.classList.add("atlas-work-mx-actions");
