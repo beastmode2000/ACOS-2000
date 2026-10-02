@@ -2501,7 +2501,6 @@ export default function AtlasDashboardWorkspace(props: any) {
     const atlasRecord = record as AtlasServiceRecord;
     const dueDate = String(record.date || "").slice(0, 10);
     const isOverdue = Boolean(dueDate && dueDate < todayISO());
-    const assignee = dashboardAssigneeName(atlasRecord.assignedTo || "");
     const noteCount = currentOccurrenceNotes(atlasRecord).length;
     return (
       <div
@@ -2510,21 +2509,17 @@ export default function AtlasDashboardWorkspace(props: any) {
           border: `1px solid ${isOverdue ? "#E7B8B8" : colors.line}`,
           borderLeft: isOverdue ? `3px solid ${colors.red}` : `1px solid ${colors.line}`,
           borderRadius: 9,
-          padding: 8,
+          padding: 7,
           background: "#FFFFFF",
         }}
       >
-        <div style={{ display: "grid", gap: 7 }}>
+        <div style={{ display: "grid", gap: 5 }}>
           <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: "pointer" }}>
             <strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14, lineHeight: 1.3, fontWeight: 700 }}>{record.title}</strong>
-            <small style={{ color: colors.muted, display: "block", marginTop: 2, fontSize: 12, lineHeight: 1.3, fontWeight: 500 }}>{record.date ? `${isOverdue ? "Overdue · " : ""}${formatDate(dueDate)}` : "No due date"} · {record.recurring ? `Recurring ${recurrenceLabel(atlasRecord)}` : "One time"}</small>
-            <small style={{ color: colors.muted, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 3, fontSize: 10.5, lineHeight: 1.25, fontWeight: 650 }}>
-              <span>{assignee ? `Assigned: ${dashboardPersonLabel(assignee)}` : "Unassigned"}</span>
-              {noteCount ? <span aria-label={`${noteCount} work note${noteCount === 1 ? "" : "s"}`}>📝 {noteCount}</span> : null}
-            </small>
+            <small style={{ color: colors.muted, display: "block", marginTop: 2, fontSize: 12, lineHeight: 1.3, fontWeight: 500 }}>{isOverdue ? `Overdue · ${formatDate(dueDate)}` : dueDate === todayISO() ? "Today" : dueDate ? formatDate(dueDate) : "No due date"}{record.recurring ? ` · ${recurrenceLabel(atlasRecord).replace(/^Every week$/i, "Weekly").replace(/^Every /i, "")}` : ""}{noteCount ? ` · ${noteCount} note${noteCount === 1 ? "" : "s"}` : ""}</small>
           </button>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-            <button type="button" onClick={() => void requestDashboardCompletion(record)} style={{ ...goldButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Done</button>
+            <button type="button" onClick={() => void requestDashboardCompletion(record)} style={{ ...goldButtonStyle, minHeight: isMobile ? 40 : 30, padding: "3px 7px", borderRadius: 7, fontSize: 13 }}>Done</button>
             <select
               value=""
               onChange={(event) => {
@@ -2533,7 +2528,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                 if (action) void handleDashboardWorkAction(record, action);
               }}
               aria-label={`Actions for ${record.title}`}
-              style={{ ...selectStyle, width: "auto", minHeight: 28, padding: "3px 26px 3px 8px", fontSize: 11, fontWeight: 800 }}
+              style={{ ...selectStyle, width: "auto", minHeight: isMobile ? 40 : 30, padding: "3px 24px 3px 7px", borderRadius: 7, fontSize: 13, fontWeight: 800 }}
             >
               <option value="">Actions</option>
               <option value="in-progress">In Progress</option>
@@ -2552,7 +2547,7 @@ export default function AtlasDashboardWorkspace(props: any) {
               aria-expanded={Boolean(dashboardWorkNoteOpen[String(record.id)])}
               aria-label={`Add work note for ${record.title}`}
               title="Add work note"
-              style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11, fontWeight: 800 }}
+              style={{ ...secondaryButtonStyle, minHeight: isMobile ? 40 : 30, padding: "3px 7px", borderRadius: 7, fontSize: 13, fontWeight: 800 }}
             >
               Add Note
             </button>
@@ -2561,11 +2556,11 @@ export default function AtlasDashboardWorkspace(props: any) {
                 display: "grid",
                 gridTemplateColumns: "auto minmax(126px, 1fr)",
                 alignItems: "center",
-                gap: 6,
-                minHeight: 42,
-                padding: "4px 8px",
+                gap: 4,
+                minHeight: isMobile ? 40 : 30,
+                padding: "0 5px",
                 border: `1px solid ${colors.line}`,
-                borderRadius: 10,
+                borderRadius: 7,
                 background: "#FFFFFF",
                 color: colors.navy,
                 fontSize: 11,
@@ -2574,7 +2569,7 @@ export default function AtlasDashboardWorkspace(props: any) {
               }}
               title="Change due date"
             >
-              <span style={{ whiteSpace: "nowrap" }}>Due Date</span>
+              <span style={{ whiteSpace: "nowrap" }}>Due</span>
               <input
                 type="date"
                 value={dueDate}
@@ -2589,8 +2584,10 @@ export default function AtlasDashboardWorkspace(props: any) {
                   ...inputStyle,
                   width: "100%",
                   minWidth: 126,
-                  minHeight: 32,
-                  padding: "4px 7px",
+                  minHeight: isMobile ? 38 : 28,
+                  padding: "3px 5px",
+                  border: 0,
+                  borderRadius: 5,
                   fontSize: 12,
                   fontWeight: 850,
                   borderColor: colors.gold,
@@ -2603,7 +2600,7 @@ export default function AtlasDashboardWorkspace(props: any) {
               onChange={(event) => void quickAssignDashboardWork(record, event.currentTarget.value)}
               aria-label={`Assign ${record.title}`}
               title="Quick assign"
-              style={{ ...selectStyle, width: "auto", minHeight: 28, padding: "3px 26px 3px 8px", fontSize: 11, fontWeight: 800 }}
+              style={{ ...selectStyle, width: "auto", minHeight: isMobile ? 40 : 30, padding: "3px 24px 3px 7px", borderRadius: 7, fontSize: 13, fontWeight: 800 }}
             >
               <option value="">Unassigned</option>
               {dashboardWorkPeople.map((person) => (
@@ -2697,7 +2694,6 @@ export default function AtlasDashboardWorkspace(props: any) {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <button type="button" onClick={() => printDashboardDay(person)} aria-label={`Print ${dashboardPersonLabel(person)}'s daily work`} style={{ ...secondaryButtonStyle, minHeight: 28, padding: "3px 8px", fontSize: 11 }}>Print</button>
-            <span style={badgeStyle(records.length ? "Scheduled" : completedToday.length ? "Completed" : "Monitor")}>{records.length}</span>
           </div>
         </div>
 
@@ -2710,7 +2706,7 @@ export default function AtlasDashboardWorkspace(props: any) {
         ) : null}
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 6, marginTop: 9 }}>
-          <input ref={(element) => { dashboardQuickInputRefs.current[person] = element; }} value={dashboardQuickDrafts[person] || ""} onChange={(event) => { const value = event.currentTarget.value; setDashboardQuickDrafts((current) => ({ ...current, [person]: value })); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createDashboardWorkForPerson(person); } }} placeholder="Add work title…" style={{ ...inputStyle, minHeight: 34 }}/>
+          <input ref={(element) => { dashboardQuickInputRefs.current[person] = element; }} value={dashboardQuickDrafts[person] || ""} onChange={(event) => { const value = event.currentTarget.value; setDashboardQuickDrafts((current) => ({ ...current, [person]: value })); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createDashboardWorkForPerson(person); } }} placeholder="Add work title…" style={{ ...inputStyle, minHeight: isMobile ? 40 : 34, padding: "5px 8px", borderRadius: 8 }}/>
           <button type="button" onClick={() => void createDashboardWorkForPerson(person)} disabled={!String(dashboardQuickDrafts[person] || "").trim()} style={{ ...goldButtonStyle, minHeight: 34, padding: "6px 10px", opacity: String(dashboardQuickDrafts[person] || "").trim() ? 1 : .55 }}>Add</button>
         </div>
 
