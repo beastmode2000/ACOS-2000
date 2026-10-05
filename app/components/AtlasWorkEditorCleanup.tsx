@@ -46,7 +46,7 @@ function cleanEditor() {
     details.open = true;
     details.classList.add("atlas-work-editor-primary-details");
     details.querySelector("summary")?.classList.add("atlas-work-editor-hidden-summary");
-    ["Estimated Time","Type","Category","Linked Project","Project","Additional contacts","Additional Contacts"].forEach((name) => {
+    ["Estimated Time","Type","Linked Project","Project","Additional contacts","Additional Contacts"].forEach((name) => {
       const field = fieldFromLabel(details, name);
       if (field && field !== details) field.remove();
     });
