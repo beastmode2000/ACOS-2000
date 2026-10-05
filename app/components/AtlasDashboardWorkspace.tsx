@@ -339,7 +339,8 @@ export default function AtlasDashboardWorkspace(props: any) {
     return ((record as AtlasServiceRecord).serviceHistory || []).some((entry) => {
       const entryDueDate = String(entry.dueDate || "").slice(0, 10);
       const completedDate = String(entry.completedAt || "").slice(0, 10);
-      return Boolean(entryDueDate && completedDate && entryDueDate === dueDate && completedDate <= dueDate);
+      // A completion closes its due occurrence even when the work was done late.
+      return Boolean(entryDueDate && completedDate && entryDueDate === dueDate);
     });
   };
   const dashboardWorkForPerson = (person: string) => serviceRecords
