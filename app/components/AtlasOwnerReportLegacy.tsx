@@ -103,6 +103,7 @@ type Props = {
 };
 
 const departments = [
+  "Plumbing",
   "Maintenance & Cleaning",
   "Landscape",
   "Dock & Marine",
@@ -118,6 +119,7 @@ const reportCategories = [
   "Dock & Marine",
   "Landscaping",
   "HVAC / Mechanical",
+  "Plumbing",
   "Pool & Spa",
   "Property Operations",
   "Maintenance & Cleaning",
@@ -193,6 +195,7 @@ function recordText(...values: unknown[]) {
 }
 
 function inferDepartment(row: Row) {
+  if (/plumbing/i.test(recordText(row.department, row.workCategory, row.work_category, row.category))) return "Plumbing";
   const value = recordText(
     row.department,
     row.workCategory,
@@ -572,6 +575,7 @@ function reportClassForItem(item: ReportItem): ReportClass {
 
 function reportCategoryForItem(item: ReportItem) {
   if (item.reportCategory && reportCategories.includes(item.reportCategory)) return item.reportCategory;
+  if (item.department === "Plumbing") return "Plumbing";
   const text = recordText(item.title, item.notes, item.department, item.vendor, item.reportClass);
   if (item.vendor || reportClassForItem(item) === "Vendor Activity") return "Vendors";
   if (/\b(trash|recycl|garbage|yard[- ]?waste|front entry|walkthrough|property check|exterior walkthrough)\b/.test(text)) return "Property Operations";
