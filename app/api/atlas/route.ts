@@ -214,13 +214,63 @@ function cleanTable(value: unknown): AtlasTable | "" {
   return "";
 }
 
-async function ensureAssetColumns(sql: ReturnType<typeof neon>) {
+// Cache successful schema setup per server instance; retry failed checks.
+const schemaChecks = new Map<string, Promise<void>>();
+function ensureSchemaOnce(name: string, setup: () => Promise<void>): Promise<void> {
+  const existing = schemaChecks.get(name);
+  if (existing) return existing;
+  const pending = setup().catch((error) => { schemaChecks.delete(name); throw error; });
+  schemaChecks.set(name, pending);
+  return pending;
+}
+
+function ensureAssetColumns(sql: ReturnType<typeof neon>): Promise<void> {
+  return ensureSchemaOnce("ensureAssetColumns", () => runensureAssetColumns(sql));
+}
+
+function ensurePropertyColumns(sql: ReturnType<typeof neon>): Promise<void> {
+  return ensureSchemaOnce("ensurePropertyColumns", () => runensurePropertyColumns(sql));
+}
+
+function ensureAssetShareTable(sql: ReturnType<typeof neon>): Promise<void> {
+  return ensureSchemaOnce("ensureAssetShareTable", () => runensureAssetShareTable(sql));
+}
+
+function ensureCalendarColumns(sql: ReturnType<typeof neon>): Promise<void> {
+  return ensureSchemaOnce("ensureCalendarColumns", () => runensureCalendarColumns(sql));
+}
+
+function ensureContactsTable(sql: ReturnType<typeof neon>): Promise<void> {
+  return ensureSchemaOnce("ensureContactsTable", () => runensureContactsTable(sql));
+}
+
+function ensureProjectsTable(sql: ReturnType<typeof neon>): Promise<void> {
+  return ensureSchemaOnce("ensureProjectsTable", () => runensureProjectsTable(sql));
+}
+
+function ensureOperationalRecordsTable(sql: ReturnType<typeof neon>): Promise<void> {
+  return ensureSchemaOnce("ensureOperationalRecordsTable", () => runensureOperationalRecordsTable(sql));
+}
+
+function ensurePartsTable(sql: ReturnType<typeof neon>): Promise<void> {
+  return ensureSchemaOnce("ensurePartsTable", () => runensurePartsTable(sql));
+}
+
+function ensureWorkOrderColumns(sql: ReturnType<typeof neon>): Promise<void> {
+  return ensureSchemaOnce("ensureWorkOrderColumns", () => runensureWorkOrderColumns(sql));
+}
+
+function ensureProcedureColumns(sql: ReturnType<typeof neon>): Promise<void> {
+  return ensureSchemaOnce("ensureProcedureColumns", () => runensureProcedureColumns(sql));
+}
+
+async function runensureAssetColumns(sql: ReturnType<typeof neon>) {
   await sql`ALTER TABLE atlas_assets ADD COLUMN IF NOT EXISTS year text`;
   await sql`ALTER TABLE atlas_assets ADD COLUMN IF NOT EXISTS manufacturer text`;
   await sql`ALTER TABLE atlas_assets ADD COLUMN IF NOT EXISTS serial_2 text`;
 }
 
-async function ensurePropertyColumns(sql: ReturnType<typeof neon>) {
+async function runensurePropertyColumns(sql: ReturnType<typeof neon>) {
   await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
   await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS parent_id text`;
   await sql`ALTER TABLE atlas_locations ADD COLUMN IF NOT EXISTS paint text NOT NULL DEFAULT ''`;
@@ -240,7 +290,7 @@ async function ensurePropertyColumns(sql: ReturnType<typeof neon>) {
   await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS property_id text NOT NULL DEFAULT '2000'`;
 }
 
-async function ensureAssetShareTable(sql: ReturnType<typeof neon>) {
+async function runensureAssetShareTable(sql: ReturnType<typeof neon>) {
   await sql`
     CREATE TABLE IF NOT EXISTS atlas_asset_shares (
       id text PRIMARY KEY,
@@ -328,7 +378,7 @@ async function authorizeAtlasRequest(
     : Boolean(permissions.delete ?? defaults.delete);
 }
 
-async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
+async function runensureCalendarColumns(sql: ReturnType<typeof neon>) {
   await sql`
     ALTER TABLE atlas_calendar_items
     ADD COLUMN IF NOT EXISTS item_date date
@@ -427,7 +477,7 @@ async function ensureCalendarColumns(sql: ReturnType<typeof neon>) {
   `;
 }
 
-async function ensureContactsTable(sql: ReturnType<typeof neon>) {
+async function runensureContactsTable(sql: ReturnType<typeof neon>) {
   await sql`
     CREATE TABLE IF NOT EXISTS atlas_contacts (
       id text PRIMARY KEY,
@@ -439,7 +489,7 @@ async function ensureContactsTable(sql: ReturnType<typeof neon>) {
 }
 
 
-async function ensureProjectsTable(sql: ReturnType<typeof neon>) {
+async function runensureProjectsTable(sql: ReturnType<typeof neon>) {
   await sql`
     CREATE TABLE IF NOT EXISTS atlas_projects (
       id text PRIMARY KEY,
@@ -452,7 +502,7 @@ async function ensureProjectsTable(sql: ReturnType<typeof neon>) {
   await sql`CREATE INDEX IF NOT EXISTS atlas_projects_property_idx ON atlas_projects(property_id)`;
 }
 
-async function ensureOperationalRecordsTable(sql: ReturnType<typeof neon>) {
+async function runensureOperationalRecordsTable(sql: ReturnType<typeof neon>) {
   await sql`
     CREATE TABLE IF NOT EXISTS atlas_operational_records (
       record_type text NOT NULL,
@@ -466,7 +516,7 @@ async function ensureOperationalRecordsTable(sql: ReturnType<typeof neon>) {
   await sql`CREATE INDEX IF NOT EXISTS atlas_operational_records_property_idx ON atlas_operational_records(property_id, record_type)`;
 }
 
-async function ensurePartsTable(sql: ReturnType<typeof neon>) {
+async function runensurePartsTable(sql: ReturnType<typeof neon>) {
   await sql`
     CREATE TABLE IF NOT EXISTS atlas_parts (
       id text PRIMARY KEY,
@@ -502,7 +552,7 @@ async function recordChange(
     }, ${action}, ${table}, ${recordId}, ${JSON.stringify(record)}::jsonb)`;
 }
 
-async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
+async function runensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
   await sql`
     ALTER TABLE atlas_work_orders
     ALTER COLUMN asset_id DROP NOT NULL
@@ -647,7 +697,7 @@ async function ensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
   `;
 }
 
-async function ensureProcedureColumns(sql: ReturnType<typeof neon>) {
+async function runensureProcedureColumns(sql: ReturnType<typeof neon>) {
   await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS category text`;
   await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS status text DEFAULT 'Draft'`;
   await sql`ALTER TABLE atlas_procedures ADD COLUMN IF NOT EXISTS purpose text`;
@@ -1082,73 +1132,46 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const locationRows = (await sql`
+    // Notes polling only needs notes, not the entire property.
+    if (request.nextUrl.searchParams.has("notesSync")) {
+      const rows = (await sql`
+        SELECT record FROM atlas_operational_records
+        WHERE property_id = ${propertyId} AND record_type = 'notes'
+        ORDER BY updated_at DESC
+      `) as unknown as JsonRecord[];
+      const access = await getAtlasAccessContext(sql, request);
+      const allowed = access.restricted
+        ? rows.filter((row) => profileAllowsRecord(access.accessProfiles, (row.record || {}) as JsonRecord))
+        : rows;
+      return NextResponse.json({ ok: true, source: "neon", propertyId, notes: allowed.map((row) => row.record || {}) });
+    }
+
+    // Read independent sections concurrently.
+    const [locationRows, vendorRows, contactRows, assetRows, workOrderRows, calendarRows, documentRows, photoRows, partRows, projectRows, operationalRows, procedureRows] = await Promise.all([
+      (async () => (await sql`
       SELECT id, name, type, zone, notes, parent_id, custom_details, vendor_ids, sort_order
       FROM atlas_locations
       WHERE property_id = ${propertyId}
       ORDER BY sort_order ASC, name ASC
-    `) as unknown as JsonRecord[];
-
-    const vendorRows = (await sql`
+    `) as unknown as JsonRecord[])(),
+      (async () => (await sql`
       SELECT id, name, category, phone, email, website, notes, logo_data_url, documents
       FROM atlas_vendors
       WHERE property_id = ${propertyId}
       ORDER BY name ASC
-    `) as unknown as JsonRecord[];
-
-    const contactRows = (await sql`
+    `) as unknown as JsonRecord[])(),
+      (async () => (await sql`
       SELECT record FROM atlas_contacts
       WHERE property_id = ${propertyId}
       ORDER BY lower(name) ASC
-    `) as unknown as JsonRecord[];
-
-    const assetRows = (await sql`
+    `) as unknown as JsonRecord[])(),
+      (async () => (await sql`
       SELECT id, name, location_id, location_ids, category, status, make, model, year, manufacturer, serial, serial_2, notes, vendor_ids, documents
       FROM atlas_assets
       WHERE property_id = ${propertyId}
       ORDER BY name ASC
-    `) as unknown as JsonRecord[];
-
-    let procedureRows: JsonRecord[];
-    try {
-      await ensureProcedureColumns(sql);
-      procedureRows = (await sql`
-        SELECT
-          id,
-          title,
-          area,
-          category,
-          priority,
-          status,
-          purpose,
-          safety_notes,
-          tools_parts,
-          required_tools,
-          required_parts,
-          estimated_time,
-          steps,
-          checklist,
-          linked_asset_ids,
-          linked_location_ids,
-          linked_vendor_ids,
-          photos,
-          documents,
-          created_at,
-          updated_at
-        FROM atlas_procedures
-        WHERE property_id = ${propertyId}
-        ORDER BY title ASC
-      `) as unknown as JsonRecord[];
-    } catch {
-      procedureRows = (await sql`
-        SELECT id, title, area, priority, steps
-        FROM atlas_procedures
-        WHERE property_id = ${propertyId}
-        ORDER BY title ASC
-      `) as unknown as JsonRecord[];
-    }
-
-    const workOrderRows = (await sql`
+    `) as unknown as JsonRecord[])(),
+      (async () => (await sql`
       SELECT
         id,
         asset_id,
@@ -1190,9 +1213,8 @@ export async function GET(request: NextRequest) {
       FROM atlas_work_orders
       WHERE property_id = ${propertyId}
       ORDER BY (CASE WHEN due_date_initialized THEN due_date_value ELSE date END) ASC NULLS LAST, title ASC
-    `) as unknown as JsonRecord[];
-
-    const calendarRows = (await sql`
+    `) as unknown as JsonRecord[])(),
+      (async () => (await sql`
       SELECT
         id,
         item_date,
@@ -1220,43 +1242,80 @@ export async function GET(request: NextRequest) {
       FROM atlas_calendar_items
       WHERE property_id = ${propertyId}
       ORDER BY COALESCE(item_date, date) ASC, time ASC NULLS LAST, title ASC
-    `) as unknown as JsonRecord[];
-
-    const documentRows = (await sql`
+    `) as unknown as JsonRecord[])(),
+      (async () => (await sql`
       SELECT id, title, area, type, linked_asset_id, notes
       FROM atlas_documents
       WHERE property_id = ${propertyId}
       ORDER BY title ASC
-    `) as unknown as JsonRecord[];
-
-    const photoRows = (await sql`
+    `) as unknown as JsonRecord[])(),
+      (async () => (await sql`
       SELECT id, asset_id, name, data_url, created_at
       FROM atlas_asset_photos
       WHERE property_id = ${propertyId}
       ORDER BY created_at DESC
-    `) as unknown as JsonRecord[];
-
-    const partRows = (await sql`
+    `) as unknown as JsonRecord[])(),
+      (async () => (await sql`
       SELECT id, name, category, location_id, asset_id, vendor_id,
              quantity, min_quantity, status, notes
       FROM atlas_parts
       WHERE property_id = ${propertyId}
       ORDER BY lower(name) ASC
-    `) as unknown as JsonRecord[];
-
-    const projectRows = (await sql`
+    `) as unknown as JsonRecord[])(),
+      (async () => (await sql`
       SELECT record
       FROM atlas_projects
       WHERE property_id = ${propertyId}
       ORDER BY lower(title) ASC
-    `) as unknown as JsonRecord[];
-
-    const operationalRows = (await sql`
+    `) as unknown as JsonRecord[])(),
+      (async () => (await sql`
       SELECT record_type, record
       FROM atlas_operational_records
       WHERE property_id = ${propertyId}
       ORDER BY updated_at DESC
-    `) as unknown as JsonRecord[];
+    `) as unknown as JsonRecord[])(),
+      (async () => {
+    let procedureRows: JsonRecord[];
+    try {
+      await ensureProcedureColumns(sql);
+      procedureRows = (await sql`
+        SELECT
+          id,
+          title,
+          area,
+          category,
+          priority,
+          status,
+          purpose,
+          safety_notes,
+          tools_parts,
+          required_tools,
+          required_parts,
+          estimated_time,
+          steps,
+          checklist,
+          linked_asset_ids,
+          linked_location_ids,
+          linked_vendor_ids,
+          photos,
+          documents,
+          created_at,
+          updated_at
+        FROM atlas_procedures
+        WHERE property_id = ${propertyId}
+        ORDER BY title ASC
+      `) as unknown as JsonRecord[];
+    } catch {
+      procedureRows = (await sql`
+        SELECT id, title, area, priority, steps
+        FROM atlas_procedures
+        WHERE property_id = ${propertyId}
+        ORDER BY title ASC
+      `) as unknown as JsonRecord[];
+    }
+      return procedureRows;
+      })(),
+    ]);
 
     const access = await getAtlasAccessContext(sql, request);
     const mappedAssets = assetRows.map(mapAsset);
