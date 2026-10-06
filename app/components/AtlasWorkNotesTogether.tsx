@@ -8,7 +8,7 @@ function normalized(value: unknown) {
 
 function applyNotesLayout() {
   const panel = document.querySelector<HTMLElement>("[data-atlas-work-detail-panel]");
-  if (!panel) return;
+  if (!panel || panel.querySelector("[data-atlas-simple-notes]")) return;
 
   const descriptionLabel = Array.from(panel.querySelectorAll<HTMLElement>("span")).find(
     (element) => normalized(element.textContent) === "description / what to do",
