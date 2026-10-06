@@ -58,6 +58,7 @@ type SavedReport = {
   status: "Draft" | "Final";
   items: ReportItem[];
   upcomingItems?: UpcomingReportItem[];
+  summary?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -982,6 +983,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
   const [activeReportId, setActiveReportId] = useState("");
   const [status, setStatus] = useState<"Draft" | "Final">("Draft");
   const [message, setMessage] = useState("");
+  const [reportNotes, setReportNotes] = useState("");
   const [showSavedReports, setShowSavedReports] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draftTouched, setDraftTouched] = useState(false);
@@ -1207,6 +1209,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
         if (currentReport) {
           setActiveReportId(currentReport.id);
           setStatus(currentReport.status);
+          setReportNotes(String(currentReport.summary || ""));
           setItems(sortReportItems(Array.isArray(currentReport.items) ? currentReport.items : []));
           setUpcomingItems(Array.isArray(currentReport.upcomingItems) ? currentReport.upcomingItems : atlasUpcomingItems);
           setUpcomingTouched(Array.isArray(currentReport.upcomingItems));
@@ -1220,6 +1223,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
     setStatus("Draft");
     setItems([]);
     setExcludedSourceKeys([]);
+    setReportNotes("");
     setDraftTouched(false);
     setUpcomingItems([]);
     setUpcomingTouched(false);
@@ -1402,6 +1406,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
           status: nextStatus,
           items: sortReportItems(nextItems),
           upcomingItems,
+          summary: reportNotes,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -1471,6 +1476,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
     setPeriodStart(report.periodStart);
     setPeriodEnd(report.periodEnd);
     setStatus(report.status);
+    setReportNotes(String(report.summary || ""));
     setItems(sortReportItems(Array.isArray(report.items) ? report.items : []));
     setUpcomingItems(Array.isArray(report.upcomingItems) ? report.upcomingItems : atlasUpcomingItems);
     setDraftTouched(false);
@@ -1584,6 +1590,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
       ${ownerInputMarkup}
       <div class="summary"><strong>This Week</strong><br>${escapeHtml(reportSummary)}</div>
       ${priorityMarkup}${categoryMarkup}${upcomingMarkup}
+      ${reportNotes.trim() ? `<section class="section"><h2>Notes</h2><div class="note" style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(reportNotes.trim())}</div></section>` : ""}
       <div class="footer"><div class="company"><img src="${escapeHtml(arcticLogoUrl)}" alt="Arctic Asset Management"><span>Prepared by Arctic Asset Management</span></div><span>${escapeHtml(reportTitle(periodStart, periodEnd))}</span></div>
     </body></html>`);
     popup.document.close();
@@ -1963,6 +1970,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
             onChange={(event) => {
               setActiveReportId("");
               setDraftTouched(false);
+              setReportNotes("");
               setPeriodStart(event.currentTarget.value);
             }}
             style={controlStyle}
@@ -1978,6 +1986,7 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
             onChange={(event) => {
               setActiveReportId("");
               setDraftTouched(false);
+              setReportNotes("");
               setPeriodEnd(event.currentTarget.value);
             }}
             style={controlStyle}
@@ -2091,6 +2100,19 @@ export default function AtlasOwnerReport({ propertyId, workOrders, ownerInputIte
             )) : <div style={{ color: colors.muted, fontSize: 11 }}>Nothing upcoming has been added to the owner report yet.</div>}
           </div>
         </div>
+      </section>
+
+      <section style={{ border: `1px solid ${colors.line}`, borderRadius: 12, background: "#fff", padding: isMobile ? 10 : 12, marginBottom: 12 }}>
+        <label style={{ display: "grid", gap: 8, color: colors.navy, fontWeight: 800 }}>
+          Notes (optional)
+          <textarea
+            value={reportNotes}
+            onChange={(event) => setReportNotes(event.currentTarget.value)}
+            rows={4}
+            maxLength={10000}
+            style={{ ...controlStyle, width: "100%", boxSizing: "border-box", resize: "vertical", fontWeight: 400 }}
+          />
+        </label>
       </section>
 
       {message ? (
