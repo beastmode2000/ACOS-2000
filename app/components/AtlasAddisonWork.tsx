@@ -276,6 +276,7 @@ export default function AtlasAddisonWork({
             }}
           >
             <strong style={{ color: colors.navy, overflowWrap: "anywhere" }}>
+              {(meta.photos?.[0]?.dataUrl || meta.photos?.[0]?.url) ? <img src={meta.photos[0].dataUrl || meta.photos[0].url} alt={`Photo for ${task.title}`} loading="lazy" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 7, verticalAlign: "middle", marginRight: 8 }} /> : null}
               {task.title}
             </strong>
             <span style={badgeStyle(meta.status === "Blocked" ? "High" : task.priority)}>

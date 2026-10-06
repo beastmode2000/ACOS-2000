@@ -2515,6 +2515,7 @@ export default function AtlasDashboardWorkspace(props: any) {
       >
         <div style={{ display: "grid", gap: 5 }}>
           <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: "pointer" }}>
+            {atlasRecord.photos?.[0] && (atlasRecord.photos[0].dataUrl || atlasRecord.photos[0].url) ? <img src={atlasRecord.photos[0].dataUrl || atlasRecord.photos[0].url} alt={`Photo for ${record.title}`} loading="lazy" style={{ float: "left", width: 48, height: 48, objectFit: "cover", borderRadius: 7, marginRight: 8 }} /> : null}
             <strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14, lineHeight: 1.3, fontWeight: 700 }}>{record.title}</strong>
             <small style={{ color: colors.muted, display: "block", marginTop: 2, fontSize: 12, lineHeight: 1.3, fontWeight: 500 }}>{isOverdue ? `Overdue · ${formatDate(dueDate)}` : dueDate === todayISO() ? "Today" : dueDate ? formatDate(dueDate) : "No due date"}{record.recurring ? ` · ${recurrenceLabel(atlasRecord).replace(/^Every week$/i, "Weekly").replace(/^Every /i, "")}` : ""}{noteCount ? ` · ${noteCount} note${noteCount === 1 ? "" : "s"}` : ""}</small>
           </button>

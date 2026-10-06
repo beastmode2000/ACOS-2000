@@ -513,13 +513,27 @@ function safeSaveCategories(categories: string[]) {
   }
 }
 
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
+async function fileToDataUrl(file: File): Promise<string> {
+  const original = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () =>
-      resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
     reader.onerror = () => reject(new Error("Photo could not be read."));
     reader.readAsDataURL(file);
+  });
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext("2d");
+      if (!context) { reject(new Error("Photo could not be prepared.")); return; }
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", .82));
+    };
+    image.onerror = () => reject(new Error("This photo format could not be opened. Choose a JPEG or PNG photo."));
+    image.src = original;
   });
 }
 
@@ -679,6 +693,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [pendingPhotoRecordId, setPendingPhotoRecordId] = useState("");
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const [photoChooserOpen, setPhotoChooserOpen] = useState(false);
+  const [newWorkPhotos, setNewWorkPhotos] = useState<PhotoLike[]>([]);
   const newWorkTitleRef = useRef<HTMLInputElement | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
   const [newWorkOpen, setNewWorkOpen] = useState(false);
@@ -1340,7 +1355,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }
 
   async function addPhotos(files: FileList | null) {
-    if (!files?.length || !selectedService?.id) return;
+    if (!files?.length || (!newWorkOpen && !selectedService?.id)) return;
     setPhotoMessage("Adding photos...");
     try {
       const incoming: PhotoLike[] = [];
@@ -1355,7 +1370,12 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           createdAt: new Date().toISOString(),
         });
       }
-      updateWorkOrder({ photos: [...(selectedService.photos || []), ...incoming] });
+      if (newWorkOpen) {
+        setNewWorkPhotos((current) => [...current, ...incoming]);
+      } else {
+        updateWorkOrder({ photos: [...(selectedService.photos || []), ...incoming] });
+        setWorkEditorOpen(true);
+      }
       setPhotoMessage(
         incoming.length
           ? `Added ${incoming.length} photo${incoming.length === 1 ? "" : "s"}. Save the work item to keep them.`
@@ -1431,6 +1451,8 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   }
 
   function openNewWork(workType: WorkItemType = "Work Order") {
+    setNewWorkPhotos([]);
+    setPhotoMessage("");
     setPendingTemplate(null);
     setDetailOpen(false);
     setSelectedServiceId("");
@@ -1459,6 +1481,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
 
     const created = await addWorkOrder({
       title,
+      photos: newWorkPhotos,
       workType: newWorkDraft.workType,
       workCategory: newWorkDraft.workCategory,
       priority: "Medium",
@@ -1991,6 +2014,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       <div key={record.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "auto minmax(0,1fr)" : "auto minmax(220px,1fr) minmax(150px,.48fr) 142px auto", gap: 8, alignItems: "center", padding: isMobile ? "10px 9px" : "8px 10px", border: `1px solid ${selected ? colors.gold : colors.line}`, borderLeft: overdue ? `3px solid ${colors.red}` : selected ? `3px solid ${colors.gold}` : `3px solid transparent`, borderRadius: 10, background: selected ? "#FFF9EB" : "#FFFFFF" }}>
         <input type="checkbox" checked={status === "Completed"} disabled={isClosedWorkStatus(status)} aria-label={`Complete ${record.title || "work"}`} onChange={() => void completeRecordWithUndo(record)} />
         <button type="button" onClick={openRecord} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", minWidth: 0, cursor: "pointer" }}>
+          {photoSource(record.photos?.[0]) ? <img src={photoSource(record.photos[0])} alt={`Photo for ${record.title}`} loading="lazy" style={{ float: "left", width: 48, height: 48, objectFit: "cover", borderRadius: 7, marginRight: 8 }} /> : null}
           <strong style={{ display: "block", minWidth: 0, color: colors.text, fontSize: 13.5, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis" }}>{record.title || "Untitled Work"}</strong>
           <span style={{ display: "block", marginTop: 2, color: colors.muted, fontSize: 10.5, lineHeight: 1.3 }}>{[isMobile && assignee ? assignee : "", isMobile && record.date ? formatDate(String(record.date)) : "", category ? categoryDisplayLabel(category) : "", place, record.priority === "High" ? "High priority" : "", noteCount ? "Notes" : "", photoCount ? `${photoCount} photo${photoCount === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ")}</span>
         </button>
@@ -2073,7 +2097,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         </div>
       ) : null}
       {photoChooserOpen ? (
-        <div role="dialog" aria-modal="true" aria-label="Add work order photos" onClick={(event) => { if (event.currentTarget === event.target) setPhotoChooserOpen(false); }} style={{ position: "fixed", inset: 0, zIndex: 280, display: "grid", placeItems: "center", padding: 18, background: "rgba(7,27,47,.68)" }}>
+        <div role="dialog" aria-modal="true" aria-label="Add work order photos" onClick={(event) => { if (event.currentTarget === event.target) setPhotoChooserOpen(false); }} style={{ position: "fixed", inset: 0, zIndex: 1600, display: "grid", placeItems: "center", padding: 18, background: "rgba(7,27,47,.68)" }}>
           <div style={{ width: "min(100%,420px)", borderRadius: 16, background: "#FFFFFF", padding: 16, boxShadow: "0 24px 70px rgba(0,0,0,.28)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <strong style={{ color: colors.navy, fontSize: 18 }}>Add Photos</strong>
@@ -2203,6 +2227,9 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     {assignmentChoices.map((name) => <option key={name} value={name}>{name}</option>)}
                   </select>
                   <input type="date" onClick={(event) => event.currentTarget.showPicker?.()} onFocus={(event) => event.currentTarget.showPicker?.()} onKeyDown={(event) => event.preventDefault()} onPaste={(event) => event.preventDefault()} value={newWorkDraft.date} onChange={(event) => { const date = event.currentTarget.value; setNewWorkDraft((current) => ({ ...current, date: current.workType === "Preventive Maintenance" ? alignDateToSelectedDay(date, current.recurrenceDays) : date })); }} style={controlStyle} />
+                  <button type="button" onClick={() => setPhotoChooserOpen(true)} style={secondaryButtonStyle}>Add Photo</button>
+                  {newWorkPhotos.length ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{newWorkPhotos.map((photo) => <div key={photo.id}><img src={photoSource(photo)} alt={photo.name} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8 }} /><button type="button" aria-label={`Remove ${photo.name}`} onClick={() => setNewWorkPhotos((current) => current.filter((item) => item.id !== photo.id))} style={{ ...miniButtonStyle, display: "block" }}>Remove</button></div>)}</div> : null}
+                  {photoMessage ? <div role="status" style={mutedSmallStyle}>{photoMessage}</div> : null}
                   <button type="button" onClick={() => void createNewWork()} style={goldButtonStyle}>Save New Work Order</button>
                 </div>
               </section>
@@ -2390,7 +2417,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                             {selectedService.recurring ? <span style={recurringBadgeStyle}>Recurring</span> : null}
                           </div>
                           <h2 style={{ margin: isMobile ? "10px 0 0" : "6px 0 0", color: colors.text, fontSize: isMobile ? 23 : 27, lineHeight: 1.12, letterSpacing: "-.02em", maxWidth: "100%" }}>{selectedService.title || "Untitled Work"}</h2>
-                          <div style={{ display: "grid", gap: 4, marginTop: isMobile ? 12 : 8, padding: isMobile ? 11 : 9, borderRadius: 10, border: `1px solid ${colors.line}`, background: "#FFFFFF" }}><span style={fieldLabelStyle}>What needs to be done</span><div style={{ color: selectedService.notes ? colors.text : colors.muted, fontSize: 14, lineHeight: 1.45 }}>{selectedService.notes || "No description added."}</div></div>
+                          <div style={{ display: "grid", gap: 4, marginTop: isMobile ? 12 : 8, padding: isMobile ? 11 : 9, borderRadius: 10, border: `1px solid ${colors.line}`, background: "#FFFFFF" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><span style={fieldLabelStyle}>What needs to be done</span><button type="button" onClick={() => setPhotoChooserOpen(true)} style={{ ...secondaryButtonStyle, width: "auto", minHeight: 34, padding: "5px 10px" }}>Add Photo</button></div><div style={{ color: selectedService.notes ? colors.text : colors.muted, fontSize: 14, lineHeight: 1.45 }}>{selectedService.notes || "No description added."}</div></div>
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,minmax(0,1fr))" : (!isClosedWorkStatus(selectedService.status) ? "auto minmax(128px,auto) auto" : "minmax(128px,auto) auto"), gap: 7, alignItems: "center", justifyContent: isMobile ? "stretch" : "start", width: "100%" }}>
                           {!isClosedWorkStatus(selectedService.status) ? <button type="button" onClick={() => void handleDetailAction("complete")} style={{ ...goldButtonStyle, width: isMobile ? "100%" : "auto", minWidth: 0, minHeight: 40, padding: "8px 10px" }}>Done</button> : null}
@@ -2500,7 +2527,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
                     </details>
               </>) : null}
 
-              {workEditorOpen || (selectedService.photos || []).length ? <details style={{ ...detailSectionStyle, padding: isMobile ? 12 : 9 }}><summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Photos ({(selectedService.photos || []).length})</summary><input ref={photoInputRef} type="file" accept="image/*" multiple onChange={(event) => void addPhotos(event.currentTarget.files)} style={{ display: "none" }} /><div style={{ display: "flex", justifyContent: "flex-end", gap: 7, flexWrap: "wrap", marginTop: 8 }}><label style={{ ...secondaryButtonStyle, width: "auto", cursor: "pointer" }}>Take Photo<input type="file" accept="image/*" capture="environment" onChange={async (event) => { const input = event.currentTarget; const files = input.files; await addPhotos(files); input.value = ""; }} style={{ display: "none" }} /></label><button type="button" onClick={() => photoInputRef.current?.click()} style={{ ...secondaryButtonStyle, width: "auto" }}>Choose from Library</button></div>{photoMessage ? <p style={mutedSmallStyle}>{photoMessage}</p> : null}{(selectedService.photos || []).length ? (() => { const photos = selectedService.photos || []; const safeIndex = Math.min(selectedPhotoIndex, Math.max(0, photos.length - 1)); const photo = photos[safeIndex] as PhotoLike; const source = photoSource(photo); return <div style={{ display: "grid", gap: 8, marginTop: 8 }}><div style={{ position: "relative", minHeight: isMobile ? 220 : 320, border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#F8FAFC", display: "flex", alignItems: "center", justifyContent: "center" }}>{source ? <img src={source} alt={photo.name || "Work photo"} style={{ width: "100%", height: "100%", maxHeight: 460, objectFit: "contain" }} /> : <span style={mutedSmallStyle}>Photo unavailable</span>}{photos.length > 1 ? <><button type="button" onClick={() => setSelectedPhotoIndex((safeIndex - 1 + photos.length) % photos.length)} aria-label="Previous photo" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, borderRadius: 999, border: `1px solid ${colors.line}`, background: "rgba(255,255,255,.94)", fontSize: 24, cursor: "pointer" }}>‹</button><button type="button" onClick={() => setSelectedPhotoIndex((safeIndex + 1) % photos.length)} aria-label="Next photo" style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, borderRadius: 999, border: `1px solid ${colors.line}`, background: "rgba(255,255,255,.94)", fontSize: 24, cursor: "pointer" }}>›</button><span style={{ position: "absolute", left: "50%", bottom: 9, transform: "translateX(-50%)", background: "rgba(7,23,47,.78)", color: "white", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 800 }}>{safeIndex + 1} / {photos.length}</span></> : null}</div><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><a href={source || undefined} target="_blank" rel="noreferrer" style={{ color: colors.text, fontSize: 13, fontWeight: 700, textDecoration: "none" }}>{photo.name || "Work photo"}</a><button type="button" onClick={() => { removePhoto(photo.id); setSelectedPhotoIndex(0); }} style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer", fontSize: 12 }}>Remove</button></div></div>; })() : null}</details> : null}
+              {workEditorOpen || (selectedService.photos || []).length ? <details open={(selectedService.photos || []).length > 0} style={{ ...detailSectionStyle, padding: isMobile ? 12 : 9 }}><summary style={{ cursor: "pointer", fontWeight: 700, listStyle: "none" }}>Photos ({(selectedService.photos || []).length})</summary><input ref={photoInputRef} type="file" accept="image/*" multiple onChange={(event) => void addPhotos(event.currentTarget.files)} style={{ display: "none" }} /><div style={{ display: "flex", justifyContent: "flex-end", gap: 7, flexWrap: "wrap", marginTop: 8 }}><label style={{ ...secondaryButtonStyle, width: "auto", cursor: "pointer" }}>Take Photo<input type="file" accept="image/*" capture="environment" onChange={async (event) => { const input = event.currentTarget; const files = input.files; await addPhotos(files); input.value = ""; }} style={{ display: "none" }} /></label><button type="button" onClick={() => photoInputRef.current?.click()} style={{ ...secondaryButtonStyle, width: "auto" }}>Choose from Library</button></div>{photoMessage ? <p style={mutedSmallStyle}>{photoMessage}</p> : null}{(selectedService.photos || []).length ? (() => { const photos = selectedService.photos || []; const safeIndex = Math.min(selectedPhotoIndex, Math.max(0, photos.length - 1)); const photo = photos[safeIndex] as PhotoLike; const source = photoSource(photo); return <div style={{ display: "grid", gap: 8, marginTop: 8 }}><div style={{ position: "relative", minHeight: isMobile ? 220 : 320, border: `1px solid ${colors.line}`, borderRadius: 12, overflow: "hidden", background: "#F8FAFC", display: "flex", alignItems: "center", justifyContent: "center" }}>{source ? <img src={source} alt={photo.name || "Work photo"} style={{ width: "100%", height: "100%", maxHeight: 460, objectFit: "contain" }} /> : <span style={mutedSmallStyle}>Photo unavailable</span>}{photos.length > 1 ? <><button type="button" onClick={() => setSelectedPhotoIndex((safeIndex - 1 + photos.length) % photos.length)} aria-label="Previous photo" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, borderRadius: 999, border: `1px solid ${colors.line}`, background: "rgba(255,255,255,.94)", fontSize: 24, cursor: "pointer" }}>‹</button><button type="button" onClick={() => setSelectedPhotoIndex((safeIndex + 1) % photos.length)} aria-label="Next photo" style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, borderRadius: 999, border: `1px solid ${colors.line}`, background: "rgba(255,255,255,.94)", fontSize: 24, cursor: "pointer" }}>›</button><span style={{ position: "absolute", left: "50%", bottom: 9, transform: "translateX(-50%)", background: "rgba(7,23,47,.78)", color: "white", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 800 }}>{safeIndex + 1} / {photos.length}</span></> : null}</div><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><a href={source || undefined} target="_blank" rel="noreferrer" style={{ color: colors.text, fontSize: 13, fontWeight: 700, textDecoration: "none" }}>{photo.name || "Work photo"}</a><button type="button" onClick={() => { removePhoto(photo.id); setSelectedPhotoIndex(0); }} style={{ border: 0, background: "transparent", color: colors.muted, cursor: "pointer", fontSize: 12 }}>Remove</button></div></div>; })() : null}</details> : null}
 
 
 

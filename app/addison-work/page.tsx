@@ -144,6 +144,7 @@ export default function LandscapeHelpPage() {
   const [addisonData, setAddisonData] = useState<AddisonWorkData | null>(null);
   const [addisonSync, setAddisonSync] = useState<"saved" | "syncing" | "offline">("saved");
   const [uploadingItemId, setUploadingItemId] = useState("");
+  const [previewPhoto, setPreviewPhoto] = useState<{ src: string; name: string } | null>(null);
   const addisonRequestVersionRef = useRef(0);
   const addisonMutationInFlightRef = useRef(false);
 
@@ -528,15 +529,14 @@ export default function LandscapeHelpPage() {
 
           {photos.length ? (
             <div style={{ display:"flex", gap:7, overflowX:"auto", marginTop:9, paddingBottom:2 }}>
-              {photos.map((photo:any, index:number) => (
-                <a key={`${photo.url}-${index}`} href={String(photo.url)} target="_blank" rel="noreferrer">
-                  <img
-                    src={String(photo.url)}
-                    alt={String(photo.name || "Addison photo")}
-                    style={{ width:72, height:72, objectFit:"cover", borderRadius:10, border:`1px solid ${colors.line}` }}
-                  />
-                </a>
-              ))}
+              {photos.map((photo:any, index:number) => {
+                const src = String(photo.dataUrl || photo.url || "");
+                if (!src) return null;
+                const name = String(photo.name || "Work photo");
+                return <button key={photo.id || index} type="button" aria-label={`View ${name}`} onClick={() => setPreviewPhoto({ src, name })} style={{ border: 0, padding: 0, background: "transparent", cursor: "pointer" }}>
+                  <img src={src} alt={name} loading="lazy" style={{ width:72, height:72, objectFit:"cover", borderRadius:10, border:`1px solid ${colors.line}` }} />
+                </button>;
+              })}
             </div>
           ) : null}
         </div>
@@ -609,6 +609,12 @@ export default function LandscapeHelpPage() {
             </div>
           </details>
         ) : null}
+        {previewPhoto ? <div role="dialog" aria-modal="true" aria-label={previewPhoto.name} onClick={(event) => { if (event.target === event.currentTarget) setPreviewPhoto(null); }} onKeyDown={(event) => { if (event.key === "Escape") setPreviewPhoto(null); }} style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(7,27,47,.8)", display: "grid", placeItems: "center", padding: 18 }}>
+          <div style={{ width: "min(900px,100%)", background: "white", padding: 12, borderRadius: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}><strong>{previewPhoto.name}</strong><button type="button" autoFocus onClick={() => setPreviewPhoto(null)} aria-label="Close photo" style={{ minWidth: 44, minHeight: 44 }}>×</button></div>
+            <img src={previewPhoto.src} alt={previewPhoto.name} style={{ width: "100%", maxHeight: "75vh", objectFit: "contain" }} />
+          </div>
+        </div> : null}
       </main>
     );
   }
