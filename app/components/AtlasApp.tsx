@@ -11126,7 +11126,17 @@ export default function AtlasApp() {
           throw new Error("Atlas API did not confirm the saved record ID.");
         }
 
-        atlasLastSaveRef.current.set(key, serialized);
+        if (table === "work_orders" && typeof payload.assignedTo === "string") {
+          // Apply the authoritative occurrence owner to the caller's saved object.
+          // Completion handlers use this same object to update their local lists.
+          Object.assign(record as object, {
+            assignedTo: payload.assignedTo,
+            regularAssignedTo: payload.regularAssignedTo,
+          });
+          normalizedRecord.assignedTo = payload.assignedTo;
+          normalizedRecord.regularAssignedTo = payload.regularAssignedTo;
+        }
+        atlasLastSaveRef.current.set(key, JSON.stringify(normalizedRecord));
         setDatabaseStatus("Saved to shared Atlas.");
         return true;
       } catch (error) {
@@ -12476,6 +12486,7 @@ export default function AtlasApp() {
         completedDate === todayISO()
           ? new Date().toISOString()
           : completionTimestampForDate(completedDate),
+      completedBy: String(preparedRecord.assignedTo || ""),
       statusBefore: String(preparedRecord.status || "Open"),
       dueDate: String(preparedRecord.date || ""),
       notes: completionNotes,

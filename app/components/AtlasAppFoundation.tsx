@@ -719,6 +719,7 @@ export type AtlasServiceRecord = ServiceRecord & {
   responsibilityArea?: string;
   emoji?: string;
   assignedTo?: string;
+  regularAssignedTo?: string;
   assignedPersonIds?: string[];
   assignedVendorIds?: string[];
   projectId?: string;
@@ -1750,6 +1751,7 @@ export function normalizeService(
     responsibilityArea: String(record.responsibilityArea || ""),
     emoji: String(record.emoji || ""),
     assignedTo: String(record.assignedTo || ""),
+    regularAssignedTo: record.regularAssignedTo,
     assignedPersonIds: Array.isArray(record.assignedPersonIds)
       ? Array.from(new Set(record.assignedPersonIds.map(String).filter(Boolean)))
       : record.assignedTo

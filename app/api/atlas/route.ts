@@ -596,6 +596,8 @@ async function runensureWorkOrderColumns(sql: ReturnType<typeof neon>) {
     ADD COLUMN IF NOT EXISTS recurrence_unit text NOT NULL DEFAULT 'Weeks'
   `;
 
+  await sql`ALTER TABLE atlas_work_orders ADD COLUMN IF NOT EXISTS regular_assigned_to text`;
+
   await sql`
     ALTER TABLE atlas_work_orders
     ADD COLUMN IF NOT EXISTS recurrence_days jsonb NOT NULL DEFAULT '[]'::jsonb
@@ -848,6 +850,7 @@ function mapWorkOrder(row: JsonRecord) {
       : "",
     emoji: row.emoji ? String(row.emoji) : "",
     assignedTo: row.assigned_to ? String(row.assigned_to) : "",
+    regularAssignedTo: row.regular_assigned_to == null ? undefined : String(row.regular_assigned_to),
     assignedPersonIds: asArray(row.assigned_person_ids).map(String),
     assignedVendorIds: Array.from(new Set([
       ...(row.vendor_id ? [String(row.vendor_id)] : []),
@@ -1200,6 +1203,7 @@ export async function GET(request: NextRequest) {
         responsibility_area,
         emoji,
         assigned_to,
+        regular_assigned_to,
         assigned_person_ids,
         assigned_vendor_ids,
         checklist,
@@ -2018,7 +2022,23 @@ if (table === "assets") {
           effort = ${nullableString(record.effort)},
           responsibility_area = ${nullableString(record.responsibilityArea)},
           emoji = ${nullableString(record.emoji)},
-          assigned_to = ${nullableString(record.assignedTo)},
+          regular_assigned_to = CASE
+            WHEN NOT ${asBoolean(record.recurring)} THEN NULL
+            ELSE COALESCE(regular_assigned_to, assigned_to, '')
+          END,
+          assigned_to = CASE
+            WHEN recurring AND ${asBoolean(record.recurring)}
+              AND (
+                jsonb_array_length(${jsonArray(record.serviceHistory)}::jsonb) > jsonb_array_length(COALESCE(service_history, '[]'::jsonb))
+                OR (${savedDate}::date > COALESCE(due_date_value, date) AND EXISTS (
+                  SELECT 1 FROM jsonb_array_elements(${jsonArray(record.notesHistory)}::jsonb) AS note
+                  WHERE NOT COALESCE(notes_history, '[]'::jsonb) @> jsonb_build_array(note)
+                    AND (note->>'text' ILIKE 'not needed%' OR note->>'text' ILIKE 'didn''t get to%')
+                ))
+              )
+            THEN COALESCE(regular_assigned_to, assigned_to, '')
+            ELSE ${nullableString(record.assignedTo)}
+          END,
           assigned_person_ids = COALESCE(${Array.isArray(record.assignedPersonIds) ? jsonArray(record.assignedPersonIds) : null}::jsonb, assigned_person_ids),
           assigned_vendor_ids = COALESCE(${Array.isArray(record.assignedVendorIds) ? jsonArray(record.assignedVendorIds) : null}::jsonb, assigned_vendor_ids),
           checklist = ${jsonArray(record.checklist)}::jsonb,
@@ -2123,7 +2143,7 @@ if (table === "assets") {
       }
 
       const verifiedRows = (await sql`
-        SELECT id, date, due_date_value, due_date_initialized
+        SELECT id, date, due_date_value, due_date_initialized, assigned_to, regular_assigned_to
         FROM atlas_work_orders
         WHERE id = ${id} AND property_id = ${propertyId}
         LIMIT 1
@@ -2148,6 +2168,8 @@ if (table === "assets") {
         ok: true,
         id,
         savedDate: verifiedDate,
+        assignedTo: String(verified?.assigned_to || ""),
+        regularAssignedTo: verified?.regular_assigned_to == null ? undefined : String(verified.regular_assigned_to),
       });
     }
 

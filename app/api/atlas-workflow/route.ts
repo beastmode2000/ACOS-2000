@@ -129,6 +129,7 @@ async function ensureColumns(sql: ReturnType<typeof neon>) {
   await sql`ALTER TABLE atlas_work_orders ADD COLUMN IF NOT EXISTS photos jsonb NOT NULL DEFAULT '[]'::jsonb`;
   await sql`ALTER TABLE atlas_work_orders ADD COLUMN IF NOT EXISTS recurrence_interval integer NOT NULL DEFAULT 1`;
   await sql`ALTER TABLE atlas_work_orders ADD COLUMN IF NOT EXISTS recurrence_unit text NOT NULL DEFAULT 'Weeks'`;
+  await sql`ALTER TABLE atlas_work_orders ADD COLUMN IF NOT EXISTS regular_assigned_to text`;
   await sql`ALTER TABLE atlas_work_orders ADD COLUMN IF NOT EXISTS recurrence_days jsonb NOT NULL DEFAULT '[]'::jsonb`;
   await sql`
     CREATE TABLE IF NOT EXISTS atlas_day_offs (
@@ -473,6 +474,11 @@ export async function POST(request: Request) {
       SET
         date = CASE WHEN ${targetStatus} = 'Cancelled' THEN date ELSE ${targetDate}::date END,
         due_date_value = CASE WHEN ${targetStatus} = 'Cancelled' THEN due_date_value ELSE ${targetDate}::date END,
+        assigned_to = CASE
+          WHEN recurring AND ${action === "skip" || action === "didnt-week"}
+          THEN COALESCE(regular_assigned_to, assigned_to)
+          ELSE assigned_to
+        END,
         status = ${targetStatus},
         updated_at = NOW()
       WHERE property_id = ${propertyId}
