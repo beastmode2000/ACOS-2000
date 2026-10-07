@@ -2022,12 +2022,13 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     const assignee = canonicalAssigneeName(record.assignedTo);
     const noteCount = String(record.notes || "").trim() ? 1 : 0;
     const photoCount = Array.isArray(record.photos) ? record.photos.length : 0;
+    const previewSource = photoSource(record.photos?.find((photo: PhotoLike) => photoSource(photo)));
 
     return (
       <div key={record.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "auto minmax(0,1fr)" : "auto minmax(220px,1fr) minmax(150px,.48fr) 142px auto", gap: 8, alignItems: "center", padding: isMobile ? "10px 9px" : "8px 10px", border: `1px solid ${selected ? colors.gold : colors.line}`, borderLeft: overdue ? `3px solid ${colors.red}` : selected ? `3px solid ${colors.gold}` : `3px solid transparent`, borderRadius: 10, background: selected ? "#FFF9EB" : "#FFFFFF" }}>
         <input type="checkbox" checked={status === "Completed"} disabled={isClosedWorkStatus(status)} aria-label={`Complete ${record.title || "work"}`} onChange={() => void completeRecordWithUndo(record)} />
         <button type="button" onClick={openRecord} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", minWidth: 0, cursor: "pointer" }}>
-          {photoSource(record.photos?.[0]) ? <img src={photoSource(record.photos[0])} alt={`Photo for ${record.title}`} loading="lazy" style={{ float: "left", width: 48, height: 48, objectFit: "cover", borderRadius: 7, marginRight: 8 }} /> : null}
+          {previewSource ? <img src={previewSource} alt={`Photo for ${record.title}`} loading="lazy" style={{ display: "block", width: 84, height: 84, objectFit: "cover", borderRadius: 9, marginBottom: 6 }} /> : null}
           <strong style={{ display: "block", minWidth: 0, color: colors.text, fontSize: 13.5, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis" }}>{record.title || "Untitled Work"}</strong>
           <span style={{ display: "block", marginTop: 2, color: colors.muted, fontSize: 10.5, lineHeight: 1.3 }}>{[isMobile && assignee ? assignee : "", isMobile && record.date ? formatDate(String(record.date)) : "", category ? categoryDisplayLabel(category) : "", place, record.priority === "High" ? "High priority" : "", noteCount ? "Notes" : "", photoCount ? `${photoCount} photo${photoCount === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ")}</span>
         </button>

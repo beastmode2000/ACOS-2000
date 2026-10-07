@@ -2502,6 +2502,8 @@ export default function AtlasDashboardWorkspace(props: any) {
     const dueDate = String(record.date || "").slice(0, 10);
     const isOverdue = Boolean(dueDate && dueDate < todayISO());
     const noteCount = currentOccurrenceNotes(atlasRecord).length;
+    const workPhotos = atlasRecord.photos || [];
+    const previewPhoto = workPhotos.find((photo) => photo.dataUrl || photo.url);
     return (
       <div
         key={record.id}
@@ -2515,9 +2517,9 @@ export default function AtlasDashboardWorkspace(props: any) {
       >
         <div style={{ display: "grid", gap: 5 }}>
           <button type="button" onClick={() => openWorkOrderById(record.id)} style={{ border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: "pointer" }}>
-            {atlasRecord.photos?.[0] && (atlasRecord.photos[0].dataUrl || atlasRecord.photos[0].url) ? <img src={atlasRecord.photos[0].dataUrl || atlasRecord.photos[0].url} alt={`Photo for ${record.title}`} loading="lazy" style={{ float: "left", width: 48, height: 48, objectFit: "cover", borderRadius: 7, marginRight: 8 }} /> : null}
+            {previewPhoto ? <img src={previewPhoto.dataUrl || previewPhoto.url} alt={`Photo for ${record.title}`} loading="lazy" style={{ display: "block", width: 84, height: 84, objectFit: "cover", borderRadius: 9, marginBottom: 6 }} /> : null}
             <strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14, lineHeight: 1.3, fontWeight: 700 }}>{record.title}</strong>
-            <small style={{ color: colors.muted, display: "block", marginTop: 2, fontSize: 12, lineHeight: 1.3, fontWeight: 500 }}>{isOverdue ? `Overdue · ${formatDate(dueDate)}` : dueDate === todayISO() ? "Today" : dueDate ? formatDate(dueDate) : "No due date"}{record.recurring ? ` · ${recurrenceLabel(atlasRecord).replace(/^Every week$/i, "Weekly").replace(/^Every /i, "")}` : ""}{noteCount ? ` · ${noteCount} note${noteCount === 1 ? "" : "s"}` : ""}</small>
+            <small style={{ color: colors.muted, display: "block", marginTop: 2, fontSize: 12, lineHeight: 1.3, fontWeight: 500 }}>{isOverdue ? `Overdue · ${formatDate(dueDate)}` : dueDate === todayISO() ? "Today" : dueDate ? formatDate(dueDate) : "No due date"}{record.recurring ? ` · ${recurrenceLabel(atlasRecord).replace(/^Every week$/i, "Weekly").replace(/^Every /i, "")}` : ""}{noteCount ? ` · ${noteCount} note${noteCount === 1 ? "" : "s"}` : ""}{workPhotos.length ? ` · ${workPhotos.length} photo${workPhotos.length === 1 ? "" : "s"}` : ""}</small>
           </button>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
             <button type="button" onClick={() => void requestDashboardCompletion(record)} style={{ ...goldButtonStyle, minHeight: isMobile ? 40 : 30, padding: "3px 7px", borderRadius: 7, fontSize: 13 }}>Done</button>
