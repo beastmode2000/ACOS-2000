@@ -36,9 +36,11 @@ export default function AtlasWorkListPolish() {
 
       .atlas-work-polish-root .atlas-work-row-main {
         min-width: 0 !important;
-        display: grid !important;
-        gap: 1px !important;
-        align-content: center !important;
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 10px !important;
+        align-items: center !important;
         text-align: left !important;
         background: transparent !important;
         border: 0 !important;
