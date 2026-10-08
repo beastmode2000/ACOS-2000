@@ -100,7 +100,7 @@ export default function AtlasGraduationPartyCleanup() {
 
         if (!cancelled && window.sessionStorage.getItem("atlas-grad-party-cleanup-reloaded-v1") !== "true") {
           window.sessionStorage.setItem("atlas-grad-party-cleanup-reloaded-v1", "true");
-          window.location.reload();
+          window.dispatchEvent(new CustomEvent("atlas:refresh-available"));
         }
       } catch {
         // Atlas retries on the next load until every old record is gone.

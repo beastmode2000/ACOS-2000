@@ -114,9 +114,8 @@ export default function AtlasSaturdayEventPrepSetup() {
           }),
         );
 
-        // Pull the newly created work order into the already-loaded Atlas state
-        // without asking the user to manually refresh.
-        window.setTimeout(() => window.location.reload(), 250);
+        // A background setup must never discard an open note or editor.
+        window.dispatchEvent(new CustomEvent("atlas:refresh-available"));
       } catch {
         // The normal Atlas load remains usable if this one-time setup cannot sync.
       }

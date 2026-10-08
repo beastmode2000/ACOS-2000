@@ -1,12 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 const HIDDEN_AT_KEY = "atlas:hidden-at";
-const LAST_RELOAD_KEY = "atlas:last-resume-reload";
 const SOFT_SYNC_AFTER_MS = 60 * 1000;
-const HARD_REFRESH_AFTER_MS = 10 * 60 * 1000;
-const RELOAD_GUARD_MS = 60 * 1000;
 
 function now() {
   return Date.now();
@@ -40,18 +37,11 @@ function pageLooksLikeNextError() {
 
 function hasUnsavedAtlasEditor() {
   const text = String(document.body?.innerText || "");
-  return /\bUnsaved changes\b/i.test(text);
-}
-
-function recentlyReloaded() {
-  const last = readNumber(LAST_RELOAD_KEY);
-  return Boolean(last && now() - last < RELOAD_GUARD_MS);
-}
-
-function hardRefresh() {
-  if (recentlyReloaded()) return;
-  writeNumber(LAST_RELOAD_KEY, now());
-  window.location.reload();
+  if (/\bUnsaved changes\b/i.test(text)) return true;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']")) return true;
+  return Array.from(document.querySelectorAll<HTMLTextAreaElement>("textarea"))
+    .some((field) => Boolean(field.value.trim()));
 }
 
 function chunkFailure(value: unknown) {
@@ -65,6 +55,7 @@ function chunkFailure(value: unknown) {
 }
 
 export default function AtlasResumeRecovery() {
+  const [refreshAvailable, setRefreshAvailable] = useState(false);
   useEffect(() => {
     let checking = false;
     let lastResumeCheck = 0;
@@ -76,7 +67,7 @@ export default function AtlasResumeRecovery() {
     };
 
     const recover = async (forceFromPageShow = false) => {
-      if (document.visibilityState === "hidden" || checking) return;
+      if (document.visibilityState === "hidden" || checking || hasUnsavedAtlasEditor()) return;
 
       const current = now();
       if (!forceFromPageShow && current - lastResumeCheck < 1500) return;
@@ -86,7 +77,7 @@ export default function AtlasResumeRecovery() {
       const awayFor = hiddenAt ? Math.max(0, current - hiddenAt) : 0;
 
       if (pageLooksLikeNextError()) {
-        hardRefresh();
+        setRefreshAvailable(true);
         return;
       }
 
@@ -107,26 +98,18 @@ export default function AtlasResumeRecovery() {
         const healthy = response.ok && contentType.includes("application/json");
 
         if (!healthy) {
-          hardRefresh();
+          setRefreshAvailable(true);
           return;
         }
+
+        // A note may have been started while the session request was in flight.
+        if (hasUnsavedAtlasEditor()) return;
 
         window.dispatchEvent(
           new CustomEvent("atlas:data-changed", {
             detail: { reason: "resume", awayFor },
           }),
         );
-
-        // A long-idle tab can retain an old Next.js client build even though the
-        // server has moved on. Refresh it automatically instead of making the
-        // user return to a stale/404-looking shell and manually press Refresh.
-        if (
-          (forceFromPageShow || awayFor >= HARD_REFRESH_AFTER_MS) &&
-          !hasUnsavedAtlasEditor()
-        ) {
-          hardRefresh();
-          return;
-        }
 
         writeNumber(HIDDEN_AT_KEY, current);
       } catch {
@@ -155,13 +138,16 @@ export default function AtlasResumeRecovery() {
     };
 
     const onError = (event: ErrorEvent) => {
-      if (chunkFailure(event.error || event.message)) hardRefresh();
+      if (chunkFailure(event.error || event.message)) setRefreshAvailable(true);
     };
 
     const onUnhandledRejection = (event: PromiseRejectionEvent) => {
-      if (chunkFailure(event.reason)) hardRefresh();
+      if (chunkFailure(event.reason)) setRefreshAvailable(true);
     };
 
+    const onRefreshAvailable = () => setRefreshAvailable(true);
+
+    window.addEventListener("atlas:refresh-available", onRefreshAvailable);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("focus", onFocus);
     window.addEventListener("pageshow", onPageShow);
@@ -169,6 +155,7 @@ export default function AtlasResumeRecovery() {
     window.addEventListener("unhandledrejection", onUnhandledRejection);
 
     return () => {
+      window.removeEventListener("atlas:refresh-available", onRefreshAvailable);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("pageshow", onPageShow);
@@ -177,5 +164,11 @@ export default function AtlasResumeRecovery() {
     };
   }, []);
 
-  return null;
+  return refreshAvailable ? (
+    <div role="status" style={{ position: "fixed", bottom: 18, right: 18, zIndex: 2000, display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 9, background: "#FFFFFF", color: "#0B2C43", border: "1px solid #D8E0E8", boxShadow: "0 3px 14px rgba(0,0,0,.12)", fontSize: 13 }}>
+      <span>Save your work before refreshing.</span>
+      <button type="button" onClick={() => window.location.reload()} style={{ border: "1px solid #D8E0E8", borderRadius: 7, background: "#FFFFFF", color: "#0B2C43", padding: "5px 8px", cursor: "pointer" }}>Refresh</button>
+      <button type="button" aria-label="Dismiss refresh notice" onClick={() => setRefreshAvailable(false)} style={{ border: 0, background: "transparent", color: "#526579", cursor: "pointer", fontSize: 18 }}>×</button>
+    </div>
+  ) : null;
 }

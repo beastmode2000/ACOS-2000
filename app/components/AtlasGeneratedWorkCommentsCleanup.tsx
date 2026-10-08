@@ -64,7 +64,7 @@ export default function AtlasGeneratedWorkCommentsCleanup() {
 
         if (!cancelled && window.sessionStorage.getItem("atlas-work-comment-cleanup-reloaded-v1") !== "true") {
           window.sessionStorage.setItem("atlas-work-comment-cleanup-reloaded-v1", "true");
-          window.location.reload();
+          window.dispatchEvent(new CustomEvent("atlas:refresh-available"));
         }
       } catch {
         // Retry on the next Atlas load until every generated comment is removed.
