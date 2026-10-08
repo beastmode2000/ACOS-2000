@@ -2027,10 +2027,12 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
     return (
       <div key={record.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "auto minmax(0,1fr)" : "auto minmax(220px,1fr) minmax(150px,.48fr) 142px auto", gap: 8, alignItems: "center", padding: isMobile ? "10px 9px" : "8px 10px", border: `1px solid ${selected ? colors.gold : colors.line}`, borderLeft: overdue ? `3px solid ${colors.red}` : selected ? `3px solid ${colors.gold}` : `3px solid transparent`, borderRadius: 10, background: selected ? "#FFF9EB" : "#FFFFFF" }}>
         <input type="checkbox" checked={status === "Completed"} disabled={isClosedWorkStatus(status)} aria-label={`Complete ${record.title || "work"}`} onChange={() => void completeRecordWithUndo(record)} />
-        <button type="button" onClick={openRecord} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", minWidth: 0, cursor: "pointer" }}>
-          {previewSource ? <img src={previewSource} alt={`Photo for ${record.title}`} loading="lazy" style={{ display: "block", width: 84, height: 84, objectFit: "cover", borderRadius: 9, marginBottom: 6 }} /> : null}
+        <button type="button" onClick={openRecord} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", minWidth: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+          {previewSource ? <img src={previewSource} alt={`Photo for ${record.title}`} loading="lazy" style={{ display: "block", width: 56, height: 56, flexShrink: 0, objectFit: "cover", borderRadius: 8 }} /> : null}
+          <div style={{ minWidth: 0, flex: 1 }}>
           <strong style={{ display: "block", minWidth: 0, color: colors.text, fontSize: 13.5, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis" }}>{record.title || "Untitled Work"}</strong>
           <span style={{ display: "block", marginTop: 2, color: colors.muted, fontSize: 10.5, lineHeight: 1.3 }}>{[isMobile && assignee ? assignee : "", isMobile && record.date ? formatDate(String(record.date)) : "", category ? categoryDisplayLabel(category) : "", place, record.priority === "High" ? "High priority" : "", noteCount ? "Notes" : "", photoCount ? `${photoCount} photo${photoCount === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ")}</span>
+          </div>
         </button>
         {!isMobile ? <><select value={assignee} onChange={(event) => void updateWorkOrderRecord(record, { assignedTo: event.currentTarget.value })} aria-label={`Assign ${record.title || "work"}`} style={{ ...controlStyle, minHeight: 34, padding: "5px 7px", fontSize: 11 }}>
           <option value="">Unassigned</option>
