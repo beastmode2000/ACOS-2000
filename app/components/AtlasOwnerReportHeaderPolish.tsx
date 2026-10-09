@@ -22,6 +22,11 @@ function propertyKey(root: HTMLElement) {
 function editorRow(element: Element, root: HTMLElement) {
   let current = element.parentElement;
   while (current && current !== root) {
+    // Never treat a report section (including its summary Notes box) as one
+    // work-item editor. Its first textarea may belong to a different item.
+    if (current.tagName === "SECTION" || current.querySelectorAll("textarea").length > 1) {
+      return null;
+    }
     if (
       current.querySelector('input[type="date"]') &&
       current.querySelector("textarea") &&
