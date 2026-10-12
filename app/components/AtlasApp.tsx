@@ -12424,26 +12424,6 @@ export default function AtlasApp() {
     const completedDate =
       workOrderDateKey(options.completedDate) || todayISO();
     let resolvedCompletionNote = String(options.completionNote ?? "").trim();
-    if (options.completionNote === undefined) {
-      const prompted = window.prompt(
-        `Work done / completion note for “${record.title || "this work"}” (optional):`,
-        "",
-      );
-      if (prompted === null) return;
-      resolvedCompletionNote = prompted.trim();
-    }
-    const dueDate = workOrderDateKey(record.date);
-    if (
-      dueDate &&
-      dueDate > completedDate &&
-      !options.allowEarly &&
-      !window.confirm(
-        `This work order is due ${formatDate(dueDate)}. Complete it early on ${formatDate(completedDate)}?`,
-      )
-    ) {
-      return;
-    }
-
     const schedule = recurringWorkOrderSchedule(record);
     const recurring =
       Boolean(record.recurring) || record.workType === "Preventive Maintenance";
@@ -12553,8 +12533,9 @@ export default function AtlasApp() {
       return;
     }
 
+    const scheduledDate = workOrderDateKey(preparedRecord.date);
     const nextDate = nextRecurrenceDate(
-      completedDate,
+      scheduledDate > completedDate ? scheduledDate : completedDate,
       schedule.interval,
       schedule.unit,
       preparedRecord.recurrenceDays,
@@ -21271,7 +21252,12 @@ ${notes.trim()}` : notes.trim(),
                 if (dashboardWorkFilter === "__overdue__") return item.status !== "Completed" && Boolean(item.date) && String(item.date).slice(0, 10) < todayISO();
                 if (dashboardWorkFilter === "__today__") return item.status !== "Completed" && String(item.date || "").slice(0, 10) === todayISO();
                 if (dashboardWorkFilter === "__high__") return item.status !== "Completed" && item.priority === "High";
-                if (dashboardWorkFilter === "__completed-today__") return item.status === "Completed" && String(item.lastCompletedDate || item.serviceHistory?.[0]?.completedAt || "").slice(0, 10) === todayISO();
+                if (dashboardWorkFilter === "__completed-today__") {
+                  const today = todayISO();
+                  return workOrderDateKey(item.lastCompletedDate) === today ||
+                    (item.completionHistory || []).some((date) => workOrderDateKey(date) === today) ||
+                    (item.serviceHistory || []).some((entry) => workOrderDateKey(entry.completedAt) === today);
+                }
                 const text = `${item.workCategory || ""} ${item.title || ""} ${item.notes || ""}`.toLowerCase();
                 return text.includes(dashboardWorkFilter.toLowerCase());
               })

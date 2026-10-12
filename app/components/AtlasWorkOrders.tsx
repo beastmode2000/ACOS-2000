@@ -436,8 +436,6 @@ function sortCompletedRecords(records: any[]) {
 }
 
 function wasCompletedToday(record: any) {
-  if (String(record.status || "") !== "Completed") return false;
-
   const today = todayKey();
   const candidates = [
     record.completedAt,
@@ -724,6 +722,29 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
   const [newChecklistText, setNewChecklistText] = useState("");
   const [newHistoryNote, setNewHistoryNote] = useState("");
   const historyNoteInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const workLayoutRef = useRef<HTMLDivElement | null>(null);
+  const [workLayoutHeight, setWorkLayoutHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (isMobile) return;
+    const layout = workLayoutRef.current;
+    if (!layout) return;
+    const resize = () => {
+      const top = layout.getBoundingClientRect().top;
+      setWorkLayoutHeight(Math.max(240, window.innerHeight - top - 12));
+    };
+    resize();
+    const frame = window.requestAnimationFrame(resize);
+    const observer = new ResizeObserver(resize);
+    if (layout.parentElement) observer.observe(layout.parentElement);
+    window.addEventListener("resize", resize);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", resize);
+    };
+  }, [isMobile]);
+
   const workOverviewRef = useRef<HTMLElement | null>(null);
   const workNotesRef = useRef<HTMLElement | null>(null);
   const workHistoryRef = useRef<HTMLDivElement | null>(null);
@@ -1578,16 +1599,6 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
       allowEarly: completedEarly || options?.allowEarly,
     });
 
-    if (completedEarly) {
-      const nextDue = recurrencePreviewDates(record, 1)[0];
-      if (nextDue) {
-        await updateWorkOrderRecord(record, {
-          date: nextDue,
-          status: "Scheduled",
-        });
-      }
-    }
-
     armCompletionUndo(record);
   }
 
@@ -2161,6 +2172,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           </div>
         </div>
       ) : null}
+      <div ref={workLayoutRef} style={{ minWidth: 0 }}>
       <ListDrawerLayout
         eyebrow="Work"
         title="Work"
@@ -2174,7 +2186,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
         }}
         mobileDrawerTitle={selectedService.title || "Work Details"}
         drawerResetKey={selectedService.id || ""}
-        outerStyle={isMobile ? undefined : { height: "calc(100vh - 132px)", minHeight: 620, overflow: "hidden", display: "grid", gridTemplateRows: "auto minmax(0, 1fr)" }}
+        outerStyle={isMobile ? undefined : { height: workLayoutHeight ?? "calc(100dvh - 132px)", minHeight: 0, overflow: "hidden", display: "grid", gridTemplateRows: "auto minmax(0, 1fr)" }}
         gridStyleOverride={
           detailOpen && selectedService.id
             ? isMobile
@@ -2568,6 +2580,7 @@ function AtlasWorkOrders(props: AtlasWorkOrdersProps) {
           )
         }
       />
+      </div>
     </>
   );
 }
