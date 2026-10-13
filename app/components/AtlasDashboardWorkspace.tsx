@@ -130,6 +130,29 @@ import type {
 
 
 
+const DASHBOARD_WORK_CATEGORIES = [
+  "🔧 Maintenance",
+  "🧹 Cleaning",
+  "🌿 Landscaping",
+  "🚿 Pool & Spa",
+  "💧 Irrigation",
+  "⚡ Electrical",
+  "🚰 Plumbing",
+  "❄️ HVAC",
+  "🚤 Dock & Marine",
+  "🚗 Vehicles",
+  "🏠 House",
+  "📦 Inventory",
+  "📋 Project",
+  "✅ Inspection",
+  "🚨 Safety",
+  "📄 Admin",
+  "Meeting",
+  "PTO / Off",
+  "Vendor Visit",
+];
+
+
 export default function AtlasDashboardWorkspace(props: any) {
   const {
     activePropertyId,
@@ -309,6 +332,18 @@ export default function AtlasDashboardWorkspace(props: any) {
     const name = dashboardAssigneeName(currentAtlasUser?.name || "Nick");
     return name || "Nick";
   })();
+  const [dashboardCategoryPreferences, setDashboardCategoryPreferences] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("atlas-work-category-settings-v1") || "[]");
+      if (Array.isArray(saved)) setDashboardCategoryPreferences(saved.map(String).map((value) => value.trim()).filter(Boolean));
+    } catch { /* Category preferences are optional. */ }
+  }, []);
+  const dashboardWorkCategories = Array.from(new Set<string>([
+    ...DASHBOARD_WORK_CATEGORIES,
+    ...dashboardCategoryPreferences,
+    ...serviceRecords.map((record) => String((record as AtlasServiceRecord).workCategory || (record as any).category || "")).filter(Boolean),
+  ]));
   const [dashboardWorkTitle, setDashboardWorkTitle] = useState("");
   const [dashboardWorkNote, setDashboardWorkNote] = useState("");
   const [dashboardCompletionNotes, setDashboardCompletionNotes] = useState<Record<string, string>>({});
@@ -2519,8 +2554,8 @@ export default function AtlasDashboardWorkspace(props: any) {
             <strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14, lineHeight: 1.3, fontWeight: 700 }}>{record.title}</strong>
             <small style={{ color: colors.muted, display: "block", marginTop: 2, fontSize: 12, lineHeight: 1.3, fontWeight: 500 }}>{isOverdue ? `Overdue · ${formatDate(dueDate)}` : dueDate === todayISO() ? "Today" : dueDate ? formatDate(dueDate) : "No due date"}{record.recurring ? ` · ${recurrenceLabel(atlasRecord).replace(/^Every week$/i, "Weekly").replace(/^Every /i, "")}` : ""}{noteCount ? ` · ${noteCount} note${noteCount === 1 ? "" : "s"}` : ""}{workPhotos.length ? ` · ${workPhotos.length} photo${workPhotos.length === 1 ? "" : "s"}` : ""}</small>
           </button>
-          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-            <button type="button" onClick={() => void requestDashboardCompletion(record)} style={{ ...goldButtonStyle, minHeight: isMobile ? 40 : 30, padding: "3px 7px", borderRadius: 7, fontSize: 13 }}>Done</button>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+            <button type="button" onClick={() => void requestDashboardCompletion(record)} style={{ ...goldButtonStyle, minHeight: isMobile ? 36 : 28, padding: "3px 7px", borderRadius: 7, fontSize: 11 }}>Done</button>
             <select
               value=""
               onChange={(event) => {
@@ -2529,7 +2564,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                 if (action) void handleDashboardWorkAction(record, action);
               }}
               aria-label={`Actions for ${record.title}`}
-              style={{ ...selectStyle, width: "auto", minHeight: isMobile ? 40 : 30, padding: "3px 24px 3px 7px", borderRadius: 7, fontSize: 13, fontWeight: 800 }}
+              style={{ ...selectStyle, width: 78, minWidth: 0, minHeight: isMobile ? 36 : 28, padding: "3px 18px 3px 6px", borderRadius: 7, fontSize: 11, fontWeight: 700 }}
             >
               <option value="">Actions</option>
               <option value="in-progress">In Progress</option>
@@ -2548,17 +2583,17 @@ export default function AtlasDashboardWorkspace(props: any) {
               aria-expanded={Boolean(dashboardWorkNoteOpen[String(record.id)])}
               aria-label={`Add work note for ${record.title}`}
               title="Add work note"
-              style={{ ...secondaryButtonStyle, minHeight: isMobile ? 40 : 30, padding: "3px 7px", borderRadius: 7, fontSize: 13, fontWeight: 800 }}
+              style={{ ...secondaryButtonStyle, minHeight: isMobile ? 36 : 28, padding: "3px 7px", borderRadius: 7, fontSize: 11, fontWeight: 700 }}
             >
               Add Note
             </button>
             <label
               style={{
                 display: "grid",
-                gridTemplateColumns: "auto minmax(126px, 1fr)",
+                gridTemplateColumns: "auto minmax(105px, 1fr)",
                 alignItems: "center",
                 gap: 4,
-                minHeight: isMobile ? 40 : 30,
+                minHeight: isMobile ? 36 : 28,
                 padding: "0 5px",
                 border: `1px solid ${colors.line}`,
                 borderRadius: 7,
@@ -2584,13 +2619,13 @@ export default function AtlasDashboardWorkspace(props: any) {
                 style={{
                   ...inputStyle,
                   width: "100%",
-                  minWidth: 126,
-                  minHeight: isMobile ? 38 : 28,
+                  minWidth: 105,
+                  minHeight: isMobile ? 34 : 26,
                   padding: "3px 5px",
                   border: 0,
                   borderRadius: 5,
-                  fontSize: 12,
-                  fontWeight: 850,
+                  fontSize: 11,
+                  fontWeight: 700,
                   borderColor: colors.gold,
                   background: "#FFFDF7",
                 }}
@@ -2601,11 +2636,26 @@ export default function AtlasDashboardWorkspace(props: any) {
               onChange={(event) => void quickAssignDashboardWork(record, event.currentTarget.value)}
               aria-label={`Assign ${record.title}`}
               title="Quick assign"
-              style={{ ...selectStyle, width: "auto", minHeight: isMobile ? 40 : 30, padding: "3px 24px 3px 7px", borderRadius: 7, fontSize: 13, fontWeight: 800 }}
+              style={{ ...selectStyle, width: 94, minWidth: 0, minHeight: isMobile ? 36 : 28, padding: "3px 18px 3px 6px", borderRadius: 7, fontSize: 11, fontWeight: 700 }}
             >
               <option value="">Unassigned</option>
               {dashboardWorkPeople.map((person) => (
                 <option key={person} value={person}>{dashboardPersonLabel(person)}</option>
+              ))}
+            </select>
+            <select
+              value={String(atlasRecord.workCategory || (atlasRecord as any).category || "🔧 Maintenance")}
+              onChange={(event) => {
+                const category = event.currentTarget.value;
+                const emoji = category.trim().match(/^(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)/u)?.[1] || "🔧";
+                void syncWorkOrderPatch(record, { workCategory: category, category, emoji } as Partial<AtlasServiceRecord>);
+              }}
+              aria-label={`Category for ${record.title}`}
+              title="Change category"
+              style={{ ...selectStyle, width: "auto", maxWidth: 140, minWidth: 0, minHeight: isMobile ? 36 : 28, padding: "3px 18px 3px 6px", borderRadius: 7, fontSize: 11, fontWeight: 700 }}
+            >
+              {dashboardWorkCategories.map((category) => (
+                <option key={category} value={category}>{category.replace(/^(?:\p{Extended_Pictographic}|\uFE0F|\u200D)+\s*/u, "").trim()}</option>
               ))}
             </select>
           </div>
