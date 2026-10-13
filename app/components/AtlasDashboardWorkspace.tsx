@@ -2554,7 +2554,7 @@ export default function AtlasDashboardWorkspace(props: any) {
             <strong style={{ color: colors.navy, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14, lineHeight: 1.3, fontWeight: 700 }}>{record.title}</strong>
             <small style={{ color: colors.muted, display: "block", marginTop: 2, fontSize: 12, lineHeight: 1.3, fontWeight: 500 }}>{isOverdue ? `Overdue · ${formatDate(dueDate)}` : dueDate === todayISO() ? "Today" : dueDate ? formatDate(dueDate) : "No due date"}{record.recurring ? ` · ${recurrenceLabel(atlasRecord).replace(/^Every week$/i, "Weekly").replace(/^Every /i, "")}` : ""}{noteCount ? ` · ${noteCount} note${noteCount === 1 ? "" : "s"}` : ""}{workPhotos.length ? ` · ${workPhotos.length} photo${workPhotos.length === 1 ? "" : "s"}` : ""}</small>
           </button>
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+          <div className="atlas-dashboard-work-controls" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             <button type="button" onClick={() => void requestDashboardCompletion(record)} style={{ ...goldButtonStyle, minHeight: isMobile ? 36 : 28, padding: "3px 7px", borderRadius: 7, fontSize: 11 }}>Done</button>
             <select
               value=""
@@ -2564,7 +2564,7 @@ export default function AtlasDashboardWorkspace(props: any) {
                 if (action) void handleDashboardWorkAction(record, action);
               }}
               aria-label={`Actions for ${record.title}`}
-              style={{ ...selectStyle, width: 78, minWidth: 0, minHeight: isMobile ? 36 : 28, padding: "3px 18px 3px 6px", borderRadius: 7, fontSize: 11, fontWeight: 700 }}
+              style={{ ...selectStyle, width: 96, minWidth: 96, minHeight: isMobile ? 36 : 28, padding: "3px 18px 3px 6px", borderRadius: 7, fontSize: 11, fontWeight: 700 }}
             >
               <option value="">Actions</option>
               <option value="in-progress">In Progress</option>
@@ -2590,7 +2590,9 @@ export default function AtlasDashboardWorkspace(props: any) {
             <label
               style={{
                 display: "grid",
-                gridTemplateColumns: "auto minmax(105px, 1fr)",
+                gridTemplateColumns: "auto minmax(0, 1fr)",
+                width: 154,
+                flex: "0 0 154px",
                 alignItems: "center",
                 gap: 4,
                 minHeight: isMobile ? 36 : 28,
@@ -2636,7 +2638,7 @@ export default function AtlasDashboardWorkspace(props: any) {
               onChange={(event) => void quickAssignDashboardWork(record, event.currentTarget.value)}
               aria-label={`Assign ${record.title}`}
               title="Quick assign"
-              style={{ ...selectStyle, width: 94, minWidth: 0, minHeight: isMobile ? 36 : 28, padding: "3px 18px 3px 6px", borderRadius: 7, fontSize: 11, fontWeight: 700 }}
+              style={{ ...selectStyle, width: 104, minWidth: 104, minHeight: isMobile ? 36 : 28, padding: "3px 18px 3px 6px", borderRadius: 7, fontSize: 11, fontWeight: 700 }}
             >
               <option value="">Unassigned</option>
               {dashboardWorkPeople.map((person) => (
@@ -2652,7 +2654,7 @@ export default function AtlasDashboardWorkspace(props: any) {
               }}
               aria-label={`Category for ${record.title}`}
               title="Change category"
-              style={{ ...selectStyle, width: "auto", maxWidth: 140, minWidth: 0, minHeight: isMobile ? 36 : 28, padding: "3px 18px 3px 6px", borderRadius: 7, fontSize: 11, fontWeight: 700 }}
+              style={{ ...selectStyle, width: 154, maxWidth: "100%", minWidth: 154, minHeight: isMobile ? 36 : 28, padding: "3px 18px 3px 6px", borderRadius: 7, fontSize: 11, fontWeight: 700 }}
             >
               {dashboardWorkCategories.map((category) => (
                 <option key={category} value={category}>{category.replace(/^(?:\p{Extended_Pictographic}|\uFE0F|\u200D)+\s*/u, "").trim()}</option>
@@ -3505,6 +3507,34 @@ export default function AtlasDashboardWorkspace(props: any) {
   );
 
   return <>
+    <style>{`
+      .atlas-dashboard-work-controls > button,
+      .atlas-dashboard-work-controls > select,
+      .atlas-dashboard-work-controls > label {
+        flex-shrink: 0;
+        box-sizing: border-box;
+        min-height: 32px !important;
+      }
+      .atlas-dashboard-work-controls > button,
+      .atlas-dashboard-work-controls > select,
+      .atlas-dashboard-work-controls input[type="date"] {
+        font-size: 12px !important;
+        line-height: 1.3;
+      }
+      .atlas-dashboard-work-controls > select {
+        padding: 4px 22px 4px 8px !important;
+      }
+      .atlas-dashboard-work-controls input[type="date"] {
+        min-width: 0 !important;
+        min-height: 30px !important;
+        padding: 3px 2px !important;
+      }
+      @media (max-width: 700px) {
+        .atlas-dashboard-work-controls > button,
+        .atlas-dashboard-work-controls > select,
+        .atlas-dashboard-work-controls > label { min-height: 36px !important; }
+      }
+    `}</style>
     {dashboardCompletionPrompt ? (
       <div role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setDashboardCompletionPrompt(null); }} style={{ position: "fixed", inset: 0, zIndex: 1400, display: "grid", placeItems: "center", padding: 18, background: "rgba(7,27,47,.68)" }}>
         <div role="dialog" aria-modal="true" aria-label="Completed when" style={{ width: "min(100%,420px)", borderRadius: 16, background: "#FFFFFF", padding: 16, boxShadow: "0 24px 70px rgba(0,0,0,.28)" }}>
